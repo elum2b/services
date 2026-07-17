@@ -1,0 +1,1140 @@
+{
+  "package": {
+    "format": "tasks.export.v1",
+    "service": "tasks",
+    "groups": [
+      {
+        "key": "daily",
+        "position": 10,
+        "is_active": true,
+        "localization": {
+          "ru": {
+            "title": "Ежедневные задания",
+            "description": "Ежедневные одиночные задания, которые можно выполнять в любом порядке."
+          },
+          "en": {
+            "title": "Daily tasks",
+            "description": "Daily standalone tasks that can be completed in any order."
+          }
+        },
+        "tasks": [
+          {
+            "key": "daily.send_message",
+            "task_kind": "internal",
+            "action_key": "message.send",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 10,
+            "payload": {
+              "kind": "send_message"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Отправить сообщение",
+                "description": "Отправь сообщение в приложении."
+              },
+              "en": {
+                "title": "Send a message",
+                "description": "Send a message in the app."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 25,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.topup_100_stars",
+            "task_kind": "internal",
+            "action_key": "stars.topup",
+            "action_kind": "amount_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 100,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 20,
+            "payload": {
+              "kind": "topup",
+              "min_amount": 100,
+              "currency": "stars"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Пополните от 100 звезд",
+                "description": "Пополни баланс минимум на 100 звезд."
+              },
+              "en": {
+                "title": "Top up 100 stars or more",
+                "description": "Top up your balance with at least 100 stars."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 1000,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.start_bot_return",
+            "task_kind": "internal",
+            "action_key": "bot.start_return",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 30,
+            "payload": {
+              "bot": "@MyChimpTasksBot"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Запустить бота и вернуться в приложение",
+                "description": "Запусти @MyChimpTasksBot и вернись в приложение."
+              },
+              "en": {
+                "title": "Start the bot and return to the app",
+                "description": "Start @MyChimpTasksBot and return to the app."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 25,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.vote_channel",
+            "task_kind": "internal",
+            "action_key": "channel.vote",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 40,
+            "payload": {
+              "kind": "vote_channel"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Проголосовать за канал",
+                "description": "Проголосуй за канал."
+              },
+              "en": {
+                "title": "Vote for the channel",
+                "description": "Vote for the channel."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 100,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.join_chat",
+            "task_kind": "channel_subscribe",
+            "action_key": "chat.join.my_chimp_group",
+            "action_kind": "channel_subscribe",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 50,
+            "payload": {
+              "chat": "@anonmsgr",
+              "url": "https://t.me/anonmsgr"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Вступить в чат",
+                "description": "Вступи в чат @anonmsgr."
+              },
+              "en": {
+                "title": "Join the chat",
+                "description": "Join @anonmsgr."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 25,
+                "scale": 2,
+                "position": 10
+              }
+            ],
+            "integration": {
+              "provider": "telegram",
+              "payload": {
+                "platform": "telegram",
+                "chat_id": "-1003293336008",
+                "token_strategy": "round_robin",
+                "tokens": []
+              }
+            }
+          },
+          {
+            "key": "daily.subscribe_channel",
+            "task_kind": "channel_subscribe",
+            "action_key": "channel.subscribe",
+            "action_kind": "channel_subscribe",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 60,
+            "payload": {
+              "kind": "subscribe_channel",
+              "chat_id": "@anonmsgr",
+              "url": "https://t.me/anonmsgr"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Подписаться на канал",
+                "description": "Подпишись на канал."
+              },
+              "en": {
+                "title": "Subscribe to the channel",
+                "description": "Subscribe to the channel."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 25,
+                "scale": 2,
+                "position": 10
+              }
+            ],
+            "integration": {
+              "provider": "telegram",
+              "payload": {
+                "platform": "telegram",
+                "chat_id": "-1003293336008",
+                "token_strategy": "round_robin",
+                "tokens": []
+              }
+            }
+          },
+          {
+            "key": "daily.boost_channel",
+            "task_kind": "channel_boost",
+            "action_key": "channel.boost",
+            "action_kind": "channel_boost",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 65,
+            "payload": {
+              "kind": "boost_channel",
+              "chat_id": "@anonmsgr",
+              "url": "https://t.me/anonmsgr?boost"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Забустить канал",
+                "description": "Сделай буст канала @anonmsgr."
+              },
+              "en": {
+                "title": "Boost the channel",
+                "description": "Boost @anonmsgr."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 25,
+                "scale": 2,
+                "position": 10
+              }
+            ],
+            "integration": {
+              "provider": "telegram",
+              "payload": {
+                "platform": "telegram",
+                "chat_id": "-1003293336008",
+                "token_strategy": "round_robin",
+                "tokens": []
+              }
+            }
+          },
+          {
+            "key": "daily.play_coin",
+            "task_kind": "internal",
+            "action_key": "coin.play",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 70,
+            "payload": {
+              "game": "coin",
+              "result": "any"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Поиграть монетку",
+                "description": "Сыграй в монетку."
+              },
+              "en": {
+                "title": "Play coin flip",
+                "description": "Play coin flip."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 100,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.win_coin",
+            "task_kind": "internal",
+            "action_key": "coin.win",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 80,
+            "payload": {
+              "game": "coin",
+              "result": "win"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Выиграть в монетку",
+                "description": "Выиграй в монетку."
+              },
+              "en": {
+                "title": "Win coin flip",
+                "description": "Win a coin flip game."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 50,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.play_mines",
+            "task_kind": "internal",
+            "action_key": "mines.play",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 90,
+            "payload": {
+              "game": "mines",
+              "result": "any"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Поиграть в мины",
+                "description": "Сыграй в мины."
+              },
+              "en": {
+                "title": "Play mines",
+                "description": "Play mines."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 100,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.play_crash",
+            "task_kind": "internal",
+            "action_key": "crash.play",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 100,
+            "payload": {
+              "game": "crash",
+              "result": "any"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Поиграть в краш",
+                "description": "Сыграй в краш."
+              },
+              "en": {
+                "title": "Play crash",
+                "description": "Play crash."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 100,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.spin_mini_roulette",
+            "task_kind": "internal",
+            "action_key": "mini_roulette.spin",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 110,
+            "payload": {
+              "game": "mini_roulette"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Покрутить мини рулетку",
+                "description": "Покрути мини рулетку."
+              },
+              "en": {
+                "title": "Spin mini roulette",
+                "description": "Spin mini roulette."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 300,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.watch_15_ads",
+            "task_kind": "internal",
+            "action_key": "ads.watch",
+            "action_kind": "advertisement_view",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 15,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 120,
+            "payload": {
+              "kind": "watch_ads",
+              "required_count": 15
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Выполни 15 заданий \"посмотри рекламу\"",
+                "description": "Выполни 15 заданий на просмотр рекламы."
+              },
+              "en": {
+                "title": "Complete 15 \"watch an ad\" tasks",
+                "description": "Complete 15 ad watching tasks."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 200,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.win_crash",
+            "task_kind": "internal",
+            "action_key": "crash.win",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 130,
+            "payload": {
+              "game": "crash",
+              "result": "win"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Выиграть в краше",
+                "description": "Выиграй в краше."
+              },
+              "en": {
+                "title": "Win crash",
+                "description": "Win a crash game."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 50,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.win_mines",
+            "task_kind": "internal",
+            "action_key": "mines.win",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 140,
+            "payload": {
+              "game": "mines",
+              "result": "win"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Выиграть в минах",
+                "description": "Выиграй в минах."
+              },
+              "en": {
+                "title": "Win mines",
+                "description": "Win a mines game."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 50,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.topup_gift",
+            "task_kind": "internal",
+            "action_key": "gift.topup",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 150,
+            "payload": {
+              "kind": "gift_topup"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Пополнить баланс подарком",
+                "description": "Пополни баланс подарком."
+              },
+              "en": {
+                "title": "Top up with a gift",
+                "description": "Top up your balance with a gift."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 1000,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.play_pvp",
+            "task_kind": "internal",
+            "action_key": "pvp.play",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 160,
+            "payload": {
+              "game": "pvp",
+              "result": "any"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Сыграть в PvP",
+                "description": "Сыграй в PvP."
+              },
+              "en": {
+                "title": "Play PvP",
+                "description": "Play PvP."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 100,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.win_pvp",
+            "task_kind": "internal",
+            "action_key": "pvp.win",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 170,
+            "payload": {
+              "game": "pvp",
+              "result": "win"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Выиграть в PvP",
+                "description": "Выиграй в PvP."
+              },
+              "en": {
+                "title": "Win PvP",
+                "description": "Win a PvP match."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 50,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.publish_story",
+            "task_kind": "internal",
+            "action_key": "story.publish",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 180,
+            "payload": {
+              "kind": "publish_story"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Опубликовать историю",
+                "description": "Опубликуй историю."
+              },
+              "en": {
+                "title": "Publish a story",
+                "description": "Publish a story."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 25,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          },
+          {
+            "key": "daily.set_emoji_status",
+            "task_kind": "internal",
+            "action_key": "emoji_status.set",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "day",
+              "every": 1
+            },
+            "position": 190,
+            "payload": {
+              "kind": "emoji_status"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Установить Эмодзи-статус",
+                "description": "Установи Эмодзи-статус."
+              },
+              "en": {
+                "title": "Set Emoji status",
+                "description": "Set an Emoji status."
+              }
+            },
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 25,
+                "scale": 2,
+                "position": 10
+              }
+            ]
+          }
+        ],
+        "partner_configs": [
+          {
+            "provider": "tgrass",
+            "platform": "telegram",
+            "is_enabled": true,
+            "secret": {
+              "mode": "required",
+              "key": "tasks.partner.tgrass.daily.telegram.secret"
+            },
+            "webhook_secret": {
+              "mode": "required",
+              "key": "tasks.partner.tgrass.daily.telegram.webhook_secret"
+            },
+            "target": null,
+            "settings": {
+              "base_url": "https://tgrass.space",
+              "list_endpoint": "offers"
+            }
+          },
+          {
+            "provider": "getbonus",
+            "platform": "telegram",
+            "is_enabled": true,
+            "secret": {
+              "mode": "required",
+              "key": "tasks.partner.getbonus.daily.telegram.secret"
+            },
+            "webhook_secret": {
+              "mode": "required",
+              "key": "tasks.partner.getbonus.daily.telegram.webhook_secret"
+            },
+            "target": null,
+            "settings": {
+              "base_url": "https://stage.gb-platform.online"
+            }
+          },
+          {
+            "provider": "subgram",
+            "platform": "telegram",
+            "is_enabled": true,
+            "secret": {
+              "mode": "required",
+              "key": "tasks.partner.subgram.daily.telegram.secret"
+            },
+            "webhook_secret": {
+              "mode": "required",
+              "key": "tasks.partner.subgram.daily.telegram.webhook_secret"
+            },
+            "target": null,
+            "settings": {
+              "base_url": "https://api.subgram.org",
+              "action": "task",
+              "max_sponsors": 5,
+              "allow_notgetted": "false"
+            }
+          }
+        ],
+        "partner_reward_rules": [
+          {
+            "provider": "tgrass",
+            "external_type": "*",
+            "reward": {
+              "key": "stars",
+              "type": "quantity",
+              "quantity": 25,
+              "scale": 2,
+              "position": 10
+            },
+            "position": 10,
+            "is_enabled": true
+          },
+          {
+            "provider": "getbonus",
+            "external_type": "*",
+            "reward": {
+              "key": "stars",
+              "type": "quantity",
+              "quantity": 100,
+              "scale": 2,
+              "position": 10
+            },
+            "position": 20,
+            "is_enabled": true
+          },
+          {
+            "provider": "subgram",
+            "external_type": "*",
+            "reward": {
+              "key": "stars",
+              "type": "quantity",
+              "quantity": 25,
+              "scale": 2,
+              "position": 10
+            },
+            "position": 40,
+            "is_enabled": true
+          }
+        ]
+      },
+      {
+        "key": "complex",
+        "position": 20,
+        "is_active": true,
+        "localization": {
+          "ru": {
+            "title": "Комплексные задания",
+            "description": "Задания с несколькими условиями и общей наградой."
+          },
+          "en": {
+            "title": "Complex tasks",
+            "description": "Tasks with multiple conditions and a shared reward."
+          }
+        },
+        "tasks": [
+          {
+            "key": "complex.bear_gift",
+            "task_kind": "complex",
+            "action_key": "complex.bear_gift",
+            "action_kind": "composite",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 4,
+            "reset": {
+              "unit": "never",
+              "every": 1
+            },
+            "position": 10,
+            "payload": {
+              "kind": "complex_reward",
+              "reward": "gift.bear"
+            },
+            "is_visible": true,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Получить подарок мишку",
+                "description": "Выполни все условия и забери подарок мишку."
+              },
+              "en": {
+                "title": "Get a bear gift",
+                "description": "Complete all conditions and claim the bear gift."
+              }
+            },
+            "rewards": [
+              {
+                "key": "gift.bear",
+                "type": "quantity",
+                "quantity": 1,
+                "scale": 0,
+                "position": 10
+              }
+            ],
+            "conditions": [
+              {
+                "task_key": "complex.bear_gift.subscribe_app_channel",
+                "required_status": "ready",
+                "position": 10,
+                "is_required": true
+              },
+              {
+                "task_key": "complex.bear_gift.complete_any_12_tasks",
+                "required_status": "ready",
+                "position": 20,
+                "is_required": true
+              },
+              {
+                "task_key": "complex.bear_gift.play_pvp",
+                "required_status": "ready",
+                "position": 30,
+                "is_required": true
+              },
+              {
+                "task_key": "complex.bear_gift.invite_5_friends",
+                "required_status": "ready",
+                "position": 40,
+                "is_required": true
+              }
+            ]
+          },
+          {
+            "key": "complex.bear_gift.subscribe_app_channel",
+            "task_kind": "channel_subscribe",
+            "action_key": "channel.subscribe.app",
+            "action_kind": "channel_subscribe",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "never",
+              "every": 1
+            },
+            "position": 20,
+            "payload": {
+              "kind": "subscribe_channel",
+              "chat_id": "@anonmsgr",
+              "url": "https://t.me/anonmsgr"
+            },
+            "is_visible": false,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Подписаться на канал апки",
+                "description": "Подпишись на канал приложения."
+              },
+              "en": {
+                "title": "Subscribe to the app channel",
+                "description": "Subscribe to the app channel."
+              }
+            },
+            "integration": {
+              "provider": "telegram",
+              "payload": {
+                "platform": "telegram",
+                "chat_id": "-1003293336008",
+                "token_strategy": "round_robin",
+                "tokens": []
+              }
+            }
+          },
+          {
+            "key": "complex.bear_gift.complete_any_12_tasks",
+            "task_kind": "internal",
+            "action_key": "task.claimed",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 12,
+            "reset": {
+              "unit": "never",
+              "every": 1
+            },
+            "position": 30,
+            "payload": {
+              "kind": "complete_any_tasks",
+              "required_count": 12
+            },
+            "is_visible": false,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Выполнить 12 любых заданий",
+                "description": "Выполни любые 12 заданий."
+              },
+              "en": {
+                "title": "Complete any 12 tasks",
+                "description": "Complete any 12 tasks."
+              }
+            }
+          },
+          {
+            "key": "complex.bear_gift.play_pvp",
+            "task_kind": "internal",
+            "action_key": "pvp.play",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 1,
+            "reset": {
+              "unit": "never",
+              "every": 1
+            },
+            "position": 40,
+            "payload": {
+              "game": "pvp",
+              "result": "any"
+            },
+            "is_visible": false,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Поиграть в PvP",
+                "description": "Сыграй в PvP."
+              },
+              "en": {
+                "title": "Play PvP",
+                "description": "Play PvP."
+              }
+            }
+          },
+          {
+            "key": "complex.bear_gift.invite_5_friends",
+            "task_kind": "internal",
+            "action_key": "referral.invite",
+            "action_kind": "app_action",
+            "claim_mode": "manual",
+            "start_mode": "none",
+            "target_count": 5,
+            "reset": {
+              "unit": "never",
+              "every": 1
+            },
+            "position": 50,
+            "payload": {
+              "kind": "invite_friends",
+              "required_count": 5,
+              "source": "ref_link"
+            },
+            "is_visible": false,
+            "is_active": true,
+            "localization": {
+              "ru": {
+                "title": "Пригласить 5 друзей",
+                "description": "Пригласи 5 друзей по своей реферальной ссылке."
+              },
+              "en": {
+                "title": "Invite 5 friends",
+                "description": "Invite 5 friends using your referral link."
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "conflict_strategy": "update_existing"
+}

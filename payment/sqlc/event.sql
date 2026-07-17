@@ -1,0 +1,1 @@
+-- PostgreSQL does not use MySQL event scheduler for payment stats.

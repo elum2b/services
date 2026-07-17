@@ -1,0 +1,146 @@
+{
+  "package": {
+    "format": "payment.export.v1",
+    "service": "payment",
+    "created_at": "2026-07-01T00:00:00Z",
+    "groups": [
+      {
+        "key": "topup",
+        "position": 10,
+        "is_active": true,
+        "localization": {
+          "ru": {
+            "title": "Пополнение",
+            "description": "Покупка внутренней валюты."
+          },
+          "en": {
+            "title": "Top up",
+            "description": "Internal currency purchases."
+          }
+        },
+        "products": [
+          {
+            "key": "topup.stars.flexible",
+            "target": null,
+            "quantity_mode": "flexible",
+            "position": 10,
+            "global_limit": 0,
+            "global_interval": "UNLIMITED",
+            "global_interval_count": 0,
+            "user_limit": 0,
+            "user_interval": "UNLIMITED",
+            "user_interval_count": 0,
+            "available_from": "2026-07-01T00:00:00Z",
+            "available_until": "2124-01-01T00:00:00Z",
+            "is_visible": true,
+            "is_closed": false,
+            "localization": {
+              "ru": {
+                "title": "Пополнить Stars",
+                "description": "Укажите любое количество Stars для пополнения."
+              },
+              "en": {
+                "title": "Top up Stars",
+                "description": "Enter any Stars amount to top up."
+              }
+            },
+            "items": [
+              {
+                "item_id": "stars",
+                "reward_type": "quantity",
+                "quantity": 100,
+                "scale": 2
+              }
+            ],
+            "prices": [
+              {
+                "asset_code": "XTR",
+                "list_amount_minor": 1,
+                "discount_amount_minor": 0,
+                "pricing_mode": "fixed",
+                "is_promotion": false,
+                "starts_at": "2026-07-01T00:00:00Z",
+                "ends_at": "2124-01-01T00:00:00Z"
+              },
+              {
+                "asset_code": "USDT_TON",
+                "list_amount_minor": 15000,
+                "discount_amount_minor": 0,
+                "pricing_mode": "fixed",
+                "is_promotion": false,
+                "starts_at": "2026-07-01T00:00:00Z",
+                "ends_at": "2124-01-01T00:00:00Z"
+              },
+              {
+                "asset_code": "TON",
+                "list_amount_minor": 15000,
+                "discount_amount_minor": 0,
+                "pricing_mode": "dynamic",
+                "reference_asset_code": "USDT_TON",
+                "reference_list_amount_minor": 15000,
+                "reference_discount_amount_minor": 0,
+                "coefficient": "1",
+                "is_promotion": false,
+                "starts_at": "2026-07-01T00:00:00Z",
+                "ends_at": "2124-01-01T00:00:00Z"
+              },
+              {
+                "asset_code": "NOT_TON",
+                "list_amount_minor": 15000,
+                "discount_amount_minor": 0,
+                "pricing_mode": "dynamic",
+                "reference_asset_code": "USDT_TON",
+                "reference_list_amount_minor": 15000,
+                "reference_discount_amount_minor": 0,
+                "coefficient": "1",
+                "is_promotion": false,
+                "starts_at": "2026-07-01T00:00:00Z",
+                "ends_at": "2124-01-01T00:00:00Z"
+              },
+              {
+                "asset_code": "DOGS_TON",
+                "list_amount_minor": 15000,
+                "discount_amount_minor": 0,
+                "pricing_mode": "dynamic",
+                "reference_asset_code": "USDT_TON",
+                "reference_list_amount_minor": 15000,
+                "reference_discount_amount_minor": 0,
+                "coefficient": "1",
+                "is_promotion": false,
+                "starts_at": "2026-07-01T00:00:00Z",
+                "ends_at": "2124-01-01T00:00:00Z"
+              },
+              {
+                "asset_code": "MAJOR_TON",
+                "list_amount_minor": 15000,
+                "discount_amount_minor": 0,
+                "pricing_mode": "dynamic",
+                "reference_asset_code": "USDT_TON",
+                "reference_list_amount_minor": 15000,
+                "reference_discount_amount_minor": 0,
+                "coefficient": "1",
+                "is_promotion": false,
+                "starts_at": "2026-07-01T00:00:00Z",
+                "ends_at": "2124-01-01T00:00:00Z"
+              },
+              {
+                "asset_code": "UTYA_TON",
+                "list_amount_minor": 15000,
+                "discount_amount_minor": 0,
+                "pricing_mode": "dynamic",
+                "reference_asset_code": "USDT_TON",
+                "reference_list_amount_minor": 15000,
+                "reference_discount_amount_minor": 0,
+                "coefficient": "1",
+                "is_promotion": false,
+                "starts_at": "2026-07-01T00:00:00Z",
+                "ends_at": "2124-01-01T00:00:00Z"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "conflict_strategy": "update_existing"
+}
