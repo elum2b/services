@@ -204,8 +204,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getPartnerRewardGrantByIssueStmt, err = db.PrepareContext(ctx, getPartnerRewardGrantByIssue); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPartnerRewardGrantByIssue: %w", err)
 	}
-	if q.getSequenceStateForUpdateStmt, err = db.PrepareContext(ctx, getSequenceStateForUpdate); err != nil {
-		return nil, fmt.Errorf("error preparing query GetSequenceStateForUpdate: %w", err)
+	if q.getSequenceStateStmt, err = db.PrepareContext(ctx, getSequenceState); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSequenceState: %w", err)
 	}
 	if q.getStartTaskByIDStmt, err = db.PrepareContext(ctx, getStartTaskByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetStartTaskByID: %w", err)
@@ -246,11 +246,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listComplexParentIDsForConditionTasksStmt, err = db.PrepareContext(ctx, listComplexParentIDsForConditionTasks); err != nil {
 		return nil, fmt.Errorf("error preparing query ListComplexParentIDsForConditionTasks: %w", err)
 	}
+	if q.listCurrentProgressForTasksForUpdateStmt, err = db.PrepareContext(ctx, listCurrentProgressForTasksForUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query ListCurrentProgressForTasksForUpdate: %w", err)
+	}
 	if q.listCurrentProgressForUserStmt, err = db.PrepareContext(ctx, listCurrentProgressForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListCurrentProgressForUser: %w", err)
-	}
-	if q.listCurrentProgressForUserForUpdateStmt, err = db.PrepareContext(ctx, listCurrentProgressForUserForUpdate); err != nil {
-		return nil, fmt.Errorf("error preparing query ListCurrentProgressForUserForUpdate: %w", err)
 	}
 	if q.listPartnerIssuesForUserStmt, err = db.PrepareContext(ctx, listPartnerIssuesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListPartnerIssuesForUser: %w", err)
@@ -272,6 +272,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listSequenceStatesForUserStmt, err = db.PrepareContext(ctx, listSequenceStatesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListSequenceStatesForUser: %w", err)
+	}
+	if q.lockTaskUserStmt, err = db.PrepareContext(ctx, lockTaskUser); err != nil {
+		return nil, fmt.Errorf("error preparing query LockTaskUser: %w", err)
 	}
 	if q.refreshTaskDailyOverviewStmt, err = db.PrepareContext(ctx, refreshTaskDailyOverview); err != nil {
 		return nil, fmt.Errorf("error preparing query RefreshTaskDailyOverview: %w", err)
@@ -608,9 +611,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getPartnerRewardGrantByIssueStmt: %w", cerr)
 		}
 	}
-	if q.getSequenceStateForUpdateStmt != nil {
-		if cerr := q.getSequenceStateForUpdateStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getSequenceStateForUpdateStmt: %w", cerr)
+	if q.getSequenceStateStmt != nil {
+		if cerr := q.getSequenceStateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSequenceStateStmt: %w", cerr)
 		}
 	}
 	if q.getStartTaskByIDStmt != nil {
@@ -678,14 +681,14 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listComplexParentIDsForConditionTasksStmt: %w", cerr)
 		}
 	}
+	if q.listCurrentProgressForTasksForUpdateStmt != nil {
+		if cerr := q.listCurrentProgressForTasksForUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listCurrentProgressForTasksForUpdateStmt: %w", cerr)
+		}
+	}
 	if q.listCurrentProgressForUserStmt != nil {
 		if cerr := q.listCurrentProgressForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listCurrentProgressForUserStmt: %w", cerr)
-		}
-	}
-	if q.listCurrentProgressForUserForUpdateStmt != nil {
-		if cerr := q.listCurrentProgressForUserForUpdateStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listCurrentProgressForUserForUpdateStmt: %w", cerr)
 		}
 	}
 	if q.listPartnerIssuesForUserStmt != nil {
@@ -721,6 +724,11 @@ func (q *Queries) Close() error {
 	if q.listSequenceStatesForUserStmt != nil {
 		if cerr := q.listSequenceStatesForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listSequenceStatesForUserStmt: %w", cerr)
+		}
+	}
+	if q.lockTaskUserStmt != nil {
+		if cerr := q.lockTaskUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing lockTaskUserStmt: %w", cerr)
 		}
 	}
 	if q.refreshTaskDailyOverviewStmt != nil {
@@ -872,7 +880,7 @@ type Queries struct {
 	getPartnerIssuesByExternalUserStmt        *sql.Stmt
 	getPartnerIssuesByPrivatePayloadUserStmt  *sql.Stmt
 	getPartnerRewardGrantByIssueStmt          *sql.Stmt
-	getSequenceStateForUpdateStmt             *sql.Stmt
+	getSequenceStateStmt                      *sql.Stmt
 	getStartTaskByIDStmt                      *sql.Stmt
 	getStartTaskByKeyStmt                     *sql.Stmt
 	hasActivePartnerIssueStartLeaseStmt       *sql.Stmt
@@ -886,8 +894,8 @@ type Queries struct {
 	listAllPartnerConfigsStmt                 *sql.Stmt
 	listComplexConditionProgressForParentStmt *sql.Stmt
 	listComplexParentIDsForConditionTasksStmt *sql.Stmt
+	listCurrentProgressForTasksForUpdateStmt  *sql.Stmt
 	listCurrentProgressForUserStmt            *sql.Stmt
-	listCurrentProgressForUserForUpdateStmt   *sql.Stmt
 	listPartnerIssuesForUserStmt              *sql.Stmt
 	listPartnerRewardRulesStmt                *sql.Stmt
 	listRecordCatalogStmt                     *sql.Stmt
@@ -895,6 +903,7 @@ type Queries struct {
 	listRewardsStmt                           *sql.Stmt
 	listRewardsCatalogStmt                    *sql.Stmt
 	listSequenceStatesForUserStmt             *sql.Stmt
+	lockTaskUserStmt                          *sql.Stmt
 	refreshTaskDailyOverviewStmt              *sql.Stmt
 	refreshTaskDailyStatsStmt                 *sql.Stmt
 	releasePartnerIssueStartLeaseStmt         *sql.Stmt
@@ -971,7 +980,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPartnerIssuesByExternalUserStmt:        q.getPartnerIssuesByExternalUserStmt,
 		getPartnerIssuesByPrivatePayloadUserStmt:  q.getPartnerIssuesByPrivatePayloadUserStmt,
 		getPartnerRewardGrantByIssueStmt:          q.getPartnerRewardGrantByIssueStmt,
-		getSequenceStateForUpdateStmt:             q.getSequenceStateForUpdateStmt,
+		getSequenceStateStmt:                      q.getSequenceStateStmt,
 		getStartTaskByIDStmt:                      q.getStartTaskByIDStmt,
 		getStartTaskByKeyStmt:                     q.getStartTaskByKeyStmt,
 		hasActivePartnerIssueStartLeaseStmt:       q.hasActivePartnerIssueStartLeaseStmt,
@@ -985,8 +994,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAllPartnerConfigsStmt:                 q.listAllPartnerConfigsStmt,
 		listComplexConditionProgressForParentStmt: q.listComplexConditionProgressForParentStmt,
 		listComplexParentIDsForConditionTasksStmt: q.listComplexParentIDsForConditionTasksStmt,
+		listCurrentProgressForTasksForUpdateStmt:  q.listCurrentProgressForTasksForUpdateStmt,
 		listCurrentProgressForUserStmt:            q.listCurrentProgressForUserStmt,
-		listCurrentProgressForUserForUpdateStmt:   q.listCurrentProgressForUserForUpdateStmt,
 		listPartnerIssuesForUserStmt:              q.listPartnerIssuesForUserStmt,
 		listPartnerRewardRulesStmt:                q.listPartnerRewardRulesStmt,
 		listRecordCatalogStmt:                     q.listRecordCatalogStmt,
@@ -994,6 +1003,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listRewardsStmt:                           q.listRewardsStmt,
 		listRewardsCatalogStmt:                    q.listRewardsCatalogStmt,
 		listSequenceStatesForUserStmt:             q.listSequenceStatesForUserStmt,
+		lockTaskUserStmt:                          q.lockTaskUserStmt,
 		refreshTaskDailyOverviewStmt:              q.refreshTaskDailyOverviewStmt,
 		refreshTaskDailyStatsStmt:                 q.refreshTaskDailyStatsStmt,
 		releasePartnerIssueStartLeaseStmt:         q.releasePartnerIssueStartLeaseStmt,

@@ -3434,6 +3434,29 @@ func (q *Queries) BindPaymentAttemptProviderResult(ctx context.Context, arg Bind
 	return result.RowsAffected()
 }
 
+const bindPaymentOrderPurchaseKey = `-- name: BindPaymentOrderPurchaseKey :execrows
+UPDATE payment_order
+SET purchase_key_id = $1,
+    updated_at = now()
+WHERE id = $2
+  AND workspace_id = $3
+  AND purchase_key_id IS NULL
+`
+
+type BindPaymentOrderPurchaseKeyParams struct {
+	PurchaseKeyID sql.NullInt64 `json:"purchase_key_id"`
+	ID            int64         `json:"id"`
+	WorkspaceID   string        `json:"workspace_id"`
+}
+
+func (q *Queries) BindPaymentOrderPurchaseKey(ctx context.Context, arg BindPaymentOrderPurchaseKeyParams) (int64, error) {
+	result, err := q.exec(ctx, q.bindPaymentOrderPurchaseKeyStmt, bindPaymentOrderPurchaseKey, arg.PurchaseKeyID, arg.ID, arg.WorkspaceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const claimAssetRateUpdate = `-- name: ClaimAssetRateUpdate :execrows
 UPDATE payment_asset_rate
 SET lease_owner = $1,
@@ -7304,6 +7327,109 @@ func (q *Queries) GetRefundByProviderRefundID(ctx context.Context, arg GetRefund
 	return i, err
 }
 
+const getStalePaymentOrderForUpdate = `-- name: GetStalePaymentOrderForUpdate :one
+SELECT id, public_id, workspace_id, app_id, platform_id, platform_user_id, internal_user_id, payer_platform_id, payer_platform_user_id, payer_internal_user_id, purchase_key_id, product_id, quantity, price_id, asset_code, locale, list_amount_minor, discount_amount_minor, payable_amount_minor, status, reserved_until, global_limit_snapshot, global_interval_snapshot, global_interval_count_snapshot, global_window_start_snapshot, global_window_end_snapshot, user_limit_snapshot, user_interval_snapshot, user_interval_count_snapshot, user_window_start_snapshot, user_window_end_snapshot, paid_at, fulfilled_at, canceled_at, expires_at, created_at, updated_at
+FROM payment_order
+WHERE payment_order.id = $1
+  AND payment_order.status IN ('draft', 'pending_payment')
+  AND (
+      NOT $2::boolean
+      OR NOT EXISTS (
+          SELECT 1
+          FROM payment_attempt pa
+          WHERE pa.order_id = payment_order.id
+            AND pa.provider_code = 'platega'
+            AND (
+                (pa.status = 'created' AND pa.provider_payment_id IS NULL)
+                OR (
+                    pa.status = 'pending'
+                    AND pa.updated_at >= $3::timestamptz - INTERVAL '5 minutes'
+                )
+            )
+      )
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM payment_attempt pa
+      WHERE pa.order_id = payment_order.id
+        AND pa.provider_code = 'telegram_stars'
+        AND pa.status = 'pending'
+        AND pa.updated_at >= $3::timestamptz - INTERVAL '10 minutes'
+  )
+  AND (
+      (payment_order.reserved_until IS NOT NULL AND payment_order.reserved_until <= $3::timestamptz)
+      OR (
+          payment_order.reserved_until IS NULL
+          AND payment_order.expires_at IS NOT NULL
+          AND payment_order.expires_at <= $3::timestamptz
+      )
+      OR (
+          payment_order.reserved_until IS NULL
+          AND payment_order.expires_at IS NULL
+          AND payment_order.created_at <= $4
+      )
+  )
+LIMIT 1
+FOR UPDATE
+`
+
+type GetStalePaymentOrderForUpdateParams struct {
+	OrderID               int64     `json:"order_id"`
+	ProtectUnboundPlatega bool      `json:"protect_unbound_platega"`
+	NowAt                 time.Time `json:"now_at"`
+	CreatedBefore         time.Time `json:"created_before"`
+}
+
+func (q *Queries) GetStalePaymentOrderForUpdate(ctx context.Context, arg GetStalePaymentOrderForUpdateParams) (PaymentOrder, error) {
+	row := q.queryRow(ctx, q.getStalePaymentOrderForUpdateStmt, getStalePaymentOrderForUpdate,
+		arg.OrderID,
+		arg.ProtectUnboundPlatega,
+		arg.NowAt,
+		arg.CreatedBefore,
+	)
+	var i PaymentOrder
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.WorkspaceID,
+		&i.AppID,
+		&i.PlatformID,
+		&i.PlatformUserID,
+		&i.InternalUserID,
+		&i.PayerPlatformID,
+		&i.PayerPlatformUserID,
+		&i.PayerInternalUserID,
+		&i.PurchaseKeyID,
+		&i.ProductID,
+		&i.Quantity,
+		&i.PriceID,
+		&i.AssetCode,
+		&i.Locale,
+		&i.ListAmountMinor,
+		&i.DiscountAmountMinor,
+		&i.PayableAmountMinor,
+		&i.Status,
+		&i.ReservedUntil,
+		&i.GlobalLimitSnapshot,
+		&i.GlobalIntervalSnapshot,
+		&i.GlobalIntervalCountSnapshot,
+		&i.GlobalWindowStartSnapshot,
+		&i.GlobalWindowEndSnapshot,
+		&i.UserLimitSnapshot,
+		&i.UserIntervalSnapshot,
+		&i.UserIntervalCountSnapshot,
+		&i.UserWindowStartSnapshot,
+		&i.UserWindowEndSnapshot,
+		&i.PaidAt,
+		&i.FulfilledAt,
+		&i.CanceledAt,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getSucceededRefundForOrder = `-- name: GetSucceededRefundForOrder :one
 SELECT
     id,
@@ -8748,6 +8874,91 @@ func (q *Queries) ListProviders(ctx context.Context) ([]PaymentProvider, error) 
 	return items, nil
 }
 
+const listStalePaymentOrderCandidates = `-- name: ListStalePaymentOrderCandidates :many
+SELECT payment_order.id, payment_order.workspace_id
+FROM payment_order
+WHERE payment_order.status IN ('draft', 'pending_payment')
+  AND (
+      NOT $1::boolean
+      OR NOT EXISTS (
+          SELECT 1
+          FROM payment_attempt pa
+          WHERE pa.order_id = payment_order.id
+            AND pa.provider_code = 'platega'
+            AND (
+                (pa.status = 'created' AND pa.provider_payment_id IS NULL)
+                OR (
+                    pa.status = 'pending'
+                    AND pa.updated_at >= $2::timestamptz - INTERVAL '5 minutes'
+                )
+            )
+      )
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM payment_attempt pa
+      WHERE pa.order_id = payment_order.id
+        AND pa.provider_code = 'telegram_stars'
+        AND pa.status = 'pending'
+        AND pa.updated_at >= $2::timestamptz - INTERVAL '10 minutes'
+  )
+  AND (
+      (payment_order.reserved_until IS NOT NULL AND payment_order.reserved_until <= $2::timestamptz)
+      OR (
+          payment_order.reserved_until IS NULL
+          AND payment_order.expires_at IS NOT NULL
+          AND payment_order.expires_at <= $2::timestamptz
+      )
+      OR (
+          payment_order.reserved_until IS NULL
+          AND payment_order.expires_at IS NULL
+          AND payment_order.created_at <= $3
+      )
+  )
+ORDER BY payment_order.id
+LIMIT $4
+`
+
+type ListStalePaymentOrderCandidatesParams struct {
+	ProtectUnboundPlatega bool      `json:"protect_unbound_platega"`
+	NowAt                 time.Time `json:"now_at"`
+	CreatedBefore         time.Time `json:"created_before"`
+	BatchSize             int32     `json:"batch_size"`
+}
+
+type ListStalePaymentOrderCandidatesRow struct {
+	ID          int64  `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+}
+
+func (q *Queries) ListStalePaymentOrderCandidates(ctx context.Context, arg ListStalePaymentOrderCandidatesParams) ([]ListStalePaymentOrderCandidatesRow, error) {
+	rows, err := q.query(ctx, q.listStalePaymentOrderCandidatesStmt, listStalePaymentOrderCandidates,
+		arg.ProtectUnboundPlatega,
+		arg.NowAt,
+		arg.CreatedBefore,
+		arg.BatchSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStalePaymentOrderCandidatesRow
+	for rows.Next() {
+		var i ListStalePaymentOrderCandidatesRow
+		if err := rows.Scan(&i.ID, &i.WorkspaceID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockPaymentAttempt = `-- name: LockPaymentAttempt :one
 SELECT
     id,
@@ -8858,6 +9069,43 @@ func (q *Queries) LockPaymentAttemptByProviderPaymentID(ctx context.Context, arg
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const lockPaymentAttemptsForOrder = `-- name: LockPaymentAttemptsForOrder :many
+SELECT id
+FROM payment_attempt
+WHERE workspace_id = $1
+  AND order_id = $2
+ORDER BY id
+FOR UPDATE
+`
+
+type LockPaymentAttemptsForOrderParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	OrderID     int64  `json:"order_id"`
+}
+
+func (q *Queries) LockPaymentAttemptsForOrder(ctx context.Context, arg LockPaymentAttemptsForOrderParams) ([]int64, error) {
+	rows, err := q.query(ctx, q.lockPaymentAttemptsForOrderStmt, lockPaymentAttemptsForOrder, arg.WorkspaceID, arg.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockPaymentOrder = `-- name: LockPaymentOrder :one
@@ -9012,171 +9260,6 @@ func (q *Queries) LockPaymentRefund(ctx context.Context, id int64) (PaymentRefun
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const lockPurchaseKeyByHash = `-- name: LockPurchaseKeyByHash :one
-SELECT
-    id,
-    workspace_id,
-    key_hash,
-    app_id,
-    platform_id,
-    platform_user_id,
-    internal_user_id,
-    product_id,
-    status,
-    max_uses,
-    used_count,
-    reserved_count,
-    expires_at,
-    created_at,
-    updated_at
-FROM payment_purchase_key
-WHERE key_hash = $1
-LIMIT 1
-FOR UPDATE
-`
-
-func (q *Queries) LockPurchaseKeyByHash(ctx context.Context, keyHash string) (PaymentPurchaseKey, error) {
-	row := q.queryRow(ctx, q.lockPurchaseKeyByHashStmt, lockPurchaseKeyByHash, keyHash)
-	var i PaymentPurchaseKey
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.KeyHash,
-		&i.AppID,
-		&i.PlatformID,
-		&i.PlatformUserID,
-		&i.InternalUserID,
-		&i.ProductID,
-		&i.Status,
-		&i.MaxUses,
-		&i.UsedCount,
-		&i.ReservedCount,
-		&i.ExpiresAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const lockStalePaymentOrders = `-- name: LockStalePaymentOrders :many
-SELECT id, public_id, workspace_id, app_id, platform_id, platform_user_id, internal_user_id, payer_platform_id, payer_platform_user_id, payer_internal_user_id, purchase_key_id, product_id, quantity, price_id, asset_code, locale, list_amount_minor, discount_amount_minor, payable_amount_minor, status, reserved_until, global_limit_snapshot, global_interval_snapshot, global_interval_count_snapshot, global_window_start_snapshot, global_window_end_snapshot, user_limit_snapshot, user_interval_snapshot, user_interval_count_snapshot, user_window_start_snapshot, user_window_end_snapshot, paid_at, fulfilled_at, canceled_at, expires_at, created_at, updated_at
-FROM payment_order
-WHERE payment_order.status IN ('draft', 'pending_payment')
-  AND (
-      NOT $1::boolean
-      OR NOT EXISTS (
-          SELECT 1
-          FROM payment_attempt pa
-          WHERE pa.order_id = payment_order.id
-            AND pa.provider_code = 'platega'
-            AND (
-                (pa.status = 'created' AND pa.provider_payment_id IS NULL)
-                OR (
-                    pa.status = 'pending'
-                    AND pa.updated_at >= $2::timestamptz - INTERVAL '5 minutes'
-                )
-            )
-      )
-  )
-  AND NOT EXISTS (
-      SELECT 1
-      FROM payment_attempt pa
-      WHERE pa.order_id = payment_order.id
-        AND pa.provider_code = 'telegram_stars'
-        AND pa.status = 'pending'
-        AND pa.updated_at >= $2::timestamptz - INTERVAL '10 minutes'
-  )
-  AND (
-      (payment_order.reserved_until IS NOT NULL AND payment_order.reserved_until <= $2::timestamptz)
-      OR (
-          payment_order.reserved_until IS NULL
-          AND payment_order.expires_at IS NOT NULL
-          AND payment_order.expires_at <= $2::timestamptz
-      )
-      OR (
-          payment_order.reserved_until IS NULL
-          AND payment_order.expires_at IS NULL
-          AND payment_order.created_at <= $3
-      )
-  )
-ORDER BY payment_order.id
-LIMIT $4
-FOR UPDATE SKIP LOCKED
-`
-
-type LockStalePaymentOrdersParams struct {
-	ProtectUnboundPlatega bool      `json:"protect_unbound_platega"`
-	NowAt                 time.Time `json:"now_at"`
-	CreatedBefore         time.Time `json:"created_before"`
-	BatchSize             int32     `json:"batch_size"`
-}
-
-func (q *Queries) LockStalePaymentOrders(ctx context.Context, arg LockStalePaymentOrdersParams) ([]PaymentOrder, error) {
-	rows, err := q.query(ctx, q.lockStalePaymentOrdersStmt, lockStalePaymentOrders,
-		arg.ProtectUnboundPlatega,
-		arg.NowAt,
-		arg.CreatedBefore,
-		arg.BatchSize,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []PaymentOrder
-	for rows.Next() {
-		var i PaymentOrder
-		if err := rows.Scan(
-			&i.ID,
-			&i.PublicID,
-			&i.WorkspaceID,
-			&i.AppID,
-			&i.PlatformID,
-			&i.PlatformUserID,
-			&i.InternalUserID,
-			&i.PayerPlatformID,
-			&i.PayerPlatformUserID,
-			&i.PayerInternalUserID,
-			&i.PurchaseKeyID,
-			&i.ProductID,
-			&i.Quantity,
-			&i.PriceID,
-			&i.AssetCode,
-			&i.Locale,
-			&i.ListAmountMinor,
-			&i.DiscountAmountMinor,
-			&i.PayableAmountMinor,
-			&i.Status,
-			&i.ReservedUntil,
-			&i.GlobalLimitSnapshot,
-			&i.GlobalIntervalSnapshot,
-			&i.GlobalIntervalCountSnapshot,
-			&i.GlobalWindowStartSnapshot,
-			&i.GlobalWindowEndSnapshot,
-			&i.UserLimitSnapshot,
-			&i.UserIntervalSnapshot,
-			&i.UserIntervalCountSnapshot,
-			&i.UserWindowStartSnapshot,
-			&i.UserWindowEndSnapshot,
-			&i.PaidAt,
-			&i.FulfilledAt,
-			&i.CanceledAt,
-			&i.ExpiresAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const markFulfillmentRevokedForOrder = `-- name: MarkFulfillmentRevokedForOrder :execrows

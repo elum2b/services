@@ -1563,6 +1563,147 @@ func TestControlDuplicatePendingLimitRequestsReturnDomainError(t *testing.T) {
 
 }
 
+func TestControlResolveLimitRequestLocksScopeBeforeRequest(t *testing.T) {
+	service := newControlTestService(t)
+	ctx := context.Background()
+	owner := initializeControl(t, service, "owner")
+	workspace := createWorkspace(t, service, owner.Account.ID, "limit-lock-order")
+
+	db, err := sql.Open("pgx", controlPostgresDSN(controlTestDatabase))
+	if err != nil {
+		t.Fatalf("open lock database: %v", err)
+	}
+	defer db.Close()
+
+	accountRequest, err := service.Admin.RequestWorkspaceLimit(
+		ctx,
+		owner.Account.ID,
+		2,
+		"account lock order",
+	)
+	if err != nil {
+		t.Fatalf("request workspace limit: %v", err)
+	}
+
+	accountTx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin account scope transaction: %v", err)
+	}
+	defer accountTx.Rollback()
+
+	if _, err := accountTx.ExecContext(
+		ctx,
+		"SELECT account_id FROM control_platform_member WHERE account_id = $1 FOR UPDATE",
+		owner.Account.ID,
+	); err != nil {
+		t.Fatalf("lock platform member: %v", err)
+	}
+
+	accountResult := make(chan error, 1)
+	go func() {
+		_, err := service.Admin.ResolveLimitRequest(ctx, admin.ResolveLimitRequestParams{
+			ActorID:       owner.Account.ID,
+			RequestID:     accountRequest.ID,
+			Approved:      true,
+			ApprovedLimit: 2,
+		})
+		accountResult <- err
+	}()
+
+	waitForControlBlockedQuery(t, db, "control_platform_member")
+
+	if _, err := accountTx.ExecContext(
+		ctx,
+		"SELECT id FROM control_limit_request WHERE id = $1 FOR UPDATE",
+		accountRequest.ID,
+	); err != nil {
+		t.Fatalf("account limit request was locked before member: %v", err)
+	}
+	if err := accountTx.Commit(); err != nil {
+		t.Fatalf("release account scope locks: %v", err)
+	}
+	if err := <-accountResult; err != nil {
+		t.Fatalf("resolve account limit after releasing member: %v", err)
+	}
+
+	employeeRequest, err := service.Admin.RequestEmployeeLimit(
+		ctx,
+		owner.Account.ID,
+		workspace.ID,
+		20,
+		"workspace lock order",
+	)
+	if err != nil {
+		t.Fatalf("request employee limit: %v", err)
+	}
+
+	workspaceTx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin workspace scope transaction: %v", err)
+	}
+	defer workspaceTx.Rollback()
+
+	if _, err := workspaceTx.ExecContext(
+		ctx,
+		"SELECT id FROM control_workspace WHERE id = $1 FOR UPDATE",
+		workspace.ID,
+	); err != nil {
+		t.Fatalf("lock workspace: %v", err)
+	}
+
+	employeeResult := make(chan error, 1)
+	go func() {
+		_, err := service.Admin.ResolveLimitRequest(ctx, admin.ResolveLimitRequestParams{
+			ActorID:       owner.Account.ID,
+			RequestID:     employeeRequest.ID,
+			Approved:      true,
+			ApprovedLimit: 20,
+		})
+		employeeResult <- err
+	}()
+
+	waitForControlBlockedQuery(t, db, "control_workspace")
+
+	if _, err := workspaceTx.ExecContext(
+		ctx,
+		"SELECT id FROM control_limit_request WHERE id = $1 FOR UPDATE",
+		employeeRequest.ID,
+	); err != nil {
+		t.Fatalf("employee limit request was locked before workspace: %v", err)
+	}
+	if err := workspaceTx.Commit(); err != nil {
+		t.Fatalf("release workspace scope locks: %v", err)
+	}
+	if err := <-employeeResult; err != nil {
+		t.Fatalf("resolve employee limit after releasing workspace: %v", err)
+	}
+}
+
+func waitForControlBlockedQuery(t *testing.T, db *sql.DB, relation string) {
+	t.Helper()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		var waiting int
+		if err := db.QueryRowContext(context.Background(), `
+SELECT COUNT(*)
+FROM pg_stat_activity
+WHERE datname = current_database()
+  AND wait_event_type = 'Lock'
+  AND query LIKE '%' || $1 || '%'`, relation).Scan(&waiting); err != nil {
+			t.Fatalf("inspect blocked control query: %v", err)
+		}
+		if waiting > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no blocked control query for relation %s", relation)
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func TestControlWorkspaceInviteUsesScopeFirstLockOrder(t *testing.T) {
 
 	t.Run("revoke", func(t *testing.T) {

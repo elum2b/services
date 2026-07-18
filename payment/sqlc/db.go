@@ -204,6 +204,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.bindPaymentAttemptProviderResultStmt, err = db.PrepareContext(ctx, bindPaymentAttemptProviderResult); err != nil {
 		return nil, fmt.Errorf("error preparing query BindPaymentAttemptProviderResult: %w", err)
 	}
+	if q.bindPaymentOrderPurchaseKeyStmt, err = db.PrepareContext(ctx, bindPaymentOrderPurchaseKey); err != nil {
+		return nil, fmt.Errorf("error preparing query BindPaymentOrderPurchaseKey: %w", err)
+	}
 	if q.claimAssetRateUpdateStmt, err = db.PrepareContext(ctx, claimAssetRateUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query ClaimAssetRateUpdate: %w", err)
 	}
@@ -438,6 +441,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getRefundByProviderRefundIDStmt, err = db.PrepareContext(ctx, getRefundByProviderRefundID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetRefundByProviderRefundID: %w", err)
 	}
+	if q.getStalePaymentOrderForUpdateStmt, err = db.PrepareContext(ctx, getStalePaymentOrderForUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query GetStalePaymentOrderForUpdate: %w", err)
+	}
 	if q.getSucceededRefundForOrderStmt, err = db.PrepareContext(ctx, getSucceededRefundForOrder); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSucceededRefundForOrder: %w", err)
 	}
@@ -501,11 +507,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listProvidersStmt, err = db.PrepareContext(ctx, listProviders); err != nil {
 		return nil, fmt.Errorf("error preparing query ListProviders: %w", err)
 	}
+	if q.listStalePaymentOrderCandidatesStmt, err = db.PrepareContext(ctx, listStalePaymentOrderCandidates); err != nil {
+		return nil, fmt.Errorf("error preparing query ListStalePaymentOrderCandidates: %w", err)
+	}
 	if q.lockPaymentAttemptStmt, err = db.PrepareContext(ctx, lockPaymentAttempt); err != nil {
 		return nil, fmt.Errorf("error preparing query LockPaymentAttempt: %w", err)
 	}
 	if q.lockPaymentAttemptByProviderPaymentIDStmt, err = db.PrepareContext(ctx, lockPaymentAttemptByProviderPaymentID); err != nil {
 		return nil, fmt.Errorf("error preparing query LockPaymentAttemptByProviderPaymentID: %w", err)
+	}
+	if q.lockPaymentAttemptsForOrderStmt, err = db.PrepareContext(ctx, lockPaymentAttemptsForOrder); err != nil {
+		return nil, fmt.Errorf("error preparing query LockPaymentAttemptsForOrder: %w", err)
 	}
 	if q.lockPaymentOrderStmt, err = db.PrepareContext(ctx, lockPaymentOrder); err != nil {
 		return nil, fmt.Errorf("error preparing query LockPaymentOrder: %w", err)
@@ -515,12 +527,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.lockPaymentRefundStmt, err = db.PrepareContext(ctx, lockPaymentRefund); err != nil {
 		return nil, fmt.Errorf("error preparing query LockPaymentRefund: %w", err)
-	}
-	if q.lockPurchaseKeyByHashStmt, err = db.PrepareContext(ctx, lockPurchaseKeyByHash); err != nil {
-		return nil, fmt.Errorf("error preparing query LockPurchaseKeyByHash: %w", err)
-	}
-	if q.lockStalePaymentOrdersStmt, err = db.PrepareContext(ctx, lockStalePaymentOrders); err != nil {
-		return nil, fmt.Errorf("error preparing query LockStalePaymentOrders: %w", err)
 	}
 	if q.markFulfillmentRevokedForOrderStmt, err = db.PrepareContext(ctx, markFulfillmentRevokedForOrder); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkFulfillmentRevokedForOrder: %w", err)
@@ -950,6 +956,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing bindPaymentAttemptProviderResultStmt: %w", cerr)
 		}
 	}
+	if q.bindPaymentOrderPurchaseKeyStmt != nil {
+		if cerr := q.bindPaymentOrderPurchaseKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing bindPaymentOrderPurchaseKeyStmt: %w", cerr)
+		}
+	}
 	if q.claimAssetRateUpdateStmt != nil {
 		if cerr := q.claimAssetRateUpdateStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing claimAssetRateUpdateStmt: %w", cerr)
@@ -1340,6 +1351,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getRefundByProviderRefundIDStmt: %w", cerr)
 		}
 	}
+	if q.getStalePaymentOrderForUpdateStmt != nil {
+		if cerr := q.getStalePaymentOrderForUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getStalePaymentOrderForUpdateStmt: %w", cerr)
+		}
+	}
 	if q.getSucceededRefundForOrderStmt != nil {
 		if cerr := q.getSucceededRefundForOrderStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSucceededRefundForOrderStmt: %w", cerr)
@@ -1445,6 +1461,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listProvidersStmt: %w", cerr)
 		}
 	}
+	if q.listStalePaymentOrderCandidatesStmt != nil {
+		if cerr := q.listStalePaymentOrderCandidatesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listStalePaymentOrderCandidatesStmt: %w", cerr)
+		}
+	}
 	if q.lockPaymentAttemptStmt != nil {
 		if cerr := q.lockPaymentAttemptStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing lockPaymentAttemptStmt: %w", cerr)
@@ -1453,6 +1474,11 @@ func (q *Queries) Close() error {
 	if q.lockPaymentAttemptByProviderPaymentIDStmt != nil {
 		if cerr := q.lockPaymentAttemptByProviderPaymentIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing lockPaymentAttemptByProviderPaymentIDStmt: %w", cerr)
+		}
+	}
+	if q.lockPaymentAttemptsForOrderStmt != nil {
+		if cerr := q.lockPaymentAttemptsForOrderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing lockPaymentAttemptsForOrderStmt: %w", cerr)
 		}
 	}
 	if q.lockPaymentOrderStmt != nil {
@@ -1468,16 +1494,6 @@ func (q *Queries) Close() error {
 	if q.lockPaymentRefundStmt != nil {
 		if cerr := q.lockPaymentRefundStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing lockPaymentRefundStmt: %w", cerr)
-		}
-	}
-	if q.lockPurchaseKeyByHashStmt != nil {
-		if cerr := q.lockPurchaseKeyByHashStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing lockPurchaseKeyByHashStmt: %w", cerr)
-		}
-	}
-	if q.lockStalePaymentOrdersStmt != nil {
-		if cerr := q.lockStalePaymentOrdersStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing lockStalePaymentOrdersStmt: %w", cerr)
 		}
 	}
 	if q.markFulfillmentRevokedForOrderStmt != nil {
@@ -1784,6 +1800,7 @@ type Queries struct {
 	adminUpdateRefundStatusForWorkspaceStmt               *sql.Stmt
 	adminUpsertProviderStmt                               *sql.Stmt
 	bindPaymentAttemptProviderResultStmt                  *sql.Stmt
+	bindPaymentOrderPurchaseKeyStmt                       *sql.Stmt
 	claimAssetRateUpdateStmt                              *sql.Stmt
 	completeAssetRateUpdateStmt                           *sql.Stmt
 	completeFulfillmentFromOrderStmt                      *sql.Stmt
@@ -1862,6 +1879,7 @@ type Queries struct {
 	getPurchaseKeyByHashStmt                              *sql.Stmt
 	getRefundByIdempotencyKeyStmt                         *sql.Stmt
 	getRefundByProviderRefundIDStmt                       *sql.Stmt
+	getStalePaymentOrderForUpdateStmt                     *sql.Stmt
 	getSucceededRefundForOrderStmt                        *sql.Stmt
 	importHasTONWalletStmt                                *sql.Stmt
 	importListProductGroupCodesStmt                       *sql.Stmt
@@ -1883,13 +1901,13 @@ type Queries struct {
 	listProductsCatalogCacheRowsStmt                      *sql.Stmt
 	listProviderAttemptsForReconciliationStmt             *sql.Stmt
 	listProvidersStmt                                     *sql.Stmt
+	listStalePaymentOrderCandidatesStmt                   *sql.Stmt
 	lockPaymentAttemptStmt                                *sql.Stmt
 	lockPaymentAttemptByProviderPaymentIDStmt             *sql.Stmt
+	lockPaymentAttemptsForOrderStmt                       *sql.Stmt
 	lockPaymentOrderStmt                                  *sql.Stmt
 	lockPaymentProviderIdempotencyStmt                    *sql.Stmt
 	lockPaymentRefundStmt                                 *sql.Stmt
-	lockPurchaseKeyByHashStmt                             *sql.Stmt
-	lockStalePaymentOrdersStmt                            *sql.Stmt
 	markFulfillmentRevokedForOrderStmt                    *sql.Stmt
 	markOrderChargebackedStmt                             *sql.Stmt
 	markOrderFulfilledStmt                                *sql.Stmt
@@ -1997,6 +2015,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		adminUpdateRefundStatusForWorkspaceStmt:               q.adminUpdateRefundStatusForWorkspaceStmt,
 		adminUpsertProviderStmt:                               q.adminUpsertProviderStmt,
 		bindPaymentAttemptProviderResultStmt:                  q.bindPaymentAttemptProviderResultStmt,
+		bindPaymentOrderPurchaseKeyStmt:                       q.bindPaymentOrderPurchaseKeyStmt,
 		claimAssetRateUpdateStmt:                              q.claimAssetRateUpdateStmt,
 		completeAssetRateUpdateStmt:                           q.completeAssetRateUpdateStmt,
 		completeFulfillmentFromOrderStmt:                      q.completeFulfillmentFromOrderStmt,
@@ -2075,6 +2094,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPurchaseKeyByHashStmt:                              q.getPurchaseKeyByHashStmt,
 		getRefundByIdempotencyKeyStmt:                         q.getRefundByIdempotencyKeyStmt,
 		getRefundByProviderRefundIDStmt:                       q.getRefundByProviderRefundIDStmt,
+		getStalePaymentOrderForUpdateStmt:                     q.getStalePaymentOrderForUpdateStmt,
 		getSucceededRefundForOrderStmt:                        q.getSucceededRefundForOrderStmt,
 		importHasTONWalletStmt:                                q.importHasTONWalletStmt,
 		importListProductGroupCodesStmt:                       q.importListProductGroupCodesStmt,
@@ -2096,13 +2116,13 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listProductsCatalogCacheRowsStmt:                      q.listProductsCatalogCacheRowsStmt,
 		listProviderAttemptsForReconciliationStmt:             q.listProviderAttemptsForReconciliationStmt,
 		listProvidersStmt:                                     q.listProvidersStmt,
+		listStalePaymentOrderCandidatesStmt:                   q.listStalePaymentOrderCandidatesStmt,
 		lockPaymentAttemptStmt:                                q.lockPaymentAttemptStmt,
 		lockPaymentAttemptByProviderPaymentIDStmt:             q.lockPaymentAttemptByProviderPaymentIDStmt,
+		lockPaymentAttemptsForOrderStmt:                       q.lockPaymentAttemptsForOrderStmt,
 		lockPaymentOrderStmt:                                  q.lockPaymentOrderStmt,
 		lockPaymentProviderIdempotencyStmt:                    q.lockPaymentProviderIdempotencyStmt,
 		lockPaymentRefundStmt:                                 q.lockPaymentRefundStmt,
-		lockPurchaseKeyByHashStmt:                             q.lockPurchaseKeyByHashStmt,
-		lockStalePaymentOrdersStmt:                            q.lockStalePaymentOrdersStmt,
 		markFulfillmentRevokedForOrderStmt:                    q.markFulfillmentRevokedForOrderStmt,
 		markOrderChargebackedStmt:                             q.markOrderChargebackedStmt,
 		markOrderFulfilledStmt:                                q.markOrderFulfilledStmt,

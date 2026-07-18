@@ -728,6 +728,13 @@ INSERT INTO control_limit_request (
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT DO NOTHING;
 
+-- name: GetLimitRequest :one
+SELECT id, kind, account_id, workspace_id, current_limit, requested_limit,
+       approved_limit, reason, status, requested_by, reviewed_by,
+       review_comment, created_at, reviewed_at
+FROM control_limit_request
+WHERE id = $1;
+
 -- name: GetLimitRequestForUpdate :one
 SELECT id, kind, account_id, workspace_id, current_limit, requested_limit,
        approved_limit, reason, status, requested_by, reviewed_by,

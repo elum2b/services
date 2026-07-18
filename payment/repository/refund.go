@@ -569,19 +569,30 @@ func (r *PaymentRepository) FinalizeRefund(ctx context.Context, params RefundFin
 	}
 
 	return r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+		refundSnapshot, err := txRepo.q.AdminGetRefund(ctx, int64(params.RefundID))
+		if err != nil {
+			return err
+		}
+
+		attempt, err := txRepo.q.LockPaymentAttempt(ctx, refundSnapshot.AttemptID)
+		if err != nil {
+			return err
+		}
+
+		order, err := txRepo.q.LockPaymentOrder(ctx, attempt.OrderID)
+		if err != nil {
+			return err
+		}
+
 		refund, err := txRepo.q.LockPaymentRefund(ctx, int64(params.RefundID))
 		if err != nil {
 			return err
 		}
-		attempt, err := txRepo.q.LockPaymentAttempt(ctx, refund.AttemptID)
-		if err != nil {
-			return err
-		}
-		order, err := txRepo.q.LockPaymentOrder(ctx, refund.OrderID)
-		if err != nil {
-			return err
-		}
-		if order.WorkspaceID != workspaceID || attempt.OrderID != order.ID {
+		if order.WorkspaceID != workspaceID ||
+			refund.WorkspaceID != workspaceID ||
+			attempt.OrderID != order.ID ||
+			refund.AttemptID != attempt.ID ||
+			refund.OrderID != order.ID {
 			return sql.ErrNoRows
 		}
 		targetStatus := sqlc.PaymentRefundStatus(params.Status)

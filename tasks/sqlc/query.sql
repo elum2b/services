@@ -359,15 +359,25 @@ WHERE workspace_id = $1
   AND platform_user_id = $4
   AND status = 'active';
 
--- name: GetSequenceStateForUpdate :one
+-- name: LockTaskUser :exec
+SELECT pg_advisory_xact_lock(
+    hashtextextended(
+        'tasks:user:' || sqlc.arg(workspace_id)::text || ':' ||
+        sqlc.arg(app_id)::bigint::text || ':' ||
+        sqlc.arg(platform_id)::bigint::text || ':' ||
+        sqlc.arg(platform_user_id)::text,
+        0
+    )
+);
+
+-- name: GetSequenceState :one
 SELECT current_task_id, status
 FROM task_sequence_state
 WHERE workspace_id = $1
   AND sequence_key = $2
   AND app_id = $3
   AND platform_id = $4
-  AND platform_user_id = $5
-FOR UPDATE;
+  AND platform_user_id = $5;
 
 -- name: UpsertSequenceState :exec
 INSERT INTO task_sequence_state (
@@ -379,7 +389,7 @@ ON CONFLICT (workspace_id, sequence_key, app_id, platform_id, platform_user_id) 
     status = EXCLUDED.status,
     updated_at = now();
 
--- name: ListCurrentProgressForUserForUpdate :many
+-- name: ListCurrentProgressForTasksForUpdate :many
 SELECT id, workspace_id, task_id, app_id, platform_id, platform_user_id,
        period_start_at, period_end_at, progress, status, ready_at, claimed_at,
        operation_id, COALESCE(rewards_snapshot, '[]'::jsonb) AS rewards_snapshot, created_at, updated_at
@@ -390,6 +400,8 @@ WHERE workspace_id = $1
   AND platform_user_id = $4
   AND period_start_at <= $5
   AND period_end_at > $6
+  AND task_id = ANY(sqlc.arg(task_ids)::bigint[])
+ORDER BY task_id, id
 FOR UPDATE;
 
 -- name: GetCurrentProgressForUpdate :one

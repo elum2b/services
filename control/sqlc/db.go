@@ -159,6 +159,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getInviteForUpdateStmt, err = db.PrepareContext(ctx, getInviteForUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query GetInviteForUpdate: %w", err)
 	}
+	if q.getLimitRequestStmt, err = db.PrepareContext(ctx, getLimitRequest); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLimitRequest: %w", err)
+	}
 	if q.getLimitRequestForUpdateStmt, err = db.PrepareContext(ctx, getLimitRequestForUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLimitRequestForUpdate: %w", err)
 	}
@@ -606,6 +609,11 @@ func (q *Queries) Close() error {
 	if q.getInviteForUpdateStmt != nil {
 		if cerr := q.getInviteForUpdateStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getInviteForUpdateStmt: %w", cerr)
+		}
+	}
+	if q.getLimitRequestStmt != nil {
+		if cerr := q.getLimitRequestStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLimitRequestStmt: %w", cerr)
 		}
 	}
 	if q.getLimitRequestForUpdateStmt != nil {
@@ -1057,6 +1065,7 @@ type Queries struct {
 	getInviteByHashStmt                          *sql.Stmt
 	getInviteByHashForUpdateStmt                 *sql.Stmt
 	getInviteForUpdateStmt                       *sql.Stmt
+	getLimitRequestStmt                          *sql.Stmt
 	getLimitRequestForUpdateStmt                 *sql.Stmt
 	getMethodStmt                                *sql.Stmt
 	getPlatformStmt                              *sql.Stmt
@@ -1181,6 +1190,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getInviteByHashStmt:                          q.getInviteByHashStmt,
 		getInviteByHashForUpdateStmt:                 q.getInviteByHashForUpdateStmt,
 		getInviteForUpdateStmt:                       q.getInviteForUpdateStmt,
+		getLimitRequestStmt:                          q.getLimitRequestStmt,
 		getLimitRequestForUpdateStmt:                 q.getLimitRequestForUpdateStmt,
 		getMethodStmt:                                q.getMethodStmt,
 		getPlatformStmt:                              q.getPlatformStmt,

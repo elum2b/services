@@ -119,6 +119,10 @@ func (r *Repository) recordInTx(
 	result *RecordResult,
 ) error {
 	return r.WithTx(ctx, func(txRepo *Repository) error {
+		if err := txRepo.lockTaskUser(ctx, params.Identity); err != nil {
+			return err
+		}
+
 		catalog, err := txRepo.listRecordCatalog(ctx, params.Identity.WorkspaceID, params.ActionKey)
 		if err != nil {
 			return err
@@ -134,16 +138,24 @@ func (r *Repository) recordInTx(
 				return err
 			}
 		}
+		taskIDs := make([]int64, 0, len(catalog))
+		for _, task := range catalog {
+			taskIDs = append(taskIDs, int64(task.ID))
+		}
+
 		progressRows, err := repositoryValue[[]tasksqlc.TaskProgress](
 			ctx,
 			txRepo,
 			func(ctx context.Context) ([]tasksqlc.TaskProgress, error) {
-				return txRepo.q.ListCurrentProgressForUserForUpdate(
+				return txRepo.q.ListCurrentProgressForTasksForUpdate(
 					ctx,
-					tasksqlc.ListCurrentProgressForUserForUpdateParams{
-						WorkspaceID: params.Identity.WorkspaceID,
-						AppID:       params.Identity.AppID, PlatformID: params.Identity.PlatformID, PlatformUserID: params.Identity.PlatformUserID,
-						PeriodStartAt: now, PeriodEndAt: now,
+					tasksqlc.ListCurrentProgressForTasksForUpdateParams{
+						WorkspaceID:    params.Identity.WorkspaceID,
+						AppID:          params.Identity.AppID,
+						PlatformID:     params.Identity.PlatformID,
+						PlatformUserID: params.Identity.PlatformUserID,
+						PeriodStartAt:  now, PeriodEndAt: now,
+						TaskIds: taskIDs,
 					},
 				)
 			},
@@ -356,6 +368,10 @@ func (r *Repository) Claim(ctx context.Context, params ClaimParams) (ClaimResult
 	}
 	result := ClaimResult{Status: ClaimStatusNotFound}
 	err = r.WithTx(ctx, func(txRepo *Repository) error {
+		if err := txRepo.lockTaskUser(ctx, params.Identity); err != nil {
+			return err
+		}
+
 		id, key := taskRef(params.TaskRef)
 		var task Task
 		var err error
@@ -433,6 +449,10 @@ func (r *Repository) StartTask(ctx context.Context, params StartTaskParams) (Sta
 	}
 	result := StartTaskResult{Status: ClaimStatusNotFound}
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
+		if err := txRepo.lockTaskUser(ctx, params.Identity); err != nil {
+			return err
+		}
+
 		id, key := taskRef(params.TaskRef)
 		var (
 			task Task
@@ -513,6 +533,10 @@ func (r *Repository) GetClaimTask(
 	var result Task
 	found := false
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
+		if err := txRepo.lockTaskUser(ctx, identity); err != nil {
+			return err
+		}
+
 		id, key := taskRef(taskRefValue)
 		var (
 			task Task

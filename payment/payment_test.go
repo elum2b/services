@@ -1311,6 +1311,67 @@ func TestPaymentAdminRefundStatusUsesCompensationFlow(t *testing.T) {
 	}
 }
 
+func TestPaymentFinalizeRefundLocksAttemptBeforeRefund(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	fixture := createCompletedPaymentFixture(t, env, 7007, "refund-lock-order")
+	refundID, err := env.api.Admin.CreateRefund(env.ctx, admin.RefundCreateParams{
+		WorkspaceID:  testWorkspaceID,
+		OrderID:      fixture.OrderID,
+		AttemptID:    fixture.AttemptID,
+		ProviderCode: fixture.ProviderCode,
+		AmountMinor:  fixture.AmountMinor,
+		AssetCode:    fixture.AssetCode,
+		Status:       "pending",
+	})
+	if err != nil {
+		t.Fatalf("create pending refund: %v", err)
+	}
+
+	transaction, err := env.db.BeginTx(env.ctx, nil)
+	if err != nil {
+		t.Fatalf("begin competing transaction: %v", err)
+	}
+	defer transaction.Rollback()
+
+	if _, err := transaction.ExecContext(
+		env.ctx,
+		"SELECT id FROM payment_attempt WHERE id = $1 FOR UPDATE",
+		fixture.AttemptID,
+	); err != nil {
+		t.Fatalf("lock payment attempt: %v", err)
+	}
+
+	finalizeResult := make(chan error, 1)
+	go func() {
+		_, err := env.api.Admin.UpdateRefundStatus(env.ctx, admin.RefundStatusParams{
+			WorkspaceID: testWorkspaceID,
+			ID:          refundID,
+			Status:      "succeeded",
+			Reason:      "lock order test",
+		})
+		finalizeResult <- err
+	}()
+
+	waitForPaymentBlockedQuery(t, env.db, "payment_attempt")
+
+	if _, err := transaction.ExecContext(
+		env.ctx,
+		"SELECT id FROM payment_refund WHERE id = $1 FOR UPDATE",
+		refundID,
+	); err != nil {
+		t.Fatalf("refund was locked before attempt: %v", err)
+	}
+
+	if err := transaction.Commit(); err != nil {
+		t.Fatalf("release competing locks: %v", err)
+	}
+	if err := <-finalizeResult; err != nil {
+		t.Fatalf("finalize refund after releasing attempt: %v", err)
+	}
+
+	assertRefundStatus(t, env.ctx, env.db, refundID, "succeeded")
+}
+
 func TestPaymentAdminRefundRequiresWorkspaceScope(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 	fixture := createCompletedPaymentFixture(t, env, 7005, "refund-scope")
@@ -4539,6 +4600,31 @@ WHERE datname = current_database()
 	}
 }
 
+func waitForPaymentBlockedQuery(t *testing.T, db *sql.DB, relation string) {
+	t.Helper()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		var waiting int
+		if err := db.QueryRowContext(context.Background(), `
+SELECT COUNT(*)
+FROM pg_stat_activity
+WHERE datname = current_database()
+  AND wait_event_type = 'Lock'
+  AND query LIKE '%' || $1 || '%'`, relation).Scan(&waiting); err != nil {
+			t.Fatalf("inspect blocked payment query: %v", err)
+		}
+		if waiting > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no blocked payment query for relation %s", relation)
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func paymentImportTestProduct(id string) repository.ExportProduct {
 	return repository.ExportProduct{
 		ID:             id,
@@ -5036,6 +5122,103 @@ func TestPaymentStaleOrderExpirationReleasesLimitAndPurchaseKey(t *testing.T) {
 	}
 }
 
+func TestPaymentCreateOrderByKeyLocksLimitBeforePurchaseKey(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	productID := createPaymentProduct(t, env, testProductOptions{
+		ProductID:           "purchase-key-lock-order",
+		AssetCode:           "RUB",
+		ListAmountMinor:     1000,
+		GlobalLimit:         3,
+		GlobalInterval:      "ONCE",
+		GlobalIntervalCount: 1,
+	})
+
+	key, err := env.api.Admin.CreateProductKey(env.ctx, product.CreateKeyParams{
+		WorkspaceID:    testWorkspaceID,
+		AppID:          4122,
+		PlatformID:     1,
+		PlatformUserID: "key-lock-recipient",
+		ProductID:      productID,
+		MaxUses:        3,
+	})
+	if err != nil {
+		t.Fatalf("create purchase key: %v", err)
+	}
+
+	if _, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
+		Key: key,
+		Payer: &services.Actor{
+			PlatformID:     1,
+			PlatformUserID: "first-key-payer",
+		},
+		AssetCode: "RUB",
+		Locale:    "ru",
+	}); err != nil {
+		t.Fatalf("create first keyed order: %v", err)
+	}
+
+	transaction, err := env.db.BeginTx(env.ctx, nil)
+	if err != nil {
+		t.Fatalf("begin competing transaction: %v", err)
+	}
+	defer transaction.Rollback()
+
+	if _, err := transaction.ExecContext(env.ctx, `
+SELECT product_id
+FROM payment_product_limit_counter
+WHERE workspace_id = $1
+  AND product_id = $2
+  AND counter_scope = 'global'
+FOR UPDATE`, testWorkspaceID, productID); err != nil {
+		t.Fatalf("lock global product limit: %v", err)
+	}
+
+	orderResult := make(chan error, 1)
+	go func() {
+		_, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
+			Key: key,
+			Payer: &services.Actor{
+				PlatformID:     1,
+				PlatformUserID: "second-key-payer",
+			},
+			AssetCode: "RUB",
+			Locale:    "ru",
+		})
+		orderResult <- err
+	}()
+
+	waitForPaymentBlockedQuery(t, env.db, "payment_product_limit_counter")
+
+	if _, err := transaction.ExecContext(env.ctx, `
+SELECT id
+FROM payment_purchase_key
+WHERE workspace_id = $1
+  AND product_id = $2
+FOR UPDATE`, testWorkspaceID, productID); err != nil {
+		t.Fatalf("purchase key was locked before product limit: %v", err)
+	}
+
+	if err := transaction.Commit(); err != nil {
+		t.Fatalf("release competing locks: %v", err)
+	}
+	if err := <-orderResult; err != nil {
+		t.Fatalf("create keyed order after releasing limit: %v", err)
+	}
+
+	var boundOrders int
+	if err := env.db.QueryRowContext(env.ctx, `
+SELECT COUNT(*)
+FROM payment_order
+WHERE workspace_id = $1
+  AND product_id = $2
+  AND purchase_key_id IS NOT NULL`, testWorkspaceID, productID).Scan(&boundOrders); err != nil {
+		t.Fatalf("count keyed orders: %v", err)
+	}
+	if boundOrders != 2 {
+		t.Fatalf("bound keyed orders = %d, want 2", boundOrders)
+	}
+}
+
 func TestPaymentStaleOrderAndActiveAttemptExpireConsistently(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 	productID := createPaymentProduct(t, env, testProductOptions{
@@ -5094,6 +5277,85 @@ func TestPaymentStaleOrderAndActiveAttemptExpireConsistently(t *testing.T) {
 	if replacement.ID == order.ID {
 		t.Fatalf("replacement reused expired order: %+v", replacement)
 	}
+}
+
+func TestPaymentStaleExpirationLocksAttemptsBeforeOrder(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	productID := createPaymentProduct(t, env, testProductOptions{
+		ProductID:       "expiration-lock-order",
+		AssetCode:       "RUB",
+		ListAmountMinor: 1000,
+	})
+	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
+		Identity:  paymentTestIdentity(testWorkspaceID, 4123, 1, "expiration-lock-user"),
+		ProductID: productID,
+		AssetCode: "RUB",
+		Locale:    "ru",
+	})
+	if err != nil {
+		t.Fatalf("create stale order: %v", err)
+	}
+	providerPaymentID := uniquePaymentID("expiration-lock")
+	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
+		Identity:          paymentAttemptIdentity(order),
+		OrderID:           order.ID,
+		ProviderCode:      "yookassa",
+		ProviderPaymentID: &providerPaymentID,
+	})
+	if err != nil {
+		t.Fatalf("create stale attempt: %v", err)
+	}
+	if _, err := env.db.ExecContext(env.ctx, `
+UPDATE payment_order
+SET created_at = now() - INTERVAL '2 hours'
+WHERE id = $1`, order.ID); err != nil {
+		t.Fatalf("age order: %v", err)
+	}
+	if _, err := env.db.ExecContext(env.ctx, `
+UPDATE payment_attempt
+SET updated_at = now() - INTERVAL '2 hours'
+WHERE id = $1`, attempt.ID); err != nil {
+		t.Fatalf("age attempt: %v", err)
+	}
+
+	transaction, err := env.db.BeginTx(env.ctx, nil)
+	if err != nil {
+		t.Fatalf("begin competing transaction: %v", err)
+	}
+	defer transaction.Rollback()
+
+	if _, err := transaction.ExecContext(
+		env.ctx,
+		"SELECT id FROM payment_attempt WHERE id = $1 FOR UPDATE",
+		attempt.ID,
+	); err != nil {
+		t.Fatalf("lock stale attempt: %v", err)
+	}
+
+	expireResult := make(chan error, 1)
+	go func() {
+		expireResult <- env.api.expireStaleOrders(env.ctx)
+	}()
+
+	waitForPaymentBlockedQuery(t, env.db, "payment_attempt")
+
+	if _, err := transaction.ExecContext(
+		env.ctx,
+		"SELECT id FROM payment_order WHERE id = $1 FOR UPDATE",
+		order.ID,
+	); err != nil {
+		t.Fatalf("stale order was locked before its attempts: %v", err)
+	}
+
+	if err := transaction.Commit(); err != nil {
+		t.Fatalf("release competing locks: %v", err)
+	}
+	if err := <-expireResult; err != nil {
+		t.Fatalf("expire stale order after releasing attempt: %v", err)
+	}
+
+	assertOrderStatus(t, env.ctx, env.db, order.ID, "expired")
+	assertAttemptStatus(t, env.ctx, env.db, attempt.ID, "expired")
 }
 
 func TestPaymentSubscriptionRejectsMismatchedOrderAndAttempt(t *testing.T) {

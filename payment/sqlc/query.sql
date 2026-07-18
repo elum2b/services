@@ -1378,28 +1378,6 @@ FROM payment_purchase_key
 WHERE key_hash = $1
 LIMIT 1;
 
--- name: LockPurchaseKeyByHash :one
-SELECT
-    id,
-    workspace_id,
-    key_hash,
-    app_id,
-    platform_id,
-    platform_user_id,
-    internal_user_id,
-    product_id,
-    status,
-    max_uses,
-    used_count,
-    reserved_count,
-    expires_at,
-    created_at,
-    updated_at
-FROM payment_purchase_key
-WHERE key_hash = $1
-LIMIT 1
-FOR UPDATE;
-
 -- name: CreatePurchaseKey :one
 INSERT INTO payment_purchase_key (
     workspace_id,
@@ -1433,6 +1411,14 @@ SET reserved_count = reserved_count - 1,
     updated_at = now()
 WHERE id = $1
   AND reserved_count > 0;
+
+-- name: BindPaymentOrderPurchaseKey :execrows
+UPDATE payment_order
+SET purchase_key_id = $1,
+    updated_at = now()
+WHERE id = $2
+  AND workspace_id = $3
+  AND purchase_key_id IS NULL;
 
 -- name: ReleasePurchaseKeyReservation :execrows
 UPDATE payment_purchase_key
@@ -1689,8 +1675,8 @@ WHERE id = $1
 LIMIT 1
 FOR UPDATE;
 
--- name: LockStalePaymentOrders :many
-SELECT *
+-- name: ListStalePaymentOrderCandidates :many
+SELECT payment_order.id, payment_order.workspace_id
 FROM payment_order
 WHERE payment_order.status IN ('draft', 'pending_payment')
   AND (
@@ -1731,8 +1717,60 @@ WHERE payment_order.status IN ('draft', 'pending_payment')
       )
   )
 ORDER BY payment_order.id
-LIMIT sqlc.arg(batch_size)
-FOR UPDATE SKIP LOCKED;
+LIMIT sqlc.arg(batch_size);
+
+-- name: LockPaymentAttemptsForOrder :many
+SELECT id
+FROM payment_attempt
+WHERE workspace_id = $1
+  AND order_id = $2
+ORDER BY id
+FOR UPDATE;
+
+-- name: GetStalePaymentOrderForUpdate :one
+SELECT *
+FROM payment_order
+WHERE payment_order.id = sqlc.arg(order_id)
+  AND payment_order.status IN ('draft', 'pending_payment')
+  AND (
+      NOT sqlc.arg(protect_unbound_platega)::boolean
+      OR NOT EXISTS (
+          SELECT 1
+          FROM payment_attempt pa
+          WHERE pa.order_id = payment_order.id
+            AND pa.provider_code = 'platega'
+            AND (
+                (pa.status = 'created' AND pa.provider_payment_id IS NULL)
+                OR (
+                    pa.status = 'pending'
+                    AND pa.updated_at >= sqlc.arg(now_at)::timestamptz - INTERVAL '5 minutes'
+                )
+            )
+      )
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM payment_attempt pa
+      WHERE pa.order_id = payment_order.id
+        AND pa.provider_code = 'telegram_stars'
+        AND pa.status = 'pending'
+        AND pa.updated_at >= sqlc.arg(now_at)::timestamptz - INTERVAL '10 minutes'
+  )
+  AND (
+      (payment_order.reserved_until IS NOT NULL AND payment_order.reserved_until <= sqlc.arg(now_at)::timestamptz)
+      OR (
+          payment_order.reserved_until IS NULL
+          AND payment_order.expires_at IS NOT NULL
+          AND payment_order.expires_at <= sqlc.arg(now_at)::timestamptz
+      )
+      OR (
+          payment_order.reserved_until IS NULL
+          AND payment_order.expires_at IS NULL
+          AND payment_order.created_at <= sqlc.arg(created_before)
+      )
+  )
+LIMIT 1
+FOR UPDATE;
 
 -- name: ExpireActivePaymentAttemptsForOrder :execrows
 UPDATE payment_attempt

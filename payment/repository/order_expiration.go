@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
@@ -24,16 +26,52 @@ func (r *PaymentRepository) ExpireStaleOrders(
 		batchSize = 100
 	}
 
-	expired := 0
-	err := r.WithTx(ctx, func(txRepo *PaymentRepository) error {
-		orders, err := txRepo.q.LockStalePaymentOrders(ctx, paymentsqlc.LockStalePaymentOrdersParams{
+	createdBefore := now.Add(-maxAge)
+	candidates, err := r.q.ListStalePaymentOrderCandidates(
+		ctx,
+		paymentsqlc.ListStalePaymentOrderCandidatesParams{
 			ProtectUnboundPlatega: protectUnboundPlatega,
 			NowAt:                 now,
-			CreatedBefore:         now.Add(-maxAge),
+			CreatedBefore:         createdBefore,
 			BatchSize:             batchSize,
-		})
-		if err != nil {
-			return err
+		},
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	expired := 0
+	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+		for _, candidate := range candidates {
+			if _, err := txRepo.q.LockPaymentAttemptsForOrder(
+				ctx,
+				paymentsqlc.LockPaymentAttemptsForOrderParams{
+					WorkspaceID: candidate.WorkspaceID,
+					OrderID:     candidate.ID,
+				},
+			); err != nil {
+				return err
+			}
+		}
+
+		orders := make([]paymentsqlc.PaymentOrder, 0, len(candidates))
+		for _, candidate := range candidates {
+			order, err := txRepo.q.GetStalePaymentOrderForUpdate(
+				ctx,
+				paymentsqlc.GetStalePaymentOrderForUpdateParams{
+					OrderID:               candidate.ID,
+					ProtectUnboundPlatega: protectUnboundPlatega,
+					NowAt:                 now,
+					CreatedBefore:         createdBefore,
+				},
+			)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			orders = append(orders, order)
 		}
 
 		for _, order := range orders {
@@ -81,6 +119,9 @@ func (r *PaymentRepository) ExpireStaleOrders(
 
 		return nil
 	})
+	if err != nil {
+		return 0, err
+	}
 
-	return expired, err
+	return expired, nil
 }

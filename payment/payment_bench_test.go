@@ -583,13 +583,6 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 		}
 	})
 
-	b.Run("LockPurchaseKeyByHash", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_, err := q.LockPurchaseKeyByHash(env.ctx, env.keyHashes[i%len(env.keyHashes)])
-			benchNoError(b, err)
-		}
-	})
-
 	b.Run("CreatePurchaseKey", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			seq := benchNextSeq()

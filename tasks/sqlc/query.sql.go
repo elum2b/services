@@ -3140,7 +3140,7 @@ func (q *Queries) GetPartnerRewardGrantByIssue(ctx context.Context, arg GetPartn
 	return i, err
 }
 
-const getSequenceStateForUpdate = `-- name: GetSequenceStateForUpdate :one
+const getSequenceState = `-- name: GetSequenceState :one
 SELECT current_task_id, status
 FROM task_sequence_state
 WHERE workspace_id = $1
@@ -3148,10 +3148,9 @@ WHERE workspace_id = $1
   AND app_id = $3
   AND platform_id = $4
   AND platform_user_id = $5
-FOR UPDATE
 `
 
-type GetSequenceStateForUpdateParams struct {
+type GetSequenceStateParams struct {
 	WorkspaceID    string `json:"workspace_id"`
 	SequenceKey    string `json:"sequence_key"`
 	AppID          int64  `json:"app_id"`
@@ -3159,20 +3158,20 @@ type GetSequenceStateForUpdateParams struct {
 	PlatformUserID string `json:"platform_user_id"`
 }
 
-type GetSequenceStateForUpdateRow struct {
+type GetSequenceStateRow struct {
 	CurrentTaskID sql.NullInt64 `json:"current_task_id"`
 	Status        string        `json:"status"`
 }
 
-func (q *Queries) GetSequenceStateForUpdate(ctx context.Context, arg GetSequenceStateForUpdateParams) (GetSequenceStateForUpdateRow, error) {
-	row := q.queryRow(ctx, q.getSequenceStateForUpdateStmt, getSequenceStateForUpdate,
+func (q *Queries) GetSequenceState(ctx context.Context, arg GetSequenceStateParams) (GetSequenceStateRow, error) {
+	row := q.queryRow(ctx, q.getSequenceStateStmt, getSequenceState,
 		arg.WorkspaceID,
 		arg.SequenceKey,
 		arg.AppID,
 		arg.PlatformID,
 		arg.PlatformUserID,
 	)
-	var i GetSequenceStateForUpdateRow
+	var i GetSequenceStateRow
 	err := row.Scan(&i.CurrentTaskID, &i.Status)
 	return i, err
 }
@@ -3952,7 +3951,7 @@ func (q *Queries) ListComplexParentIDsForConditionTasks(ctx context.Context, arg
 	return items, nil
 }
 
-const listCurrentProgressForUser = `-- name: ListCurrentProgressForUser :many
+const listCurrentProgressForTasksForUpdate = `-- name: ListCurrentProgressForTasksForUpdate :many
 SELECT id, workspace_id, task_id, app_id, platform_id, platform_user_id,
        period_start_at, period_end_at, progress, status, ready_at, claimed_at,
        operation_id, COALESCE(rewards_snapshot, '[]'::jsonb) AS rewards_snapshot, created_at, updated_at
@@ -3963,25 +3962,30 @@ WHERE workspace_id = $1
   AND platform_user_id = $4
   AND period_start_at <= $5
   AND period_end_at > $6
+  AND task_id = ANY($7::bigint[])
+ORDER BY task_id, id
+FOR UPDATE
 `
 
-type ListCurrentProgressForUserParams struct {
+type ListCurrentProgressForTasksForUpdateParams struct {
 	WorkspaceID    string    `json:"workspace_id"`
 	AppID          int64     `json:"app_id"`
 	PlatformID     int64     `json:"platform_id"`
 	PlatformUserID string    `json:"platform_user_id"`
 	PeriodStartAt  time.Time `json:"period_start_at"`
 	PeriodEndAt    time.Time `json:"period_end_at"`
+	TaskIds        []int64   `json:"task_ids"`
 }
 
-func (q *Queries) ListCurrentProgressForUser(ctx context.Context, arg ListCurrentProgressForUserParams) ([]TaskProgress, error) {
-	rows, err := q.query(ctx, q.listCurrentProgressForUserStmt, listCurrentProgressForUser,
+func (q *Queries) ListCurrentProgressForTasksForUpdate(ctx context.Context, arg ListCurrentProgressForTasksForUpdateParams) ([]TaskProgress, error) {
+	rows, err := q.query(ctx, q.listCurrentProgressForTasksForUpdateStmt, listCurrentProgressForTasksForUpdate,
 		arg.WorkspaceID,
 		arg.AppID,
 		arg.PlatformID,
 		arg.PlatformUserID,
 		arg.PeriodStartAt,
 		arg.PeriodEndAt,
+		pq.Array(arg.TaskIds),
 	)
 	if err != nil {
 		return nil, err
@@ -4021,7 +4025,7 @@ func (q *Queries) ListCurrentProgressForUser(ctx context.Context, arg ListCurren
 	return items, nil
 }
 
-const listCurrentProgressForUserForUpdate = `-- name: ListCurrentProgressForUserForUpdate :many
+const listCurrentProgressForUser = `-- name: ListCurrentProgressForUser :many
 SELECT id, workspace_id, task_id, app_id, platform_id, platform_user_id,
        period_start_at, period_end_at, progress, status, ready_at, claimed_at,
        operation_id, COALESCE(rewards_snapshot, '[]'::jsonb) AS rewards_snapshot, created_at, updated_at
@@ -4032,10 +4036,9 @@ WHERE workspace_id = $1
   AND platform_user_id = $4
   AND period_start_at <= $5
   AND period_end_at > $6
-FOR UPDATE
 `
 
-type ListCurrentProgressForUserForUpdateParams struct {
+type ListCurrentProgressForUserParams struct {
 	WorkspaceID    string    `json:"workspace_id"`
 	AppID          int64     `json:"app_id"`
 	PlatformID     int64     `json:"platform_id"`
@@ -4044,8 +4047,8 @@ type ListCurrentProgressForUserForUpdateParams struct {
 	PeriodEndAt    time.Time `json:"period_end_at"`
 }
 
-func (q *Queries) ListCurrentProgressForUserForUpdate(ctx context.Context, arg ListCurrentProgressForUserForUpdateParams) ([]TaskProgress, error) {
-	rows, err := q.query(ctx, q.listCurrentProgressForUserForUpdateStmt, listCurrentProgressForUserForUpdate,
+func (q *Queries) ListCurrentProgressForUser(ctx context.Context, arg ListCurrentProgressForUserParams) ([]TaskProgress, error) {
+	rows, err := q.query(ctx, q.listCurrentProgressForUserStmt, listCurrentProgressForUser,
 		arg.WorkspaceID,
 		arg.AppID,
 		arg.PlatformID,
@@ -4643,6 +4646,35 @@ func (q *Queries) ListSequenceStatesForUser(ctx context.Context, arg ListSequenc
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockTaskUser = `-- name: LockTaskUser :exec
+SELECT pg_advisory_xact_lock(
+    hashtextextended(
+        'tasks:user:' || $1::text || ':' ||
+        $2::bigint::text || ':' ||
+        $3::bigint::text || ':' ||
+        $4::text,
+        0
+    )
+)
+`
+
+type LockTaskUserParams struct {
+	WorkspaceID    string `json:"workspace_id"`
+	AppID          int64  `json:"app_id"`
+	PlatformID     int64  `json:"platform_id"`
+	PlatformUserID string `json:"platform_user_id"`
+}
+
+func (q *Queries) LockTaskUser(ctx context.Context, arg LockTaskUserParams) error {
+	_, err := q.exec(ctx, q.lockTaskUserStmt, lockTaskUser,
+		arg.WorkspaceID,
+		arg.AppID,
+		arg.PlatformID,
+		arg.PlatformUserID,
+	)
+	return err
 }
 
 const refreshTaskDailyOverview = `-- name: RefreshTaskDailyOverview :exec

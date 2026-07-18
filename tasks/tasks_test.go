@@ -5619,6 +5619,288 @@ func TestTasksStartModeRequiredBlocksRecordUntilStart(t *testing.T) {
 	}
 }
 
+func TestTasksStartTaskLocksProgressBeforeSequenceState(t *testing.T) {
+	service := newTasksTestService(t)
+	ctx := context.Background()
+	workspaceID := testsupport.WorkspaceID("start-task-lock-order")
+	sequenceKey := "start-lock-sequence"
+	identity := user.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "sequence-user",
+	}
+
+	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if err := service.Admin.UpsertSequence(ctx, workspaceID, sequenceKey, 1, true); err != nil {
+		t.Fatalf("create sequence: %v", err)
+	}
+
+	positions := []uint32{1, 2}
+	taskIDs := make([]uint64, 0, len(positions))
+	for _, position := range positions {
+		taskID, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
+			WorkspaceID:      workspaceID,
+			Key:              fmt.Sprintf("start-lock-%d", position),
+			GroupKey:         "main",
+			SequenceKey:      &sequenceKey,
+			SequencePosition: &position,
+			ActionKey:        fmt.Sprintf("start-lock-action-%d", position),
+			ActionKind:       repository.ActionKindAppAction,
+			ClaimMode:        repository.ClaimModeManual,
+			StartMode:        repository.StartModeRequired,
+			TargetCount:      1,
+			ResetUnit:        repository.ResetNever,
+			ResetEvery:       1,
+			Position:         int32(position),
+			IsVisible:        true,
+			IsActive:         true,
+		})
+		if err != nil {
+			t.Fatalf("create sequence task %d: %v", position, err)
+		}
+		taskIDs = append(taskIDs, taskID)
+	}
+
+	if _, err := service.User.StartTask(ctx, user.StartTaskParams{
+		Identity: identity,
+		TaskRef:  fmt.Sprint(taskIDs[0]),
+	}); err != nil {
+		t.Fatalf("start first sequence task: %v", err)
+	}
+	if _, err := service.Internal.Record(ctx, internalapi.RecordParams{
+		Identity:  internalapi.Identity(identity),
+		ActionKey: "start-lock-action-1",
+		Source:    "test",
+	}); err != nil {
+		t.Fatalf("complete first sequence task: %v", err)
+	}
+	if _, err := service.User.Claim(ctx, user.ClaimParams{
+		Identity:    identity,
+		TaskRef:     fmt.Sprint(taskIDs[0]),
+		OperationID: "start-lock-first-claim",
+	}); err != nil {
+		t.Fatalf("claim first sequence task: %v", err)
+	}
+	if _, err := service.User.StartTask(ctx, user.StartTaskParams{
+		Identity: identity,
+		TaskRef:  fmt.Sprint(taskIDs[1]),
+	}); err != nil {
+		t.Fatalf("create second task progress: %v", err)
+	}
+
+	db, err := openTasksPostgres(tasksTestDB)
+	if err != nil {
+		t.Fatalf("open tasks database: %v", err)
+	}
+	defer db.Close()
+
+	transaction, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin competing transaction: %v", err)
+	}
+	defer transaction.Rollback()
+
+	if _, err := transaction.ExecContext(ctx, `
+SELECT id
+FROM task_progress
+WHERE workspace_id = $1
+  AND task_id = $2
+  AND app_id = $3
+  AND platform_id = $4
+  AND platform_user_id = $5
+FOR UPDATE`, workspaceID, taskIDs[1], identity.AppID, identity.PlatformID, identity.PlatformUserID); err != nil {
+		t.Fatalf("lock second task progress: %v", err)
+	}
+
+	startResult := make(chan error, 1)
+	go func() {
+		_, err := service.User.StartTask(ctx, user.StartTaskParams{
+			Identity: identity,
+			TaskRef:  fmt.Sprint(taskIDs[1]),
+		})
+		startResult <- err
+	}()
+
+	waitForTasksBlockedQuery(t, db, "task_progress")
+
+	if _, err := transaction.ExecContext(ctx, `
+SELECT sequence_key
+FROM task_sequence_state
+WHERE workspace_id = $1
+  AND sequence_key = $2
+  AND app_id = $3
+  AND platform_id = $4
+  AND platform_user_id = $5
+FOR UPDATE`, workspaceID, sequenceKey, identity.AppID, identity.PlatformID, identity.PlatformUserID); err != nil {
+		t.Fatalf("sequence state was locked before progress: %v", err)
+	}
+
+	if err := transaction.Commit(); err != nil {
+		t.Fatalf("release competing locks: %v", err)
+	}
+	if err := <-startResult; err != nil {
+		t.Fatalf("start task after releasing progress: %v", err)
+	}
+}
+
+func TestTasksRecordDoesNotLockUnrelatedComplexParentProgress(t *testing.T) {
+	service := newTasksTestService(t)
+	ctx := context.Background()
+	workspaceID := testsupport.WorkspaceID("record-complex-lock-order")
+	identity := user.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "complex-user",
+	}
+
+	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+
+	parentID, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
+		WorkspaceID: workspaceID,
+		Key:         "complex-parent-lock",
+		GroupKey:    "main",
+		ActionKey:   "complex-parent-lock",
+		ActionKind:  repository.ActionKindComposite,
+		TaskKind:    repository.TaskKindComplex,
+		ClaimMode:   repository.ClaimModeManual,
+		StartMode:   repository.StartModeRequired,
+		TargetCount: 1,
+		ResetUnit:   repository.ResetNever,
+		ResetEvery:  1,
+		Position:    1,
+		IsVisible:   true,
+		IsActive:    true,
+	})
+	if err != nil {
+		t.Fatalf("create complex parent: %v", err)
+	}
+
+	childID, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
+		WorkspaceID: workspaceID,
+		Key:         "complex-child-lock",
+		GroupKey:    "main",
+		ActionKey:   "complex-child-action",
+		ActionKind:  repository.ActionKindAppAction,
+		TaskKind:    repository.TaskKindInternal,
+		ClaimMode:   repository.ClaimModeManual,
+		StartMode:   repository.StartModeRequired,
+		TargetCount: 1,
+		ResetUnit:   repository.ResetNever,
+		ResetEvery:  1,
+		Position:    2,
+		IsVisible:   true,
+		IsActive:    true,
+	})
+	if err != nil {
+		t.Fatalf("create complex child: %v", err)
+	}
+	if err := service.Admin.UpsertComplexCondition(ctx, admin.SaveComplexConditionParams{
+		WorkspaceID:     workspaceID,
+		ParentTaskID:    parentID,
+		ConditionTaskID: childID,
+		RequiredStatus:  repository.ComplexRequiredStatusReady,
+		Position:        1,
+		IsRequired:      true,
+	}); err != nil {
+		t.Fatalf("create complex condition: %v", err)
+	}
+
+	for _, taskID := range []uint64{parentID, childID} {
+		if _, err := service.User.StartTask(ctx, user.StartTaskParams{
+			Identity: identity,
+			TaskRef:  fmt.Sprint(taskID),
+		}); err != nil {
+			t.Fatalf("start task %d: %v", taskID, err)
+		}
+	}
+
+	db, err := openTasksPostgres(tasksTestDB)
+	if err != nil {
+		t.Fatalf("open tasks database: %v", err)
+	}
+	defer db.Close()
+
+	transaction, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin competing transaction: %v", err)
+	}
+	defer transaction.Rollback()
+
+	if _, err := transaction.ExecContext(ctx, `
+SELECT id
+FROM task_progress
+WHERE workspace_id = $1
+  AND task_id = $2
+  AND app_id = $3
+  AND platform_id = $4
+  AND platform_user_id = $5
+FOR UPDATE`, workspaceID, childID, identity.AppID, identity.PlatformID, identity.PlatformUserID); err != nil {
+		t.Fatalf("lock child progress: %v", err)
+	}
+
+	recordResult := make(chan error, 1)
+	go func() {
+		_, err := service.Internal.Record(ctx, internalapi.RecordParams{
+			Identity:  internalapi.Identity(identity),
+			ActionKey: "complex-child-action",
+			Source:    "test",
+		})
+		recordResult <- err
+	}()
+
+	waitForTasksBlockedQuery(t, db, "task_progress")
+
+	if _, err := transaction.ExecContext(ctx, `
+SELECT id
+FROM task_progress
+WHERE workspace_id = $1
+  AND task_id = $2
+  AND app_id = $3
+  AND platform_id = $4
+  AND platform_user_id = $5
+FOR UPDATE`, workspaceID, parentID, identity.AppID, identity.PlatformID, identity.PlatformUserID); err != nil {
+		t.Fatalf("record locked unrelated parent progress before child: %v", err)
+	}
+
+	if err := transaction.Commit(); err != nil {
+		t.Fatalf("release competing locks: %v", err)
+	}
+	if err := <-recordResult; err != nil {
+		t.Fatalf("record after releasing child progress: %v", err)
+	}
+}
+
+func waitForTasksBlockedQuery(t *testing.T, db *sql.DB, relation string) {
+	t.Helper()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		var waiting int
+		if err := db.QueryRowContext(context.Background(), `
+SELECT COUNT(*)
+FROM pg_stat_activity
+WHERE datname = current_database()
+  AND wait_event_type = 'Lock'
+  AND query LIKE '%' || $1 || '%'`, relation).Scan(&waiting); err != nil {
+			t.Fatalf("inspect blocked tasks query: %v", err)
+		}
+		if waiting > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no blocked tasks query for relation %s", relation)
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func TestTasksRecordBroadcastsToIndependentActiveBranches(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()

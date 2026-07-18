@@ -512,19 +512,11 @@ func (r *PaymentRepository) CreateOrderByKey(ctx context.Context, params OrderCr
 			now = time.Now()
 		}
 
-		key, err := txRepo.q.LockPurchaseKeyByHash(ctx, hashPurchaseKey(params.Key))
+		key, err := txRepo.q.GetPurchaseKeyByHash(ctx, hashPurchaseKey(params.Key))
 		if err != nil {
 			return err
 		}
 		if !isPurchaseKeyUsable(key, now) {
-			return sql.ErrNoRows
-		}
-
-		reserved, err := txRepo.q.ReservePurchaseKeyUsage(ctx, key.ID)
-		if err != nil {
-			return err
-		}
-		if reserved != 1 {
 			return sql.ErrNoRows
 		}
 
@@ -537,7 +529,6 @@ func (r *PaymentRepository) CreateOrderByKey(ctx context.Context, params OrderCr
 			PayerPlatformID:     params.PayerPlatformID,
 			PayerPlatformUserID: params.PayerPlatformUserID,
 			PayerInternalUserID: params.PayerInternalUserID,
-			PurchaseKeyID:       utils.Ref(int64(key.ID)),
 			ProductID:           key.ProductID,
 			AssetCode:           params.AssetCode,
 			Locale:              params.Locale,
@@ -545,7 +536,36 @@ func (r *PaymentRepository) CreateOrderByKey(ctx context.Context, params OrderCr
 			ReservedUntil:       params.ReservedUntil,
 			ExpiresAt:           params.ExpiresAt,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+
+		reserved, err := txRepo.q.ReservePurchaseKeyUsage(ctx, key.ID)
+		if err != nil {
+			return err
+		}
+		if reserved != 1 {
+			return sql.ErrNoRows
+		}
+
+		bound, err := txRepo.q.BindPaymentOrderPurchaseKey(ctx, sqlc.BindPaymentOrderPurchaseKeyParams{
+			PurchaseKeyID: sql.NullInt64{
+				Int64: key.ID,
+				Valid: true,
+			},
+			ID:          int64(order.ID),
+			WorkspaceID: key.WorkspaceID,
+		})
+		if err != nil {
+			return err
+		}
+		if bound != 1 {
+			return ErrOrderStateInvalid
+		}
+
+		order.PurchaseKeyID = utils.Ref(int64(key.ID))
+
+		return nil
 	})
 	return order, err
 }

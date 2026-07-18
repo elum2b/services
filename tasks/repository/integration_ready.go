@@ -22,6 +22,10 @@ func (r *Repository) MarkIntegrationTaskReady(
 	}
 	for attempt := 0; attempt < 3; attempt++ {
 		err := r.WithTx(ctx, func(txRepo *Repository) error {
+			if err := txRepo.lockTaskUser(ctx, params.Identity); err != nil {
+				return err
+			}
+
 			allowed, err := txRepo.integrationTaskSequenceReady(ctx, params.Identity, task)
 			if err != nil {
 				return err
@@ -105,10 +109,12 @@ func (r *Repository) integrationTaskSequenceReady(ctx context.Context, identity 
 	if task.SequenceKey == nil {
 		return true, nil
 	}
-	row, err := r.q.GetSequenceStateForUpdate(ctx, tasksqlc.GetSequenceStateForUpdateParams{
-		WorkspaceID: identity.WorkspaceID,
-		SequenceKey: *task.SequenceKey,
-		AppID:       identity.AppID, PlatformID: identity.PlatformID, PlatformUserID: identity.PlatformUserID,
+	row, err := r.q.GetSequenceState(ctx, tasksqlc.GetSequenceStateParams{
+		WorkspaceID:    identity.WorkspaceID,
+		SequenceKey:    *task.SequenceKey,
+		AppID:          identity.AppID,
+		PlatformID:     identity.PlatformID,
+		PlatformUserID: identity.PlatformUserID,
 	})
 	if err != nil {
 		if isNoRows(err) {
@@ -117,6 +123,15 @@ func (r *Repository) integrationTaskSequenceReady(ctx context.Context, identity 
 		return false, err
 	}
 	return string(row.Status) == "active" && row.CurrentTaskID.Valid && uint64(row.CurrentTaskID.Int64) == task.ID, nil
+}
+
+func (r *Repository) lockTaskUser(ctx context.Context, identity Identity) error {
+	return r.q.LockTaskUser(ctx, tasksqlc.LockTaskUserParams{
+		WorkspaceID:    identity.WorkspaceID,
+		AppID:          identity.AppID,
+		PlatformID:     identity.PlatformID,
+		PlatformUserID: identity.PlatformUserID,
+	})
 }
 
 func (r *Repository) integrationTaskProgressForUpdate(

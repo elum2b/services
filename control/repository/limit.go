@@ -196,11 +196,37 @@ func (r *Repository) ResolveLimitRequest(
 			return err
 		}
 
+		snapshot, err := q.GetLimitRequest(ctx, requestID)
+		if err != nil {
+			return noRows(err, ErrLimitRequest)
+		}
+		switch LimitKind(snapshot.Kind) {
+		case LimitKindAccountWorkspace:
+			if !snapshot.AccountID.Valid {
+				return ErrLimitRequest
+			}
+			if _, err := q.GetPlatformMemberForUpdate(ctx, snapshot.AccountID.String); err != nil {
+				return noRows(err, ErrLimitRequest)
+			}
+		case LimitKindWorkspaceEmployee:
+			if !snapshot.WorkspaceID.Valid {
+				return ErrLimitRequest
+			}
+			if _, err := q.GetWorkspaceCapacityForUpdate(ctx, snapshot.WorkspaceID.String); err != nil {
+				return noRows(err, ErrLimitRequest)
+			}
+		default:
+			return ErrLimitRequest
+		}
+
 		row, err := q.GetLimitRequestForUpdate(ctx, requestID)
 		if err != nil {
 			return noRows(err, ErrLimitRequest)
 		}
-		if row.Status != string(controlmodel.LimitRequestStatusPending) {
+		if row.Status != string(controlmodel.LimitRequestStatusPending) ||
+			row.Kind != snapshot.Kind ||
+			row.AccountID != snapshot.AccountID ||
+			row.WorkspaceID != snapshot.WorkspaceID {
 			return ErrLimitRequest
 		}
 

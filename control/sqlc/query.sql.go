@@ -1120,6 +1120,36 @@ func (q *Queries) GetInviteForUpdate(ctx context.Context, id string) (ControlInv
 	return i, err
 }
 
+const getLimitRequest = `-- name: GetLimitRequest :one
+SELECT id, kind, account_id, workspace_id, current_limit, requested_limit,
+       approved_limit, reason, status, requested_by, reviewed_by,
+       review_comment, created_at, reviewed_at
+FROM control_limit_request
+WHERE id = $1
+`
+
+func (q *Queries) GetLimitRequest(ctx context.Context, id string) (ControlLimitRequest, error) {
+	row := q.queryRow(ctx, q.getLimitRequestStmt, getLimitRequest, id)
+	var i ControlLimitRequest
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.AccountID,
+		&i.WorkspaceID,
+		&i.CurrentLimit,
+		&i.RequestedLimit,
+		&i.ApprovedLimit,
+		&i.Reason,
+		&i.Status,
+		&i.RequestedBy,
+		&i.ReviewedBy,
+		&i.ReviewComment,
+		&i.CreatedAt,
+		&i.ReviewedAt,
+	)
+	return i, err
+}
+
 const getLimitRequestForUpdate = `-- name: GetLimitRequestForUpdate :one
 SELECT id, kind, account_id, workspace_id, current_limit, requested_limit,
        approved_limit, reason, status, requested_by, reviewed_by,
