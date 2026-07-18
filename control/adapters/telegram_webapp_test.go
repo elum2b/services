@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/url"
 	"sort"
 	"strings"
@@ -43,8 +44,13 @@ func TestTelegramWebAppFunctionReturnsAuthIdentityParams(t *testing.T) {
 		"user":      []string{`{"id":1093776793,"first_name":"Root"}`},
 	})
 	params, err := TelegramWebApp(context.Background(), TelegramWebAppAuthParams{
-		BotToken: "bot-token", InitData: rawData, IP: "127.0.0.1", UserAgent: "ua",
-		MaxAge: time.Minute, Now: func() time.Time { return now },
+		BotToken:    "bot-token",
+		InitData:    rawData,
+		InviteToken: "invite-token",
+		IP:          "127.0.0.1",
+		UserAgent:   "ua",
+		MaxAge:      time.Minute,
+		Now:         func() time.Time { return now },
 	})
 	if err != nil {
 		t.Fatalf("telegram webapp auth: %v", err)
@@ -52,6 +58,33 @@ func TestTelegramWebAppFunctionReturnsAuthIdentityParams(t *testing.T) {
 	if params.Provider != ProviderTelegramWebApp || params.Subject != "1093776793" || params.DisplayName != "Root" {
 		t.Fatalf("unexpected auth params: %+v", params)
 	}
+	if params.InviteToken != "invite-token" {
+		t.Fatalf("unexpected invite token: %q", params.InviteToken)
+	}
+}
+
+func TestTelegramWebAppUsesFiveMinuteDefaultMaxAge(t *testing.T) {
+
+	t.Parallel()
+
+	now := time.Unix(1_700_000_000, 0)
+	provider, err := NewTelegramWebApp(TelegramWebAppConfig{
+		BotToken: "bot-token",
+		Now:      func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("new telegram webapp provider: %v", err)
+	}
+	rawData := signedTelegramWebAppData(t, "bot-token", url.Values{
+		"auth_date": []string{"1699999699"},
+		"user":      []string{`{"id":1093776793,"first_name":"Root"}`},
+	})
+
+	_, err = provider.Resolve(context.Background(), Request{RawData: rawData})
+	if !errors.Is(err, ErrAuthDataExpired) {
+		t.Fatalf("expired telegram data error = %v", err)
+	}
+
 }
 
 func TestTelegramWebAppRejectsInvalidSignature(t *testing.T) {

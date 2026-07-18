@@ -11,49 +11,138 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/sqlc-dev/pqtype"
 )
 
-const activateTwoFactor = `-- name: ActivateTwoFactor :execrows
-UPDATE control_two_factor SET activated_at = now()
-WHERE account_id = $1 AND activated_at IS NULL
+const acceptInvite = `-- name: AcceptInvite :execrows
+UPDATE control_invite
+SET accepted_by = $1, accepted_at = now()
+WHERE id = $2
+  AND accepted_at IS NULL
+  AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > now())
 `
 
-func (q *Queries) ActivateTwoFactor(ctx context.Context, accountID string) (int64, error) {
-	result, err := q.exec(ctx, q.activateTwoFactorStmt, activateTwoFactor, accountID)
+type AcceptInviteParams struct {
+	AcceptedBy sql.NullString `json:"accepted_by"`
+	ID         string         `json:"id"`
+}
+
+func (q *Queries) AcceptInvite(ctx context.Context, arg AcceptInviteParams) (int64, error) {
+	result, err := q.exec(ctx, q.acceptInviteStmt, acceptInvite, arg.AcceptedBy, arg.ID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-const addInviteRole = `-- name: AddInviteRole :exec
-INSERT INTO control_workspace_invite_role (invite_id, role_id) VALUES ($1, $2)
+const activateTwoFactor = `-- name: ActivateTwoFactor :execrows
+UPDATE control_two_factor
+SET activated_at = now(), last_totp_counter = $1
+WHERE account_id = $2
+  AND activated_at IS NULL
 `
 
-type AddInviteRoleParams struct {
-	InviteID string `json:"invite_id"`
-	RoleID   string `json:"role_id"`
+type ActivateTwoFactorParams struct {
+	LastTotpCounter sql.NullInt64 `json:"last_totp_counter"`
+	AccountID       string        `json:"account_id"`
 }
 
-func (q *Queries) AddInviteRole(ctx context.Context, arg AddInviteRoleParams) error {
-	_, err := q.exec(ctx, q.addInviteRoleStmt, addInviteRole, arg.InviteID, arg.RoleID)
-	return err
+func (q *Queries) ActivateTwoFactor(ctx context.Context, arg ActivateTwoFactorParams) (int64, error) {
+	result, err := q.exec(ctx, q.activateTwoFactorStmt, activateTwoFactor, arg.LastTotpCounter, arg.AccountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
-const addRoleMember = `-- name: AddRoleMember :exec
-INSERT INTO control_role_member (role_id, account_id)
+const addGlobalRoleMember = `-- name: AddGlobalRoleMember :execrows
+INSERT INTO control_global_role_member (role_id, account_id)
 VALUES ($1, $2)
 ON CONFLICT (role_id, account_id) DO NOTHING
 `
 
-type AddRoleMemberParams struct {
+type AddGlobalRoleMemberParams struct {
 	RoleID    string `json:"role_id"`
 	AccountID string `json:"account_id"`
 }
 
-func (q *Queries) AddRoleMember(ctx context.Context, arg AddRoleMemberParams) error {
-	_, err := q.exec(ctx, q.addRoleMemberStmt, addRoleMember, arg.RoleID, arg.AccountID)
+func (q *Queries) AddGlobalRoleMember(ctx context.Context, arg AddGlobalRoleMemberParams) (int64, error) {
+	result, err := q.exec(ctx, q.addGlobalRoleMemberStmt, addGlobalRoleMember, arg.RoleID, arg.AccountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const addGlobalRolesFromInvite = `-- name: AddGlobalRolesFromInvite :exec
+INSERT INTO control_global_role_member (role_id, account_id)
+SELECT role_id, $1
+FROM control_invite_global_role
+WHERE invite_id = $2
+ON CONFLICT (role_id, account_id) DO NOTHING
+`
+
+type AddGlobalRolesFromInviteParams struct {
+	AccountID string `json:"account_id"`
+	InviteID  string `json:"invite_id"`
+}
+
+func (q *Queries) AddGlobalRolesFromInvite(ctx context.Context, arg AddGlobalRolesFromInviteParams) error {
+	_, err := q.exec(ctx, q.addGlobalRolesFromInviteStmt, addGlobalRolesFromInvite, arg.AccountID, arg.InviteID)
+	return err
+}
+
+const addInviteGlobalRoles = `-- name: AddInviteGlobalRoles :exec
+INSERT INTO control_invite_global_role (invite_id, role_id)
+SELECT $1, role_id
+FROM unnest($2::text[]) AS roles(role_id)
+`
+
+type AddInviteGlobalRolesParams struct {
+	InviteID string   `json:"invite_id"`
+	RoleIds  []string `json:"role_ids"`
+}
+
+func (q *Queries) AddInviteGlobalRoles(ctx context.Context, arg AddInviteGlobalRolesParams) error {
+	_, err := q.exec(ctx, q.addInviteGlobalRolesStmt, addInviteGlobalRoles, arg.InviteID, pq.Array(arg.RoleIds))
+	return err
+}
+
+const addInviteWorkspaceRoles = `-- name: AddInviteWorkspaceRoles :exec
+INSERT INTO control_invite_workspace_role (invite_id, workspace_id, role_id)
+SELECT $1, $2, role_id
+FROM unnest($3::text[]) AS roles(role_id)
+`
+
+type AddInviteWorkspaceRolesParams struct {
+	InviteID    string   `json:"invite_id"`
+	WorkspaceID string   `json:"workspace_id"`
+	RoleIds     []string `json:"role_ids"`
+}
+
+func (q *Queries) AddInviteWorkspaceRoles(ctx context.Context, arg AddInviteWorkspaceRolesParams) error {
+	_, err := q.exec(ctx, q.addInviteWorkspaceRolesStmt, addInviteWorkspaceRoles, arg.InviteID, arg.WorkspaceID, pq.Array(arg.RoleIds))
+	return err
+}
+
+const addPlatformMember = `-- name: AddPlatformMember :exec
+INSERT INTO control_platform_member (account_id, invited_by)
+VALUES ($1, $2)
+ON CONFLICT (account_id) DO UPDATE SET
+    status = 'active',
+    invited_by = COALESCE(control_platform_member.invited_by, EXCLUDED.invited_by),
+    updated_at = now()
+`
+
+type AddPlatformMemberParams struct {
+	AccountID string         `json:"account_id"`
+	InvitedBy sql.NullString `json:"invited_by"`
+}
+
+func (q *Queries) AddPlatformMember(ctx context.Context, arg AddPlatformMemberParams) error {
+	_, err := q.exec(ctx, q.addPlatformMemberStmt, addPlatformMember, arg.AccountID, arg.InvitedBy)
 	return err
 }
 
@@ -75,47 +164,198 @@ func (q *Queries) AddWorkspaceMember(ctx context.Context, arg AddWorkspaceMember
 	return err
 }
 
-const checkAccess = `-- name: CheckAccess :one
-SELECT EXISTS(
-    SELECT 1
-    FROM control_workspace_member m
-    JOIN control_method cm ON cm.method_key = $1
-    JOIN control_role_member rm ON rm.account_id = m.account_id
-    JOIN control_role r ON r.id = rm.role_id
-    LEFT JOIN control_role_permission p ON p.role_id = r.id AND p.method_key = cm.method_key
-    WHERE m.workspace_id = $2 AND m.account_id = $3 AND m.status = 'active'
-      AND r.workspace_id = m.workspace_id AND r.deleted_at IS NULL
-      AND (r.is_owner = TRUE OR p.method_key IS NOT NULL)
-) AS allowed
+const addWorkspaceRoleMember = `-- name: AddWorkspaceRoleMember :execrows
+INSERT INTO control_workspace_role_member (role_id, workspace_id, account_id)
+VALUES ($1, $2, $3)
+ON CONFLICT (role_id, account_id) DO NOTHING
 `
 
-type CheckAccessParams struct {
-	MethodKey   string `json:"method_key"`
+type AddWorkspaceRoleMemberParams struct {
+	RoleID      string `json:"role_id"`
 	WorkspaceID string `json:"workspace_id"`
 	AccountID   string `json:"account_id"`
 }
 
-func (q *Queries) CheckAccess(ctx context.Context, arg CheckAccessParams) (bool, error) {
-	row := q.queryRow(ctx, q.checkAccessStmt, checkAccess, arg.MethodKey, arg.WorkspaceID, arg.AccountID)
-	var allowed bool
-	err := row.Scan(&allowed)
-	return allowed, err
-}
-
-const clearRolePermissions = `-- name: ClearRolePermissions :execrows
-DELETE FROM control_role_permission WHERE role_id = $1
-`
-
-func (q *Queries) ClearRolePermissions(ctx context.Context, roleID string) (int64, error) {
-	result, err := q.exec(ctx, q.clearRolePermissionsStmt, clearRolePermissions, roleID)
+func (q *Queries) AddWorkspaceRoleMember(ctx context.Context, arg AddWorkspaceRoleMemberParams) (int64, error) {
+	result, err := q.exec(ctx, q.addWorkspaceRoleMemberStmt, addWorkspaceRoleMember, arg.RoleID, arg.WorkspaceID, arg.AccountID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
+const addWorkspaceRolesFromInvite = `-- name: AddWorkspaceRolesFromInvite :exec
+INSERT INTO control_workspace_role_member (role_id, workspace_id, account_id)
+SELECT role_id, workspace_id, $1
+FROM control_invite_workspace_role
+WHERE invite_id = $2
+ON CONFLICT (role_id, account_id) DO NOTHING
+`
+
+type AddWorkspaceRolesFromInviteParams struct {
+	AccountID string `json:"account_id"`
+	InviteID  string `json:"invite_id"`
+}
+
+func (q *Queries) AddWorkspaceRolesFromInvite(ctx context.Context, arg AddWorkspaceRolesFromInviteParams) error {
+	_, err := q.exec(ctx, q.addWorkspaceRolesFromInviteStmt, addWorkspaceRolesFromInvite, arg.AccountID, arg.InviteID)
+	return err
+}
+
+const archiveWorkspace = `-- name: ArchiveWorkspace :execrows
+UPDATE control_workspace
+SET status = 'archived', updated_at = now()
+WHERE id = $1 AND status = 'active'
+`
+
+func (q *Queries) ArchiveWorkspace(ctx context.Context, id string) (int64, error) {
+	result, err := q.exec(ctx, q.archiveWorkspaceStmt, archiveWorkspace, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const cancelLimitRequest = `-- name: CancelLimitRequest :execrows
+UPDATE control_limit_request
+SET status = 'cancelled', reviewed_at = now()
+WHERE id = $1
+  AND requested_by = $2
+  AND status = 'pending'
+`
+
+type CancelLimitRequestParams struct {
+	ID          string `json:"id"`
+	RequestedBy string `json:"requested_by"`
+}
+
+func (q *Queries) CancelLimitRequest(ctx context.Context, arg CancelLimitRequestParams) (int64, error) {
+	result, err := q.exec(ctx, q.cancelLimitRequestStmt, cancelLimitRequest, arg.ID, arg.RequestedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const cancelPendingAccountLimitRequests = `-- name: CancelPendingAccountLimitRequests :execrows
+UPDATE control_limit_request
+SET status = 'cancelled',
+    review_comment = 'account platform membership removed',
+    reviewed_at = now()
+WHERE kind = 'account_workspace'
+  AND account_id = $1
+  AND status = 'pending'
+`
+
+func (q *Queries) CancelPendingAccountLimitRequests(ctx context.Context, accountID sql.NullString) (int64, error) {
+	result, err := q.exec(ctx, q.cancelPendingAccountLimitRequestsStmt, cancelPendingAccountLimitRequests, accountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const cancelPendingWorkspaceLimitRequests = `-- name: CancelPendingWorkspaceLimitRequests :execrows
+UPDATE control_limit_request
+SET status = 'cancelled',
+    review_comment = 'workspace archived',
+    reviewed_at = now()
+WHERE kind = 'workspace_employee'
+  AND workspace_id = $1
+  AND status = 'pending'
+`
+
+func (q *Queries) CancelPendingWorkspaceLimitRequests(ctx context.Context, workspaceID sql.NullString) (int64, error) {
+	result, err := q.exec(ctx, q.cancelPendingWorkspaceLimitRequestsStmt, cancelPendingWorkspaceLimitRequests, workspaceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const checkGlobalAccess = `-- name: CheckGlobalAccess :one
+SELECT EXISTS (
+    SELECT 1
+    FROM control_platform p
+    JOIN control_platform_member pm
+        ON pm.account_id = $1
+       AND pm.status = 'active'
+    WHERE p.id = 1
+      AND (
+          p.owner_account_id = $1
+          OR EXISTS (
+              SELECT 1
+              FROM control_global_role_member rm
+              JOIN control_global_role_permission rp ON rp.role_id = rm.role_id
+              JOIN control_method m
+                  ON m.method_key = rp.method_key
+                 AND m.scope = 'global'
+              WHERE rm.account_id = $1
+                AND rp.method_key = $2
+          )
+      )
+) AS allowed
+`
+
+type CheckGlobalAccessParams struct {
+	AccountID string `json:"account_id"`
+	MethodKey string `json:"method_key"`
+}
+
+func (q *Queries) CheckGlobalAccess(ctx context.Context, arg CheckGlobalAccessParams) (bool, error) {
+	row := q.queryRow(ctx, q.checkGlobalAccessStmt, checkGlobalAccess, arg.AccountID, arg.MethodKey)
+	var allowed bool
+	err := row.Scan(&allowed)
+	return allowed, err
+}
+
+const checkWorkspaceAccess = `-- name: CheckWorkspaceAccess :one
+SELECT EXISTS (
+    SELECT 1
+    FROM control_workspace w
+    JOIN control_workspace_member wm
+        ON wm.workspace_id = w.id
+       AND wm.account_id = $1::text
+       AND wm.status = 'active'
+    JOIN control_platform_member pm
+        ON pm.account_id = wm.account_id
+       AND pm.status = 'active'
+    WHERE w.id = $2::text
+      AND w.status = 'active'
+      AND (
+          w.owner_account_id = $1::text
+          OR EXISTS (
+              SELECT 1
+              FROM control_workspace_role_member rm
+              JOIN control_workspace_role_permission rp
+                  ON rp.role_id = rm.role_id
+                 AND rp.workspace_id = rm.workspace_id
+              JOIN control_method m
+                  ON m.method_key = rp.method_key
+                 AND m.scope = 'workspace'
+              WHERE rm.workspace_id = w.id
+                AND rm.account_id = $1::text
+                AND rp.method_key = $3::text
+          )
+      )
+) AS allowed
+`
+
+type CheckWorkspaceAccessParams struct {
+	AccountID   string `json:"account_id"`
+	WorkspaceID string `json:"workspace_id"`
+	MethodKey   string `json:"method_key"`
+}
+
+func (q *Queries) CheckWorkspaceAccess(ctx context.Context, arg CheckWorkspaceAccessParams) (bool, error) {
+	row := q.queryRow(ctx, q.checkWorkspaceAccessStmt, checkWorkspaceAccess, arg.AccountID, arg.WorkspaceID, arg.MethodKey)
+	var allowed bool
+	err := row.Scan(&allowed)
+	return allowed, err
+}
+
 const countIdentities = `-- name: CountIdentities :one
-SELECT COUNT(*) AS count FROM control_identity WHERE account_id = $1
+SELECT COUNT(*) FROM control_identity WHERE account_id = $1
 `
 
 func (q *Queries) CountIdentities(ctx context.Context, accountID string) (int64, error) {
@@ -125,8 +365,28 @@ func (q *Queries) CountIdentities(ctx context.Context, accountID string) (int64,
 	return count, err
 }
 
+const countMethodsByScope = `-- name: CountMethodsByScope :one
+SELECT COUNT(DISTINCT method_key)
+FROM control_method
+WHERE scope = $1::text
+  AND method_key = ANY($2::text[])
+`
+
+type CountMethodsByScopeParams struct {
+	Scope      string   `json:"scope"`
+	MethodKeys []string `json:"method_keys"`
+}
+
+func (q *Queries) CountMethodsByScope(ctx context.Context, arg CountMethodsByScopeParams) (int64, error) {
+	row := q.queryRow(ctx, q.countMethodsByScopeStmt, countMethodsByScope, arg.Scope, pq.Array(arg.MethodKeys))
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAccount = `-- name: CreateAccount :exec
-INSERT INTO control_account (id, display_name) VALUES ($1, $2)
+INSERT INTO control_account (id, display_name)
+VALUES ($1, $2)
 `
 
 type CreateAccountParams struct {
@@ -141,13 +401,15 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) er
 
 const createAuditEvent = `-- name: CreateAuditEvent :exec
 INSERT INTO control_audit_event (
-    id, workspace_id, actor_id, method_key, target_type, target_id,
+    id, scope, workspace_id, actor_id, method_key, target_type, target_id,
     before_data, after_data, result, request_id
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 `
 
 type CreateAuditEventParams struct {
 	ID          string                `json:"id"`
+	Scope       string                `json:"scope"`
 	WorkspaceID sql.NullString        `json:"workspace_id"`
 	ActorID     sql.NullString        `json:"actor_id"`
 	MethodKey   string                `json:"method_key"`
@@ -162,6 +424,7 @@ type CreateAuditEventParams struct {
 func (q *Queries) CreateAuditEvent(ctx context.Context, arg CreateAuditEventParams) error {
 	_, err := q.exec(ctx, q.createAuditEventStmt, createAuditEvent,
 		arg.ID,
+		arg.Scope,
 		arg.WorkspaceID,
 		arg.ActorID,
 		arg.MethodKey,
@@ -175,82 +438,123 @@ func (q *Queries) CreateAuditEvent(ctx context.Context, arg CreateAuditEventPara
 	return err
 }
 
+const createGlobalRole = `-- name: CreateGlobalRole :one
+INSERT INTO control_global_role (id, code, title, description, position)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, code, title, description, position, created_at, updated_at
+`
+
+type CreateGlobalRoleParams struct {
+	ID          string `json:"id"`
+	Code        string `json:"code"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Position    int32  `json:"position"`
+}
+
+func (q *Queries) CreateGlobalRole(ctx context.Context, arg CreateGlobalRoleParams) (ControlGlobalRole, error) {
+	row := q.queryRow(ctx, q.createGlobalRoleStmt, createGlobalRole,
+		arg.ID,
+		arg.Code,
+		arg.Title,
+		arg.Description,
+		arg.Position,
+	)
+	var i ControlGlobalRole
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Title,
+		&i.Description,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createInvite = `-- name: CreateInvite :exec
-INSERT INTO control_workspace_invite (id, workspace_id, created_by, token_hash, max_uses, expires_at)
+INSERT INTO control_invite (
+    id, kind, workspace_id, created_by, token_hash, expires_at
+)
 VALUES ($1, $2, $3, $4, $5, $6)
 `
 
 type CreateInviteParams struct {
-	ID          string        `json:"id"`
-	WorkspaceID string        `json:"workspace_id"`
-	CreatedBy   string        `json:"created_by"`
-	TokenHash   string        `json:"token_hash"`
-	MaxUses     sql.NullInt32 `json:"max_uses"`
-	ExpiresAt   sql.NullTime  `json:"expires_at"`
+	ID          string         `json:"id"`
+	Kind        string         `json:"kind"`
+	WorkspaceID sql.NullString `json:"workspace_id"`
+	CreatedBy   string         `json:"created_by"`
+	TokenHash   string         `json:"token_hash"`
+	ExpiresAt   sql.NullTime   `json:"expires_at"`
 }
 
 func (q *Queries) CreateInvite(ctx context.Context, arg CreateInviteParams) error {
 	_, err := q.exec(ctx, q.createInviteStmt, createInvite,
 		arg.ID,
+		arg.Kind,
 		arg.WorkspaceID,
 		arg.CreatedBy,
 		arg.TokenHash,
-		arg.MaxUses,
 		arg.ExpiresAt,
 	)
 	return err
 }
 
-const createInviteAcceptance = `-- name: CreateInviteAcceptance :execrows
-INSERT INTO control_workspace_invite_acceptance (invite_id, account_id)
-VALUES ($1, $2)
-ON CONFLICT (invite_id, account_id) DO NOTHING
+const createLimitRequest = `-- name: CreateLimitRequest :execrows
+INSERT INTO control_limit_request (
+    id, kind, account_id, workspace_id, current_limit, requested_limit,
+    reason, requested_by
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT DO NOTHING
 `
 
-type CreateInviteAcceptanceParams struct {
-	InviteID  string `json:"invite_id"`
-	AccountID string `json:"account_id"`
+type CreateLimitRequestParams struct {
+	ID             string         `json:"id"`
+	Kind           string         `json:"kind"`
+	AccountID      sql.NullString `json:"account_id"`
+	WorkspaceID    sql.NullString `json:"workspace_id"`
+	CurrentLimit   int32          `json:"current_limit"`
+	RequestedLimit int32          `json:"requested_limit"`
+	Reason         string         `json:"reason"`
+	RequestedBy    string         `json:"requested_by"`
 }
 
-func (q *Queries) CreateInviteAcceptance(ctx context.Context, arg CreateInviteAcceptanceParams) (int64, error) {
-	result, err := q.exec(ctx, q.createInviteAcceptanceStmt, createInviteAcceptance, arg.InviteID, arg.AccountID)
+func (q *Queries) CreateLimitRequest(ctx context.Context, arg CreateLimitRequestParams) (int64, error) {
+	result, err := q.exec(ctx, q.createLimitRequestStmt, createLimitRequest,
+		arg.ID,
+		arg.Kind,
+		arg.AccountID,
+		arg.WorkspaceID,
+		arg.CurrentLimit,
+		arg.RequestedLimit,
+		arg.Reason,
+		arg.RequestedBy,
+	)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-const createRole = `-- name: CreateRole :exec
-INSERT INTO control_role (id, workspace_id, code, title, description, position, is_owner)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+const createPlatform = `-- name: CreatePlatform :exec
+INSERT INTO control_platform (id, owner_account_id, initialized_by)
+VALUES (1, $1, $1)
 `
 
-type CreateRoleParams struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	Code        string `json:"code"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Position    int32  `json:"position"`
-	IsOwner     bool   `json:"is_owner"`
-}
-
-func (q *Queries) CreateRole(ctx context.Context, arg CreateRoleParams) error {
-	_, err := q.exec(ctx, q.createRoleStmt, createRole,
-		arg.ID,
-		arg.WorkspaceID,
-		arg.Code,
-		arg.Title,
-		arg.Description,
-		arg.Position,
-		arg.IsOwner,
-	)
+func (q *Queries) CreatePlatform(ctx context.Context, ownerAccountID string) error {
+	_, err := q.exec(ctx, q.createPlatformStmt, createPlatform, ownerAccountID)
 	return err
 }
 
-const createSession = `-- name: CreateSession :exec
-INSERT INTO control_session (id, account_id, token_hash, ip, user_agent, bind_to_ip, expires_at)
+const createSession = `-- name: CreateSession :one
+INSERT INTO control_session (
+    id, account_id, token_hash, ip, user_agent, bind_to_ip, expires_at
+)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, account_id, token_hash, ip, user_agent, bind_to_ip,
+          expires_at, revoked_at, last_used_at, created_at
 `
 
 type CreateSessionParams struct {
@@ -263,8 +567,8 @@ type CreateSessionParams struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
-	_, err := q.exec(ctx, q.createSessionStmt, createSession,
+func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (ControlSession, error) {
+	row := q.queryRow(ctx, q.createSessionStmt, createSession,
 		arg.ID,
 		arg.AccountID,
 		arg.TokenHash,
@@ -273,38 +577,47 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 		arg.BindToIp,
 		arg.ExpiresAt,
 	)
-	return err
+	var i ControlSession
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.TokenHash,
+		&i.Ip,
+		&i.UserAgent,
+		&i.BindToIp,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.LastUsedAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const createTwoFactorChallenge = `-- name: CreateTwoFactorChallenge :exec
 INSERT INTO control_two_factor_challenge (
-    id,
-    account_id,
-    token_hash,
-    ip,
-    user_agent,
-    bind_to_ip,
-    expires_at,
-    session_expires_at
+    id, account_id, invite_id, token_hash, ip, user_agent, bind_to_ip,
+    expires_at, session_expires_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type CreateTwoFactorChallengeParams struct {
-	ID               string    `json:"id"`
-	AccountID        string    `json:"account_id"`
-	TokenHash        string    `json:"token_hash"`
-	Ip               string    `json:"ip"`
-	UserAgent        string    `json:"user_agent"`
-	BindToIp         bool      `json:"bind_to_ip"`
-	ExpiresAt        time.Time `json:"expires_at"`
-	SessionExpiresAt time.Time `json:"session_expires_at"`
+	ID               string         `json:"id"`
+	AccountID        string         `json:"account_id"`
+	InviteID         sql.NullString `json:"invite_id"`
+	TokenHash        string         `json:"token_hash"`
+	Ip               string         `json:"ip"`
+	UserAgent        string         `json:"user_agent"`
+	BindToIp         bool           `json:"bind_to_ip"`
+	ExpiresAt        time.Time      `json:"expires_at"`
+	SessionExpiresAt time.Time      `json:"session_expires_at"`
 }
 
 func (q *Queries) CreateTwoFactorChallenge(ctx context.Context, arg CreateTwoFactorChallengeParams) error {
 	_, err := q.exec(ctx, q.createTwoFactorChallengeStmt, createTwoFactorChallenge,
 		arg.ID,
 		arg.AccountID,
+		arg.InviteID,
 		arg.TokenHash,
 		arg.Ip,
 		arg.UserAgent,
@@ -315,8 +628,13 @@ func (q *Queries) CreateTwoFactorChallenge(ctx context.Context, arg CreateTwoFac
 	return err
 }
 
-const createWorkspace = `-- name: CreateWorkspace :exec
-INSERT INTO control_workspace (id, slug, title, created_by) VALUES ($1, $2, $3, $4)
+const createWorkspace = `-- name: CreateWorkspace :one
+INSERT INTO control_workspace (
+    id, slug, title, created_by, owner_account_id
+)
+VALUES ($1, $2, $3, $4, $4)
+RETURNING id, slug, title, status, created_by, owner_account_id,
+          employee_limit, created_at, updated_at
 `
 
 type CreateWorkspaceParams struct {
@@ -326,18 +644,97 @@ type CreateWorkspaceParams struct {
 	CreatedBy string `json:"created_by"`
 }
 
-func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) error {
-	_, err := q.exec(ctx, q.createWorkspaceStmt, createWorkspace,
+func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (ControlWorkspace, error) {
+	row := q.queryRow(ctx, q.createWorkspaceStmt, createWorkspace,
 		arg.ID,
 		arg.Slug,
 		arg.Title,
 		arg.CreatedBy,
 	)
-	return err
+	var i ControlWorkspace
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Title,
+		&i.Status,
+		&i.CreatedBy,
+		&i.OwnerAccountID,
+		&i.EmployeeLimit,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createWorkspaceRole = `-- name: CreateWorkspaceRole :one
+INSERT INTO control_workspace_role (
+    id, workspace_id, code, title, description, position
+)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, workspace_id, code, title, description, position,
+          created_at, updated_at
+`
+
+type CreateWorkspaceRoleParams struct {
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+	Code        string `json:"code"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Position    int32  `json:"position"`
+}
+
+func (q *Queries) CreateWorkspaceRole(ctx context.Context, arg CreateWorkspaceRoleParams) (ControlWorkspaceRole, error) {
+	row := q.queryRow(ctx, q.createWorkspaceRoleStmt, createWorkspaceRole,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.Code,
+		arg.Title,
+		arg.Description,
+		arg.Position,
+	)
+	var i ControlWorkspaceRole
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Code,
+		&i.Title,
+		&i.Description,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteGlobalInviteRoleReferences = `-- name: DeleteGlobalInviteRoleReferences :execrows
+DELETE FROM control_invite_global_role
+WHERE role_id = $1
+`
+
+func (q *Queries) DeleteGlobalInviteRoleReferences(ctx context.Context, roleID string) (int64, error) {
+	result, err := q.exec(ctx, q.deleteGlobalInviteRoleReferencesStmt, deleteGlobalInviteRoleReferences, roleID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteGlobalRole = `-- name: DeleteGlobalRole :execrows
+DELETE FROM control_global_role WHERE id = $1
+`
+
+func (q *Queries) DeleteGlobalRole(ctx context.Context, id string) (int64, error) {
+	result, err := q.exec(ctx, q.deleteGlobalRoleStmt, deleteGlobalRole, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteIdentity = `-- name: DeleteIdentity :execrows
-DELETE FROM control_identity WHERE account_id = $1 AND provider = $2
+DELETE FROM control_identity
+WHERE account_id = $1 AND provider = $2
 `
 
 type DeleteIdentityParams struct {
@@ -347,41 +744,6 @@ type DeleteIdentityParams struct {
 
 func (q *Queries) DeleteIdentity(ctx context.Context, arg DeleteIdentityParams) (int64, error) {
 	result, err := q.exec(ctx, q.deleteIdentityStmt, deleteIdentity, arg.AccountID, arg.Provider)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const deleteRole = `-- name: DeleteRole :execrows
-UPDATE control_role SET deleted_at = now()
-WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND is_owner = FALSE
-`
-
-type DeleteRoleParams struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-}
-
-func (q *Queries) DeleteRole(ctx context.Context, arg DeleteRoleParams) (int64, error) {
-	result, err := q.exec(ctx, q.deleteRoleStmt, deleteRole, arg.ID, arg.WorkspaceID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const deleteRolePermission = `-- name: DeleteRolePermission :execrows
-DELETE FROM control_role_permission WHERE role_id = $1 AND method_key = $2
-`
-
-type DeleteRolePermissionParams struct {
-	RoleID    string `json:"role_id"`
-	MethodKey string `json:"method_key"`
-}
-
-func (q *Queries) DeleteRolePermission(ctx context.Context, arg DeleteRolePermissionParams) (int64, error) {
-	result, err := q.exec(ctx, q.deleteRolePermissionStmt, deleteRolePermission, arg.RoleID, arg.MethodKey)
 	if err != nil {
 		return 0, err
 	}
@@ -412,35 +774,113 @@ func (q *Queries) DeleteTwoFactorChallenge(ctx context.Context, id string) (int6
 	return result.RowsAffected()
 }
 
-const findAccountByIdentity = `-- name: FindAccountByIdentity :one
-SELECT a.id, a.display_name, a.status, a.created_at, a.updated_at
-FROM control_identity i
-JOIN control_account a ON a.id = i.account_id
-WHERE i.provider = $1 AND i.provider_subject = $2
-LIMIT 1
+const deleteTwoFactorChallengesForAccount = `-- name: DeleteTwoFactorChallengesForAccount :execrows
+DELETE FROM control_two_factor_challenge
+WHERE account_id = $1
 `
 
-type FindAccountByIdentityParams struct {
+func (q *Queries) DeleteTwoFactorChallengesForAccount(ctx context.Context, accountID string) (int64, error) {
+	result, err := q.exec(ctx, q.deleteTwoFactorChallengesForAccountStmt, deleteTwoFactorChallengesForAccount, accountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteWorkspaceInviteRoleReferences = `-- name: DeleteWorkspaceInviteRoleReferences :execrows
+DELETE FROM control_invite_workspace_role
+WHERE role_id = $1 AND workspace_id = $2
+`
+
+type DeleteWorkspaceInviteRoleReferencesParams struct {
+	RoleID      string `json:"role_id"`
+	WorkspaceID string `json:"workspace_id"`
+}
+
+func (q *Queries) DeleteWorkspaceInviteRoleReferences(ctx context.Context, arg DeleteWorkspaceInviteRoleReferencesParams) (int64, error) {
+	result, err := q.exec(ctx, q.deleteWorkspaceInviteRoleReferencesStmt, deleteWorkspaceInviteRoleReferences, arg.RoleID, arg.WorkspaceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteWorkspaceRole = `-- name: DeleteWorkspaceRole :execrows
+DELETE FROM control_workspace_role
+WHERE id = $1 AND workspace_id = $2
+`
+
+type DeleteWorkspaceRoleParams struct {
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+}
+
+func (q *Queries) DeleteWorkspaceRole(ctx context.Context, arg DeleteWorkspaceRoleParams) (int64, error) {
+	result, err := q.exec(ctx, q.deleteWorkspaceRoleStmt, deleteWorkspaceRole, arg.ID, arg.WorkspaceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const findAuthPrincipalByIdentity = `-- name: FindAuthPrincipalByIdentity :one
+SELECT
+    a.id,
+    a.display_name,
+    a.status,
+    a.created_at,
+    a.updated_at,
+    pm.status AS platform_status,
+    pm.workspace_limit,
+    EXISTS (
+        SELECT 1
+        FROM control_two_factor tf
+        WHERE tf.account_id = a.id
+          AND tf.activated_at IS NOT NULL
+    ) AS two_factor_enabled
+FROM control_identity i
+JOIN control_account a ON a.id = i.account_id
+JOIN control_platform_member pm ON pm.account_id = a.id
+WHERE i.provider = $1
+  AND i.provider_subject = $2
+`
+
+type FindAuthPrincipalByIdentityParams struct {
 	Provider        string `json:"provider"`
 	ProviderSubject string `json:"provider_subject"`
 }
 
-func (q *Queries) FindAccountByIdentity(ctx context.Context, arg FindAccountByIdentityParams) (ControlAccount, error) {
-	row := q.queryRow(ctx, q.findAccountByIdentityStmt, findAccountByIdentity, arg.Provider, arg.ProviderSubject)
-	var i ControlAccount
+type FindAuthPrincipalByIdentityRow struct {
+	ID               string    `json:"id"`
+	DisplayName      string    `json:"display_name"`
+	Status           string    `json:"status"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	PlatformStatus   string    `json:"platform_status"`
+	WorkspaceLimit   int32     `json:"workspace_limit"`
+	TwoFactorEnabled bool      `json:"two_factor_enabled"`
+}
+
+func (q *Queries) FindAuthPrincipalByIdentity(ctx context.Context, arg FindAuthPrincipalByIdentityParams) (FindAuthPrincipalByIdentityRow, error) {
+	row := q.queryRow(ctx, q.findAuthPrincipalByIdentityStmt, findAuthPrincipalByIdentity, arg.Provider, arg.ProviderSubject)
+	var i FindAuthPrincipalByIdentityRow
 	err := row.Scan(
 		&i.ID,
 		&i.DisplayName,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PlatformStatus,
+		&i.WorkspaceLimit,
+		&i.TwoFactorEnabled,
 	)
 	return i, err
 }
 
 const getAccount = `-- name: GetAccount :one
 SELECT id, display_name, status, created_at, updated_at
-FROM control_account WHERE id = $1 LIMIT 1
+FROM control_account
+WHERE id = $1
 `
 
 func (q *Queries) GetAccount(ctx context.Context, id string) (ControlAccount, error) {
@@ -456,83 +896,264 @@ func (q *Queries) GetAccount(ctx context.Context, id string) (ControlAccount, er
 	return i, err
 }
 
-const getAccountPosition = `-- name: GetAccountPosition :one
-SELECT COALESCE((
-    SELECT r.position
-    FROM control_workspace_member m
-    JOIN control_role_member rm ON rm.account_id = m.account_id
-    JOIN control_role r ON r.id = rm.role_id
-    WHERE m.workspace_id = $1 AND m.account_id = $2 AND m.status = 'active'
-      AND r.workspace_id = m.workspace_id AND r.deleted_at IS NULL
-    ORDER BY r.position
-    LIMIT 1
-), 2147483647) AS position
+const getGlobalAuthorizationForUpdate = `-- name: GetGlobalAuthorizationForUpdate :one
+SELECT
+    p.owner_account_id = $1::text AS actor_is_owner,
+    pm.status = 'active' AS actor_is_active,
+    (
+        p.owner_account_id = $1::text
+        OR EXISTS (
+            SELECT 1
+            FROM control_global_role_member rm
+            JOIN control_global_role_permission rp ON rp.role_id = rm.role_id
+            JOIN control_method m
+                ON m.method_key = rp.method_key
+               AND m.scope = 'global'
+            WHERE rm.account_id = $1::text
+              AND rp.method_key = $2::text
+        )
+    ) AS allowed,
+    CASE
+        WHEN p.owner_account_id = $1::text THEN 0
+        ELSE COALESCE((
+            SELECT MIN(r.position)
+            FROM control_global_role_member rm
+            JOIN control_global_role r ON r.id = rm.role_id
+            WHERE rm.account_id = $1::text
+        ), 2147483647)
+    END AS actor_position,
+    CASE
+        WHEN p.owner_account_id = $3::text THEN 0
+        ELSE COALESCE((
+            SELECT MIN(r.position)
+            FROM control_global_role_member rm
+            JOIN control_global_role r ON r.id = rm.role_id
+            WHERE rm.account_id = $3::text
+        ), 2147483647)
+    END AS target_position,
+    EXISTS (
+        SELECT 1
+        FROM control_platform_member target
+        WHERE target.account_id = $3::text
+          AND target.status = 'active'
+    ) AS target_is_active
+FROM control_platform p
+JOIN control_platform_member pm ON pm.account_id = $1::text
+WHERE p.id = 1
+FOR UPDATE OF p
 `
 
-type GetAccountPositionParams struct {
-	WorkspaceID string `json:"workspace_id"`
-	AccountID   string `json:"account_id"`
+type GetGlobalAuthorizationForUpdateParams struct {
+	ActorID         string `json:"actor_id"`
+	MethodKey       string `json:"method_key"`
+	TargetAccountID string `json:"target_account_id"`
 }
 
-func (q *Queries) GetAccountPosition(ctx context.Context, arg GetAccountPositionParams) (interface{}, error) {
-	row := q.queryRow(ctx, q.getAccountPositionStmt, getAccountPosition, arg.WorkspaceID, arg.AccountID)
-	var position interface{}
-	err := row.Scan(&position)
-	return position, err
+type GetGlobalAuthorizationForUpdateRow struct {
+	ActorIsOwner   bool         `json:"actor_is_owner"`
+	ActorIsActive  bool         `json:"actor_is_active"`
+	Allowed        sql.NullBool `json:"allowed"`
+	ActorPosition  interface{}  `json:"actor_position"`
+	TargetPosition interface{}  `json:"target_position"`
+	TargetIsActive bool         `json:"target_is_active"`
 }
 
-const getActiveSessionByHash = `-- name: GetActiveSessionByHash :one
-SELECT id, account_id, token_hash, ip, user_agent, bind_to_ip, expires_at, revoked_at, last_used_at, created_at
-FROM control_session
-WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
-LIMIT 1
+func (q *Queries) GetGlobalAuthorizationForUpdate(ctx context.Context, arg GetGlobalAuthorizationForUpdateParams) (GetGlobalAuthorizationForUpdateRow, error) {
+	row := q.queryRow(ctx, q.getGlobalAuthorizationForUpdateStmt, getGlobalAuthorizationForUpdate, arg.ActorID, arg.MethodKey, arg.TargetAccountID)
+	var i GetGlobalAuthorizationForUpdateRow
+	err := row.Scan(
+		&i.ActorIsOwner,
+		&i.ActorIsActive,
+		&i.Allowed,
+		&i.ActorPosition,
+		&i.TargetPosition,
+		&i.TargetIsActive,
+	)
+	return i, err
+}
+
+const getGlobalRole = `-- name: GetGlobalRole :one
+SELECT id, code, title, description, position, created_at, updated_at
+FROM control_global_role
+WHERE id = $1
 `
 
-func (q *Queries) GetActiveSessionByHash(ctx context.Context, tokenHash string) (ControlSession, error) {
-	row := q.queryRow(ctx, q.getActiveSessionByHashStmt, getActiveSessionByHash, tokenHash)
-	var i ControlSession
+func (q *Queries) GetGlobalRole(ctx context.Context, id string) (ControlGlobalRole, error) {
+	row := q.queryRow(ctx, q.getGlobalRoleStmt, getGlobalRole, id)
+	var i ControlGlobalRole
 	err := row.Scan(
 		&i.ID,
+		&i.Code,
+		&i.Title,
+		&i.Description,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getIdentity = `-- name: GetIdentity :one
+SELECT account_id, provider, provider_subject, payload, created_at, updated_at
+FROM control_identity
+WHERE account_id = $1 AND provider = $2
+`
+
+type GetIdentityParams struct {
+	AccountID string `json:"account_id"`
+	Provider  string `json:"provider"`
+}
+
+func (q *Queries) GetIdentity(ctx context.Context, arg GetIdentityParams) (ControlIdentity, error) {
+	row := q.queryRow(ctx, q.getIdentityStmt, getIdentity, arg.AccountID, arg.Provider)
+	var i ControlIdentity
+	err := row.Scan(
 		&i.AccountID,
+		&i.Provider,
+		&i.ProviderSubject,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getInvite = `-- name: GetInvite :one
+SELECT id, kind, workspace_id, created_by, token_hash, expires_at,
+       accepted_by, accepted_at, revoked_at, created_at
+FROM control_invite
+WHERE id = $1
+`
+
+func (q *Queries) GetInvite(ctx context.Context, id string) (ControlInvite, error) {
+	row := q.queryRow(ctx, q.getInviteStmt, getInvite, id)
+	var i ControlInvite
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.WorkspaceID,
+		&i.CreatedBy,
 		&i.TokenHash,
-		&i.Ip,
-		&i.UserAgent,
-		&i.BindToIp,
 		&i.ExpiresAt,
+		&i.AcceptedBy,
+		&i.AcceptedAt,
 		&i.RevokedAt,
-		&i.LastUsedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getInviteByHash = `-- name: GetInviteByHash :one
+SELECT id, kind, workspace_id, created_by, token_hash, expires_at,
+       accepted_by, accepted_at, revoked_at, created_at
+FROM control_invite
+WHERE token_hash = $1
+`
+
+func (q *Queries) GetInviteByHash(ctx context.Context, tokenHash string) (ControlInvite, error) {
+	row := q.queryRow(ctx, q.getInviteByHashStmt, getInviteByHash, tokenHash)
+	var i ControlInvite
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.WorkspaceID,
+		&i.CreatedBy,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.AcceptedBy,
+		&i.AcceptedAt,
+		&i.RevokedAt,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getInviteByHashForUpdate = `-- name: GetInviteByHashForUpdate :one
-SELECT id, workspace_id, created_by, token_hash, max_uses, used_count, expires_at, revoked_at, created_at
-FROM control_workspace_invite
+SELECT id, kind, workspace_id, created_by, token_hash, expires_at,
+       accepted_by, accepted_at, revoked_at, created_at
+FROM control_invite
 WHERE token_hash = $1
-LIMIT 1 FOR UPDATE
+FOR UPDATE
 `
 
-func (q *Queries) GetInviteByHashForUpdate(ctx context.Context, tokenHash string) (ControlWorkspaceInvite, error) {
+func (q *Queries) GetInviteByHashForUpdate(ctx context.Context, tokenHash string) (ControlInvite, error) {
 	row := q.queryRow(ctx, q.getInviteByHashForUpdateStmt, getInviteByHashForUpdate, tokenHash)
-	var i ControlWorkspaceInvite
+	var i ControlInvite
 	err := row.Scan(
 		&i.ID,
+		&i.Kind,
 		&i.WorkspaceID,
 		&i.CreatedBy,
 		&i.TokenHash,
-		&i.MaxUses,
-		&i.UsedCount,
 		&i.ExpiresAt,
+		&i.AcceptedBy,
+		&i.AcceptedAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
+const getInviteForUpdate = `-- name: GetInviteForUpdate :one
+SELECT id, kind, workspace_id, created_by, token_hash, expires_at,
+       accepted_by, accepted_at, revoked_at, created_at
+FROM control_invite
+WHERE id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetInviteForUpdate(ctx context.Context, id string) (ControlInvite, error) {
+	row := q.queryRow(ctx, q.getInviteForUpdateStmt, getInviteForUpdate, id)
+	var i ControlInvite
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.WorkspaceID,
+		&i.CreatedBy,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.AcceptedBy,
+		&i.AcceptedAt,
+		&i.RevokedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getLimitRequestForUpdate = `-- name: GetLimitRequestForUpdate :one
+SELECT id, kind, account_id, workspace_id, current_limit, requested_limit,
+       approved_limit, reason, status, requested_by, reviewed_by,
+       review_comment, created_at, reviewed_at
+FROM control_limit_request
+WHERE id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetLimitRequestForUpdate(ctx context.Context, id string) (ControlLimitRequest, error) {
+	row := q.queryRow(ctx, q.getLimitRequestForUpdateStmt, getLimitRequestForUpdate, id)
+	var i ControlLimitRequest
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.AccountID,
+		&i.WorkspaceID,
+		&i.CurrentLimit,
+		&i.RequestedLimit,
+		&i.ApprovedLimit,
+		&i.Reason,
+		&i.Status,
+		&i.RequestedBy,
+		&i.ReviewedBy,
+		&i.ReviewComment,
+		&i.CreatedAt,
+		&i.ReviewedAt,
+	)
+	return i, err
+}
+
 const getMethod = `-- name: GetMethod :one
-SELECT method_key, service, group_key, position, created_at, updated_at
-FROM control_method WHERE method_key = $1 LIMIT 1
+SELECT method_key, service, group_key, scope, position, created_at, updated_at
+FROM control_method WHERE method_key = $1
 `
 
 func (q *Queries) GetMethod(ctx context.Context, methodKey string) (ControlMethod, error) {
@@ -542,6 +1163,7 @@ func (q *Queries) GetMethod(ctx context.Context, methodKey string) (ControlMetho
 		&i.MethodKey,
 		&i.Service,
 		&i.GroupKey,
+		&i.Scope,
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -549,37 +1171,70 @@ func (q *Queries) GetMethod(ctx context.Context, methodKey string) (ControlMetho
 	return i, err
 }
 
-const getRole = `-- name: GetRole :one
-SELECT id, workspace_id, code, title, description, position, is_owner, deleted_at, created_at, updated_at
-FROM control_role WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL LIMIT 1
+const getPlatform = `-- name: GetPlatform :one
+SELECT id, owner_account_id, initialized_by, initialized_at, updated_at
+FROM control_platform
+WHERE id = 1
 `
 
-type GetRoleParams struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-}
-
-func (q *Queries) GetRole(ctx context.Context, arg GetRoleParams) (ControlRole, error) {
-	row := q.queryRow(ctx, q.getRoleStmt, getRole, arg.ID, arg.WorkspaceID)
-	var i ControlRole
+func (q *Queries) GetPlatform(ctx context.Context) (ControlPlatform, error) {
+	row := q.queryRow(ctx, q.getPlatformStmt, getPlatform)
+	var i ControlPlatform
 	err := row.Scan(
 		&i.ID,
-		&i.WorkspaceID,
-		&i.Code,
-		&i.Title,
-		&i.Description,
-		&i.Position,
-		&i.IsOwner,
-		&i.DeletedAt,
-		&i.CreatedAt,
+		&i.OwnerAccountID,
+		&i.InitializedBy,
+		&i.InitializedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPlatformMember = `-- name: GetPlatformMember :one
+SELECT account_id, status, workspace_limit, invited_by, joined_at, updated_at
+FROM control_platform_member
+WHERE account_id = $1
+`
+
+func (q *Queries) GetPlatformMember(ctx context.Context, accountID string) (ControlPlatformMember, error) {
+	row := q.queryRow(ctx, q.getPlatformMemberStmt, getPlatformMember, accountID)
+	var i ControlPlatformMember
+	err := row.Scan(
+		&i.AccountID,
+		&i.Status,
+		&i.WorkspaceLimit,
+		&i.InvitedBy,
+		&i.JoinedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPlatformMemberForUpdate = `-- name: GetPlatformMemberForUpdate :one
+SELECT account_id, status, workspace_limit, invited_by, joined_at, updated_at
+FROM control_platform_member
+WHERE account_id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetPlatformMemberForUpdate(ctx context.Context, accountID string) (ControlPlatformMember, error) {
+	row := q.queryRow(ctx, q.getPlatformMemberForUpdateStmt, getPlatformMemberForUpdate, accountID)
+	var i ControlPlatformMember
+	err := row.Scan(
+		&i.AccountID,
+		&i.Status,
+		&i.WorkspaceLimit,
+		&i.InvitedBy,
+		&i.JoinedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getTwoFactor = `-- name: GetTwoFactor :one
-SELECT account_id, secret, backup_hashes, activated_at, created_at, updated_at
-FROM control_two_factor WHERE account_id = $1 LIMIT 1
+SELECT account_id, secret, backup_hashes, activated_at, last_totp_counter,
+       created_at, updated_at
+FROM control_two_factor WHERE account_id = $1
 `
 
 func (q *Queries) GetTwoFactor(ctx context.Context, accountID string) (ControlTwoFactor, error) {
@@ -590,18 +1245,32 @@ func (q *Queries) GetTwoFactor(ctx context.Context, accountID string) (ControlTw
 		&i.Secret,
 		&i.BackupHashes,
 		&i.ActivatedAt,
+		&i.LastTotpCounter,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const getTwoFactorChallengeForUpdate = `-- name: GetTwoFactorChallengeForUpdate :one
-SELECT id, account_id, token_hash, ip, user_agent, bind_to_ip, expires_at,
-       session_expires_at, created_at
+const getTwoFactorChallengeAccount = `-- name: GetTwoFactorChallengeAccount :one
+SELECT account_id
 FROM control_two_factor_challenge
 WHERE token_hash = $1 AND expires_at > now()
-LIMIT 1 FOR UPDATE
+`
+
+func (q *Queries) GetTwoFactorChallengeAccount(ctx context.Context, tokenHash string) (string, error) {
+	row := q.queryRow(ctx, q.getTwoFactorChallengeAccountStmt, getTwoFactorChallengeAccount, tokenHash)
+	var account_id string
+	err := row.Scan(&account_id)
+	return account_id, err
+}
+
+const getTwoFactorChallengeForUpdate = `-- name: GetTwoFactorChallengeForUpdate :one
+SELECT id, account_id, invite_id, token_hash, ip, user_agent, bind_to_ip,
+       expires_at, session_expires_at, created_at
+FROM control_two_factor_challenge
+WHERE token_hash = $1 AND expires_at > now()
+FOR UPDATE
 `
 
 func (q *Queries) GetTwoFactorChallengeForUpdate(ctx context.Context, tokenHash string) (ControlTwoFactorChallenge, error) {
@@ -610,6 +1279,7 @@ func (q *Queries) GetTwoFactorChallengeForUpdate(ctx context.Context, tokenHash 
 	err := row.Scan(
 		&i.ID,
 		&i.AccountID,
+		&i.InviteID,
 		&i.TokenHash,
 		&i.Ip,
 		&i.UserAgent,
@@ -622,18 +1292,19 @@ func (q *Queries) GetTwoFactorChallengeForUpdate(ctx context.Context, tokenHash 
 }
 
 const getTwoFactorChallengeWithFactorForUpdate = `-- name: GetTwoFactorChallengeWithFactorForUpdate :one
-SELECT c.id AS challenge_id, c.account_id, c.ip, c.user_agent, c.bind_to_ip,
-       c.expires_at, c.session_expires_at,
-       f.secret, f.backup_hashes, f.activated_at
+SELECT c.id AS challenge_id, c.account_id, c.invite_id, c.ip, c.user_agent,
+       c.bind_to_ip, c.expires_at, c.session_expires_at,
+       f.secret, f.backup_hashes, f.activated_at, f.last_totp_counter
 FROM control_two_factor_challenge c
 JOIN control_two_factor f ON f.account_id = c.account_id
 WHERE c.token_hash = $1 AND c.expires_at > now()
-LIMIT 1 FOR UPDATE
+FOR UPDATE OF c, f
 `
 
 type GetTwoFactorChallengeWithFactorForUpdateRow struct {
 	ChallengeID      string          `json:"challenge_id"`
 	AccountID        string          `json:"account_id"`
+	InviteID         sql.NullString  `json:"invite_id"`
 	Ip               string          `json:"ip"`
 	UserAgent        string          `json:"user_agent"`
 	BindToIp         bool            `json:"bind_to_ip"`
@@ -642,6 +1313,7 @@ type GetTwoFactorChallengeWithFactorForUpdateRow struct {
 	Secret           string          `json:"secret"`
 	BackupHashes     json.RawMessage `json:"backup_hashes"`
 	ActivatedAt      sql.NullTime    `json:"activated_at"`
+	LastTotpCounter  sql.NullInt64   `json:"last_totp_counter"`
 }
 
 func (q *Queries) GetTwoFactorChallengeWithFactorForUpdate(ctx context.Context, tokenHash string) (GetTwoFactorChallengeWithFactorForUpdateRow, error) {
@@ -650,6 +1322,7 @@ func (q *Queries) GetTwoFactorChallengeWithFactorForUpdate(ctx context.Context, 
 	err := row.Scan(
 		&i.ChallengeID,
 		&i.AccountID,
+		&i.InviteID,
 		&i.Ip,
 		&i.UserAgent,
 		&i.BindToIp,
@@ -658,13 +1331,15 @@ func (q *Queries) GetTwoFactorChallengeWithFactorForUpdate(ctx context.Context, 
 		&i.Secret,
 		&i.BackupHashes,
 		&i.ActivatedAt,
+		&i.LastTotpCounter,
 	)
 	return i, err
 }
 
 const getTwoFactorForUpdate = `-- name: GetTwoFactorForUpdate :one
-SELECT account_id, secret, backup_hashes, activated_at, created_at, updated_at
-FROM control_two_factor WHERE account_id = $1 LIMIT 1 FOR UPDATE
+SELECT account_id, secret, backup_hashes, activated_at, last_totp_counter,
+       created_at, updated_at
+FROM control_two_factor WHERE account_id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetTwoFactorForUpdate(ctx context.Context, accountID string) (ControlTwoFactor, error) {
@@ -675,6 +1350,7 @@ func (q *Queries) GetTwoFactorForUpdate(ctx context.Context, accountID string) (
 		&i.Secret,
 		&i.BackupHashes,
 		&i.ActivatedAt,
+		&i.LastTotpCounter,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -682,8 +1358,10 @@ func (q *Queries) GetTwoFactorForUpdate(ctx context.Context, accountID string) (
 }
 
 const getWorkspace = `-- name: GetWorkspace :one
-SELECT id, slug, title, status, created_by, created_at, updated_at
-FROM control_workspace WHERE id = $1 LIMIT 1
+SELECT id, slug, title, status, created_by, owner_account_id, employee_limit,
+       created_at, updated_at
+FROM control_workspace
+WHERE id = $1
 `
 
 func (q *Queries) GetWorkspace(ctx context.Context, id string) (ControlWorkspace, error) {
@@ -695,6 +1373,247 @@ func (q *Queries) GetWorkspace(ctx context.Context, id string) (ControlWorkspace
 		&i.Title,
 		&i.Status,
 		&i.CreatedBy,
+		&i.OwnerAccountID,
+		&i.EmployeeLimit,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getWorkspaceAuthorizationForUpdate = `-- name: GetWorkspaceAuthorizationForUpdate :one
+SELECT
+    w.owner_account_id = $1::text AS actor_is_owner,
+    wm.status = 'active' AS actor_is_active,
+    (
+        w.owner_account_id = $1::text
+        OR EXISTS (
+            SELECT 1
+            FROM control_workspace_role_member rm
+            JOIN control_workspace_role_permission rp
+                ON rp.role_id = rm.role_id
+               AND rp.workspace_id = rm.workspace_id
+            JOIN control_method m
+                ON m.method_key = rp.method_key
+               AND m.scope = 'workspace'
+            WHERE rm.workspace_id = w.id
+              AND rm.account_id = $1::text
+              AND rp.method_key = $2::text
+        )
+    ) AS allowed,
+    CASE
+        WHEN w.owner_account_id = $1::text THEN 0
+        ELSE COALESCE((
+            SELECT MIN(r.position)
+            FROM control_workspace_role_member rm
+            JOIN control_workspace_role r
+                ON r.id = rm.role_id
+               AND r.workspace_id = rm.workspace_id
+            WHERE rm.workspace_id = w.id
+              AND rm.account_id = $1::text
+        ), 2147483647)
+    END AS actor_position,
+    CASE
+        WHEN w.owner_account_id = $3::text THEN 0
+        ELSE COALESCE((
+            SELECT MIN(r.position)
+            FROM control_workspace_role_member rm
+            JOIN control_workspace_role r
+                ON r.id = rm.role_id
+               AND r.workspace_id = rm.workspace_id
+            WHERE rm.workspace_id = w.id
+              AND rm.account_id = $3::text
+        ), 2147483647)
+    END AS target_position,
+    EXISTS (
+        SELECT 1
+        FROM control_workspace_member target
+        WHERE target.workspace_id = w.id
+          AND target.account_id = $3::text
+          AND target.status = 'active'
+    ) AS target_is_active,
+    w.employee_limit,
+    (
+        SELECT COUNT(*)
+        FROM control_workspace_member employee
+        WHERE employee.workspace_id = w.id
+          AND employee.status = 'active'
+          AND employee.account_id <> w.owner_account_id
+    ) AS employee_count,
+    (
+        SELECT COUNT(*)
+        FROM control_invite invite
+        WHERE invite.workspace_id = w.id
+          AND invite.kind = 'workspace'
+          AND invite.accepted_at IS NULL
+          AND invite.revoked_at IS NULL
+          AND (invite.expires_at IS NULL OR invite.expires_at > now())
+    ) AS pending_invite_count
+FROM control_workspace w
+JOIN control_workspace_member wm
+    ON wm.workspace_id = w.id
+   AND wm.account_id = $1::text
+WHERE w.id = $4::text
+  AND w.status = 'active'
+FOR UPDATE OF w
+`
+
+type GetWorkspaceAuthorizationForUpdateParams struct {
+	ActorID         string `json:"actor_id"`
+	MethodKey       string `json:"method_key"`
+	TargetAccountID string `json:"target_account_id"`
+	WorkspaceID     string `json:"workspace_id"`
+}
+
+type GetWorkspaceAuthorizationForUpdateRow struct {
+	ActorIsOwner       bool         `json:"actor_is_owner"`
+	ActorIsActive      bool         `json:"actor_is_active"`
+	Allowed            sql.NullBool `json:"allowed"`
+	ActorPosition      interface{}  `json:"actor_position"`
+	TargetPosition     interface{}  `json:"target_position"`
+	TargetIsActive     bool         `json:"target_is_active"`
+	EmployeeLimit      int32        `json:"employee_limit"`
+	EmployeeCount      int64        `json:"employee_count"`
+	PendingInviteCount int64        `json:"pending_invite_count"`
+}
+
+func (q *Queries) GetWorkspaceAuthorizationForUpdate(ctx context.Context, arg GetWorkspaceAuthorizationForUpdateParams) (GetWorkspaceAuthorizationForUpdateRow, error) {
+	row := q.queryRow(ctx, q.getWorkspaceAuthorizationForUpdateStmt, getWorkspaceAuthorizationForUpdate,
+		arg.ActorID,
+		arg.MethodKey,
+		arg.TargetAccountID,
+		arg.WorkspaceID,
+	)
+	var i GetWorkspaceAuthorizationForUpdateRow
+	err := row.Scan(
+		&i.ActorIsOwner,
+		&i.ActorIsActive,
+		&i.Allowed,
+		&i.ActorPosition,
+		&i.TargetPosition,
+		&i.TargetIsActive,
+		&i.EmployeeLimit,
+		&i.EmployeeCount,
+		&i.PendingInviteCount,
+	)
+	return i, err
+}
+
+const getWorkspaceCapacityForUpdate = `-- name: GetWorkspaceCapacityForUpdate :one
+SELECT
+    w.employee_limit,
+    (
+        SELECT COUNT(*)
+        FROM control_workspace_member employee
+        WHERE employee.workspace_id = w.id
+          AND employee.status = 'active'
+          AND employee.account_id <> w.owner_account_id
+    ) AS employee_count
+FROM control_workspace w
+WHERE w.id = $1
+  AND w.status = 'active'
+FOR UPDATE
+`
+
+type GetWorkspaceCapacityForUpdateRow struct {
+	EmployeeLimit int32 `json:"employee_limit"`
+	EmployeeCount int64 `json:"employee_count"`
+}
+
+func (q *Queries) GetWorkspaceCapacityForUpdate(ctx context.Context, id string) (GetWorkspaceCapacityForUpdateRow, error) {
+	row := q.queryRow(ctx, q.getWorkspaceCapacityForUpdateStmt, getWorkspaceCapacityForUpdate, id)
+	var i GetWorkspaceCapacityForUpdateRow
+	err := row.Scan(&i.EmployeeLimit, &i.EmployeeCount)
+	return i, err
+}
+
+const getWorkspaceCreationBundleForUpdate = `-- name: GetWorkspaceCreationBundleForUpdate :one
+SELECT
+    pm.workspace_limit,
+    (
+        SELECT COUNT(*)
+        FROM control_workspace w
+        WHERE w.owner_account_id = pm.account_id
+          AND w.status = 'active'
+    ) AS owned_workspace_count,
+    (
+        p.owner_account_id = pm.account_id
+        OR EXISTS (
+            SELECT 1
+            FROM control_global_role_member rm
+            JOIN control_global_role_permission rp ON rp.role_id = rm.role_id
+            WHERE rm.account_id = pm.account_id
+              AND rp.method_key = 'control.global.workspace.create'
+        )
+    ) AS allowed
+FROM control_platform_member pm
+JOIN control_platform p ON p.id = 1
+WHERE pm.account_id = $1
+  AND pm.status = 'active'
+FOR UPDATE OF pm
+`
+
+type GetWorkspaceCreationBundleForUpdateRow struct {
+	WorkspaceLimit      int32        `json:"workspace_limit"`
+	OwnedWorkspaceCount int64        `json:"owned_workspace_count"`
+	Allowed             sql.NullBool `json:"allowed"`
+}
+
+func (q *Queries) GetWorkspaceCreationBundleForUpdate(ctx context.Context, accountID string) (GetWorkspaceCreationBundleForUpdateRow, error) {
+	row := q.queryRow(ctx, q.getWorkspaceCreationBundleForUpdateStmt, getWorkspaceCreationBundleForUpdate, accountID)
+	var i GetWorkspaceCreationBundleForUpdateRow
+	err := row.Scan(&i.WorkspaceLimit, &i.OwnedWorkspaceCount, &i.Allowed)
+	return i, err
+}
+
+const getWorkspaceOwnershipCapacityForUpdate = `-- name: GetWorkspaceOwnershipCapacityForUpdate :one
+SELECT
+    pm.workspace_limit,
+    (
+        SELECT COUNT(*)
+        FROM control_workspace w
+        WHERE w.owner_account_id = pm.account_id
+          AND w.status = 'active'
+    ) AS owned_workspace_count
+FROM control_platform_member pm
+WHERE pm.account_id = $1
+  AND pm.status = 'active'
+FOR UPDATE OF pm
+`
+
+type GetWorkspaceOwnershipCapacityForUpdateRow struct {
+	WorkspaceLimit      int32 `json:"workspace_limit"`
+	OwnedWorkspaceCount int64 `json:"owned_workspace_count"`
+}
+
+func (q *Queries) GetWorkspaceOwnershipCapacityForUpdate(ctx context.Context, accountID string) (GetWorkspaceOwnershipCapacityForUpdateRow, error) {
+	row := q.queryRow(ctx, q.getWorkspaceOwnershipCapacityForUpdateStmt, getWorkspaceOwnershipCapacityForUpdate, accountID)
+	var i GetWorkspaceOwnershipCapacityForUpdateRow
+	err := row.Scan(&i.WorkspaceLimit, &i.OwnedWorkspaceCount)
+	return i, err
+}
+
+const getWorkspaceRole = `-- name: GetWorkspaceRole :one
+SELECT id, workspace_id, code, title, description, position, created_at, updated_at
+FROM control_workspace_role
+WHERE id = $1 AND workspace_id = $2
+`
+
+type GetWorkspaceRoleParams struct {
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+}
+
+func (q *Queries) GetWorkspaceRole(ctx context.Context, arg GetWorkspaceRoleParams) (ControlWorkspaceRole, error) {
+	row := q.queryRow(ctx, q.getWorkspaceRoleStmt, getWorkspaceRole, arg.ID, arg.WorkspaceID)
+	var i ControlWorkspaceRole
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Code,
+		&i.Title,
+		&i.Description,
+		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -702,8 +1621,9 @@ func (q *Queries) GetWorkspace(ctx context.Context, id string) (ControlWorkspace
 }
 
 const hasActiveTwoFactor = `-- name: HasActiveTwoFactor :one
-SELECT EXISTS(
-    SELECT 1 FROM control_two_factor WHERE account_id = $1 AND activated_at IS NOT NULL
+SELECT EXISTS (
+    SELECT 1 FROM control_two_factor
+    WHERE account_id = $1 AND activated_at IS NOT NULL
 ) AS active
 `
 
@@ -714,26 +1634,13 @@ func (q *Queries) HasActiveTwoFactor(ctx context.Context, accountID string) (boo
 	return active, err
 }
 
-const incrementInviteUse = `-- name: IncrementInviteUse :execrows
-UPDATE control_workspace_invite SET used_count = used_count + 1
-WHERE id = $1
-  AND revoked_at IS NULL
-  AND (expires_at IS NULL OR expires_at > now())
-  AND (max_uses IS NULL OR used_count < max_uses)
-`
-
-func (q *Queries) IncrementInviteUse(ctx context.Context, id string) (int64, error) {
-	result, err := q.exec(ctx, q.incrementInviteUseStmt, incrementInviteUse, id)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const isActiveWorkspaceMember = `-- name: IsActiveWorkspaceMember :one
-SELECT EXISTS(
-    SELECT 1 FROM control_workspace_member
-    WHERE workspace_id = $1 AND account_id = $2 AND status = 'active'
+SELECT EXISTS (
+    SELECT 1
+    FROM control_workspace_member
+    WHERE workspace_id = $1
+      AND account_id = $2
+      AND status = 'active'
 ) AS active
 `
 
@@ -750,13 +1657,14 @@ func (q *Queries) IsActiveWorkspaceMember(ctx context.Context, arg IsActiveWorks
 }
 
 const listAccessCatalog = `-- name: ListAccessCatalog :many
-SELECT g.service, service_catalog.position AS service_position, g.group_key, g.position AS group_position,
+SELECT g.service, service_catalog.position AS service_position,
+       g.group_key, g.position AS group_position,
        COALESCE(service_title.value, g.service) AS service_title,
        COALESCE(service_description.value, '') AS service_description,
-       COALESCE(group_loc.value, g.group_key) AS group_title,
+       COALESCE(group_title.value, g.group_key) AS group_title,
        COALESCE(group_description.value, '') AS group_description,
-       m.method_key, m.position,
-       COALESCE(access_loc.value, m.method_key) AS access_title,
+       m.method_key, m.scope, m.position,
+       COALESCE(access_title.value, m.method_key) AS access_title,
        COALESCE(access_description.value, '') AS access_description
 FROM control_method_group g
 JOIN control_method m ON m.service = g.service AND m.group_key = g.group_key
@@ -766,55 +1674,46 @@ LEFT JOIN control_localization service_title
    AND service_title.locale = $1
 LEFT JOIN control_localization service_description
     ON service_description.localization_key = 'control.access_service.' || g.service || '.description'
-   AND service_description.locale = $2
-LEFT JOIN control_localization group_loc
-    ON group_loc.localization_key = 'control.method_group.' || g.service || '.' || g.group_key
-   AND group_loc.locale = $3
+   AND service_description.locale = $1
+LEFT JOIN control_localization group_title
+    ON group_title.localization_key = 'control.method_group.' || g.service || '.' || g.group_key
+   AND group_title.locale = $1
 LEFT JOIN control_localization group_description
     ON group_description.localization_key = 'control.method_group.' || g.service || '.' || g.group_key || '.description'
-   AND group_description.locale = $4
-LEFT JOIN control_localization access_loc
-    ON access_loc.localization_key = 'control.method.' || m.method_key
-   AND access_loc.locale = $5
+   AND group_description.locale = $1
+LEFT JOIN control_localization access_title
+    ON access_title.localization_key = 'control.method.' || m.method_key
+   AND access_title.locale = $1
 LEFT JOIN control_localization access_description
     ON access_description.localization_key = 'control.method.' || m.method_key || '.description'
-   AND access_description.locale = $6
+   AND access_description.locale = $1
+WHERE $2::text = '' OR m.scope = $2::text
 ORDER BY service_catalog.position, g.position, m.position, m.method_key
 `
 
 type ListAccessCatalogParams struct {
-	Locale   string `json:"locale"`
-	Locale_2 string `json:"locale_2"`
-	Locale_3 string `json:"locale_3"`
-	Locale_4 string `json:"locale_4"`
-	Locale_5 string `json:"locale_5"`
-	Locale_6 string `json:"locale_6"`
+	Locale string `json:"locale"`
+	Scope  string `json:"scope"`
 }
 
 type ListAccessCatalogRow struct {
-	Service            string `json:"service"`
-	ServicePosition    int32  `json:"service_position"`
-	GroupKey           string `json:"group_key"`
-	GroupPosition      int32  `json:"group_position"`
-	ServiceTitle       string `json:"service_title"`
-	ServiceDescription string `json:"service_description"`
-	GroupTitle         string `json:"group_title"`
-	GroupDescription   string `json:"group_description"`
-	MethodKey          string `json:"method_key"`
-	Position           int32  `json:"position"`
-	AccessTitle        string `json:"access_title"`
-	AccessDescription  string `json:"access_description"`
+	Service            string         `json:"service"`
+	ServicePosition    int32          `json:"service_position"`
+	GroupKey           string         `json:"group_key"`
+	GroupPosition      int32          `json:"group_position"`
+	ServiceTitle       string         `json:"service_title"`
+	ServiceDescription string         `json:"service_description"`
+	GroupTitle         string         `json:"group_title"`
+	GroupDescription   string         `json:"group_description"`
+	MethodKey          string         `json:"method_key"`
+	Scope              sql.NullString `json:"scope"`
+	Position           int32          `json:"position"`
+	AccessTitle        string         `json:"access_title"`
+	AccessDescription  string         `json:"access_description"`
 }
 
 func (q *Queries) ListAccessCatalog(ctx context.Context, arg ListAccessCatalogParams) ([]ListAccessCatalogRow, error) {
-	rows, err := q.query(ctx, q.listAccessCatalogStmt, listAccessCatalog,
-		arg.Locale,
-		arg.Locale_2,
-		arg.Locale_3,
-		arg.Locale_4,
-		arg.Locale_5,
-		arg.Locale_6,
-	)
+	rows, err := q.query(ctx, q.listAccessCatalogStmt, listAccessCatalog, arg.Locale, arg.Scope)
 	if err != nil {
 		return nil, err
 	}
@@ -832,6 +1731,7 @@ func (q *Queries) ListAccessCatalog(ctx context.Context, arg ListAccessCatalogPa
 			&i.GroupTitle,
 			&i.GroupDescription,
 			&i.MethodKey,
+			&i.Scope,
 			&i.Position,
 			&i.AccessTitle,
 			&i.AccessDescription,
@@ -850,93 +1750,34 @@ func (q *Queries) ListAccessCatalog(ctx context.Context, arg ListAccessCatalogPa
 }
 
 const listAuditEvents = `-- name: ListAuditEvents :many
-SELECT id, workspace_id, actor_id, method_key, target_type, target_id,
-       COALESCE(before_data, '{}'::jsonb) AS before_data, COALESCE(after_data, '{}'::jsonb) AS after_data, result, request_id, occurred_at
+SELECT id, scope, workspace_id, actor_id, method_key, target_type, target_id,
+       COALESCE(before_data, '{}'::jsonb) AS before_data,
+       COALESCE(after_data, '{}'::jsonb) AS after_data,
+       result, request_id, occurred_at
 FROM control_audit_event
-WHERE workspace_id = $1
-ORDER BY occurred_at DESC, id DESC LIMIT $2 OFFSET $3
+WHERE scope = $1
+  AND ($2::text = '' OR workspace_id = $2)
+  AND ($3::timestamptz IS NULL
+       OR (occurred_at, id) < ($3, $4::text))
+ORDER BY occurred_at DESC, id DESC
+LIMIT $5
 `
 
 type ListAuditEventsParams struct {
-	WorkspaceID sql.NullString `json:"workspace_id"`
-	Limit       int32          `json:"limit"`
-	Offset      int32          `json:"offset"`
+	Scope       string       `json:"scope"`
+	WorkspaceID string       `json:"workspace_id"`
+	CursorAt    sql.NullTime `json:"cursor_at"`
+	CursorID    string       `json:"cursor_id"`
+	PageLimit   int32        `json:"page_limit"`
 }
 
 func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]ControlAuditEvent, error) {
-	rows, err := q.query(ctx, q.listAuditEventsStmt, listAuditEvents, arg.WorkspaceID, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ControlAuditEvent
-	for rows.Next() {
-		var i ControlAuditEvent
-		if err := rows.Scan(
-			&i.ID,
-			&i.WorkspaceID,
-			&i.ActorID,
-			&i.MethodKey,
-			&i.TargetType,
-			&i.TargetID,
-			&i.BeforeData,
-			&i.AfterData,
-			&i.Result,
-			&i.RequestID,
-			&i.OccurredAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listAuditEventsFiltered = `-- name: ListAuditEventsFiltered :many
-SELECT id, workspace_id, actor_id, method_key, target_type, target_id,
-       COALESCE(before_data, '{}'::jsonb) AS before_data, COALESCE(after_data, '{}'::jsonb) AS after_data, result, request_id, occurred_at
-FROM control_audit_event
-WHERE workspace_id = $1
-  AND ($2 = '' OR method_key = $3)
-  AND ($4 = '' OR actor_id = $5)
-  AND ($6 IS NULL OR occurred_at >= $7)
-  AND ($8 IS NULL OR occurred_at < $9)
-ORDER BY occurred_at DESC, id DESC LIMIT $10 OFFSET $11
-`
-
-type ListAuditEventsFilteredParams struct {
-	WorkspaceID  sql.NullString `json:"workspace_id"`
-	Column2      interface{}    `json:"column_2"`
-	MethodKey    string         `json:"method_key"`
-	Column4      interface{}    `json:"column_4"`
-	ActorID      sql.NullString `json:"actor_id"`
-	Column6      interface{}    `json:"column_6"`
-	OccurredAt   time.Time      `json:"occurred_at"`
-	Column8      interface{}    `json:"column_8"`
-	OccurredAt_2 time.Time      `json:"occurred_at_2"`
-	Limit        int32          `json:"limit"`
-	Offset       int32          `json:"offset"`
-}
-
-func (q *Queries) ListAuditEventsFiltered(ctx context.Context, arg ListAuditEventsFilteredParams) ([]ControlAuditEvent, error) {
-	rows, err := q.query(ctx, q.listAuditEventsFilteredStmt, listAuditEventsFiltered,
+	rows, err := q.query(ctx, q.listAuditEventsStmt, listAuditEvents,
+		arg.Scope,
 		arg.WorkspaceID,
-		arg.Column2,
-		arg.MethodKey,
-		arg.Column4,
-		arg.ActorID,
-		arg.Column6,
-		arg.OccurredAt,
-		arg.Column8,
-		arg.OccurredAt_2,
-		arg.Limit,
-		arg.Offset,
+		arg.CursorAt,
+		arg.CursorID,
+		arg.PageLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -947,6 +1788,7 @@ func (q *Queries) ListAuditEventsFiltered(ctx context.Context, arg ListAuditEven
 		var i ControlAuditEvent
 		if err := rows.Scan(
 			&i.ID,
+			&i.Scope,
 			&i.WorkspaceID,
 			&i.ActorID,
 			&i.MethodKey,
@@ -971,43 +1813,249 @@ func (q *Queries) ListAuditEventsFiltered(ctx context.Context, arg ListAuditEven
 	return items, nil
 }
 
-const listAuthorizedMethods = `-- name: ListAuthorizedMethods :many
-SELECT DISTINCT cm.method_key, cm.service, cm.group_key, cm.position
-FROM control_method cm
-JOIN control_workspace_member m ON m.workspace_id = $1 AND m.account_id = $2 AND m.status = 'active'
-JOIN control_role_member rm ON rm.account_id = m.account_id
-JOIN control_role r ON r.id = rm.role_id AND r.workspace_id = m.workspace_id AND r.deleted_at IS NULL
-LEFT JOIN control_role_permission p ON p.role_id = r.id AND p.method_key = cm.method_key
-WHERE r.is_owner = TRUE OR p.method_key IS NOT NULL
-ORDER BY cm.service, cm.group_key, cm.method_key
+const listAuthorizedGlobalMethods = `-- name: ListAuthorizedGlobalMethods :many
+SELECT DISTINCT m.method_key, m.service, m.group_key, m.scope, m.position
+FROM control_method m
+JOIN control_platform_member pm
+    ON pm.account_id = $1 AND pm.status = 'active'
+JOIN control_platform p ON p.id = 1
+LEFT JOIN control_global_role_member rm ON rm.account_id = pm.account_id
+LEFT JOIN control_global_role_permission rp
+    ON rp.role_id = rm.role_id AND rp.method_key = m.method_key
+WHERE m.scope = 'global'
+  AND (p.owner_account_id = pm.account_id OR rp.method_key IS NOT NULL)
+ORDER BY m.service, m.group_key, m.position, m.method_key
 `
 
-type ListAuthorizedMethodsParams struct {
-	WorkspaceID string `json:"workspace_id"`
-	AccountID   string `json:"account_id"`
+type ListAuthorizedGlobalMethodsRow struct {
+	MethodKey string         `json:"method_key"`
+	Service   string         `json:"service"`
+	GroupKey  string         `json:"group_key"`
+	Scope     sql.NullString `json:"scope"`
+	Position  int32          `json:"position"`
 }
 
-type ListAuthorizedMethodsRow struct {
-	MethodKey string `json:"method_key"`
-	Service   string `json:"service"`
-	GroupKey  string `json:"group_key"`
-	Position  int32  `json:"position"`
-}
-
-func (q *Queries) ListAuthorizedMethods(ctx context.Context, arg ListAuthorizedMethodsParams) ([]ListAuthorizedMethodsRow, error) {
-	rows, err := q.query(ctx, q.listAuthorizedMethodsStmt, listAuthorizedMethods, arg.WorkspaceID, arg.AccountID)
+func (q *Queries) ListAuthorizedGlobalMethods(ctx context.Context, accountID string) ([]ListAuthorizedGlobalMethodsRow, error) {
+	rows, err := q.query(ctx, q.listAuthorizedGlobalMethodsStmt, listAuthorizedGlobalMethods, accountID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListAuthorizedMethodsRow
+	var items []ListAuthorizedGlobalMethodsRow
 	for rows.Next() {
-		var i ListAuthorizedMethodsRow
+		var i ListAuthorizedGlobalMethodsRow
 		if err := rows.Scan(
 			&i.MethodKey,
 			&i.Service,
 			&i.GroupKey,
+			&i.Scope,
 			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAuthorizedWorkspaceMethods = `-- name: ListAuthorizedWorkspaceMethods :many
+SELECT DISTINCT m.method_key, m.service, m.group_key, m.scope, m.position
+FROM control_method m
+JOIN control_workspace_member wm
+    ON wm.workspace_id = $1
+   AND wm.account_id = $2
+   AND wm.status = 'active'
+JOIN control_workspace w ON w.id = wm.workspace_id AND w.status = 'active'
+LEFT JOIN control_workspace_role_member rm
+    ON rm.workspace_id = wm.workspace_id
+   AND rm.account_id = wm.account_id
+LEFT JOIN control_workspace_role_permission rp
+    ON rp.role_id = rm.role_id
+   AND rp.workspace_id = rm.workspace_id
+   AND rp.method_key = m.method_key
+WHERE m.scope = 'workspace'
+  AND (w.owner_account_id = wm.account_id OR rp.method_key IS NOT NULL)
+ORDER BY m.service, m.group_key, m.position, m.method_key
+`
+
+type ListAuthorizedWorkspaceMethodsParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	AccountID   string `json:"account_id"`
+}
+
+type ListAuthorizedWorkspaceMethodsRow struct {
+	MethodKey string         `json:"method_key"`
+	Service   string         `json:"service"`
+	GroupKey  string         `json:"group_key"`
+	Scope     sql.NullString `json:"scope"`
+	Position  int32          `json:"position"`
+}
+
+func (q *Queries) ListAuthorizedWorkspaceMethods(ctx context.Context, arg ListAuthorizedWorkspaceMethodsParams) ([]ListAuthorizedWorkspaceMethodsRow, error) {
+	rows, err := q.query(ctx, q.listAuthorizedWorkspaceMethodsStmt, listAuthorizedWorkspaceMethods, arg.WorkspaceID, arg.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAuthorizedWorkspaceMethodsRow
+	for rows.Next() {
+		var i ListAuthorizedWorkspaceMethodsRow
+		if err := rows.Scan(
+			&i.MethodKey,
+			&i.Service,
+			&i.GroupKey,
+			&i.Scope,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGlobalInvites = `-- name: ListGlobalInvites :many
+SELECT id, kind, workspace_id, created_by, expires_at, accepted_by,
+       accepted_at, revoked_at, created_at
+FROM control_invite
+WHERE kind = 'global'
+  AND ($1::timestamptz IS NULL
+       OR (created_at, id) < ($1, $2::text))
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListGlobalInvitesParams struct {
+	CursorAt  sql.NullTime `json:"cursor_at"`
+	CursorID  string       `json:"cursor_id"`
+	PageLimit int32        `json:"page_limit"`
+}
+
+type ListGlobalInvitesRow struct {
+	ID          string         `json:"id"`
+	Kind        string         `json:"kind"`
+	WorkspaceID sql.NullString `json:"workspace_id"`
+	CreatedBy   string         `json:"created_by"`
+	ExpiresAt   sql.NullTime   `json:"expires_at"`
+	AcceptedBy  sql.NullString `json:"accepted_by"`
+	AcceptedAt  sql.NullTime   `json:"accepted_at"`
+	RevokedAt   sql.NullTime   `json:"revoked_at"`
+	CreatedAt   time.Time      `json:"created_at"`
+}
+
+func (q *Queries) ListGlobalInvites(ctx context.Context, arg ListGlobalInvitesParams) ([]ListGlobalInvitesRow, error) {
+	rows, err := q.query(ctx, q.listGlobalInvitesStmt, listGlobalInvites, arg.CursorAt, arg.CursorID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGlobalInvitesRow
+	for rows.Next() {
+		var i ListGlobalInvitesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.WorkspaceID,
+			&i.CreatedBy,
+			&i.ExpiresAt,
+			&i.AcceptedBy,
+			&i.AcceptedAt,
+			&i.RevokedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGlobalRolePermissions = `-- name: ListGlobalRolePermissions :many
+SELECT method_key
+FROM control_global_role_permission
+WHERE role_id = $1
+ORDER BY method_key
+`
+
+func (q *Queries) ListGlobalRolePermissions(ctx context.Context, roleID string) ([]string, error) {
+	rows, err := q.query(ctx, q.listGlobalRolePermissionsStmt, listGlobalRolePermissions, roleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var method_key string
+		if err := rows.Scan(&method_key); err != nil {
+			return nil, err
+		}
+		items = append(items, method_key)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGlobalRoles = `-- name: ListGlobalRoles :many
+SELECT r.id, r.code, r.title, r.description, r.position, r.created_at, r.updated_at,
+       COUNT(rm.account_id) AS member_count
+FROM control_global_role r
+LEFT JOIN control_global_role_member rm ON rm.role_id = r.id
+GROUP BY r.id
+ORDER BY r.position, r.id
+`
+
+type ListGlobalRolesRow struct {
+	ID          string    `json:"id"`
+	Code        string    `json:"code"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Position    int32     `json:"position"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	MemberCount int64     `json:"member_count"`
+}
+
+func (q *Queries) ListGlobalRoles(ctx context.Context) ([]ListGlobalRolesRow, error) {
+	rows, err := q.query(ctx, q.listGlobalRolesStmt, listGlobalRoles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGlobalRolesRow
+	for rows.Next() {
+		var i ListGlobalRolesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Title,
+			&i.Description,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MemberCount,
 		); err != nil {
 			return nil, err
 		}
@@ -1024,7 +2072,9 @@ func (q *Queries) ListAuthorizedMethods(ctx context.Context, arg ListAuthorizedM
 
 const listIdentities = `-- name: ListIdentities :many
 SELECT account_id, provider, provider_subject, created_at, updated_at
-FROM control_identity WHERE account_id = $1 ORDER BY provider
+FROM control_identity
+WHERE account_id = $1
+ORDER BY provider
 `
 
 type ListIdentitiesRow struct {
@@ -1064,12 +2114,13 @@ func (q *Queries) ListIdentities(ctx context.Context, accountID string) ([]ListI
 	return items, nil
 }
 
-const listInviteRoles = `-- name: ListInviteRoles :many
-SELECT role_id FROM control_workspace_invite_role WHERE invite_id = $1 ORDER BY role_id
+const listInviteGlobalRoles = `-- name: ListInviteGlobalRoles :many
+SELECT role_id FROM control_invite_global_role
+WHERE invite_id = $1 ORDER BY role_id
 `
 
-func (q *Queries) ListInviteRoles(ctx context.Context, inviteID string) ([]string, error) {
-	rows, err := q.query(ctx, q.listInviteRolesStmt, listInviteRoles, inviteID)
+func (q *Queries) ListInviteGlobalRoles(ctx context.Context, inviteID string) ([]string, error) {
+	rows, err := q.query(ctx, q.listInviteGlobalRolesStmt, listInviteGlobalRoles, inviteID)
 	if err != nil {
 		return nil, err
 	}
@@ -1091,36 +2142,82 @@ func (q *Queries) ListInviteRoles(ctx context.Context, inviteID string) ([]strin
 	return items, nil
 }
 
-const listInvites = `-- name: ListInvites :many
-SELECT id, workspace_id, created_by, token_hash, max_uses, used_count, expires_at, revoked_at, created_at
-FROM control_workspace_invite WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+const listInviteWorkspaceRoles = `-- name: ListInviteWorkspaceRoles :many
+SELECT role_id FROM control_invite_workspace_role
+WHERE invite_id = $1 ORDER BY role_id
 `
 
-type ListInvitesParams struct {
-	WorkspaceID string `json:"workspace_id"`
-	Limit       int32  `json:"limit"`
-	Offset      int32  `json:"offset"`
-}
-
-func (q *Queries) ListInvites(ctx context.Context, arg ListInvitesParams) ([]ControlWorkspaceInvite, error) {
-	rows, err := q.query(ctx, q.listInvitesStmt, listInvites, arg.WorkspaceID, arg.Limit, arg.Offset)
+func (q *Queries) ListInviteWorkspaceRoles(ctx context.Context, inviteID string) ([]string, error) {
+	rows, err := q.query(ctx, q.listInviteWorkspaceRolesStmt, listInviteWorkspaceRoles, inviteID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ControlWorkspaceInvite
+	var items []string
 	for rows.Next() {
-		var i ControlWorkspaceInvite
+		var role_id string
+		if err := rows.Scan(&role_id); err != nil {
+			return nil, err
+		}
+		items = append(items, role_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLimitRequests = `-- name: ListLimitRequests :many
+SELECT id, kind, account_id, workspace_id, current_limit, requested_limit,
+       approved_limit, reason, status, requested_by, reviewed_by,
+       review_comment, created_at, reviewed_at
+FROM control_limit_request
+WHERE ($1::text = '' OR status = $1)
+  AND ($2::timestamptz IS NULL
+       OR (created_at, id) < ($2, $3::text))
+ORDER BY created_at DESC, id DESC
+LIMIT $4
+`
+
+type ListLimitRequestsParams struct {
+	StatusFilter string       `json:"status_filter"`
+	CursorAt     sql.NullTime `json:"cursor_at"`
+	CursorID     string       `json:"cursor_id"`
+	PageLimit    int32        `json:"page_limit"`
+}
+
+func (q *Queries) ListLimitRequests(ctx context.Context, arg ListLimitRequestsParams) ([]ControlLimitRequest, error) {
+	rows, err := q.query(ctx, q.listLimitRequestsStmt, listLimitRequests,
+		arg.StatusFilter,
+		arg.CursorAt,
+		arg.CursorID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ControlLimitRequest
+	for rows.Next() {
+		var i ControlLimitRequest
 		if err := rows.Scan(
 			&i.ID,
+			&i.Kind,
+			&i.AccountID,
 			&i.WorkspaceID,
-			&i.CreatedBy,
-			&i.TokenHash,
-			&i.MaxUses,
-			&i.UsedCount,
-			&i.ExpiresAt,
-			&i.RevokedAt,
+			&i.CurrentLimit,
+			&i.RequestedLimit,
+			&i.ApprovedLimit,
+			&i.Reason,
+			&i.Status,
+			&i.RequestedBy,
+			&i.ReviewedBy,
+			&i.ReviewComment,
 			&i.CreatedAt,
+			&i.ReviewedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1171,8 +2268,9 @@ func (q *Queries) ListMethodGroups(ctx context.Context) ([]ControlMethodGroup, e
 }
 
 const listMethods = `-- name: ListMethods :many
-SELECT method_key, service, group_key, position, created_at, updated_at
-FROM control_method ORDER BY service, group_key, method_key
+SELECT method_key, service, group_key, scope, position, created_at, updated_at
+FROM control_method
+ORDER BY scope, service, group_key, position, method_key
 `
 
 func (q *Queries) ListMethods(ctx context.Context) ([]ControlMethod, error) {
@@ -1188,6 +2286,7 @@ func (q *Queries) ListMethods(ctx context.Context) ([]ControlMethod, error) {
 			&i.MethodKey,
 			&i.Service,
 			&i.GroupKey,
+			&i.Scope,
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -1205,87 +2304,63 @@ func (q *Queries) ListMethods(ctx context.Context) ([]ControlMethod, error) {
 	return items, nil
 }
 
-const listRolePermissions = `-- name: ListRolePermissions :many
-SELECT p.role_id, p.method_key, p.created_at
-FROM control_role_permission p
-JOIN control_role r ON r.id = p.role_id
-WHERE r.workspace_id = $1 AND p.role_id = $2 AND r.deleted_at IS NULL
-ORDER BY p.method_key
+const listPlatformMembers = `-- name: ListPlatformMembers :many
+SELECT
+    pm.account_id,
+    a.display_name,
+    pm.status,
+    pm.workspace_limit,
+    pm.invited_by,
+    pm.joined_at,
+    pm.updated_at,
+    COUNT(w.id) AS owned_workspace_count
+FROM control_platform_member pm
+JOIN control_account a ON a.id = pm.account_id
+LEFT JOIN control_workspace w
+    ON w.owner_account_id = pm.account_id
+   AND w.status = 'active'
+WHERE ($1::timestamptz IS NULL
+       OR (pm.joined_at, pm.account_id) < ($1, $2::text))
+GROUP BY pm.account_id, a.display_name
+ORDER BY pm.joined_at DESC, pm.account_id DESC
+LIMIT $3
 `
 
-type ListRolePermissionsParams struct {
-	WorkspaceID string `json:"workspace_id"`
-	RoleID      string `json:"role_id"`
+type ListPlatformMembersParams struct {
+	CursorAt  sql.NullTime `json:"cursor_at"`
+	CursorID  string       `json:"cursor_id"`
+	PageLimit int32        `json:"page_limit"`
 }
 
-func (q *Queries) ListRolePermissions(ctx context.Context, arg ListRolePermissionsParams) ([]ControlRolePermission, error) {
-	rows, err := q.query(ctx, q.listRolePermissionsStmt, listRolePermissions, arg.WorkspaceID, arg.RoleID)
+type ListPlatformMembersRow struct {
+	AccountID           string         `json:"account_id"`
+	DisplayName         string         `json:"display_name"`
+	Status              string         `json:"status"`
+	WorkspaceLimit      int32          `json:"workspace_limit"`
+	InvitedBy           sql.NullString `json:"invited_by"`
+	JoinedAt            time.Time      `json:"joined_at"`
+	UpdatedAt           time.Time      `json:"updated_at"`
+	OwnedWorkspaceCount int64          `json:"owned_workspace_count"`
+}
+
+func (q *Queries) ListPlatformMembers(ctx context.Context, arg ListPlatformMembersParams) ([]ListPlatformMembersRow, error) {
+	rows, err := q.query(ctx, q.listPlatformMembersStmt, listPlatformMembers, arg.CursorAt, arg.CursorID, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ControlRolePermission
+	var items []ListPlatformMembersRow
 	for rows.Next() {
-		var i ControlRolePermission
-		if err := rows.Scan(&i.RoleID, &i.MethodKey, &i.CreatedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listRoles = `-- name: ListRoles :many
-SELECT r.id, r.workspace_id, r.code, r.title, r.description, r.position, r.is_owner, r.deleted_at, r.created_at, r.updated_at,
-       COUNT(rm.account_id) AS member_count
-FROM control_role r
-LEFT JOIN control_role_member rm ON rm.role_id = r.id
-WHERE r.workspace_id = $1 AND r.deleted_at IS NULL
-GROUP BY r.id
-ORDER BY r.position, r.id
-`
-
-type ListRolesRow struct {
-	ID          string       `json:"id"`
-	WorkspaceID string       `json:"workspace_id"`
-	Code        string       `json:"code"`
-	Title       string       `json:"title"`
-	Description string       `json:"description"`
-	Position    int32        `json:"position"`
-	IsOwner     bool         `json:"is_owner"`
-	DeletedAt   sql.NullTime `json:"deleted_at"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
-	MemberCount int64        `json:"member_count"`
-}
-
-func (q *Queries) ListRoles(ctx context.Context, workspaceID string) ([]ListRolesRow, error) {
-	rows, err := q.query(ctx, q.listRolesStmt, listRoles, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListRolesRow
-	for rows.Next() {
-		var i ListRolesRow
+		var i ListPlatformMembersRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.WorkspaceID,
-			&i.Code,
-			&i.Title,
-			&i.Description,
-			&i.Position,
-			&i.IsOwner,
-			&i.DeletedAt,
-			&i.CreatedAt,
+			&i.AccountID,
+			&i.DisplayName,
+			&i.Status,
+			&i.WorkspaceLimit,
+			&i.InvitedBy,
+			&i.JoinedAt,
 			&i.UpdatedAt,
-			&i.MemberCount,
+			&i.OwnedWorkspaceCount,
 		); err != nil {
 			return nil, err
 		}
@@ -1301,8 +2376,11 @@ func (q *Queries) ListRoles(ctx context.Context, workspaceID string) ([]ListRole
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT id, account_id, token_hash, ip, user_agent, bind_to_ip, expires_at, revoked_at, last_used_at, created_at
-FROM control_session WHERE account_id = $1 ORDER BY created_at DESC
+SELECT id, account_id, token_hash, ip, user_agent, bind_to_ip,
+       expires_at, revoked_at, last_used_at, created_at
+FROM control_session
+WHERE account_id = $1
+ORDER BY created_at DESC, id DESC
 `
 
 func (q *Queries) ListSessions(ctx context.Context, accountID string) ([]ControlSession, error) {
@@ -1339,37 +2417,155 @@ func (q *Queries) ListSessions(ctx context.Context, accountID string) ([]Control
 	return items, nil
 }
 
+const listWorkspaceInvites = `-- name: ListWorkspaceInvites :many
+SELECT id, kind, workspace_id, created_by, expires_at, accepted_by,
+       accepted_at, revoked_at, created_at
+FROM control_invite
+WHERE kind = 'workspace'
+  AND workspace_id = $1::text
+  AND ($2::timestamptz IS NULL
+       OR (created_at, id) < ($2, $3::text))
+ORDER BY created_at DESC, id DESC
+LIMIT $4
+`
+
+type ListWorkspaceInvitesParams struct {
+	WorkspaceID string       `json:"workspace_id"`
+	CursorAt    sql.NullTime `json:"cursor_at"`
+	CursorID    string       `json:"cursor_id"`
+	PageLimit   int32        `json:"page_limit"`
+}
+
+type ListWorkspaceInvitesRow struct {
+	ID          string         `json:"id"`
+	Kind        string         `json:"kind"`
+	WorkspaceID sql.NullString `json:"workspace_id"`
+	CreatedBy   string         `json:"created_by"`
+	ExpiresAt   sql.NullTime   `json:"expires_at"`
+	AcceptedBy  sql.NullString `json:"accepted_by"`
+	AcceptedAt  sql.NullTime   `json:"accepted_at"`
+	RevokedAt   sql.NullTime   `json:"revoked_at"`
+	CreatedAt   time.Time      `json:"created_at"`
+}
+
+func (q *Queries) ListWorkspaceInvites(ctx context.Context, arg ListWorkspaceInvitesParams) ([]ListWorkspaceInvitesRow, error) {
+	rows, err := q.query(ctx, q.listWorkspaceInvitesStmt, listWorkspaceInvites,
+		arg.WorkspaceID,
+		arg.CursorAt,
+		arg.CursorID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWorkspaceInvitesRow
+	for rows.Next() {
+		var i ListWorkspaceInvitesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.WorkspaceID,
+			&i.CreatedBy,
+			&i.ExpiresAt,
+			&i.AcceptedBy,
+			&i.AcceptedAt,
+			&i.RevokedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkspaceMemberRoles = `-- name: ListWorkspaceMemberRoles :many
+SELECT rm.account_id, rm.role_id
+FROM control_workspace_role_member rm
+WHERE rm.workspace_id = $1
+  AND rm.account_id = ANY($2::text[])
+ORDER BY rm.account_id, rm.role_id
+`
+
+type ListWorkspaceMemberRolesParams struct {
+	WorkspaceID string   `json:"workspace_id"`
+	AccountIds  []string `json:"account_ids"`
+}
+
+type ListWorkspaceMemberRolesRow struct {
+	AccountID string `json:"account_id"`
+	RoleID    string `json:"role_id"`
+}
+
+func (q *Queries) ListWorkspaceMemberRoles(ctx context.Context, arg ListWorkspaceMemberRolesParams) ([]ListWorkspaceMemberRolesRow, error) {
+	rows, err := q.query(ctx, q.listWorkspaceMemberRolesStmt, listWorkspaceMemberRoles, arg.WorkspaceID, pq.Array(arg.AccountIds))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWorkspaceMemberRolesRow
+	for rows.Next() {
+		var i ListWorkspaceMemberRolesRow
+		if err := rows.Scan(&i.AccountID, &i.RoleID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWorkspaceMembers = `-- name: ListWorkspaceMembers :many
-SELECT m.workspace_id, m.account_id, m.status, m.joined_at, m.updated_at,
-       a.display_name, COALESCE(MIN(r.position), 2147483647) AS position
-FROM control_workspace_member m
-JOIN control_account a ON a.id = m.account_id
-LEFT JOIN control_role_member rm ON rm.account_id = m.account_id
-LEFT JOIN control_role r ON r.id = rm.role_id AND r.workspace_id = m.workspace_id AND r.deleted_at IS NULL
-WHERE m.workspace_id = $1 AND m.status = 'active'
-GROUP BY m.workspace_id, m.account_id, m.status, m.joined_at, m.updated_at, a.display_name
-ORDER BY position, m.joined_at
-LIMIT $2 OFFSET $3
+SELECT wm.workspace_id, wm.account_id, a.display_name, wm.status,
+       wm.joined_at, wm.updated_at,
+       wm.account_id = w.owner_account_id AS is_owner
+FROM control_workspace_member wm
+JOIN control_account a ON a.id = wm.account_id
+JOIN control_workspace w ON w.id = wm.workspace_id
+WHERE wm.workspace_id = $1
+  AND wm.status = 'active'
+  AND ($2::timestamptz IS NULL
+       OR (wm.joined_at, wm.account_id) < ($2, $3::text))
+ORDER BY wm.joined_at DESC, wm.account_id DESC
+LIMIT $4
 `
 
 type ListWorkspaceMembersParams struct {
-	WorkspaceID string `json:"workspace_id"`
-	Limit       int32  `json:"limit"`
-	Offset      int32  `json:"offset"`
+	WorkspaceID string       `json:"workspace_id"`
+	CursorAt    sql.NullTime `json:"cursor_at"`
+	CursorID    string       `json:"cursor_id"`
+	PageLimit   int32        `json:"page_limit"`
 }
 
 type ListWorkspaceMembersRow struct {
-	WorkspaceID string      `json:"workspace_id"`
-	AccountID   string      `json:"account_id"`
-	Status      string      `json:"status"`
-	JoinedAt    time.Time   `json:"joined_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
-	DisplayName string      `json:"display_name"`
-	Position    interface{} `json:"position"`
+	WorkspaceID string    `json:"workspace_id"`
+	AccountID   string    `json:"account_id"`
+	DisplayName string    `json:"display_name"`
+	Status      string    `json:"status"`
+	JoinedAt    time.Time `json:"joined_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	IsOwner     bool      `json:"is_owner"`
 }
 
 func (q *Queries) ListWorkspaceMembers(ctx context.Context, arg ListWorkspaceMembersParams) ([]ListWorkspaceMembersRow, error) {
-	rows, err := q.query(ctx, q.listWorkspaceMembersStmt, listWorkspaceMembers, arg.WorkspaceID, arg.Limit, arg.Offset)
+	rows, err := q.query(ctx, q.listWorkspaceMembersStmt, listWorkspaceMembers,
+		arg.WorkspaceID,
+		arg.CursorAt,
+		arg.CursorID,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1380,11 +2576,101 @@ func (q *Queries) ListWorkspaceMembers(ctx context.Context, arg ListWorkspaceMem
 		if err := rows.Scan(
 			&i.WorkspaceID,
 			&i.AccountID,
+			&i.DisplayName,
 			&i.Status,
 			&i.JoinedAt,
 			&i.UpdatedAt,
-			&i.DisplayName,
+			&i.IsOwner,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkspaceRolePermissions = `-- name: ListWorkspaceRolePermissions :many
+SELECT method_key
+FROM control_workspace_role_permission
+WHERE workspace_id = $1 AND role_id = $2
+ORDER BY method_key
+`
+
+type ListWorkspaceRolePermissionsParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	RoleID      string `json:"role_id"`
+}
+
+func (q *Queries) ListWorkspaceRolePermissions(ctx context.Context, arg ListWorkspaceRolePermissionsParams) ([]string, error) {
+	rows, err := q.query(ctx, q.listWorkspaceRolePermissionsStmt, listWorkspaceRolePermissions, arg.WorkspaceID, arg.RoleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var method_key string
+		if err := rows.Scan(&method_key); err != nil {
+			return nil, err
+		}
+		items = append(items, method_key)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkspaceRoles = `-- name: ListWorkspaceRoles :many
+SELECT r.id, r.workspace_id, r.code, r.title, r.description, r.position,
+       r.created_at, r.updated_at, COUNT(rm.account_id) AS member_count
+FROM control_workspace_role r
+LEFT JOIN control_workspace_role_member rm ON rm.role_id = r.id
+WHERE r.workspace_id = $1
+GROUP BY r.id
+ORDER BY r.position, r.id
+`
+
+type ListWorkspaceRolesRow struct {
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspace_id"`
+	Code        string    `json:"code"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Position    int32     `json:"position"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	MemberCount int64     `json:"member_count"`
+}
+
+func (q *Queries) ListWorkspaceRoles(ctx context.Context, workspaceID string) ([]ListWorkspaceRolesRow, error) {
+	rows, err := q.query(ctx, q.listWorkspaceRolesStmt, listWorkspaceRoles, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWorkspaceRolesRow
+	for rows.Next() {
+		var i ListWorkspaceRolesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Code,
+			&i.Title,
+			&i.Description,
 			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MemberCount,
 		); err != nil {
 			return nil, err
 		}
@@ -1400,21 +2686,33 @@ func (q *Queries) ListWorkspaceMembers(ctx context.Context, arg ListWorkspaceMem
 }
 
 const listWorkspacesForAccount = `-- name: ListWorkspacesForAccount :many
-SELECT w.id, w.slug, w.title, w.status, w.created_by, w.created_at, w.updated_at
+SELECT w.id, w.slug, w.title, w.status, w.created_by, w.owner_account_id,
+       w.employee_limit, w.created_at, w.updated_at
 FROM control_workspace w
-JOIN control_workspace_member m ON m.workspace_id = w.id
-WHERE m.account_id = $1 AND m.status = 'active'
-ORDER BY w.created_at DESC LIMIT $2 OFFSET $3
+JOIN control_workspace_member wm
+    ON wm.workspace_id = w.id
+   AND wm.account_id = $1
+   AND wm.status = 'active'
+WHERE ($2::timestamptz IS NULL
+       OR (w.created_at, w.id) < ($2, $3::text))
+ORDER BY w.created_at DESC, w.id DESC
+LIMIT $4
 `
 
 type ListWorkspacesForAccountParams struct {
-	AccountID string `json:"account_id"`
-	Limit     int32  `json:"limit"`
-	Offset    int32  `json:"offset"`
+	AccountID string       `json:"account_id"`
+	CursorAt  sql.NullTime `json:"cursor_at"`
+	CursorID  string       `json:"cursor_id"`
+	PageLimit int32        `json:"page_limit"`
 }
 
 func (q *Queries) ListWorkspacesForAccount(ctx context.Context, arg ListWorkspacesForAccountParams) ([]ControlWorkspace, error) {
-	rows, err := q.query(ctx, q.listWorkspacesForAccountStmt, listWorkspacesForAccount, arg.AccountID, arg.Limit, arg.Offset)
+	rows, err := q.query(ctx, q.listWorkspacesForAccountStmt, listWorkspacesForAccount,
+		arg.AccountID,
+		arg.CursorAt,
+		arg.CursorID,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1428,6 +2726,8 @@ func (q *Queries) ListWorkspacesForAccount(ctx context.Context, arg ListWorkspac
 			&i.Title,
 			&i.Status,
 			&i.CreatedBy,
+			&i.OwnerAccountID,
+			&i.EmployeeLimit,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -1444,6 +2744,15 @@ func (q *Queries) ListWorkspacesForAccount(ctx context.Context, arg ListWorkspac
 	return items, nil
 }
 
+const lockInitialization = `-- name: LockInitialization :exec
+SELECT pg_advisory_xact_lock(hashtextextended('control:initialize', 0))
+`
+
+func (q *Queries) LockInitialization(ctx context.Context) error {
+	_, err := q.exec(ctx, q.lockInitializationStmt, lockInitialization)
+	return err
+}
+
 const lockMethodRegistry = `-- name: LockMethodRegistry :exec
 SELECT pg_advisory_xact_lock(hashtextextended('control:method-registry', 0))
 `
@@ -1453,26 +2762,94 @@ func (q *Queries) LockMethodRegistry(ctx context.Context) error {
 	return err
 }
 
-const lockWorkspaceAuthorization = `-- name: LockWorkspaceAuthorization :exec
-SELECT pg_advisory_xact_lock(hashtextextended('control:authorization:' || $1::text, 0))
+const methodGroupExists = `-- name: MethodGroupExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM control_method_group
+    WHERE service = $1 AND group_key = $2
+) AS exists
 `
 
-func (q *Queries) LockWorkspaceAuthorization(ctx context.Context, dollar_1 string) error {
-	_, err := q.exec(ctx, q.lockWorkspaceAuthorizationStmt, lockWorkspaceAuthorization, dollar_1)
-	return err
+type MethodGroupExistsParams struct {
+	Service  string `json:"service"`
+	GroupKey string `json:"group_key"`
 }
 
-const removeRoleMember = `-- name: RemoveRoleMember :execrows
-DELETE FROM control_role_member WHERE role_id = $1 AND account_id = $2
+func (q *Queries) MethodGroupExists(ctx context.Context, arg MethodGroupExistsParams) (bool, error) {
+	row := q.queryRow(ctx, q.methodGroupExistsStmt, methodGroupExists, arg.Service, arg.GroupKey)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const removeAllGlobalRoleMemberships = `-- name: RemoveAllGlobalRoleMemberships :execrows
+DELETE FROM control_global_role_member
+WHERE account_id = $1
 `
 
-type RemoveRoleMemberParams struct {
+func (q *Queries) RemoveAllGlobalRoleMemberships(ctx context.Context, accountID string) (int64, error) {
+	result, err := q.exec(ctx, q.removeAllGlobalRoleMembershipsStmt, removeAllGlobalRoleMemberships, accountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const removeAllWorkspaceMemberships = `-- name: RemoveAllWorkspaceMemberships :execrows
+UPDATE control_workspace_member
+SET status = 'removed', updated_at = now()
+WHERE account_id = $1
+  AND status = 'active'
+`
+
+func (q *Queries) RemoveAllWorkspaceMemberships(ctx context.Context, accountID string) (int64, error) {
+	result, err := q.exec(ctx, q.removeAllWorkspaceMembershipsStmt, removeAllWorkspaceMemberships, accountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const removeAllWorkspaceRoleMemberships = `-- name: RemoveAllWorkspaceRoleMemberships :execrows
+DELETE FROM control_workspace_role_member
+WHERE account_id = $1
+`
+
+func (q *Queries) RemoveAllWorkspaceRoleMemberships(ctx context.Context, accountID string) (int64, error) {
+	result, err := q.exec(ctx, q.removeAllWorkspaceRoleMembershipsStmt, removeAllWorkspaceRoleMemberships, accountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const removeGlobalRoleMember = `-- name: RemoveGlobalRoleMember :execrows
+DELETE FROM control_global_role_member
+WHERE role_id = $1 AND account_id = $2
+`
+
+type RemoveGlobalRoleMemberParams struct {
 	RoleID    string `json:"role_id"`
 	AccountID string `json:"account_id"`
 }
 
-func (q *Queries) RemoveRoleMember(ctx context.Context, arg RemoveRoleMemberParams) (int64, error) {
-	result, err := q.exec(ctx, q.removeRoleMemberStmt, removeRoleMember, arg.RoleID, arg.AccountID)
+func (q *Queries) RemoveGlobalRoleMember(ctx context.Context, arg RemoveGlobalRoleMemberParams) (int64, error) {
+	result, err := q.exec(ctx, q.removeGlobalRoleMemberStmt, removeGlobalRoleMember, arg.RoleID, arg.AccountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const removePlatformMember = `-- name: RemovePlatformMember :execrows
+UPDATE control_platform_member
+SET status = 'removed', updated_at = now()
+WHERE account_id = $1
+  AND status = 'active'
+`
+
+func (q *Queries) RemovePlatformMember(ctx context.Context, accountID string) (int64, error) {
+	result, err := q.exec(ctx, q.removePlatformMemberStmt, removePlatformMember, accountID)
 	if err != nil {
 		return 0, err
 	}
@@ -1480,8 +2857,11 @@ func (q *Queries) RemoveRoleMember(ctx context.Context, arg RemoveRoleMemberPara
 }
 
 const removeWorkspaceMember = `-- name: RemoveWorkspaceMember :execrows
-UPDATE control_workspace_member SET status = 'removed'
-WHERE workspace_id = $1 AND account_id = $2 AND status = 'active'
+UPDATE control_workspace_member
+SET status = 'removed', updated_at = now()
+WHERE workspace_id = $1
+  AND account_id = $2
+  AND status = 'active'
 `
 
 type RemoveWorkspaceMemberParams struct {
@@ -1498,11 +2878,8 @@ func (q *Queries) RemoveWorkspaceMember(ctx context.Context, arg RemoveWorkspace
 }
 
 const removeWorkspaceMemberRoles = `-- name: RemoveWorkspaceMemberRoles :execrows
-DELETE FROM control_role_member rm
-USING control_role r
-WHERE r.id = rm.role_id
-  AND r.workspace_id = $1
-  AND rm.account_id = $2
+DELETE FROM control_workspace_role_member
+WHERE workspace_id = $1 AND account_id = $2
 `
 
 type RemoveWorkspaceMemberRolesParams struct {
@@ -1518,19 +2895,119 @@ func (q *Queries) RemoveWorkspaceMemberRoles(ctx context.Context, arg RemoveWork
 	return result.RowsAffected()
 }
 
+const removeWorkspaceRoleMember = `-- name: RemoveWorkspaceRoleMember :execrows
+DELETE FROM control_workspace_role_member
+WHERE role_id = $1 AND workspace_id = $2 AND account_id = $3
+`
+
+type RemoveWorkspaceRoleMemberParams struct {
+	RoleID      string `json:"role_id"`
+	WorkspaceID string `json:"workspace_id"`
+	AccountID   string `json:"account_id"`
+}
+
+func (q *Queries) RemoveWorkspaceRoleMember(ctx context.Context, arg RemoveWorkspaceRoleMemberParams) (int64, error) {
+	result, err := q.exec(ctx, q.removeWorkspaceRoleMemberStmt, removeWorkspaceRoleMember, arg.RoleID, arg.WorkspaceID, arg.AccountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const replaceGlobalRolePermissions = `-- name: ReplaceGlobalRolePermissions :exec
+WITH deleted AS (
+    DELETE FROM control_global_role_permission WHERE role_id = $1
+)
+INSERT INTO control_global_role_permission (role_id, method_key)
+SELECT $1, requested.method_key
+FROM unnest($2::text[]) AS requested(method_key)
+JOIN control_method m
+    ON m.method_key = requested.method_key
+   AND m.scope = 'global'
+`
+
+type ReplaceGlobalRolePermissionsParams struct {
+	RoleID     string   `json:"role_id"`
+	MethodKeys []string `json:"method_keys"`
+}
+
+func (q *Queries) ReplaceGlobalRolePermissions(ctx context.Context, arg ReplaceGlobalRolePermissionsParams) error {
+	_, err := q.exec(ctx, q.replaceGlobalRolePermissionsStmt, replaceGlobalRolePermissions, arg.RoleID, pq.Array(arg.MethodKeys))
+	return err
+}
+
+const replaceWorkspaceRolePermissions = `-- name: ReplaceWorkspaceRolePermissions :exec
+WITH deleted AS (
+    DELETE FROM control_workspace_role_permission
+    WHERE workspace_id = $2
+      AND role_id = $1
+)
+INSERT INTO control_workspace_role_permission (role_id, workspace_id, method_key)
+SELECT $1, $2, requested.method_key
+FROM unnest($3::text[]) AS requested(method_key)
+JOIN control_method m
+    ON m.method_key = requested.method_key
+   AND m.scope = 'workspace'
+`
+
+type ReplaceWorkspaceRolePermissionsParams struct {
+	RoleID      string   `json:"role_id"`
+	WorkspaceID string   `json:"workspace_id"`
+	MethodKeys  []string `json:"method_keys"`
+}
+
+func (q *Queries) ReplaceWorkspaceRolePermissions(ctx context.Context, arg ReplaceWorkspaceRolePermissionsParams) error {
+	_, err := q.exec(ctx, q.replaceWorkspaceRolePermissionsStmt, replaceWorkspaceRolePermissions, arg.RoleID, arg.WorkspaceID, pq.Array(arg.MethodKeys))
+	return err
+}
+
+const resolveLimitRequest = `-- name: ResolveLimitRequest :execrows
+UPDATE control_limit_request
+SET status = $1,
+    approved_limit = $2,
+    reviewed_by = $3,
+    review_comment = $4,
+    reviewed_at = now()
+WHERE id = $5 AND status = 'pending'
+`
+
+type ResolveLimitRequestParams struct {
+	Status        string         `json:"status"`
+	ApprovedLimit sql.NullInt32  `json:"approved_limit"`
+	ReviewedBy    sql.NullString `json:"reviewed_by"`
+	ReviewComment string         `json:"review_comment"`
+	ID            string         `json:"id"`
+}
+
+func (q *Queries) ResolveLimitRequest(ctx context.Context, arg ResolveLimitRequestParams) (int64, error) {
+	result, err := q.exec(ctx, q.resolveLimitRequestStmt, resolveLimitRequest,
+		arg.Status,
+		arg.ApprovedLimit,
+		arg.ReviewedBy,
+		arg.ReviewComment,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const revokeAllSessions = `-- name: RevokeAllSessions :execrows
-UPDATE control_session SET revoked_at = now()
-WHERE account_id = $1 AND revoked_at IS NULL AND ($2 = '' OR id <> $3)
+UPDATE control_session
+SET revoked_at = now()
+WHERE account_id = $1
+  AND revoked_at IS NULL
+  AND ($2 = '' OR id <> $2)
 `
 
 type RevokeAllSessionsParams struct {
 	AccountID string      `json:"account_id"`
 	Column2   interface{} `json:"column_2"`
-	ID        string      `json:"id"`
 }
 
 func (q *Queries) RevokeAllSessions(ctx context.Context, arg RevokeAllSessionsParams) (int64, error) {
-	result, err := q.exec(ctx, q.revokeAllSessionsStmt, revokeAllSessions, arg.AccountID, arg.Column2, arg.ID)
+	result, err := q.exec(ctx, q.revokeAllSessionsStmt, revokeAllSessions, arg.AccountID, arg.Column2)
 	if err != nil {
 		return 0, err
 	}
@@ -1538,41 +3015,56 @@ func (q *Queries) RevokeAllSessions(ctx context.Context, arg RevokeAllSessionsPa
 }
 
 const revokeInvite = `-- name: RevokeInvite :execrows
-UPDATE control_workspace_invite SET revoked_at = now()
-WHERE id = $1 AND workspace_id = $2 AND revoked_at IS NULL
+UPDATE control_invite
+SET revoked_at = now()
+WHERE id = $1
+  AND accepted_at IS NULL
+  AND revoked_at IS NULL
 `
 
-type RevokeInviteParams struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-}
-
-func (q *Queries) RevokeInvite(ctx context.Context, arg RevokeInviteParams) (int64, error) {
-	result, err := q.exec(ctx, q.revokeInviteStmt, revokeInvite, arg.ID, arg.WorkspaceID)
+func (q *Queries) RevokeInvite(ctx context.Context, id string) (int64, error) {
+	result, err := q.exec(ctx, q.revokeInviteStmt, revokeInvite, id)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-const revokeInviteAsActiveMember = `-- name: RevokeInviteAsActiveMember :execrows
-UPDATE control_workspace_invite i
+const revokePendingInvitesByCreator = `-- name: RevokePendingInvitesByCreator :execrows
+UPDATE control_invite
 SET revoked_at = now()
-WHERE i.id = $1 AND i.workspace_id = $2 AND i.revoked_at IS NULL
-  AND EXISTS (
-      SELECT 1 FROM control_workspace_member m
-      WHERE m.workspace_id = i.workspace_id AND m.account_id = $3 AND m.status = 'active'
-  )
+WHERE created_by = $1
+  AND accepted_at IS NULL
+  AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > now())
 `
 
-type RevokeInviteAsActiveMemberParams struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	AccountID   string `json:"account_id"`
+func (q *Queries) RevokePendingInvitesByCreator(ctx context.Context, createdBy string) (int64, error) {
+	result, err := q.exec(ctx, q.revokePendingInvitesByCreatorStmt, revokePendingInvitesByCreator, createdBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
-func (q *Queries) RevokeInviteAsActiveMember(ctx context.Context, arg RevokeInviteAsActiveMemberParams) (int64, error) {
-	result, err := q.exec(ctx, q.revokeInviteAsActiveMemberStmt, revokeInviteAsActiveMember, arg.ID, arg.WorkspaceID, arg.AccountID)
+const revokePendingWorkspaceInvitesByCreator = `-- name: RevokePendingWorkspaceInvitesByCreator :execrows
+UPDATE control_invite
+SET revoked_at = now()
+WHERE workspace_id = $1
+  AND created_by = $2
+  AND kind = 'workspace'
+  AND accepted_at IS NULL
+  AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > now())
+`
+
+type RevokePendingWorkspaceInvitesByCreatorParams struct {
+	WorkspaceID sql.NullString `json:"workspace_id"`
+	CreatedBy   string         `json:"created_by"`
+}
+
+func (q *Queries) RevokePendingWorkspaceInvitesByCreator(ctx context.Context, arg RevokePendingWorkspaceInvitesByCreatorParams) (int64, error) {
+	result, err := q.exec(ctx, q.revokePendingWorkspaceInvitesByCreatorStmt, revokePendingWorkspaceInvitesByCreator, arg.WorkspaceID, arg.CreatedBy)
 	if err != nil {
 		return 0, err
 	}
@@ -1580,8 +3072,11 @@ func (q *Queries) RevokeInviteAsActiveMember(ctx context.Context, arg RevokeInvi
 }
 
 const revokeSession = `-- name: RevokeSession :execrows
-UPDATE control_session SET revoked_at = now()
-WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL
+UPDATE control_session
+SET revoked_at = now()
+WHERE id = $1
+  AND account_id = $2
+  AND revoked_at IS NULL
 `
 
 type RevokeSessionParams struct {
@@ -1597,29 +3092,88 @@ func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) (i
 	return result.RowsAffected()
 }
 
-const setRolePermission = `-- name: SetRolePermission :exec
-INSERT INTO control_role_permission (role_id, method_key)
-VALUES ($1, $2)
-ON CONFLICT (role_id, method_key) DO NOTHING
+const transferGlobalOwnership = `-- name: TransferGlobalOwnership :execrows
+UPDATE control_platform
+SET owner_account_id = $1, updated_at = now()
+WHERE id = 1
+  AND owner_account_id = $2
 `
 
-type SetRolePermissionParams struct {
-	RoleID    string `json:"role_id"`
-	MethodKey string `json:"method_key"`
+type TransferGlobalOwnershipParams struct {
+	NewOwnerAccountID     string `json:"new_owner_account_id"`
+	CurrentOwnerAccountID string `json:"current_owner_account_id"`
 }
 
-func (q *Queries) SetRolePermission(ctx context.Context, arg SetRolePermissionParams) error {
-	_, err := q.exec(ctx, q.setRolePermissionStmt, setRolePermission, arg.RoleID, arg.MethodKey)
-	return err
+func (q *Queries) TransferGlobalOwnership(ctx context.Context, arg TransferGlobalOwnershipParams) (int64, error) {
+	result, err := q.exec(ctx, q.transferGlobalOwnershipStmt, transferGlobalOwnership, arg.NewOwnerAccountID, arg.CurrentOwnerAccountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
-const touchSession = `-- name: TouchSession :execrows
-UPDATE control_session SET last_used_at = now()
-WHERE id = $1 AND revoked_at IS NULL
+const transferWorkspaceOwnership = `-- name: TransferWorkspaceOwnership :execrows
+UPDATE control_workspace
+SET owner_account_id = $1, updated_at = now()
+WHERE id = $2
+  AND owner_account_id = $3
+  AND status = 'active'
 `
 
-func (q *Queries) TouchSession(ctx context.Context, id string) (int64, error) {
-	result, err := q.exec(ctx, q.touchSessionStmt, touchSession, id)
+type TransferWorkspaceOwnershipParams struct {
+	NewOwnerAccountID     string `json:"new_owner_account_id"`
+	WorkspaceID           string `json:"workspace_id"`
+	CurrentOwnerAccountID string `json:"current_owner_account_id"`
+}
+
+func (q *Queries) TransferWorkspaceOwnership(ctx context.Context, arg TransferWorkspaceOwnershipParams) (int64, error) {
+	result, err := q.exec(ctx, q.transferWorkspaceOwnershipStmt, transferWorkspaceOwnership, arg.NewOwnerAccountID, arg.WorkspaceID, arg.CurrentOwnerAccountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateAccountWorkspaceLimit = `-- name: UpdateAccountWorkspaceLimit :execrows
+UPDATE control_platform_member
+SET workspace_limit = $1, updated_at = now()
+WHERE account_id = $2
+  AND status = 'active'
+`
+
+type UpdateAccountWorkspaceLimitParams struct {
+	WorkspaceLimit int32  `json:"workspace_limit"`
+	AccountID      string `json:"account_id"`
+}
+
+func (q *Queries) UpdateAccountWorkspaceLimit(ctx context.Context, arg UpdateAccountWorkspaceLimitParams) (int64, error) {
+	result, err := q.exec(ctx, q.updateAccountWorkspaceLimitStmt, updateAccountWorkspaceLimit, arg.WorkspaceLimit, arg.AccountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateGlobalRole = `-- name: UpdateGlobalRole :execrows
+UPDATE control_global_role
+SET title = $1, description = $2, position = $3, updated_at = now()
+WHERE id = $4
+`
+
+type UpdateGlobalRoleParams struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Position    int32  `json:"position"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) UpdateGlobalRole(ctx context.Context, arg UpdateGlobalRoleParams) (int64, error) {
+	result, err := q.exec(ctx, q.updateGlobalRoleStmt, updateGlobalRole,
+		arg.Title,
+		arg.Description,
+		arg.Position,
+		arg.ID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -1627,7 +3181,9 @@ func (q *Queries) TouchSession(ctx context.Context, id string) (int64, error) {
 }
 
 const updatePendingTwoFactorBackupHashes = `-- name: UpdatePendingTwoFactorBackupHashes :execrows
-UPDATE control_two_factor SET backup_hashes = $1 WHERE account_id = $2 AND activated_at IS NULL
+UPDATE control_two_factor
+SET backup_hashes = $1, updated_at = now()
+WHERE account_id = $2 AND activated_at IS NULL
 `
 
 type UpdatePendingTwoFactorBackupHashesParams struct {
@@ -1643,35 +3199,10 @@ func (q *Queries) UpdatePendingTwoFactorBackupHashes(ctx context.Context, arg Up
 	return result.RowsAffected()
 }
 
-const updateRole = `-- name: UpdateRole :execrows
-UPDATE control_role SET title = $1, description = $2, position = $3
-WHERE id = $4 AND workspace_id = $5 AND deleted_at IS NULL AND is_owner = FALSE
-`
-
-type UpdateRoleParams struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Position    int32  `json:"position"`
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-}
-
-func (q *Queries) UpdateRole(ctx context.Context, arg UpdateRoleParams) (int64, error) {
-	result, err := q.exec(ctx, q.updateRoleStmt, updateRole,
-		arg.Title,
-		arg.Description,
-		arg.Position,
-		arg.ID,
-		arg.WorkspaceID,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const updateTwoFactorBackupHashes = `-- name: UpdateTwoFactorBackupHashes :execrows
-UPDATE control_two_factor SET backup_hashes = $1 WHERE account_id = $2 AND activated_at IS NOT NULL
+UPDATE control_two_factor
+SET backup_hashes = $1, updated_at = now()
+WHERE account_id = $2 AND activated_at IS NOT NULL
 `
 
 type UpdateTwoFactorBackupHashesParams struct {
@@ -1687,55 +3218,91 @@ func (q *Queries) UpdateTwoFactorBackupHashes(ctx context.Context, arg UpdateTwo
 	return result.RowsAffected()
 }
 
-const updateWorkspace = `-- name: UpdateWorkspace :execrows
-UPDATE control_workspace SET slug = $1, title = $2, status = $3 WHERE id = $4
+const updateTwoFactorLastCounter = `-- name: UpdateTwoFactorLastCounter :execrows
+UPDATE control_two_factor
+SET last_totp_counter = $1, updated_at = now()
+WHERE account_id = $2
+  AND activated_at IS NOT NULL
+  AND (
+      last_totp_counter IS NULL
+      OR last_totp_counter < $1
+  )
 `
 
-type UpdateWorkspaceParams struct {
-	Slug   string `json:"slug"`
-	Title  string `json:"title"`
-	Status string `json:"status"`
-	ID     string `json:"id"`
+type UpdateTwoFactorLastCounterParams struct {
+	LastTotpCounter sql.NullInt64 `json:"last_totp_counter"`
+	AccountID       string        `json:"account_id"`
 }
 
-func (q *Queries) UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams) (int64, error) {
-	result, err := q.exec(ctx, q.updateWorkspaceStmt, updateWorkspace,
-		arg.Slug,
-		arg.Title,
-		arg.Status,
-		arg.ID,
-	)
+func (q *Queries) UpdateTwoFactorLastCounter(ctx context.Context, arg UpdateTwoFactorLastCounterParams) (int64, error) {
+	result, err := q.exec(ctx, q.updateTwoFactorLastCounterStmt, updateTwoFactorLastCounter, arg.LastTotpCounter, arg.AccountID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-const updateWorkspaceAsActiveMember = `-- name: UpdateWorkspaceAsActiveMember :execrows
-UPDATE control_workspace w
-SET slug = $1, title = $2, status = $3
-WHERE w.id = $4
-  AND EXISTS (
-      SELECT 1 FROM control_workspace_member m
-      WHERE m.workspace_id = w.id AND m.account_id = $5 AND m.status = 'active'
-  )
+const updateWorkspace = `-- name: UpdateWorkspace :execrows
+UPDATE control_workspace
+SET slug = $1, title = $2, updated_at = now()
+WHERE id = $3 AND status = 'active'
 `
 
-type UpdateWorkspaceAsActiveMemberParams struct {
-	Slug      string `json:"slug"`
-	Title     string `json:"title"`
-	Status    string `json:"status"`
-	ID        string `json:"id"`
-	AccountID string `json:"account_id"`
+type UpdateWorkspaceParams struct {
+	Slug  string `json:"slug"`
+	Title string `json:"title"`
+	ID    string `json:"id"`
 }
 
-func (q *Queries) UpdateWorkspaceAsActiveMember(ctx context.Context, arg UpdateWorkspaceAsActiveMemberParams) (int64, error) {
-	result, err := q.exec(ctx, q.updateWorkspaceAsActiveMemberStmt, updateWorkspaceAsActiveMember,
-		arg.Slug,
+func (q *Queries) UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams) (int64, error) {
+	result, err := q.exec(ctx, q.updateWorkspaceStmt, updateWorkspace, arg.Slug, arg.Title, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateWorkspaceEmployeeLimit = `-- name: UpdateWorkspaceEmployeeLimit :execrows
+UPDATE control_workspace
+SET employee_limit = $1, updated_at = now()
+WHERE id = $2
+  AND status = 'active'
+`
+
+type UpdateWorkspaceEmployeeLimitParams struct {
+	EmployeeLimit int32  `json:"employee_limit"`
+	ID            string `json:"id"`
+}
+
+func (q *Queries) UpdateWorkspaceEmployeeLimit(ctx context.Context, arg UpdateWorkspaceEmployeeLimitParams) (int64, error) {
+	result, err := q.exec(ctx, q.updateWorkspaceEmployeeLimitStmt, updateWorkspaceEmployeeLimit, arg.EmployeeLimit, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateWorkspaceRole = `-- name: UpdateWorkspaceRole :execrows
+UPDATE control_workspace_role
+SET title = $1, description = $2, position = $3, updated_at = now()
+WHERE id = $4 AND workspace_id = $5
+`
+
+type UpdateWorkspaceRoleParams struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Position    int32  `json:"position"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+}
+
+func (q *Queries) UpdateWorkspaceRole(ctx context.Context, arg UpdateWorkspaceRoleParams) (int64, error) {
+	result, err := q.exec(ctx, q.updateWorkspaceRoleStmt, updateWorkspaceRole,
 		arg.Title,
-		arg.Status,
+		arg.Description,
+		arg.Position,
 		arg.ID,
-		arg.AccountID,
+		arg.WorkspaceID,
 	)
 	if err != nil {
 		return 0, err
@@ -1800,7 +3367,10 @@ const upsertMethodGroup = `-- name: UpsertMethodGroup :exec
 INSERT INTO control_method_group (service, group_key, position)
 VALUES ($1, $2, $3)
 ON CONFLICT (service, group_key) DO UPDATE SET
-    position = EXCLUDED.position,
+    position = CASE
+        WHEN EXCLUDED.position > 0 THEN EXCLUDED.position
+        ELSE control_method_group.position
+    END,
     updated_at = now()
 `
 
@@ -1816,12 +3386,15 @@ func (q *Queries) UpsertMethodGroup(ctx context.Context, arg UpsertMethodGroupPa
 }
 
 const upsertTwoFactor = `-- name: UpsertTwoFactor :exec
-INSERT INTO control_two_factor (account_id, secret, backup_hashes, activated_at)
-VALUES ($1, $2, $3, NULL)
+INSERT INTO control_two_factor (
+    account_id, secret, backup_hashes, activated_at, last_totp_counter
+)
+VALUES ($1, $2, $3, NULL, NULL)
 ON CONFLICT (account_id) DO UPDATE SET
     secret = EXCLUDED.secret,
     backup_hashes = EXCLUDED.backup_hashes,
     activated_at = NULL,
+    last_totp_counter = NULL,
     updated_at = now()
 `
 
@@ -1834,4 +3407,46 @@ type UpsertTwoFactorParams struct {
 func (q *Queries) UpsertTwoFactor(ctx context.Context, arg UpsertTwoFactorParams) error {
 	_, err := q.exec(ctx, q.upsertTwoFactorStmt, upsertTwoFactor, arg.AccountID, arg.Secret, arg.BackupHashes)
 	return err
+}
+
+const validateAndTouchSession = `-- name: ValidateAndTouchSession :one
+UPDATE control_session s
+SET last_used_at = CASE
+    WHEN s.last_used_at < now() - INTERVAL '5 minutes' THEN now()
+    ELSE s.last_used_at
+END
+FROM control_account a
+JOIN control_platform_member pm ON pm.account_id = a.id
+WHERE s.token_hash = $1
+  AND s.account_id = a.id
+  AND s.revoked_at IS NULL
+  AND s.expires_at > now()
+  AND a.status = 'active'
+  AND pm.status = 'active'
+  AND (s.bind_to_ip = FALSE OR s.ip = $2)
+RETURNING s.id, s.account_id, s.token_hash, s.ip, s.user_agent, s.bind_to_ip,
+          s.expires_at, s.revoked_at, s.last_used_at, s.created_at
+`
+
+type ValidateAndTouchSessionParams struct {
+	TokenHash string `json:"token_hash"`
+	Ip        string `json:"ip"`
+}
+
+func (q *Queries) ValidateAndTouchSession(ctx context.Context, arg ValidateAndTouchSessionParams) (ControlSession, error) {
+	row := q.queryRow(ctx, q.validateAndTouchSessionStmt, validateAndTouchSession, arg.TokenHash, arg.Ip)
+	var i ControlSession
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.TokenHash,
+		&i.Ip,
+		&i.UserAgent,
+		&i.BindToIp,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.LastUsedAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }

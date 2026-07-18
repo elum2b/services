@@ -18,6 +18,8 @@ import (
 
 const ProviderTelegramWebApp = "telegram_webapp"
 
+const defaultTelegramWebAppMaxAge = 5 * time.Minute
+
 type TelegramWebAppConfig struct {
 	Provider string
 	BotToken string
@@ -53,11 +55,24 @@ func NewTelegramWebApp(config TelegramWebAppConfig) (*TelegramWebAppProvider, er
 	if now == nil {
 		now = time.Now
 	}
-	return &TelegramWebAppProvider{provider: provider, botToken: strings.TrimSpace(config.BotToken), maxAge: config.MaxAge, now: now}, nil
+	maxAge := config.MaxAge
+	if maxAge <= 0 {
+		maxAge = defaultTelegramWebAppMaxAge
+	}
+	return &TelegramWebAppProvider{
+		provider: provider,
+		botToken: strings.TrimSpace(config.BotToken),
+		maxAge:   maxAge,
+		now:      now,
+	}, nil
 }
 
 func TelegramWebApp(ctx context.Context, params TelegramWebAppAuthParams) (admin.AuthIdentityParams, error) {
-	provider, err := NewTelegramWebApp(TelegramWebAppConfig{BotToken: params.BotToken, MaxAge: params.MaxAge, Now: params.Now})
+	provider, err := NewTelegramWebApp(TelegramWebAppConfig{
+		BotToken: params.BotToken,
+		MaxAge:   params.MaxAge,
+		Now:      params.Now,
+	})
 	if err != nil {
 		return admin.AuthIdentityParams{}, err
 	}
@@ -65,7 +80,14 @@ func TelegramWebApp(ctx context.Context, params TelegramWebAppAuthParams) (admin
 	if err != nil {
 		return admin.AuthIdentityParams{}, err
 	}
-	return identityAuthParams(identity, params.IP, params.UserAgent, params.BindToIP, params.ExpiresAt), nil
+	return identityAuthParams(
+		identity,
+		params.InviteToken,
+		params.IP,
+		params.UserAgent,
+		params.BindToIP,
+		params.ExpiresAt,
+	), nil
 }
 
 func (t *TelegramWebAppProvider) Provider() string { return t.provider }
@@ -107,7 +129,12 @@ func (t *TelegramWebAppProvider) Resolve(_ context.Context, request Request) (Id
 	if err != nil {
 		return Identity{}, err
 	}
-	return Identity{Provider: t.provider, Subject: strconv.FormatInt(user.ID, 10), DisplayName: displayName, Payload: payload}, nil
+	return Identity{
+		Provider:    t.provider,
+		Subject:     strconv.FormatInt(user.ID, 10),
+		DisplayName: displayName,
+		Payload:     payload,
+	}, nil
 }
 
 func (t *TelegramWebAppProvider) validSignature(values url.Values, expected string) bool {

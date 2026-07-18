@@ -24,26 +24,59 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
+	if q.acceptInviteStmt, err = db.PrepareContext(ctx, acceptInvite); err != nil {
+		return nil, fmt.Errorf("error preparing query AcceptInvite: %w", err)
+	}
 	if q.activateTwoFactorStmt, err = db.PrepareContext(ctx, activateTwoFactor); err != nil {
 		return nil, fmt.Errorf("error preparing query ActivateTwoFactor: %w", err)
 	}
-	if q.addInviteRoleStmt, err = db.PrepareContext(ctx, addInviteRole); err != nil {
-		return nil, fmt.Errorf("error preparing query AddInviteRole: %w", err)
+	if q.addGlobalRoleMemberStmt, err = db.PrepareContext(ctx, addGlobalRoleMember); err != nil {
+		return nil, fmt.Errorf("error preparing query AddGlobalRoleMember: %w", err)
 	}
-	if q.addRoleMemberStmt, err = db.PrepareContext(ctx, addRoleMember); err != nil {
-		return nil, fmt.Errorf("error preparing query AddRoleMember: %w", err)
+	if q.addGlobalRolesFromInviteStmt, err = db.PrepareContext(ctx, addGlobalRolesFromInvite); err != nil {
+		return nil, fmt.Errorf("error preparing query AddGlobalRolesFromInvite: %w", err)
+	}
+	if q.addInviteGlobalRolesStmt, err = db.PrepareContext(ctx, addInviteGlobalRoles); err != nil {
+		return nil, fmt.Errorf("error preparing query AddInviteGlobalRoles: %w", err)
+	}
+	if q.addInviteWorkspaceRolesStmt, err = db.PrepareContext(ctx, addInviteWorkspaceRoles); err != nil {
+		return nil, fmt.Errorf("error preparing query AddInviteWorkspaceRoles: %w", err)
+	}
+	if q.addPlatformMemberStmt, err = db.PrepareContext(ctx, addPlatformMember); err != nil {
+		return nil, fmt.Errorf("error preparing query AddPlatformMember: %w", err)
 	}
 	if q.addWorkspaceMemberStmt, err = db.PrepareContext(ctx, addWorkspaceMember); err != nil {
 		return nil, fmt.Errorf("error preparing query AddWorkspaceMember: %w", err)
 	}
-	if q.checkAccessStmt, err = db.PrepareContext(ctx, checkAccess); err != nil {
-		return nil, fmt.Errorf("error preparing query CheckAccess: %w", err)
+	if q.addWorkspaceRoleMemberStmt, err = db.PrepareContext(ctx, addWorkspaceRoleMember); err != nil {
+		return nil, fmt.Errorf("error preparing query AddWorkspaceRoleMember: %w", err)
 	}
-	if q.clearRolePermissionsStmt, err = db.PrepareContext(ctx, clearRolePermissions); err != nil {
-		return nil, fmt.Errorf("error preparing query ClearRolePermissions: %w", err)
+	if q.addWorkspaceRolesFromInviteStmt, err = db.PrepareContext(ctx, addWorkspaceRolesFromInvite); err != nil {
+		return nil, fmt.Errorf("error preparing query AddWorkspaceRolesFromInvite: %w", err)
+	}
+	if q.archiveWorkspaceStmt, err = db.PrepareContext(ctx, archiveWorkspace); err != nil {
+		return nil, fmt.Errorf("error preparing query ArchiveWorkspace: %w", err)
+	}
+	if q.cancelLimitRequestStmt, err = db.PrepareContext(ctx, cancelLimitRequest); err != nil {
+		return nil, fmt.Errorf("error preparing query CancelLimitRequest: %w", err)
+	}
+	if q.cancelPendingAccountLimitRequestsStmt, err = db.PrepareContext(ctx, cancelPendingAccountLimitRequests); err != nil {
+		return nil, fmt.Errorf("error preparing query CancelPendingAccountLimitRequests: %w", err)
+	}
+	if q.cancelPendingWorkspaceLimitRequestsStmt, err = db.PrepareContext(ctx, cancelPendingWorkspaceLimitRequests); err != nil {
+		return nil, fmt.Errorf("error preparing query CancelPendingWorkspaceLimitRequests: %w", err)
+	}
+	if q.checkGlobalAccessStmt, err = db.PrepareContext(ctx, checkGlobalAccess); err != nil {
+		return nil, fmt.Errorf("error preparing query CheckGlobalAccess: %w", err)
+	}
+	if q.checkWorkspaceAccessStmt, err = db.PrepareContext(ctx, checkWorkspaceAccess); err != nil {
+		return nil, fmt.Errorf("error preparing query CheckWorkspaceAccess: %w", err)
 	}
 	if q.countIdentitiesStmt, err = db.PrepareContext(ctx, countIdentities); err != nil {
 		return nil, fmt.Errorf("error preparing query CountIdentities: %w", err)
+	}
+	if q.countMethodsByScopeStmt, err = db.PrepareContext(ctx, countMethodsByScope); err != nil {
+		return nil, fmt.Errorf("error preparing query CountMethodsByScope: %w", err)
 	}
 	if q.createAccountStmt, err = db.PrepareContext(ctx, createAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateAccount: %w", err)
@@ -51,14 +84,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createAuditEventStmt, err = db.PrepareContext(ctx, createAuditEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateAuditEvent: %w", err)
 	}
+	if q.createGlobalRoleStmt, err = db.PrepareContext(ctx, createGlobalRole); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateGlobalRole: %w", err)
+	}
 	if q.createInviteStmt, err = db.PrepareContext(ctx, createInvite); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateInvite: %w", err)
 	}
-	if q.createInviteAcceptanceStmt, err = db.PrepareContext(ctx, createInviteAcceptance); err != nil {
-		return nil, fmt.Errorf("error preparing query CreateInviteAcceptance: %w", err)
+	if q.createLimitRequestStmt, err = db.PrepareContext(ctx, createLimitRequest); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateLimitRequest: %w", err)
 	}
-	if q.createRoleStmt, err = db.PrepareContext(ctx, createRole); err != nil {
-		return nil, fmt.Errorf("error preparing query CreateRole: %w", err)
+	if q.createPlatformStmt, err = db.PrepareContext(ctx, createPlatform); err != nil {
+		return nil, fmt.Errorf("error preparing query CreatePlatform: %w", err)
 	}
 	if q.createSessionStmt, err = db.PrepareContext(ctx, createSession); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateSession: %w", err)
@@ -69,14 +105,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createWorkspaceStmt, err = db.PrepareContext(ctx, createWorkspace); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateWorkspace: %w", err)
 	}
+	if q.createWorkspaceRoleStmt, err = db.PrepareContext(ctx, createWorkspaceRole); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateWorkspaceRole: %w", err)
+	}
+	if q.deleteGlobalInviteRoleReferencesStmt, err = db.PrepareContext(ctx, deleteGlobalInviteRoleReferences); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteGlobalInviteRoleReferences: %w", err)
+	}
+	if q.deleteGlobalRoleStmt, err = db.PrepareContext(ctx, deleteGlobalRole); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteGlobalRole: %w", err)
+	}
 	if q.deleteIdentityStmt, err = db.PrepareContext(ctx, deleteIdentity); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteIdentity: %w", err)
-	}
-	if q.deleteRoleStmt, err = db.PrepareContext(ctx, deleteRole); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteRole: %w", err)
-	}
-	if q.deleteRolePermissionStmt, err = db.PrepareContext(ctx, deleteRolePermission); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteRolePermission: %w", err)
 	}
 	if q.deleteTwoFactorStmt, err = db.PrepareContext(ctx, deleteTwoFactor); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTwoFactor: %w", err)
@@ -84,29 +123,62 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteTwoFactorChallengeStmt, err = db.PrepareContext(ctx, deleteTwoFactorChallenge); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTwoFactorChallenge: %w", err)
 	}
-	if q.findAccountByIdentityStmt, err = db.PrepareContext(ctx, findAccountByIdentity); err != nil {
-		return nil, fmt.Errorf("error preparing query FindAccountByIdentity: %w", err)
+	if q.deleteTwoFactorChallengesForAccountStmt, err = db.PrepareContext(ctx, deleteTwoFactorChallengesForAccount); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTwoFactorChallengesForAccount: %w", err)
+	}
+	if q.deleteWorkspaceInviteRoleReferencesStmt, err = db.PrepareContext(ctx, deleteWorkspaceInviteRoleReferences); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteWorkspaceInviteRoleReferences: %w", err)
+	}
+	if q.deleteWorkspaceRoleStmt, err = db.PrepareContext(ctx, deleteWorkspaceRole); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteWorkspaceRole: %w", err)
+	}
+	if q.findAuthPrincipalByIdentityStmt, err = db.PrepareContext(ctx, findAuthPrincipalByIdentity); err != nil {
+		return nil, fmt.Errorf("error preparing query FindAuthPrincipalByIdentity: %w", err)
 	}
 	if q.getAccountStmt, err = db.PrepareContext(ctx, getAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAccount: %w", err)
 	}
-	if q.getAccountPositionStmt, err = db.PrepareContext(ctx, getAccountPosition); err != nil {
-		return nil, fmt.Errorf("error preparing query GetAccountPosition: %w", err)
+	if q.getGlobalAuthorizationForUpdateStmt, err = db.PrepareContext(ctx, getGlobalAuthorizationForUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGlobalAuthorizationForUpdate: %w", err)
 	}
-	if q.getActiveSessionByHashStmt, err = db.PrepareContext(ctx, getActiveSessionByHash); err != nil {
-		return nil, fmt.Errorf("error preparing query GetActiveSessionByHash: %w", err)
+	if q.getGlobalRoleStmt, err = db.PrepareContext(ctx, getGlobalRole); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGlobalRole: %w", err)
+	}
+	if q.getIdentityStmt, err = db.PrepareContext(ctx, getIdentity); err != nil {
+		return nil, fmt.Errorf("error preparing query GetIdentity: %w", err)
+	}
+	if q.getInviteStmt, err = db.PrepareContext(ctx, getInvite); err != nil {
+		return nil, fmt.Errorf("error preparing query GetInvite: %w", err)
+	}
+	if q.getInviteByHashStmt, err = db.PrepareContext(ctx, getInviteByHash); err != nil {
+		return nil, fmt.Errorf("error preparing query GetInviteByHash: %w", err)
 	}
 	if q.getInviteByHashForUpdateStmt, err = db.PrepareContext(ctx, getInviteByHashForUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query GetInviteByHashForUpdate: %w", err)
 	}
+	if q.getInviteForUpdateStmt, err = db.PrepareContext(ctx, getInviteForUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query GetInviteForUpdate: %w", err)
+	}
+	if q.getLimitRequestForUpdateStmt, err = db.PrepareContext(ctx, getLimitRequestForUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLimitRequestForUpdate: %w", err)
+	}
 	if q.getMethodStmt, err = db.PrepareContext(ctx, getMethod); err != nil {
 		return nil, fmt.Errorf("error preparing query GetMethod: %w", err)
 	}
-	if q.getRoleStmt, err = db.PrepareContext(ctx, getRole); err != nil {
-		return nil, fmt.Errorf("error preparing query GetRole: %w", err)
+	if q.getPlatformStmt, err = db.PrepareContext(ctx, getPlatform); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPlatform: %w", err)
+	}
+	if q.getPlatformMemberStmt, err = db.PrepareContext(ctx, getPlatformMember); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPlatformMember: %w", err)
+	}
+	if q.getPlatformMemberForUpdateStmt, err = db.PrepareContext(ctx, getPlatformMemberForUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPlatformMemberForUpdate: %w", err)
 	}
 	if q.getTwoFactorStmt, err = db.PrepareContext(ctx, getTwoFactor); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTwoFactor: %w", err)
+	}
+	if q.getTwoFactorChallengeAccountStmt, err = db.PrepareContext(ctx, getTwoFactorChallengeAccount); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTwoFactorChallengeAccount: %w", err)
 	}
 	if q.getTwoFactorChallengeForUpdateStmt, err = db.PrepareContext(ctx, getTwoFactorChallengeForUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTwoFactorChallengeForUpdate: %w", err)
@@ -120,11 +192,23 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getWorkspaceStmt, err = db.PrepareContext(ctx, getWorkspace); err != nil {
 		return nil, fmt.Errorf("error preparing query GetWorkspace: %w", err)
 	}
+	if q.getWorkspaceAuthorizationForUpdateStmt, err = db.PrepareContext(ctx, getWorkspaceAuthorizationForUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query GetWorkspaceAuthorizationForUpdate: %w", err)
+	}
+	if q.getWorkspaceCapacityForUpdateStmt, err = db.PrepareContext(ctx, getWorkspaceCapacityForUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query GetWorkspaceCapacityForUpdate: %w", err)
+	}
+	if q.getWorkspaceCreationBundleForUpdateStmt, err = db.PrepareContext(ctx, getWorkspaceCreationBundleForUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query GetWorkspaceCreationBundleForUpdate: %w", err)
+	}
+	if q.getWorkspaceOwnershipCapacityForUpdateStmt, err = db.PrepareContext(ctx, getWorkspaceOwnershipCapacityForUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query GetWorkspaceOwnershipCapacityForUpdate: %w", err)
+	}
+	if q.getWorkspaceRoleStmt, err = db.PrepareContext(ctx, getWorkspaceRole); err != nil {
+		return nil, fmt.Errorf("error preparing query GetWorkspaceRole: %w", err)
+	}
 	if q.hasActiveTwoFactorStmt, err = db.PrepareContext(ctx, hasActiveTwoFactor); err != nil {
 		return nil, fmt.Errorf("error preparing query HasActiveTwoFactor: %w", err)
-	}
-	if q.incrementInviteUseStmt, err = db.PrepareContext(ctx, incrementInviteUse); err != nil {
-		return nil, fmt.Errorf("error preparing query IncrementInviteUse: %w", err)
 	}
 	if q.isActiveWorkspaceMemberStmt, err = db.PrepareContext(ctx, isActiveWorkspaceMember); err != nil {
 		return nil, fmt.Errorf("error preparing query IsActiveWorkspaceMember: %w", err)
@@ -135,20 +219,32 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAuditEventsStmt, err = db.PrepareContext(ctx, listAuditEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAuditEvents: %w", err)
 	}
-	if q.listAuditEventsFilteredStmt, err = db.PrepareContext(ctx, listAuditEventsFiltered); err != nil {
-		return nil, fmt.Errorf("error preparing query ListAuditEventsFiltered: %w", err)
+	if q.listAuthorizedGlobalMethodsStmt, err = db.PrepareContext(ctx, listAuthorizedGlobalMethods); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAuthorizedGlobalMethods: %w", err)
 	}
-	if q.listAuthorizedMethodsStmt, err = db.PrepareContext(ctx, listAuthorizedMethods); err != nil {
-		return nil, fmt.Errorf("error preparing query ListAuthorizedMethods: %w", err)
+	if q.listAuthorizedWorkspaceMethodsStmt, err = db.PrepareContext(ctx, listAuthorizedWorkspaceMethods); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAuthorizedWorkspaceMethods: %w", err)
+	}
+	if q.listGlobalInvitesStmt, err = db.PrepareContext(ctx, listGlobalInvites); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGlobalInvites: %w", err)
+	}
+	if q.listGlobalRolePermissionsStmt, err = db.PrepareContext(ctx, listGlobalRolePermissions); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGlobalRolePermissions: %w", err)
+	}
+	if q.listGlobalRolesStmt, err = db.PrepareContext(ctx, listGlobalRoles); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGlobalRoles: %w", err)
 	}
 	if q.listIdentitiesStmt, err = db.PrepareContext(ctx, listIdentities); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIdentities: %w", err)
 	}
-	if q.listInviteRolesStmt, err = db.PrepareContext(ctx, listInviteRoles); err != nil {
-		return nil, fmt.Errorf("error preparing query ListInviteRoles: %w", err)
+	if q.listInviteGlobalRolesStmt, err = db.PrepareContext(ctx, listInviteGlobalRoles); err != nil {
+		return nil, fmt.Errorf("error preparing query ListInviteGlobalRoles: %w", err)
 	}
-	if q.listInvitesStmt, err = db.PrepareContext(ctx, listInvites); err != nil {
-		return nil, fmt.Errorf("error preparing query ListInvites: %w", err)
+	if q.listInviteWorkspaceRolesStmt, err = db.PrepareContext(ctx, listInviteWorkspaceRoles); err != nil {
+		return nil, fmt.Errorf("error preparing query ListInviteWorkspaceRoles: %w", err)
+	}
+	if q.listLimitRequestsStmt, err = db.PrepareContext(ctx, listLimitRequests); err != nil {
+		return nil, fmt.Errorf("error preparing query ListLimitRequests: %w", err)
 	}
 	if q.listMethodGroupsStmt, err = db.PrepareContext(ctx, listMethodGroups); err != nil {
 		return nil, fmt.Errorf("error preparing query ListMethodGroups: %w", err)
@@ -156,29 +252,53 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listMethodsStmt, err = db.PrepareContext(ctx, listMethods); err != nil {
 		return nil, fmt.Errorf("error preparing query ListMethods: %w", err)
 	}
-	if q.listRolePermissionsStmt, err = db.PrepareContext(ctx, listRolePermissions); err != nil {
-		return nil, fmt.Errorf("error preparing query ListRolePermissions: %w", err)
-	}
-	if q.listRolesStmt, err = db.PrepareContext(ctx, listRoles); err != nil {
-		return nil, fmt.Errorf("error preparing query ListRoles: %w", err)
+	if q.listPlatformMembersStmt, err = db.PrepareContext(ctx, listPlatformMembers); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPlatformMembers: %w", err)
 	}
 	if q.listSessionsStmt, err = db.PrepareContext(ctx, listSessions); err != nil {
 		return nil, fmt.Errorf("error preparing query ListSessions: %w", err)
 	}
+	if q.listWorkspaceInvitesStmt, err = db.PrepareContext(ctx, listWorkspaceInvites); err != nil {
+		return nil, fmt.Errorf("error preparing query ListWorkspaceInvites: %w", err)
+	}
+	if q.listWorkspaceMemberRolesStmt, err = db.PrepareContext(ctx, listWorkspaceMemberRoles); err != nil {
+		return nil, fmt.Errorf("error preparing query ListWorkspaceMemberRoles: %w", err)
+	}
 	if q.listWorkspaceMembersStmt, err = db.PrepareContext(ctx, listWorkspaceMembers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListWorkspaceMembers: %w", err)
+	}
+	if q.listWorkspaceRolePermissionsStmt, err = db.PrepareContext(ctx, listWorkspaceRolePermissions); err != nil {
+		return nil, fmt.Errorf("error preparing query ListWorkspaceRolePermissions: %w", err)
+	}
+	if q.listWorkspaceRolesStmt, err = db.PrepareContext(ctx, listWorkspaceRoles); err != nil {
+		return nil, fmt.Errorf("error preparing query ListWorkspaceRoles: %w", err)
 	}
 	if q.listWorkspacesForAccountStmt, err = db.PrepareContext(ctx, listWorkspacesForAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query ListWorkspacesForAccount: %w", err)
 	}
+	if q.lockInitializationStmt, err = db.PrepareContext(ctx, lockInitialization); err != nil {
+		return nil, fmt.Errorf("error preparing query LockInitialization: %w", err)
+	}
 	if q.lockMethodRegistryStmt, err = db.PrepareContext(ctx, lockMethodRegistry); err != nil {
 		return nil, fmt.Errorf("error preparing query LockMethodRegistry: %w", err)
 	}
-	if q.lockWorkspaceAuthorizationStmt, err = db.PrepareContext(ctx, lockWorkspaceAuthorization); err != nil {
-		return nil, fmt.Errorf("error preparing query LockWorkspaceAuthorization: %w", err)
+	if q.methodGroupExistsStmt, err = db.PrepareContext(ctx, methodGroupExists); err != nil {
+		return nil, fmt.Errorf("error preparing query MethodGroupExists: %w", err)
 	}
-	if q.removeRoleMemberStmt, err = db.PrepareContext(ctx, removeRoleMember); err != nil {
-		return nil, fmt.Errorf("error preparing query RemoveRoleMember: %w", err)
+	if q.removeAllGlobalRoleMembershipsStmt, err = db.PrepareContext(ctx, removeAllGlobalRoleMemberships); err != nil {
+		return nil, fmt.Errorf("error preparing query RemoveAllGlobalRoleMemberships: %w", err)
+	}
+	if q.removeAllWorkspaceMembershipsStmt, err = db.PrepareContext(ctx, removeAllWorkspaceMemberships); err != nil {
+		return nil, fmt.Errorf("error preparing query RemoveAllWorkspaceMemberships: %w", err)
+	}
+	if q.removeAllWorkspaceRoleMembershipsStmt, err = db.PrepareContext(ctx, removeAllWorkspaceRoleMemberships); err != nil {
+		return nil, fmt.Errorf("error preparing query RemoveAllWorkspaceRoleMemberships: %w", err)
+	}
+	if q.removeGlobalRoleMemberStmt, err = db.PrepareContext(ctx, removeGlobalRoleMember); err != nil {
+		return nil, fmt.Errorf("error preparing query RemoveGlobalRoleMember: %w", err)
+	}
+	if q.removePlatformMemberStmt, err = db.PrepareContext(ctx, removePlatformMember); err != nil {
+		return nil, fmt.Errorf("error preparing query RemovePlatformMember: %w", err)
 	}
 	if q.removeWorkspaceMemberStmt, err = db.PrepareContext(ctx, removeWorkspaceMember); err != nil {
 		return nil, fmt.Errorf("error preparing query RemoveWorkspaceMember: %w", err)
@@ -186,38 +306,62 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.removeWorkspaceMemberRolesStmt, err = db.PrepareContext(ctx, removeWorkspaceMemberRoles); err != nil {
 		return nil, fmt.Errorf("error preparing query RemoveWorkspaceMemberRoles: %w", err)
 	}
+	if q.removeWorkspaceRoleMemberStmt, err = db.PrepareContext(ctx, removeWorkspaceRoleMember); err != nil {
+		return nil, fmt.Errorf("error preparing query RemoveWorkspaceRoleMember: %w", err)
+	}
+	if q.replaceGlobalRolePermissionsStmt, err = db.PrepareContext(ctx, replaceGlobalRolePermissions); err != nil {
+		return nil, fmt.Errorf("error preparing query ReplaceGlobalRolePermissions: %w", err)
+	}
+	if q.replaceWorkspaceRolePermissionsStmt, err = db.PrepareContext(ctx, replaceWorkspaceRolePermissions); err != nil {
+		return nil, fmt.Errorf("error preparing query ReplaceWorkspaceRolePermissions: %w", err)
+	}
+	if q.resolveLimitRequestStmt, err = db.PrepareContext(ctx, resolveLimitRequest); err != nil {
+		return nil, fmt.Errorf("error preparing query ResolveLimitRequest: %w", err)
+	}
 	if q.revokeAllSessionsStmt, err = db.PrepareContext(ctx, revokeAllSessions); err != nil {
 		return nil, fmt.Errorf("error preparing query RevokeAllSessions: %w", err)
 	}
 	if q.revokeInviteStmt, err = db.PrepareContext(ctx, revokeInvite); err != nil {
 		return nil, fmt.Errorf("error preparing query RevokeInvite: %w", err)
 	}
-	if q.revokeInviteAsActiveMemberStmt, err = db.PrepareContext(ctx, revokeInviteAsActiveMember); err != nil {
-		return nil, fmt.Errorf("error preparing query RevokeInviteAsActiveMember: %w", err)
+	if q.revokePendingInvitesByCreatorStmt, err = db.PrepareContext(ctx, revokePendingInvitesByCreator); err != nil {
+		return nil, fmt.Errorf("error preparing query RevokePendingInvitesByCreator: %w", err)
+	}
+	if q.revokePendingWorkspaceInvitesByCreatorStmt, err = db.PrepareContext(ctx, revokePendingWorkspaceInvitesByCreator); err != nil {
+		return nil, fmt.Errorf("error preparing query RevokePendingWorkspaceInvitesByCreator: %w", err)
 	}
 	if q.revokeSessionStmt, err = db.PrepareContext(ctx, revokeSession); err != nil {
 		return nil, fmt.Errorf("error preparing query RevokeSession: %w", err)
 	}
-	if q.setRolePermissionStmt, err = db.PrepareContext(ctx, setRolePermission); err != nil {
-		return nil, fmt.Errorf("error preparing query SetRolePermission: %w", err)
+	if q.transferGlobalOwnershipStmt, err = db.PrepareContext(ctx, transferGlobalOwnership); err != nil {
+		return nil, fmt.Errorf("error preparing query TransferGlobalOwnership: %w", err)
 	}
-	if q.touchSessionStmt, err = db.PrepareContext(ctx, touchSession); err != nil {
-		return nil, fmt.Errorf("error preparing query TouchSession: %w", err)
+	if q.transferWorkspaceOwnershipStmt, err = db.PrepareContext(ctx, transferWorkspaceOwnership); err != nil {
+		return nil, fmt.Errorf("error preparing query TransferWorkspaceOwnership: %w", err)
+	}
+	if q.updateAccountWorkspaceLimitStmt, err = db.PrepareContext(ctx, updateAccountWorkspaceLimit); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateAccountWorkspaceLimit: %w", err)
+	}
+	if q.updateGlobalRoleStmt, err = db.PrepareContext(ctx, updateGlobalRole); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateGlobalRole: %w", err)
 	}
 	if q.updatePendingTwoFactorBackupHashesStmt, err = db.PrepareContext(ctx, updatePendingTwoFactorBackupHashes); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdatePendingTwoFactorBackupHashes: %w", err)
 	}
-	if q.updateRoleStmt, err = db.PrepareContext(ctx, updateRole); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateRole: %w", err)
-	}
 	if q.updateTwoFactorBackupHashesStmt, err = db.PrepareContext(ctx, updateTwoFactorBackupHashes); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTwoFactorBackupHashes: %w", err)
+	}
+	if q.updateTwoFactorLastCounterStmt, err = db.PrepareContext(ctx, updateTwoFactorLastCounter); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTwoFactorLastCounter: %w", err)
 	}
 	if q.updateWorkspaceStmt, err = db.PrepareContext(ctx, updateWorkspace); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateWorkspace: %w", err)
 	}
-	if q.updateWorkspaceAsActiveMemberStmt, err = db.PrepareContext(ctx, updateWorkspaceAsActiveMember); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateWorkspaceAsActiveMember: %w", err)
+	if q.updateWorkspaceEmployeeLimitStmt, err = db.PrepareContext(ctx, updateWorkspaceEmployeeLimit); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateWorkspaceEmployeeLimit: %w", err)
+	}
+	if q.updateWorkspaceRoleStmt, err = db.PrepareContext(ctx, updateWorkspaceRole); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateWorkspaceRole: %w", err)
 	}
 	if q.upsertIdentityStmt, err = db.PrepareContext(ctx, upsertIdentity); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertIdentity: %w", err)
@@ -231,24 +375,47 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.upsertTwoFactorStmt, err = db.PrepareContext(ctx, upsertTwoFactor); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTwoFactor: %w", err)
 	}
+	if q.validateAndTouchSessionStmt, err = db.PrepareContext(ctx, validateAndTouchSession); err != nil {
+		return nil, fmt.Errorf("error preparing query ValidateAndTouchSession: %w", err)
+	}
 	return &q, nil
 }
 
 func (q *Queries) Close() error {
 	var err error
+	if q.acceptInviteStmt != nil {
+		if cerr := q.acceptInviteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing acceptInviteStmt: %w", cerr)
+		}
+	}
 	if q.activateTwoFactorStmt != nil {
 		if cerr := q.activateTwoFactorStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing activateTwoFactorStmt: %w", cerr)
 		}
 	}
-	if q.addInviteRoleStmt != nil {
-		if cerr := q.addInviteRoleStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing addInviteRoleStmt: %w", cerr)
+	if q.addGlobalRoleMemberStmt != nil {
+		if cerr := q.addGlobalRoleMemberStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing addGlobalRoleMemberStmt: %w", cerr)
 		}
 	}
-	if q.addRoleMemberStmt != nil {
-		if cerr := q.addRoleMemberStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing addRoleMemberStmt: %w", cerr)
+	if q.addGlobalRolesFromInviteStmt != nil {
+		if cerr := q.addGlobalRolesFromInviteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing addGlobalRolesFromInviteStmt: %w", cerr)
+		}
+	}
+	if q.addInviteGlobalRolesStmt != nil {
+		if cerr := q.addInviteGlobalRolesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing addInviteGlobalRolesStmt: %w", cerr)
+		}
+	}
+	if q.addInviteWorkspaceRolesStmt != nil {
+		if cerr := q.addInviteWorkspaceRolesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing addInviteWorkspaceRolesStmt: %w", cerr)
+		}
+	}
+	if q.addPlatformMemberStmt != nil {
+		if cerr := q.addPlatformMemberStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing addPlatformMemberStmt: %w", cerr)
 		}
 	}
 	if q.addWorkspaceMemberStmt != nil {
@@ -256,19 +423,54 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing addWorkspaceMemberStmt: %w", cerr)
 		}
 	}
-	if q.checkAccessStmt != nil {
-		if cerr := q.checkAccessStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing checkAccessStmt: %w", cerr)
+	if q.addWorkspaceRoleMemberStmt != nil {
+		if cerr := q.addWorkspaceRoleMemberStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing addWorkspaceRoleMemberStmt: %w", cerr)
 		}
 	}
-	if q.clearRolePermissionsStmt != nil {
-		if cerr := q.clearRolePermissionsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing clearRolePermissionsStmt: %w", cerr)
+	if q.addWorkspaceRolesFromInviteStmt != nil {
+		if cerr := q.addWorkspaceRolesFromInviteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing addWorkspaceRolesFromInviteStmt: %w", cerr)
+		}
+	}
+	if q.archiveWorkspaceStmt != nil {
+		if cerr := q.archiveWorkspaceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing archiveWorkspaceStmt: %w", cerr)
+		}
+	}
+	if q.cancelLimitRequestStmt != nil {
+		if cerr := q.cancelLimitRequestStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing cancelLimitRequestStmt: %w", cerr)
+		}
+	}
+	if q.cancelPendingAccountLimitRequestsStmt != nil {
+		if cerr := q.cancelPendingAccountLimitRequestsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing cancelPendingAccountLimitRequestsStmt: %w", cerr)
+		}
+	}
+	if q.cancelPendingWorkspaceLimitRequestsStmt != nil {
+		if cerr := q.cancelPendingWorkspaceLimitRequestsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing cancelPendingWorkspaceLimitRequestsStmt: %w", cerr)
+		}
+	}
+	if q.checkGlobalAccessStmt != nil {
+		if cerr := q.checkGlobalAccessStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing checkGlobalAccessStmt: %w", cerr)
+		}
+	}
+	if q.checkWorkspaceAccessStmt != nil {
+		if cerr := q.checkWorkspaceAccessStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing checkWorkspaceAccessStmt: %w", cerr)
 		}
 	}
 	if q.countIdentitiesStmt != nil {
 		if cerr := q.countIdentitiesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countIdentitiesStmt: %w", cerr)
+		}
+	}
+	if q.countMethodsByScopeStmt != nil {
+		if cerr := q.countMethodsByScopeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countMethodsByScopeStmt: %w", cerr)
 		}
 	}
 	if q.createAccountStmt != nil {
@@ -281,19 +483,24 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing createAuditEventStmt: %w", cerr)
 		}
 	}
+	if q.createGlobalRoleStmt != nil {
+		if cerr := q.createGlobalRoleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createGlobalRoleStmt: %w", cerr)
+		}
+	}
 	if q.createInviteStmt != nil {
 		if cerr := q.createInviteStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createInviteStmt: %w", cerr)
 		}
 	}
-	if q.createInviteAcceptanceStmt != nil {
-		if cerr := q.createInviteAcceptanceStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing createInviteAcceptanceStmt: %w", cerr)
+	if q.createLimitRequestStmt != nil {
+		if cerr := q.createLimitRequestStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createLimitRequestStmt: %w", cerr)
 		}
 	}
-	if q.createRoleStmt != nil {
-		if cerr := q.createRoleStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing createRoleStmt: %w", cerr)
+	if q.createPlatformStmt != nil {
+		if cerr := q.createPlatformStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createPlatformStmt: %w", cerr)
 		}
 	}
 	if q.createSessionStmt != nil {
@@ -311,19 +518,24 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing createWorkspaceStmt: %w", cerr)
 		}
 	}
+	if q.createWorkspaceRoleStmt != nil {
+		if cerr := q.createWorkspaceRoleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createWorkspaceRoleStmt: %w", cerr)
+		}
+	}
+	if q.deleteGlobalInviteRoleReferencesStmt != nil {
+		if cerr := q.deleteGlobalInviteRoleReferencesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteGlobalInviteRoleReferencesStmt: %w", cerr)
+		}
+	}
+	if q.deleteGlobalRoleStmt != nil {
+		if cerr := q.deleteGlobalRoleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteGlobalRoleStmt: %w", cerr)
+		}
+	}
 	if q.deleteIdentityStmt != nil {
 		if cerr := q.deleteIdentityStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteIdentityStmt: %w", cerr)
-		}
-	}
-	if q.deleteRoleStmt != nil {
-		if cerr := q.deleteRoleStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteRoleStmt: %w", cerr)
-		}
-	}
-	if q.deleteRolePermissionStmt != nil {
-		if cerr := q.deleteRolePermissionStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteRolePermissionStmt: %w", cerr)
 		}
 	}
 	if q.deleteTwoFactorStmt != nil {
@@ -336,9 +548,24 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteTwoFactorChallengeStmt: %w", cerr)
 		}
 	}
-	if q.findAccountByIdentityStmt != nil {
-		if cerr := q.findAccountByIdentityStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing findAccountByIdentityStmt: %w", cerr)
+	if q.deleteTwoFactorChallengesForAccountStmt != nil {
+		if cerr := q.deleteTwoFactorChallengesForAccountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTwoFactorChallengesForAccountStmt: %w", cerr)
+		}
+	}
+	if q.deleteWorkspaceInviteRoleReferencesStmt != nil {
+		if cerr := q.deleteWorkspaceInviteRoleReferencesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteWorkspaceInviteRoleReferencesStmt: %w", cerr)
+		}
+	}
+	if q.deleteWorkspaceRoleStmt != nil {
+		if cerr := q.deleteWorkspaceRoleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteWorkspaceRoleStmt: %w", cerr)
+		}
+	}
+	if q.findAuthPrincipalByIdentityStmt != nil {
+		if cerr := q.findAuthPrincipalByIdentityStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing findAuthPrincipalByIdentityStmt: %w", cerr)
 		}
 	}
 	if q.getAccountStmt != nil {
@@ -346,14 +573,29 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getAccountStmt: %w", cerr)
 		}
 	}
-	if q.getAccountPositionStmt != nil {
-		if cerr := q.getAccountPositionStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getAccountPositionStmt: %w", cerr)
+	if q.getGlobalAuthorizationForUpdateStmt != nil {
+		if cerr := q.getGlobalAuthorizationForUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGlobalAuthorizationForUpdateStmt: %w", cerr)
 		}
 	}
-	if q.getActiveSessionByHashStmt != nil {
-		if cerr := q.getActiveSessionByHashStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getActiveSessionByHashStmt: %w", cerr)
+	if q.getGlobalRoleStmt != nil {
+		if cerr := q.getGlobalRoleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGlobalRoleStmt: %w", cerr)
+		}
+	}
+	if q.getIdentityStmt != nil {
+		if cerr := q.getIdentityStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getIdentityStmt: %w", cerr)
+		}
+	}
+	if q.getInviteStmt != nil {
+		if cerr := q.getInviteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getInviteStmt: %w", cerr)
+		}
+	}
+	if q.getInviteByHashStmt != nil {
+		if cerr := q.getInviteByHashStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getInviteByHashStmt: %w", cerr)
 		}
 	}
 	if q.getInviteByHashForUpdateStmt != nil {
@@ -361,19 +603,44 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getInviteByHashForUpdateStmt: %w", cerr)
 		}
 	}
+	if q.getInviteForUpdateStmt != nil {
+		if cerr := q.getInviteForUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getInviteForUpdateStmt: %w", cerr)
+		}
+	}
+	if q.getLimitRequestForUpdateStmt != nil {
+		if cerr := q.getLimitRequestForUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLimitRequestForUpdateStmt: %w", cerr)
+		}
+	}
 	if q.getMethodStmt != nil {
 		if cerr := q.getMethodStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getMethodStmt: %w", cerr)
 		}
 	}
-	if q.getRoleStmt != nil {
-		if cerr := q.getRoleStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getRoleStmt: %w", cerr)
+	if q.getPlatformStmt != nil {
+		if cerr := q.getPlatformStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPlatformStmt: %w", cerr)
+		}
+	}
+	if q.getPlatformMemberStmt != nil {
+		if cerr := q.getPlatformMemberStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPlatformMemberStmt: %w", cerr)
+		}
+	}
+	if q.getPlatformMemberForUpdateStmt != nil {
+		if cerr := q.getPlatformMemberForUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPlatformMemberForUpdateStmt: %w", cerr)
 		}
 	}
 	if q.getTwoFactorStmt != nil {
 		if cerr := q.getTwoFactorStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getTwoFactorStmt: %w", cerr)
+		}
+	}
+	if q.getTwoFactorChallengeAccountStmt != nil {
+		if cerr := q.getTwoFactorChallengeAccountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTwoFactorChallengeAccountStmt: %w", cerr)
 		}
 	}
 	if q.getTwoFactorChallengeForUpdateStmt != nil {
@@ -396,14 +663,34 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getWorkspaceStmt: %w", cerr)
 		}
 	}
+	if q.getWorkspaceAuthorizationForUpdateStmt != nil {
+		if cerr := q.getWorkspaceAuthorizationForUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getWorkspaceAuthorizationForUpdateStmt: %w", cerr)
+		}
+	}
+	if q.getWorkspaceCapacityForUpdateStmt != nil {
+		if cerr := q.getWorkspaceCapacityForUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getWorkspaceCapacityForUpdateStmt: %w", cerr)
+		}
+	}
+	if q.getWorkspaceCreationBundleForUpdateStmt != nil {
+		if cerr := q.getWorkspaceCreationBundleForUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getWorkspaceCreationBundleForUpdateStmt: %w", cerr)
+		}
+	}
+	if q.getWorkspaceOwnershipCapacityForUpdateStmt != nil {
+		if cerr := q.getWorkspaceOwnershipCapacityForUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getWorkspaceOwnershipCapacityForUpdateStmt: %w", cerr)
+		}
+	}
+	if q.getWorkspaceRoleStmt != nil {
+		if cerr := q.getWorkspaceRoleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getWorkspaceRoleStmt: %w", cerr)
+		}
+	}
 	if q.hasActiveTwoFactorStmt != nil {
 		if cerr := q.hasActiveTwoFactorStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing hasActiveTwoFactorStmt: %w", cerr)
-		}
-	}
-	if q.incrementInviteUseStmt != nil {
-		if cerr := q.incrementInviteUseStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing incrementInviteUseStmt: %w", cerr)
 		}
 	}
 	if q.isActiveWorkspaceMemberStmt != nil {
@@ -421,14 +708,29 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAuditEventsStmt: %w", cerr)
 		}
 	}
-	if q.listAuditEventsFilteredStmt != nil {
-		if cerr := q.listAuditEventsFilteredStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listAuditEventsFilteredStmt: %w", cerr)
+	if q.listAuthorizedGlobalMethodsStmt != nil {
+		if cerr := q.listAuthorizedGlobalMethodsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAuthorizedGlobalMethodsStmt: %w", cerr)
 		}
 	}
-	if q.listAuthorizedMethodsStmt != nil {
-		if cerr := q.listAuthorizedMethodsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listAuthorizedMethodsStmt: %w", cerr)
+	if q.listAuthorizedWorkspaceMethodsStmt != nil {
+		if cerr := q.listAuthorizedWorkspaceMethodsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAuthorizedWorkspaceMethodsStmt: %w", cerr)
+		}
+	}
+	if q.listGlobalInvitesStmt != nil {
+		if cerr := q.listGlobalInvitesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGlobalInvitesStmt: %w", cerr)
+		}
+	}
+	if q.listGlobalRolePermissionsStmt != nil {
+		if cerr := q.listGlobalRolePermissionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGlobalRolePermissionsStmt: %w", cerr)
+		}
+	}
+	if q.listGlobalRolesStmt != nil {
+		if cerr := q.listGlobalRolesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGlobalRolesStmt: %w", cerr)
 		}
 	}
 	if q.listIdentitiesStmt != nil {
@@ -436,14 +738,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listIdentitiesStmt: %w", cerr)
 		}
 	}
-	if q.listInviteRolesStmt != nil {
-		if cerr := q.listInviteRolesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listInviteRolesStmt: %w", cerr)
+	if q.listInviteGlobalRolesStmt != nil {
+		if cerr := q.listInviteGlobalRolesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listInviteGlobalRolesStmt: %w", cerr)
 		}
 	}
-	if q.listInvitesStmt != nil {
-		if cerr := q.listInvitesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listInvitesStmt: %w", cerr)
+	if q.listInviteWorkspaceRolesStmt != nil {
+		if cerr := q.listInviteWorkspaceRolesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listInviteWorkspaceRolesStmt: %w", cerr)
+		}
+	}
+	if q.listLimitRequestsStmt != nil {
+		if cerr := q.listLimitRequestsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listLimitRequestsStmt: %w", cerr)
 		}
 	}
 	if q.listMethodGroupsStmt != nil {
@@ -456,14 +763,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listMethodsStmt: %w", cerr)
 		}
 	}
-	if q.listRolePermissionsStmt != nil {
-		if cerr := q.listRolePermissionsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listRolePermissionsStmt: %w", cerr)
-		}
-	}
-	if q.listRolesStmt != nil {
-		if cerr := q.listRolesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listRolesStmt: %w", cerr)
+	if q.listPlatformMembersStmt != nil {
+		if cerr := q.listPlatformMembersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPlatformMembersStmt: %w", cerr)
 		}
 	}
 	if q.listSessionsStmt != nil {
@@ -471,9 +773,29 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listSessionsStmt: %w", cerr)
 		}
 	}
+	if q.listWorkspaceInvitesStmt != nil {
+		if cerr := q.listWorkspaceInvitesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listWorkspaceInvitesStmt: %w", cerr)
+		}
+	}
+	if q.listWorkspaceMemberRolesStmt != nil {
+		if cerr := q.listWorkspaceMemberRolesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listWorkspaceMemberRolesStmt: %w", cerr)
+		}
+	}
 	if q.listWorkspaceMembersStmt != nil {
 		if cerr := q.listWorkspaceMembersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listWorkspaceMembersStmt: %w", cerr)
+		}
+	}
+	if q.listWorkspaceRolePermissionsStmt != nil {
+		if cerr := q.listWorkspaceRolePermissionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listWorkspaceRolePermissionsStmt: %w", cerr)
+		}
+	}
+	if q.listWorkspaceRolesStmt != nil {
+		if cerr := q.listWorkspaceRolesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listWorkspaceRolesStmt: %w", cerr)
 		}
 	}
 	if q.listWorkspacesForAccountStmt != nil {
@@ -481,19 +803,44 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listWorkspacesForAccountStmt: %w", cerr)
 		}
 	}
+	if q.lockInitializationStmt != nil {
+		if cerr := q.lockInitializationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing lockInitializationStmt: %w", cerr)
+		}
+	}
 	if q.lockMethodRegistryStmt != nil {
 		if cerr := q.lockMethodRegistryStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing lockMethodRegistryStmt: %w", cerr)
 		}
 	}
-	if q.lockWorkspaceAuthorizationStmt != nil {
-		if cerr := q.lockWorkspaceAuthorizationStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing lockWorkspaceAuthorizationStmt: %w", cerr)
+	if q.methodGroupExistsStmt != nil {
+		if cerr := q.methodGroupExistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing methodGroupExistsStmt: %w", cerr)
 		}
 	}
-	if q.removeRoleMemberStmt != nil {
-		if cerr := q.removeRoleMemberStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing removeRoleMemberStmt: %w", cerr)
+	if q.removeAllGlobalRoleMembershipsStmt != nil {
+		if cerr := q.removeAllGlobalRoleMembershipsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing removeAllGlobalRoleMembershipsStmt: %w", cerr)
+		}
+	}
+	if q.removeAllWorkspaceMembershipsStmt != nil {
+		if cerr := q.removeAllWorkspaceMembershipsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing removeAllWorkspaceMembershipsStmt: %w", cerr)
+		}
+	}
+	if q.removeAllWorkspaceRoleMembershipsStmt != nil {
+		if cerr := q.removeAllWorkspaceRoleMembershipsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing removeAllWorkspaceRoleMembershipsStmt: %w", cerr)
+		}
+	}
+	if q.removeGlobalRoleMemberStmt != nil {
+		if cerr := q.removeGlobalRoleMemberStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing removeGlobalRoleMemberStmt: %w", cerr)
+		}
+	}
+	if q.removePlatformMemberStmt != nil {
+		if cerr := q.removePlatformMemberStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing removePlatformMemberStmt: %w", cerr)
 		}
 	}
 	if q.removeWorkspaceMemberStmt != nil {
@@ -506,6 +853,26 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing removeWorkspaceMemberRolesStmt: %w", cerr)
 		}
 	}
+	if q.removeWorkspaceRoleMemberStmt != nil {
+		if cerr := q.removeWorkspaceRoleMemberStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing removeWorkspaceRoleMemberStmt: %w", cerr)
+		}
+	}
+	if q.replaceGlobalRolePermissionsStmt != nil {
+		if cerr := q.replaceGlobalRolePermissionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing replaceGlobalRolePermissionsStmt: %w", cerr)
+		}
+	}
+	if q.replaceWorkspaceRolePermissionsStmt != nil {
+		if cerr := q.replaceWorkspaceRolePermissionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing replaceWorkspaceRolePermissionsStmt: %w", cerr)
+		}
+	}
+	if q.resolveLimitRequestStmt != nil {
+		if cerr := q.resolveLimitRequestStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resolveLimitRequestStmt: %w", cerr)
+		}
+	}
 	if q.revokeAllSessionsStmt != nil {
 		if cerr := q.revokeAllSessionsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing revokeAllSessionsStmt: %w", cerr)
@@ -516,9 +883,14 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing revokeInviteStmt: %w", cerr)
 		}
 	}
-	if q.revokeInviteAsActiveMemberStmt != nil {
-		if cerr := q.revokeInviteAsActiveMemberStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing revokeInviteAsActiveMemberStmt: %w", cerr)
+	if q.revokePendingInvitesByCreatorStmt != nil {
+		if cerr := q.revokePendingInvitesByCreatorStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing revokePendingInvitesByCreatorStmt: %w", cerr)
+		}
+	}
+	if q.revokePendingWorkspaceInvitesByCreatorStmt != nil {
+		if cerr := q.revokePendingWorkspaceInvitesByCreatorStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing revokePendingWorkspaceInvitesByCreatorStmt: %w", cerr)
 		}
 	}
 	if q.revokeSessionStmt != nil {
@@ -526,14 +898,24 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing revokeSessionStmt: %w", cerr)
 		}
 	}
-	if q.setRolePermissionStmt != nil {
-		if cerr := q.setRolePermissionStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing setRolePermissionStmt: %w", cerr)
+	if q.transferGlobalOwnershipStmt != nil {
+		if cerr := q.transferGlobalOwnershipStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing transferGlobalOwnershipStmt: %w", cerr)
 		}
 	}
-	if q.touchSessionStmt != nil {
-		if cerr := q.touchSessionStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing touchSessionStmt: %w", cerr)
+	if q.transferWorkspaceOwnershipStmt != nil {
+		if cerr := q.transferWorkspaceOwnershipStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing transferWorkspaceOwnershipStmt: %w", cerr)
+		}
+	}
+	if q.updateAccountWorkspaceLimitStmt != nil {
+		if cerr := q.updateAccountWorkspaceLimitStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateAccountWorkspaceLimitStmt: %w", cerr)
+		}
+	}
+	if q.updateGlobalRoleStmt != nil {
+		if cerr := q.updateGlobalRoleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateGlobalRoleStmt: %w", cerr)
 		}
 	}
 	if q.updatePendingTwoFactorBackupHashesStmt != nil {
@@ -541,14 +923,14 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updatePendingTwoFactorBackupHashesStmt: %w", cerr)
 		}
 	}
-	if q.updateRoleStmt != nil {
-		if cerr := q.updateRoleStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateRoleStmt: %w", cerr)
-		}
-	}
 	if q.updateTwoFactorBackupHashesStmt != nil {
 		if cerr := q.updateTwoFactorBackupHashesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateTwoFactorBackupHashesStmt: %w", cerr)
+		}
+	}
+	if q.updateTwoFactorLastCounterStmt != nil {
+		if cerr := q.updateTwoFactorLastCounterStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTwoFactorLastCounterStmt: %w", cerr)
 		}
 	}
 	if q.updateWorkspaceStmt != nil {
@@ -556,9 +938,14 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateWorkspaceStmt: %w", cerr)
 		}
 	}
-	if q.updateWorkspaceAsActiveMemberStmt != nil {
-		if cerr := q.updateWorkspaceAsActiveMemberStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateWorkspaceAsActiveMemberStmt: %w", cerr)
+	if q.updateWorkspaceEmployeeLimitStmt != nil {
+		if cerr := q.updateWorkspaceEmployeeLimitStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateWorkspaceEmployeeLimitStmt: %w", cerr)
+		}
+	}
+	if q.updateWorkspaceRoleStmt != nil {
+		if cerr := q.updateWorkspaceRoleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateWorkspaceRoleStmt: %w", cerr)
 		}
 	}
 	if q.upsertIdentityStmt != nil {
@@ -579,6 +966,11 @@ func (q *Queries) Close() error {
 	if q.upsertTwoFactorStmt != nil {
 		if cerr := q.upsertTwoFactorStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertTwoFactorStmt: %w", cerr)
+		}
+	}
+	if q.validateAndTouchSessionStmt != nil {
+		if cerr := q.validateAndTouchSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing validateAndTouchSessionStmt: %w", cerr)
 		}
 	}
 	return err
@@ -620,149 +1012,247 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 type Queries struct {
 	db                                           DBTX
 	tx                                           *sql.Tx
+	acceptInviteStmt                             *sql.Stmt
 	activateTwoFactorStmt                        *sql.Stmt
-	addInviteRoleStmt                            *sql.Stmt
-	addRoleMemberStmt                            *sql.Stmt
+	addGlobalRoleMemberStmt                      *sql.Stmt
+	addGlobalRolesFromInviteStmt                 *sql.Stmt
+	addInviteGlobalRolesStmt                     *sql.Stmt
+	addInviteWorkspaceRolesStmt                  *sql.Stmt
+	addPlatformMemberStmt                        *sql.Stmt
 	addWorkspaceMemberStmt                       *sql.Stmt
-	checkAccessStmt                              *sql.Stmt
-	clearRolePermissionsStmt                     *sql.Stmt
+	addWorkspaceRoleMemberStmt                   *sql.Stmt
+	addWorkspaceRolesFromInviteStmt              *sql.Stmt
+	archiveWorkspaceStmt                         *sql.Stmt
+	cancelLimitRequestStmt                       *sql.Stmt
+	cancelPendingAccountLimitRequestsStmt        *sql.Stmt
+	cancelPendingWorkspaceLimitRequestsStmt      *sql.Stmt
+	checkGlobalAccessStmt                        *sql.Stmt
+	checkWorkspaceAccessStmt                     *sql.Stmt
 	countIdentitiesStmt                          *sql.Stmt
+	countMethodsByScopeStmt                      *sql.Stmt
 	createAccountStmt                            *sql.Stmt
 	createAuditEventStmt                         *sql.Stmt
+	createGlobalRoleStmt                         *sql.Stmt
 	createInviteStmt                             *sql.Stmt
-	createInviteAcceptanceStmt                   *sql.Stmt
-	createRoleStmt                               *sql.Stmt
+	createLimitRequestStmt                       *sql.Stmt
+	createPlatformStmt                           *sql.Stmt
 	createSessionStmt                            *sql.Stmt
 	createTwoFactorChallengeStmt                 *sql.Stmt
 	createWorkspaceStmt                          *sql.Stmt
+	createWorkspaceRoleStmt                      *sql.Stmt
+	deleteGlobalInviteRoleReferencesStmt         *sql.Stmt
+	deleteGlobalRoleStmt                         *sql.Stmt
 	deleteIdentityStmt                           *sql.Stmt
-	deleteRoleStmt                               *sql.Stmt
-	deleteRolePermissionStmt                     *sql.Stmt
 	deleteTwoFactorStmt                          *sql.Stmt
 	deleteTwoFactorChallengeStmt                 *sql.Stmt
-	findAccountByIdentityStmt                    *sql.Stmt
+	deleteTwoFactorChallengesForAccountStmt      *sql.Stmt
+	deleteWorkspaceInviteRoleReferencesStmt      *sql.Stmt
+	deleteWorkspaceRoleStmt                      *sql.Stmt
+	findAuthPrincipalByIdentityStmt              *sql.Stmt
 	getAccountStmt                               *sql.Stmt
-	getAccountPositionStmt                       *sql.Stmt
-	getActiveSessionByHashStmt                   *sql.Stmt
+	getGlobalAuthorizationForUpdateStmt          *sql.Stmt
+	getGlobalRoleStmt                            *sql.Stmt
+	getIdentityStmt                              *sql.Stmt
+	getInviteStmt                                *sql.Stmt
+	getInviteByHashStmt                          *sql.Stmt
 	getInviteByHashForUpdateStmt                 *sql.Stmt
+	getInviteForUpdateStmt                       *sql.Stmt
+	getLimitRequestForUpdateStmt                 *sql.Stmt
 	getMethodStmt                                *sql.Stmt
-	getRoleStmt                                  *sql.Stmt
+	getPlatformStmt                              *sql.Stmt
+	getPlatformMemberStmt                        *sql.Stmt
+	getPlatformMemberForUpdateStmt               *sql.Stmt
 	getTwoFactorStmt                             *sql.Stmt
+	getTwoFactorChallengeAccountStmt             *sql.Stmt
 	getTwoFactorChallengeForUpdateStmt           *sql.Stmt
 	getTwoFactorChallengeWithFactorForUpdateStmt *sql.Stmt
 	getTwoFactorForUpdateStmt                    *sql.Stmt
 	getWorkspaceStmt                             *sql.Stmt
+	getWorkspaceAuthorizationForUpdateStmt       *sql.Stmt
+	getWorkspaceCapacityForUpdateStmt            *sql.Stmt
+	getWorkspaceCreationBundleForUpdateStmt      *sql.Stmt
+	getWorkspaceOwnershipCapacityForUpdateStmt   *sql.Stmt
+	getWorkspaceRoleStmt                         *sql.Stmt
 	hasActiveTwoFactorStmt                       *sql.Stmt
-	incrementInviteUseStmt                       *sql.Stmt
 	isActiveWorkspaceMemberStmt                  *sql.Stmt
 	listAccessCatalogStmt                        *sql.Stmt
 	listAuditEventsStmt                          *sql.Stmt
-	listAuditEventsFilteredStmt                  *sql.Stmt
-	listAuthorizedMethodsStmt                    *sql.Stmt
+	listAuthorizedGlobalMethodsStmt              *sql.Stmt
+	listAuthorizedWorkspaceMethodsStmt           *sql.Stmt
+	listGlobalInvitesStmt                        *sql.Stmt
+	listGlobalRolePermissionsStmt                *sql.Stmt
+	listGlobalRolesStmt                          *sql.Stmt
 	listIdentitiesStmt                           *sql.Stmt
-	listInviteRolesStmt                          *sql.Stmt
-	listInvitesStmt                              *sql.Stmt
+	listInviteGlobalRolesStmt                    *sql.Stmt
+	listInviteWorkspaceRolesStmt                 *sql.Stmt
+	listLimitRequestsStmt                        *sql.Stmt
 	listMethodGroupsStmt                         *sql.Stmt
 	listMethodsStmt                              *sql.Stmt
-	listRolePermissionsStmt                      *sql.Stmt
-	listRolesStmt                                *sql.Stmt
+	listPlatformMembersStmt                      *sql.Stmt
 	listSessionsStmt                             *sql.Stmt
+	listWorkspaceInvitesStmt                     *sql.Stmt
+	listWorkspaceMemberRolesStmt                 *sql.Stmt
 	listWorkspaceMembersStmt                     *sql.Stmt
+	listWorkspaceRolePermissionsStmt             *sql.Stmt
+	listWorkspaceRolesStmt                       *sql.Stmt
 	listWorkspacesForAccountStmt                 *sql.Stmt
+	lockInitializationStmt                       *sql.Stmt
 	lockMethodRegistryStmt                       *sql.Stmt
-	lockWorkspaceAuthorizationStmt               *sql.Stmt
-	removeRoleMemberStmt                         *sql.Stmt
+	methodGroupExistsStmt                        *sql.Stmt
+	removeAllGlobalRoleMembershipsStmt           *sql.Stmt
+	removeAllWorkspaceMembershipsStmt            *sql.Stmt
+	removeAllWorkspaceRoleMembershipsStmt        *sql.Stmt
+	removeGlobalRoleMemberStmt                   *sql.Stmt
+	removePlatformMemberStmt                     *sql.Stmt
 	removeWorkspaceMemberStmt                    *sql.Stmt
 	removeWorkspaceMemberRolesStmt               *sql.Stmt
+	removeWorkspaceRoleMemberStmt                *sql.Stmt
+	replaceGlobalRolePermissionsStmt             *sql.Stmt
+	replaceWorkspaceRolePermissionsStmt          *sql.Stmt
+	resolveLimitRequestStmt                      *sql.Stmt
 	revokeAllSessionsStmt                        *sql.Stmt
 	revokeInviteStmt                             *sql.Stmt
-	revokeInviteAsActiveMemberStmt               *sql.Stmt
+	revokePendingInvitesByCreatorStmt            *sql.Stmt
+	revokePendingWorkspaceInvitesByCreatorStmt   *sql.Stmt
 	revokeSessionStmt                            *sql.Stmt
-	setRolePermissionStmt                        *sql.Stmt
-	touchSessionStmt                             *sql.Stmt
+	transferGlobalOwnershipStmt                  *sql.Stmt
+	transferWorkspaceOwnershipStmt               *sql.Stmt
+	updateAccountWorkspaceLimitStmt              *sql.Stmt
+	updateGlobalRoleStmt                         *sql.Stmt
 	updatePendingTwoFactorBackupHashesStmt       *sql.Stmt
-	updateRoleStmt                               *sql.Stmt
 	updateTwoFactorBackupHashesStmt              *sql.Stmt
+	updateTwoFactorLastCounterStmt               *sql.Stmt
 	updateWorkspaceStmt                          *sql.Stmt
-	updateWorkspaceAsActiveMemberStmt            *sql.Stmt
+	updateWorkspaceEmployeeLimitStmt             *sql.Stmt
+	updateWorkspaceRoleStmt                      *sql.Stmt
 	upsertIdentityStmt                           *sql.Stmt
 	upsertMethodStmt                             *sql.Stmt
 	upsertMethodGroupStmt                        *sql.Stmt
 	upsertTwoFactorStmt                          *sql.Stmt
+	validateAndTouchSessionStmt                  *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                                 tx,
-		tx:                                 tx,
-		activateTwoFactorStmt:              q.activateTwoFactorStmt,
-		addInviteRoleStmt:                  q.addInviteRoleStmt,
-		addRoleMemberStmt:                  q.addRoleMemberStmt,
-		addWorkspaceMemberStmt:             q.addWorkspaceMemberStmt,
-		checkAccessStmt:                    q.checkAccessStmt,
-		clearRolePermissionsStmt:           q.clearRolePermissionsStmt,
-		countIdentitiesStmt:                q.countIdentitiesStmt,
-		createAccountStmt:                  q.createAccountStmt,
-		createAuditEventStmt:               q.createAuditEventStmt,
-		createInviteStmt:                   q.createInviteStmt,
-		createInviteAcceptanceStmt:         q.createInviteAcceptanceStmt,
-		createRoleStmt:                     q.createRoleStmt,
-		createSessionStmt:                  q.createSessionStmt,
-		createTwoFactorChallengeStmt:       q.createTwoFactorChallengeStmt,
-		createWorkspaceStmt:                q.createWorkspaceStmt,
-		deleteIdentityStmt:                 q.deleteIdentityStmt,
-		deleteRoleStmt:                     q.deleteRoleStmt,
-		deleteRolePermissionStmt:           q.deleteRolePermissionStmt,
-		deleteTwoFactorStmt:                q.deleteTwoFactorStmt,
-		deleteTwoFactorChallengeStmt:       q.deleteTwoFactorChallengeStmt,
-		findAccountByIdentityStmt:          q.findAccountByIdentityStmt,
-		getAccountStmt:                     q.getAccountStmt,
-		getAccountPositionStmt:             q.getAccountPositionStmt,
-		getActiveSessionByHashStmt:         q.getActiveSessionByHashStmt,
-		getInviteByHashForUpdateStmt:       q.getInviteByHashForUpdateStmt,
-		getMethodStmt:                      q.getMethodStmt,
-		getRoleStmt:                        q.getRoleStmt,
-		getTwoFactorStmt:                   q.getTwoFactorStmt,
-		getTwoFactorChallengeForUpdateStmt: q.getTwoFactorChallengeForUpdateStmt,
+		db:                                           tx,
+		tx:                                           tx,
+		acceptInviteStmt:                             q.acceptInviteStmt,
+		activateTwoFactorStmt:                        q.activateTwoFactorStmt,
+		addGlobalRoleMemberStmt:                      q.addGlobalRoleMemberStmt,
+		addGlobalRolesFromInviteStmt:                 q.addGlobalRolesFromInviteStmt,
+		addInviteGlobalRolesStmt:                     q.addInviteGlobalRolesStmt,
+		addInviteWorkspaceRolesStmt:                  q.addInviteWorkspaceRolesStmt,
+		addPlatformMemberStmt:                        q.addPlatformMemberStmt,
+		addWorkspaceMemberStmt:                       q.addWorkspaceMemberStmt,
+		addWorkspaceRoleMemberStmt:                   q.addWorkspaceRoleMemberStmt,
+		addWorkspaceRolesFromInviteStmt:              q.addWorkspaceRolesFromInviteStmt,
+		archiveWorkspaceStmt:                         q.archiveWorkspaceStmt,
+		cancelLimitRequestStmt:                       q.cancelLimitRequestStmt,
+		cancelPendingAccountLimitRequestsStmt:        q.cancelPendingAccountLimitRequestsStmt,
+		cancelPendingWorkspaceLimitRequestsStmt:      q.cancelPendingWorkspaceLimitRequestsStmt,
+		checkGlobalAccessStmt:                        q.checkGlobalAccessStmt,
+		checkWorkspaceAccessStmt:                     q.checkWorkspaceAccessStmt,
+		countIdentitiesStmt:                          q.countIdentitiesStmt,
+		countMethodsByScopeStmt:                      q.countMethodsByScopeStmt,
+		createAccountStmt:                            q.createAccountStmt,
+		createAuditEventStmt:                         q.createAuditEventStmt,
+		createGlobalRoleStmt:                         q.createGlobalRoleStmt,
+		createInviteStmt:                             q.createInviteStmt,
+		createLimitRequestStmt:                       q.createLimitRequestStmt,
+		createPlatformStmt:                           q.createPlatformStmt,
+		createSessionStmt:                            q.createSessionStmt,
+		createTwoFactorChallengeStmt:                 q.createTwoFactorChallengeStmt,
+		createWorkspaceStmt:                          q.createWorkspaceStmt,
+		createWorkspaceRoleStmt:                      q.createWorkspaceRoleStmt,
+		deleteGlobalInviteRoleReferencesStmt:         q.deleteGlobalInviteRoleReferencesStmt,
+		deleteGlobalRoleStmt:                         q.deleteGlobalRoleStmt,
+		deleteIdentityStmt:                           q.deleteIdentityStmt,
+		deleteTwoFactorStmt:                          q.deleteTwoFactorStmt,
+		deleteTwoFactorChallengeStmt:                 q.deleteTwoFactorChallengeStmt,
+		deleteTwoFactorChallengesForAccountStmt:      q.deleteTwoFactorChallengesForAccountStmt,
+		deleteWorkspaceInviteRoleReferencesStmt:      q.deleteWorkspaceInviteRoleReferencesStmt,
+		deleteWorkspaceRoleStmt:                      q.deleteWorkspaceRoleStmt,
+		findAuthPrincipalByIdentityStmt:              q.findAuthPrincipalByIdentityStmt,
+		getAccountStmt:                               q.getAccountStmt,
+		getGlobalAuthorizationForUpdateStmt:          q.getGlobalAuthorizationForUpdateStmt,
+		getGlobalRoleStmt:                            q.getGlobalRoleStmt,
+		getIdentityStmt:                              q.getIdentityStmt,
+		getInviteStmt:                                q.getInviteStmt,
+		getInviteByHashStmt:                          q.getInviteByHashStmt,
+		getInviteByHashForUpdateStmt:                 q.getInviteByHashForUpdateStmt,
+		getInviteForUpdateStmt:                       q.getInviteForUpdateStmt,
+		getLimitRequestForUpdateStmt:                 q.getLimitRequestForUpdateStmt,
+		getMethodStmt:                                q.getMethodStmt,
+		getPlatformStmt:                              q.getPlatformStmt,
+		getPlatformMemberStmt:                        q.getPlatformMemberStmt,
+		getPlatformMemberForUpdateStmt:               q.getPlatformMemberForUpdateStmt,
+		getTwoFactorStmt:                             q.getTwoFactorStmt,
+		getTwoFactorChallengeAccountStmt:             q.getTwoFactorChallengeAccountStmt,
+		getTwoFactorChallengeForUpdateStmt:           q.getTwoFactorChallengeForUpdateStmt,
 		getTwoFactorChallengeWithFactorForUpdateStmt: q.getTwoFactorChallengeWithFactorForUpdateStmt,
 		getTwoFactorForUpdateStmt:                    q.getTwoFactorForUpdateStmt,
 		getWorkspaceStmt:                             q.getWorkspaceStmt,
+		getWorkspaceAuthorizationForUpdateStmt:       q.getWorkspaceAuthorizationForUpdateStmt,
+		getWorkspaceCapacityForUpdateStmt:            q.getWorkspaceCapacityForUpdateStmt,
+		getWorkspaceCreationBundleForUpdateStmt:      q.getWorkspaceCreationBundleForUpdateStmt,
+		getWorkspaceOwnershipCapacityForUpdateStmt:   q.getWorkspaceOwnershipCapacityForUpdateStmt,
+		getWorkspaceRoleStmt:                         q.getWorkspaceRoleStmt,
 		hasActiveTwoFactorStmt:                       q.hasActiveTwoFactorStmt,
-		incrementInviteUseStmt:                       q.incrementInviteUseStmt,
 		isActiveWorkspaceMemberStmt:                  q.isActiveWorkspaceMemberStmt,
 		listAccessCatalogStmt:                        q.listAccessCatalogStmt,
 		listAuditEventsStmt:                          q.listAuditEventsStmt,
-		listAuditEventsFilteredStmt:                  q.listAuditEventsFilteredStmt,
-		listAuthorizedMethodsStmt:                    q.listAuthorizedMethodsStmt,
+		listAuthorizedGlobalMethodsStmt:              q.listAuthorizedGlobalMethodsStmt,
+		listAuthorizedWorkspaceMethodsStmt:           q.listAuthorizedWorkspaceMethodsStmt,
+		listGlobalInvitesStmt:                        q.listGlobalInvitesStmt,
+		listGlobalRolePermissionsStmt:                q.listGlobalRolePermissionsStmt,
+		listGlobalRolesStmt:                          q.listGlobalRolesStmt,
 		listIdentitiesStmt:                           q.listIdentitiesStmt,
-		listInviteRolesStmt:                          q.listInviteRolesStmt,
-		listInvitesStmt:                              q.listInvitesStmt,
+		listInviteGlobalRolesStmt:                    q.listInviteGlobalRolesStmt,
+		listInviteWorkspaceRolesStmt:                 q.listInviteWorkspaceRolesStmt,
+		listLimitRequestsStmt:                        q.listLimitRequestsStmt,
 		listMethodGroupsStmt:                         q.listMethodGroupsStmt,
 		listMethodsStmt:                              q.listMethodsStmt,
-		listRolePermissionsStmt:                      q.listRolePermissionsStmt,
-		listRolesStmt:                                q.listRolesStmt,
+		listPlatformMembersStmt:                      q.listPlatformMembersStmt,
 		listSessionsStmt:                             q.listSessionsStmt,
+		listWorkspaceInvitesStmt:                     q.listWorkspaceInvitesStmt,
+		listWorkspaceMemberRolesStmt:                 q.listWorkspaceMemberRolesStmt,
 		listWorkspaceMembersStmt:                     q.listWorkspaceMembersStmt,
+		listWorkspaceRolePermissionsStmt:             q.listWorkspaceRolePermissionsStmt,
+		listWorkspaceRolesStmt:                       q.listWorkspaceRolesStmt,
 		listWorkspacesForAccountStmt:                 q.listWorkspacesForAccountStmt,
+		lockInitializationStmt:                       q.lockInitializationStmt,
 		lockMethodRegistryStmt:                       q.lockMethodRegistryStmt,
-		lockWorkspaceAuthorizationStmt:               q.lockWorkspaceAuthorizationStmt,
-		removeRoleMemberStmt:                         q.removeRoleMemberStmt,
+		methodGroupExistsStmt:                        q.methodGroupExistsStmt,
+		removeAllGlobalRoleMembershipsStmt:           q.removeAllGlobalRoleMembershipsStmt,
+		removeAllWorkspaceMembershipsStmt:            q.removeAllWorkspaceMembershipsStmt,
+		removeAllWorkspaceRoleMembershipsStmt:        q.removeAllWorkspaceRoleMembershipsStmt,
+		removeGlobalRoleMemberStmt:                   q.removeGlobalRoleMemberStmt,
+		removePlatformMemberStmt:                     q.removePlatformMemberStmt,
 		removeWorkspaceMemberStmt:                    q.removeWorkspaceMemberStmt,
 		removeWorkspaceMemberRolesStmt:               q.removeWorkspaceMemberRolesStmt,
+		removeWorkspaceRoleMemberStmt:                q.removeWorkspaceRoleMemberStmt,
+		replaceGlobalRolePermissionsStmt:             q.replaceGlobalRolePermissionsStmt,
+		replaceWorkspaceRolePermissionsStmt:          q.replaceWorkspaceRolePermissionsStmt,
+		resolveLimitRequestStmt:                      q.resolveLimitRequestStmt,
 		revokeAllSessionsStmt:                        q.revokeAllSessionsStmt,
 		revokeInviteStmt:                             q.revokeInviteStmt,
-		revokeInviteAsActiveMemberStmt:               q.revokeInviteAsActiveMemberStmt,
+		revokePendingInvitesByCreatorStmt:            q.revokePendingInvitesByCreatorStmt,
+		revokePendingWorkspaceInvitesByCreatorStmt:   q.revokePendingWorkspaceInvitesByCreatorStmt,
 		revokeSessionStmt:                            q.revokeSessionStmt,
-		setRolePermissionStmt:                        q.setRolePermissionStmt,
-		touchSessionStmt:                             q.touchSessionStmt,
+		transferGlobalOwnershipStmt:                  q.transferGlobalOwnershipStmt,
+		transferWorkspaceOwnershipStmt:               q.transferWorkspaceOwnershipStmt,
+		updateAccountWorkspaceLimitStmt:              q.updateAccountWorkspaceLimitStmt,
+		updateGlobalRoleStmt:                         q.updateGlobalRoleStmt,
 		updatePendingTwoFactorBackupHashesStmt:       q.updatePendingTwoFactorBackupHashesStmt,
-		updateRoleStmt:                               q.updateRoleStmt,
 		updateTwoFactorBackupHashesStmt:              q.updateTwoFactorBackupHashesStmt,
+		updateTwoFactorLastCounterStmt:               q.updateTwoFactorLastCounterStmt,
 		updateWorkspaceStmt:                          q.updateWorkspaceStmt,
-		updateWorkspaceAsActiveMemberStmt:            q.updateWorkspaceAsActiveMemberStmt,
+		updateWorkspaceEmployeeLimitStmt:             q.updateWorkspaceEmployeeLimitStmt,
+		updateWorkspaceRoleStmt:                      q.updateWorkspaceRoleStmt,
 		upsertIdentityStmt:                           q.upsertIdentityStmt,
 		upsertMethodStmt:                             q.upsertMethodStmt,
 		upsertMethodGroupStmt:                        q.upsertMethodGroupStmt,
 		upsertTwoFactorStmt:                          q.upsertTwoFactorStmt,
+		validateAndTouchSessionStmt:                  q.validateAndTouchSessionStmt,
 	}
 }

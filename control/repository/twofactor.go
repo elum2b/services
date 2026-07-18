@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	controlmodel "github.com/elum2b/services/control/model"
 	controlsqlc "github.com/elum2b/services/control/sqlc"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	json "github.com/goccy/go-json"
@@ -23,8 +24,6 @@ import (
 )
 
 const twoFactorPeriod = 30 * time.Second
-
-type TwoFactorSetup struct{ Secret, URI string }
 
 func (r *Repository) BeginTwoFactor(ctx context.Context, accountID, issuer string) (TwoFactorSetup, error) {
 	if err := required(accountID); err != nil {
@@ -41,18 +40,10 @@ func (r *Repository) BeginTwoFactor(ctx context.Context, accountID, issuer strin
 	if issuer = strings.TrimSpace(issuer); issuer == "" {
 		issuer = "Elum"
 	}
-	err = sqlwrap.WithTx(
+	err = r.withAuditDBTx(
 		ctx,
-		r.db.DB(),
-		func(tx *sql.Tx) *controlsqlc.Queries {
-			return controlsqlc.New(tx)
-		},
 		func(tx *sql.Tx, q *controlsqlc.Queries) error {
-			if _, err := tx.ExecContext(
-				ctx,
-				"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-				"control:two-factor:"+accountID,
-			); err != nil {
+			if err := lockTwoFactorAccount(ctx, tx, accountID); err != nil {
 				return err
 			}
 
@@ -60,7 +51,7 @@ func (r *Repository) BeginTwoFactor(ctx context.Context, accountID, issuer strin
 			if err != nil {
 				return noRows(err, ErrAccountNotFound)
 			}
-			if account.Status != "active" {
+			if account.Status != string(controlmodel.AccountStatusActive) {
 				return ErrForbidden
 			}
 
@@ -92,50 +83,79 @@ func (r *Repository) BeginTwoFactor(ctx context.Context, accountID, issuer strin
 }
 
 func (r *Repository) ConfirmTwoFactor(ctx context.Context, accountID, code string, now time.Time) ([]string, error) {
+
 	codes, hashes, err := newBackupCodes()
 	if err != nil {
 		return nil, err
 	}
+
 	encoded, err := json.Marshal(hashes)
 	if err != nil {
 		return nil, err
 	}
-	err = sqlwrap.WithTx(
+
+	err = r.withAuditDBTx(
 		ctx,
-		r.db.DB(),
-		func(tx *sql.Tx) *controlsqlc.Queries { return controlsqlc.New(tx) },
-		func(_ *sql.Tx, q *controlsqlc.Queries) error {
-			row, err := q.GetTwoFactor(ctx, accountID)
+		func(tx *sql.Tx, q *controlsqlc.Queries) error {
+			if err := lockAccountAuthentication(ctx, tx, accountID); err != nil {
+				return err
+			}
+			if err := lockTwoFactorAccount(ctx, tx, accountID); err != nil {
+				return err
+			}
+
+			row, err := q.GetTwoFactorForUpdate(ctx, accountID)
 			if err != nil {
 				return noRows(err, ErrNotFound)
 			}
+
 			secret, err := r.decryptSecret(row.Secret)
 			if err != nil {
 				return err
 			}
-			if row.ActivatedAt.Valid || !validTOTP(secret, code, now) {
+
+			counter, valid := validTOTPCounter(secret, code, now)
+			if row.ActivatedAt.Valid || !valid {
 				return ErrForbidden
 			}
-			if rows, err := q.UpdatePendingTwoFactorBackupHashes(ctx, controlsqlc.UpdatePendingTwoFactorBackupHashesParams{BackupHashes: encoded, AccountID: accountID}); err != nil ||
-				rows != 1 {
-				if err != nil {
-					return err
-				}
+
+			rows, err := q.UpdatePendingTwoFactorBackupHashes(
+				ctx,
+				controlsqlc.UpdatePendingTwoFactorBackupHashesParams{
+					BackupHashes: encoded,
+					AccountID:    accountID,
+				},
+			)
+			if err != nil {
+				return err
+			}
+			if rows != 1 {
 				return ErrForbidden
 			}
-			if rows, err := q.ActivateTwoFactor(ctx, accountID); err != nil || rows != 1 {
-				if err != nil {
-					return err
-				}
+
+			rows, err = q.ActivateTwoFactor(ctx, controlsqlc.ActivateTwoFactorParams{
+				AccountID: accountID,
+				LastTotpCounter: sql.NullInt64{
+					Int64: counter,
+					Valid: true,
+				},
+			})
+			if err != nil {
+				return err
+			}
+			if rows != 1 {
 				return ErrForbidden
 			}
+
 			return nil
 		},
 	)
 	if err != nil {
 		return nil, err
 	}
+
 	return codes, nil
+
 }
 
 func (r *Repository) VerifyTwoFactor(ctx context.Context, accountID, code string, now time.Time) error {
@@ -161,15 +181,63 @@ func (r *Repository) CompleteTwoFactorChallenge(
 		ctx,
 		r.db.DB(),
 		func(tx *sql.Tx) *controlsqlc.Queries { return controlsqlc.New(tx) },
-		func(_ *sql.Tx, q *controlsqlc.Queries) error {
+		func(tx *sql.Tx, q *controlsqlc.Queries) error {
+			accountID, err := q.GetTwoFactorChallengeAccount(ctx, tokenHash(rawChallenge))
+			if err != nil {
+				return noRows(err, ErrNotFound)
+			}
+			if err := lockAccountAuthentication(ctx, tx, accountID); err != nil {
+				return err
+			}
+
 			challenge, err := q.GetTwoFactorChallengeWithFactorForUpdate(ctx, tokenHash(rawChallenge))
 			if err != nil {
 				return noRows(err, ErrNotFound)
 			}
-			if challenge.BindToIp && challenge.Ip != ip {
+			if challenge.AccountID != accountID {
+				return ErrForbidden
+			}
+
+			account, err := q.GetAccount(ctx, challenge.AccountID)
+			if err != nil {
+				return noRows(err, ErrAccountNotFound)
+			}
+			if account.Status != string(controlmodel.AccountStatusActive) {
 				rejected = ErrForbidden
+
 				return consumeTwoFactorChallenge(ctx, q, challenge.ChallengeID)
 			}
+
+			member, err := q.GetPlatformMember(ctx, challenge.AccountID)
+			if err != nil {
+				return noRows(err, ErrForbidden)
+			}
+
+			var invite *controlsqlc.ControlInvite
+			if challenge.InviteID.Valid {
+				row, err := getInviteByIDForAcceptance(
+					ctx,
+					q,
+					challenge.InviteID.String,
+				)
+				if err != nil {
+					return noRows(err, ErrInviteUnavailable)
+				}
+				invite = &row
+			}
+			if member.Status != string(controlmodel.MembershipStatusActive) &&
+				(invite == nil || InviteKind(invite.Kind) != InviteKindGlobal) {
+				rejected = ErrForbidden
+
+				return consumeTwoFactorChallenge(ctx, q, challenge.ChallengeID)
+			}
+
+			if challenge.BindToIp && challenge.Ip != ip {
+				rejected = ErrForbidden
+
+				return consumeTwoFactorChallenge(ctx, q, challenge.ChallengeID)
+			}
+
 			if err := r.verifyTwoFactorData(
 				ctx,
 				q,
@@ -177,6 +245,7 @@ func (r *Repository) CompleteTwoFactorChallenge(
 				challenge.Secret,
 				challenge.BackupHashes,
 				challenge.ActivatedAt,
+				challenge.LastTotpCounter,
 				code,
 				now,
 			); err != nil {
@@ -187,42 +256,50 @@ func (r *Repository) CompleteTwoFactorChallenge(
 				return err
 			}
 
-			account, err := q.GetAccount(ctx, challenge.AccountID)
-			if err != nil {
-				return noRows(err, ErrAccountNotFound)
-			}
-			if account.Status != "active" {
-				rejected = ErrForbidden
-				return consumeTwoFactorChallenge(ctx, q, challenge.ChallengeID)
+			if invite != nil {
+				if InviteKind(invite.Kind) == InviteKindGlobal {
+					if err := q.AddPlatformMember(ctx, controlsqlc.AddPlatformMemberParams{
+						AccountID: challenge.AccountID,
+						InvitedBy: nullableString(invite.CreatedBy),
+					}); err != nil {
+						return err
+					}
+				}
+				if err := r.acceptInviteRowWithQueries(
+					ctx,
+					q,
+					*invite,
+					challenge.AccountID,
+				); err != nil {
+					return err
+				}
 			}
 			if err := consumeTwoFactorChallenge(ctx, q, challenge.ChallengeID); err != nil {
 				return err
 			}
+
 			rawSession, err = randomToken()
 			if err != nil {
 				return err
 			}
-			session = Session{
-				ID:        uuid.NewString(),
-				AccountID: challenge.AccountID,
-				IP:        challenge.Ip,
-				UserAgent: challenge.UserAgent,
-				BindToIP:  challenge.BindToIp,
-				ExpiresAt: challenge.SessionExpiresAt,
-				CreatedAt: now,
-			}
-			return q.CreateSession(
+			created, err := q.CreateSession(
 				ctx,
 				controlsqlc.CreateSessionParams{
-					ID:        session.ID,
-					AccountID: session.AccountID,
+					ID:        uuid.NewString(),
+					AccountID: challenge.AccountID,
 					TokenHash: tokenHash(rawSession),
-					Ip:        session.IP,
-					UserAgent: session.UserAgent,
-					BindToIp:  session.BindToIP,
-					ExpiresAt: session.ExpiresAt,
+					Ip:        challenge.Ip,
+					UserAgent: challenge.UserAgent,
+					BindToIp:  challenge.BindToIp,
+					ExpiresAt: challenge.SessionExpiresAt,
 				},
 			)
+			if err != nil {
+				return err
+			}
+			session = mapSession(created)
+
+			return nil
 		},
 	)
 	if err != nil {
@@ -262,6 +339,7 @@ func (r *Repository) verifyTwoFactorWithQueries(
 		row.Secret,
 		row.BackupHashes,
 		row.ActivatedAt,
+		row.LastTotpCounter,
 		code,
 		now,
 	)
@@ -273,6 +351,7 @@ func (r *Repository) verifyTwoFactorData(
 	accountID, secret string,
 	backupHashes json.RawMessage,
 	activatedAt sql.NullTime,
+	lastTOTPCounter sql.NullInt64,
 	code string,
 	now time.Time,
 ) error {
@@ -283,9 +362,31 @@ func (r *Repository) verifyTwoFactorData(
 	if err != nil {
 		return err
 	}
-	if validTOTP(secret, code, now) {
+	if counter, valid := validTOTPCounter(secret, code, now); valid {
+		if lastTOTPCounter.Valid && counter <= lastTOTPCounter.Int64 {
+			return ErrForbidden
+		}
+
+		rows, err := q.UpdateTwoFactorLastCounter(
+			ctx,
+			controlsqlc.UpdateTwoFactorLastCounterParams{
+				LastTotpCounter: sql.NullInt64{
+					Int64: counter,
+					Valid: true,
+				},
+				AccountID: accountID,
+			},
+		)
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
+			return ErrForbidden
+		}
+
 		return nil
 	}
+
 	var hashes []string
 	if err := json.Unmarshal(backupHashes, &hashes); err != nil {
 		return err
@@ -308,7 +409,10 @@ func (r *Repository) verifyTwoFactorData(
 	}
 	rows, err := q.UpdateTwoFactorBackupHashes(
 		ctx,
-		controlsqlc.UpdateTwoFactorBackupHashesParams{BackupHashes: encoded, AccountID: accountID},
+		controlsqlc.UpdateTwoFactorBackupHashesParams{
+			BackupHashes: encoded,
+			AccountID:    accountID,
+		},
 	)
 	if err != nil {
 		return err
@@ -321,11 +425,9 @@ func (r *Repository) verifyTwoFactorData(
 
 func (r *Repository) DisableTwoFactor(ctx context.Context, accountID, code string, now time.Time) (int64, error) {
 	var rows int64
-	err := sqlwrap.WithTx(
+	err := r.withAuditTx(
 		ctx,
-		r.db.DB(),
-		func(tx *sql.Tx) *controlsqlc.Queries { return controlsqlc.New(tx) },
-		func(_ *sql.Tx, q *controlsqlc.Queries) error {
+		func(q *controlsqlc.Queries) error {
 			if err := r.verifyTwoFactorWithQueries(ctx, q, accountID, code, now); err != nil {
 				return err
 			}
@@ -346,15 +448,27 @@ func randomSecret() (string, error) {
 }
 
 func validTOTP(secret, code string, now time.Time) bool {
+
+	_, valid := validTOTPCounter(secret, code, now)
+
+	return valid
+
+}
+
+func validTOTPCounter(secret, code string, now time.Time) (int64, bool) {
+
 	for _, offset := range []int64{-1, 0, 1} {
+		candidateTime := now.Add(time.Duration(offset) * twoFactorPeriod)
 		if hmac.Equal(
-			[]byte(totp(secret, now.Add(time.Duration(offset)*twoFactorPeriod))),
+			[]byte(totp(secret, candidateTime)),
 			[]byte(strings.TrimSpace(code)),
 		) {
-			return true
+			return candidateTime.Unix() / int64(twoFactorPeriod/time.Second), true
 		}
 	}
-	return false
+
+	return 0, false
+
 }
 
 func totp(secret string, now time.Time) string {

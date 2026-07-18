@@ -43,7 +43,12 @@ func TestAuthenticateCompletesControlAuth(t *testing.T) {
 	}
 	expiresAt := time.Now().Add(time.Hour)
 	result, err := adapter.Authenticate(context.Background(), Request{
-		Provider: "test", IP: "127.0.0.1", UserAgent: "ua", BindToIP: true, ExpiresAt: expiresAt,
+		Provider:    "test",
+		InviteToken: "invite-token",
+		IP:          "127.0.0.1",
+		UserAgent:   "ua",
+		BindToIP:    true,
+		ExpiresAt:   expiresAt,
 	})
 	if err != nil {
 		t.Fatalf("authenticate: %v", err)
@@ -56,6 +61,9 @@ func TestAuthenticateCompletesControlAuth(t *testing.T) {
 	}
 	if mock.params.Provider != "test" || mock.params.Subject != "42" || mock.params.DisplayName != "Admin" {
 		t.Fatalf("unexpected identity params: %+v", mock.params)
+	}
+	if mock.params.InviteToken != "invite-token" {
+		t.Fatalf("unexpected invite token: %q", mock.params.InviteToken)
 	}
 	if mock.params.IP != "127.0.0.1" || mock.params.UserAgent != "ua" || !mock.params.BindToIP || !mock.params.ExpiresAt.Equal(expiresAt) {
 		t.Fatalf("unexpected session params: %+v", mock.params)

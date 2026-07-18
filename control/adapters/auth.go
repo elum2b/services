@@ -17,7 +17,10 @@ func New(admin Admin, providers ...Provider) (*Auth, error) {
 	if admin == nil {
 		return nil, ErrAdminRequired
 	}
-	a := &Auth{admin: admin, providers: make(map[string]Provider, len(providers))}
+	a := &Auth{
+		admin:     admin,
+		providers: make(map[string]Provider, len(providers)),
+	}
 	for _, provider := range providers {
 		if err := a.Register(provider); err != nil {
 			return nil, err
@@ -71,6 +74,7 @@ func (a *Auth) Authenticate(ctx context.Context, request Request) (admin.AuthRes
 		Subject:     identity.Subject,
 		DisplayName: strings.TrimSpace(identity.DisplayName),
 		Payload:     identity.Payload,
+		InviteToken: strings.TrimSpace(request.InviteToken),
 		IP:          strings.TrimSpace(request.IP),
 		UserAgent:   strings.TrimSpace(request.UserAgent),
 		BindToIP:    request.BindToIP,

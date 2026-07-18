@@ -14,7 +14,12 @@ type Admin struct {
 }
 
 func NewWithOptions(ctx context.Context, db *sqlwrap.Client, options repository.Options) *Admin {
-	return &Admin{rootCtx: contextutil.Normalize(ctx), repository: repository.NewWithOptions(db, options)}
+
+	return &Admin{
+		rootCtx:    contextutil.Normalize(ctx),
+		repository: repository.NewWithOptions(db, options),
+	}
+
 }
 
 func (a *Admin) Close() error {

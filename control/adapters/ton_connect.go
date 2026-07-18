@@ -31,6 +31,7 @@ type TONConnectAuthParams struct {
 	ExpectedDomain    string
 	ExpectedNetwork   string
 	AllowNativeDomain bool
+	InviteToken       string
 	Client            tonclient.APIClientWrapped
 	IP                string
 	UserAgent         string
@@ -84,7 +85,11 @@ func TONConnect(ctx context.Context, params TONConnectAuthParams) (admin.AuthIde
 	if len(stateInit) == 0 && params.Client == nil {
 		return admin.AuthIdentityParams{}, ErrStateInitOrClientRequired
 	}
-	proof := wallet.TonConnectProof{Timestamp: params.Proof.Timestamp, Signature: signature, Payload: params.Proof.Payload}
+	proof := wallet.TonConnectProof{
+		Timestamp: params.Proof.Timestamp,
+		Signature: signature,
+		Payload:   params.Proof.Payload,
+	}
 	proof.Domain.LengthBytes = params.Proof.Domain.LengthBytes
 	proof.Domain.Value = params.Proof.Domain.Value
 	maxAge := params.MaxAge
@@ -122,6 +127,7 @@ func TONConnect(ctx context.Context, params TONConnectAuthParams) (admin.AuthIde
 		Subject:     tonSubject(params.Network, addr),
 		DisplayName: addr.StringRaw(),
 		Payload:     payload,
+		InviteToken: strings.TrimSpace(params.InviteToken),
 		IP:          params.IP,
 		UserAgent:   params.UserAgent,
 		BindToIP:    params.BindToIP,

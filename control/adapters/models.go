@@ -21,6 +21,7 @@ type Provider interface {
 
 type Request struct {
 	Provider    string
+	InviteToken string
 	Code        string
 	AccessToken string
 	RedirectURI string
@@ -47,6 +48,7 @@ type ProfileFieldMapping struct {
 type OAuth2AuthParams struct {
 	ClientID     string
 	ClientSecret string
+	InviteToken  string
 	Code         string
 	AccessToken  string
 	RedirectURI  string
@@ -63,12 +65,13 @@ type OAuth2AuthParams struct {
 }
 
 type TelegramWebAppAuthParams struct {
-	BotToken  string
-	InitData  string
-	IP        string
-	UserAgent string
-	BindToIP  bool
-	ExpiresAt time.Time
-	MaxAge    time.Duration
-	Now       func() time.Time
+	BotToken    string
+	InitData    string
+	InviteToken string
+	IP          string
+	UserAgent   string
+	BindToIP    bool
+	ExpiresAt   time.Time
+	MaxAge      time.Duration
+	Now         func() time.Time
 }

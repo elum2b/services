@@ -29,6 +29,7 @@ type ControlAccount struct {
 
 type ControlAuditEvent struct {
 	ID          string                `json:"id"`
+	Scope       string                `json:"scope"`
 	WorkspaceID sql.NullString        `json:"workspace_id"`
 	ActorID     sql.NullString        `json:"actor_id"`
 	MethodKey   string                `json:"method_key"`
@@ -41,6 +42,28 @@ type ControlAuditEvent struct {
 	OccurredAt  time.Time             `json:"occurred_at"`
 }
 
+type ControlGlobalRole struct {
+	ID          string    `json:"id"`
+	Code        string    `json:"code"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Position    int32     `json:"position"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type ControlGlobalRoleMember struct {
+	RoleID    string    `json:"role_id"`
+	AccountID string    `json:"account_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type ControlGlobalRolePermission struct {
+	RoleID    string    `json:"role_id"`
+	MethodKey string    `json:"method_key"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type ControlIdentity struct {
 	AccountID       string                `json:"account_id"`
 	Provider        string                `json:"provider"`
@@ -48,6 +71,49 @@ type ControlIdentity struct {
 	Payload         pqtype.NullRawMessage `json:"payload"`
 	CreatedAt       time.Time             `json:"created_at"`
 	UpdatedAt       time.Time             `json:"updated_at"`
+}
+
+type ControlInvite struct {
+	ID          string         `json:"id"`
+	Kind        string         `json:"kind"`
+	WorkspaceID sql.NullString `json:"workspace_id"`
+	CreatedBy   string         `json:"created_by"`
+	TokenHash   string         `json:"token_hash"`
+	ExpiresAt   sql.NullTime   `json:"expires_at"`
+	AcceptedBy  sql.NullString `json:"accepted_by"`
+	AcceptedAt  sql.NullTime   `json:"accepted_at"`
+	RevokedAt   sql.NullTime   `json:"revoked_at"`
+	CreatedAt   time.Time      `json:"created_at"`
+}
+
+type ControlInviteGlobalRole struct {
+	InviteID   string `json:"invite_id"`
+	InviteKind string `json:"invite_kind"`
+	RoleID     string `json:"role_id"`
+}
+
+type ControlInviteWorkspaceRole struct {
+	InviteID    string `json:"invite_id"`
+	InviteKind  string `json:"invite_kind"`
+	WorkspaceID string `json:"workspace_id"`
+	RoleID      string `json:"role_id"`
+}
+
+type ControlLimitRequest struct {
+	ID             string         `json:"id"`
+	Kind           string         `json:"kind"`
+	AccountID      sql.NullString `json:"account_id"`
+	WorkspaceID    sql.NullString `json:"workspace_id"`
+	CurrentLimit   int32          `json:"current_limit"`
+	RequestedLimit int32          `json:"requested_limit"`
+	ApprovedLimit  sql.NullInt32  `json:"approved_limit"`
+	Reason         string         `json:"reason"`
+	Status         string         `json:"status"`
+	RequestedBy    string         `json:"requested_by"`
+	ReviewedBy     sql.NullString `json:"reviewed_by"`
+	ReviewComment  string         `json:"review_comment"`
+	CreatedAt      time.Time      `json:"created_at"`
+	ReviewedAt     sql.NullTime   `json:"reviewed_at"`
 }
 
 type ControlLocalization struct {
@@ -59,12 +125,13 @@ type ControlLocalization struct {
 }
 
 type ControlMethod struct {
-	MethodKey string    `json:"method_key"`
-	Service   string    `json:"service"`
-	GroupKey  string    `json:"group_key"`
-	Position  int32     `json:"position"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	MethodKey string         `json:"method_key"`
+	Service   string         `json:"service"`
+	GroupKey  string         `json:"group_key"`
+	Scope     sql.NullString `json:"scope"`
+	Position  int32          `json:"position"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 type ControlMethodGroup struct {
@@ -75,29 +142,21 @@ type ControlMethodGroup struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type ControlRole struct {
-	ID          string       `json:"id"`
-	WorkspaceID string       `json:"workspace_id"`
-	Code        string       `json:"code"`
-	Title       string       `json:"title"`
-	Description string       `json:"description"`
-	Position    int32        `json:"position"`
-	IsOwner     bool         `json:"is_owner"`
-	DeletedAt   sql.NullTime `json:"deleted_at"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+type ControlPlatform struct {
+	ID             int16     `json:"id"`
+	OwnerAccountID string    `json:"owner_account_id"`
+	InitializedBy  string    `json:"initialized_by"`
+	InitializedAt  time.Time `json:"initialized_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-type ControlRoleMember struct {
-	RoleID    string    `json:"role_id"`
-	AccountID string    `json:"account_id"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type ControlRolePermission struct {
-	RoleID    string    `json:"role_id"`
-	MethodKey string    `json:"method_key"`
-	CreatedAt time.Time `json:"created_at"`
+type ControlPlatformMember struct {
+	AccountID      string         `json:"account_id"`
+	Status         string         `json:"status"`
+	WorkspaceLimit int32          `json:"workspace_limit"`
+	InvitedBy      sql.NullString `json:"invited_by"`
+	JoinedAt       time.Time      `json:"joined_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 type ControlSession struct {
@@ -114,57 +173,38 @@ type ControlSession struct {
 }
 
 type ControlTwoFactor struct {
-	AccountID    string          `json:"account_id"`
-	Secret       string          `json:"secret"`
-	BackupHashes json.RawMessage `json:"backup_hashes"`
-	ActivatedAt  sql.NullTime    `json:"activated_at"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
+	AccountID       string          `json:"account_id"`
+	Secret          string          `json:"secret"`
+	BackupHashes    json.RawMessage `json:"backup_hashes"`
+	ActivatedAt     sql.NullTime    `json:"activated_at"`
+	LastTotpCounter sql.NullInt64   `json:"last_totp_counter"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 type ControlTwoFactorChallenge struct {
-	ID               string    `json:"id"`
-	AccountID        string    `json:"account_id"`
-	TokenHash        string    `json:"token_hash"`
-	Ip               string    `json:"ip"`
-	UserAgent        string    `json:"user_agent"`
-	BindToIp         bool      `json:"bind_to_ip"`
-	ExpiresAt        time.Time `json:"expires_at"`
-	SessionExpiresAt time.Time `json:"session_expires_at"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID               string         `json:"id"`
+	AccountID        string         `json:"account_id"`
+	InviteID         sql.NullString `json:"invite_id"`
+	TokenHash        string         `json:"token_hash"`
+	Ip               string         `json:"ip"`
+	UserAgent        string         `json:"user_agent"`
+	BindToIp         bool           `json:"bind_to_ip"`
+	ExpiresAt        time.Time      `json:"expires_at"`
+	SessionExpiresAt time.Time      `json:"session_expires_at"`
+	CreatedAt        time.Time      `json:"created_at"`
 }
 
 type ControlWorkspace struct {
-	ID        string    `json:"id"`
-	Slug      string    `json:"slug"`
-	Title     string    `json:"title"`
-	Status    string    `json:"status"`
-	CreatedBy string    `json:"created_by"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type ControlWorkspaceInvite struct {
-	ID          string        `json:"id"`
-	WorkspaceID string        `json:"workspace_id"`
-	CreatedBy   string        `json:"created_by"`
-	TokenHash   string        `json:"token_hash"`
-	MaxUses     sql.NullInt32 `json:"max_uses"`
-	UsedCount   int32         `json:"used_count"`
-	ExpiresAt   sql.NullTime  `json:"expires_at"`
-	RevokedAt   sql.NullTime  `json:"revoked_at"`
-	CreatedAt   time.Time     `json:"created_at"`
-}
-
-type ControlWorkspaceInviteAcceptance struct {
-	InviteID   string    `json:"invite_id"`
-	AccountID  string    `json:"account_id"`
-	AcceptedAt time.Time `json:"accepted_at"`
-}
-
-type ControlWorkspaceInviteRole struct {
-	InviteID string `json:"invite_id"`
-	RoleID   string `json:"role_id"`
+	ID             string    `json:"id"`
+	Slug           string    `json:"slug"`
+	Title          string    `json:"title"`
+	Status         string    `json:"status"`
+	CreatedBy      string    `json:"created_by"`
+	OwnerAccountID string    `json:"owner_account_id"`
+	EmployeeLimit  int32     `json:"employee_limit"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type ControlWorkspaceMember struct {
@@ -173,4 +213,29 @@ type ControlWorkspaceMember struct {
 	Status      string    `json:"status"`
 	JoinedAt    time.Time `json:"joined_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type ControlWorkspaceRole struct {
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspace_id"`
+	Code        string    `json:"code"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Position    int32     `json:"position"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type ControlWorkspaceRoleMember struct {
+	RoleID      string    `json:"role_id"`
+	WorkspaceID string    `json:"workspace_id"`
+	AccountID   string    `json:"account_id"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type ControlWorkspaceRolePermission struct {
+	RoleID      string    `json:"role_id"`
+	WorkspaceID string    `json:"workspace_id"`
+	MethodKey   string    `json:"method_key"`
+	CreatedAt   time.Time `json:"created_at"`
 }

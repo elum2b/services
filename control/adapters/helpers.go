@@ -79,9 +79,15 @@ func NewOAuth2(config OAuth2Config) (*OAuth2, error) {
 		mapping.DisplayName = []string{"name", "display_name", "login", "username", "email"}
 	}
 	return &OAuth2{
-		provider: provider, clientID: strings.TrimSpace(config.ClientID), clientSecret: strings.TrimSpace(config.ClientSecret),
-		tokenURL: strings.TrimSpace(config.TokenURL), userInfoURL: strings.TrimSpace(config.UserInfoURL), scopes: config.Scopes,
-		mapping: mapping, client: client, timeout: config.Timeout,
+		provider:     provider,
+		clientID:     strings.TrimSpace(config.ClientID),
+		clientSecret: strings.TrimSpace(config.ClientSecret),
+		tokenURL:     strings.TrimSpace(config.TokenURL),
+		userInfoURL:  strings.TrimSpace(config.UserInfoURL),
+		scopes:       config.Scopes,
+		mapping:      mapping,
+		client:       client,
+		timeout:      config.Timeout,
 	}, nil
 }
 
@@ -126,7 +132,12 @@ func (o *OAuth2) Resolve(ctx context.Context, request Request) (Identity, error)
 	if err != nil {
 		return Identity{}, err
 	}
-	return Identity{Provider: o.provider, Subject: subject, DisplayName: displayName, Payload: payload}, nil
+	return Identity{
+		Provider:    o.provider,
+		Subject:     subject,
+		DisplayName: displayName,
+		Payload:     payload,
+	}, nil
 }
 
 func (o *OAuth2) exchangeCode(ctx context.Context, request Request) (string, error) {
@@ -216,15 +227,35 @@ func newOAuth2Provider(provider string, config OAuth2ProviderConfig) (*OAuth2, e
 
 func oAuth2ProviderConfigFromAuthParams(params OAuth2AuthParams) OAuth2ProviderConfig {
 	return OAuth2ProviderConfig{
-		ClientID: params.ClientID, ClientSecret: params.ClientSecret, TokenURL: params.TokenURL, UserInfoURL: params.UserInfoURL,
-		Scopes: params.Scopes, Mapping: params.Mapping, HTTPClient: params.HTTPClient, Timeout: params.Timeout,
+		ClientID:     params.ClientID,
+		ClientSecret: params.ClientSecret,
+		TokenURL:     params.TokenURL,
+		UserInfoURL:  params.UserInfoURL,
+		Scopes:       params.Scopes,
+		Mapping:      params.Mapping,
+		HTTPClient:   params.HTTPClient,
+		Timeout:      params.Timeout,
 	}
 }
 
-func identityAuthParams(identity Identity, ip, userAgent string, bindToIP bool, expiresAt time.Time) admin.AuthIdentityParams {
+func identityAuthParams(
+	identity Identity,
+	inviteToken string,
+	ip string,
+	userAgent string,
+	bindToIP bool,
+	expiresAt time.Time,
+) admin.AuthIdentityParams {
 	return admin.AuthIdentityParams{
-		Provider: identity.Provider, Subject: identity.Subject, DisplayName: identity.DisplayName, Payload: identity.Payload,
-		IP: ip, UserAgent: userAgent, BindToIP: bindToIP, ExpiresAt: expiresAt,
+		Provider:    identity.Provider,
+		Subject:     identity.Subject,
+		DisplayName: identity.DisplayName,
+		Payload:     identity.Payload,
+		InviteToken: strings.TrimSpace(inviteToken),
+		IP:          ip,
+		UserAgent:   userAgent,
+		BindToIP:    bindToIP,
+		ExpiresAt:   expiresAt,
 	}
 }
 

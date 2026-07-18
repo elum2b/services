@@ -4,11 +4,18 @@ import (
 	"context"
 	"strings"
 
-	services "github.com/elum2b/services"
+	controlmodel "github.com/elum2b/services/control/model"
 	"github.com/elum2b/services/control/repository"
 	"github.com/elum2b/services/internal/utils/contextutil"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	json "github.com/goccy/go-json"
+)
+
+type AccessScope string
+
+const (
+	ScopeGlobal    AccessScope = "global"
+	ScopeWorkspace AccessScope = "workspace"
 )
 
 type Internal struct {
@@ -17,120 +24,205 @@ type Internal struct {
 }
 
 type MethodManifest struct {
-	Key, Service, GroupKey string
+	Key           string
+	Service       string
+	GroupKey      string
+	GroupPosition int32
+	Position      int32
 }
 
-type AccessRequest struct {
-	AccountID, WorkspaceID, MethodKey string
+type GlobalAccessRequest struct {
+	AccountID string
+	MethodKey string
+}
+
+type WorkspaceAccessRequest struct {
+	AccountID   string
+	WorkspaceID string
+	MethodKey   string
 }
 
 type AuthorizedMethod struct {
-	Key, Service, GroupKey string
+	Key      string
+	Service  string
+	GroupKey string
+	Scope    AccessScope
+	Position int32
 }
 
 type AuditEventParams struct {
+	Scope       AccessScope
 	WorkspaceID string
 	ActorID     string
 	MethodKey   string
 	TargetType  string
 	TargetID    string
-	Result      string
+	Result      controlmodel.AuditResult
 	RequestID   string
 	BeforeData  json.RawMessage
 	AfterData   json.RawMessage
 }
 
-func NewWithOptions(ctx context.Context, db *sqlwrap.Client, options repository.Options) *Internal {
-	return &Internal{rootCtx: contextutil.Normalize(ctx), repository: repository.NewWithOptions(db, options)}
+func NewWithOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options repository.Options,
+) *Internal {
+
+	return &Internal{
+		rootCtx:    contextutil.Normalize(ctx),
+		repository: repository.NewWithOptions(db, options),
+	}
+
 }
 
 func (i *Internal) Close() error {
+
 	if i == nil || i.repository == nil {
 		return nil
 	}
+
 	return i.repository.Close()
+
 }
 
 func (i *Internal) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
+
 	return contextutil.Merge(i.rootCtx, ctx)
+
 }
 
-func (i *Internal) RegisterManifest(ctx context.Context, values []MethodManifest) error {
+func (i *Internal) RegisterManifest(
+	ctx context.Context,
+	values []MethodManifest,
+) error {
+
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
+
 	methods := make([]repository.Method, 0, len(values))
 	for _, value := range values {
 		methods = append(methods, repository.Method{
-			Key:      strings.TrimSpace(value.Key),
-			Service:  strings.TrimSpace(value.Service),
-			GroupKey: strings.TrimSpace(value.GroupKey),
+			Key:           strings.TrimSpace(value.Key),
+			Service:       strings.TrimSpace(value.Service),
+			GroupKey:      strings.TrimSpace(value.GroupKey),
+			GroupPosition: value.GroupPosition,
+			Position:      value.Position,
 		})
 	}
 
 	return i.repository.RegisterMethods(mergedCtx, methods)
+
 }
 
-func (i *Internal) CheckAccess(ctx context.Context, value AccessRequest) (bool, error) {
-	if err := services.ValidateWorkspaceID(value.WorkspaceID); err != nil {
-		return false, err
-	}
+func (i *Internal) CheckGlobalAccess(
+	ctx context.Context,
+	value GlobalAccessRequest,
+) (bool, error) {
 
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
-	return i.repository.CheckAccess(
+
+	return i.repository.CheckGlobalAccess(
 		mergedCtx,
 		strings.TrimSpace(value.AccountID),
-		value.WorkspaceID,
 		strings.TrimSpace(value.MethodKey),
 	)
+
 }
 
-func (i *Internal) GetAuthorizedMethods(
+func (i *Internal) CheckWorkspaceAccess(
 	ctx context.Context,
-	accountID, workspaceID string,
-) ([]AuthorizedMethod, error) {
-	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
-		return nil, err
-	}
+	value WorkspaceAccessRequest,
+) (bool, error) {
 
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
-	methods, err := i.repository.ListAuthorizedMethods(
+
+	return i.repository.CheckWorkspaceAccess(
+		mergedCtx,
+		strings.TrimSpace(value.AccountID),
+		strings.TrimSpace(value.WorkspaceID),
+		strings.TrimSpace(value.MethodKey),
+	)
+
+}
+
+func (i *Internal) GetAuthorizedGlobalMethods(
+	ctx context.Context,
+	accountID string,
+) ([]AuthorizedMethod, error) {
+
+	mergedCtx, cancel := i.withContext(ctx)
+	defer cancel()
+
+	methods, err := i.repository.ListAuthorizedGlobalMethods(
 		mergedCtx,
 		strings.TrimSpace(accountID),
-		workspaceID,
 	)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]AuthorizedMethod, 0, len(methods))
-	for _, method := range methods {
-		result = append(result, AuthorizedMethod{Key: method.Key, Service: method.Service, GroupKey: method.GroupKey})
-	}
-	return result, nil
+
+	return mapAuthorizedMethods(methods), nil
+
 }
 
-// AppendAudit records an action performed by a trusted API orchestrator in
-// another service. Control's own mutations write audit events transactionally.
-func (i *Internal) AppendAudit(ctx context.Context, params AuditEventParams) error {
-	if params.WorkspaceID != "" {
-		if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
-			return err
-		}
+func (i *Internal) GetAuthorizedWorkspaceMethods(
+	ctx context.Context,
+	accountID string,
+	workspaceID string,
+) ([]AuthorizedMethod, error) {
+
+	mergedCtx, cancel := i.withContext(ctx)
+	defer cancel()
+
+	methods, err := i.repository.ListAuthorizedWorkspaceMethods(
+		mergedCtx,
+		strings.TrimSpace(accountID),
+		strings.TrimSpace(workspaceID),
+	)
+	if err != nil {
+		return nil, err
 	}
+
+	return mapAuthorizedMethods(methods), nil
+
+}
+
+func (i *Internal) AppendAudit(ctx context.Context, params AuditEventParams) error {
 
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
 	return i.repository.AppendAudit(mergedCtx, repository.AuditEvent{
+		Scope:       repository.AccessScope(params.Scope),
 		WorkspaceID: strings.TrimSpace(params.WorkspaceID),
 		ActorID:     strings.TrimSpace(params.ActorID),
 		MethodKey:   strings.TrimSpace(params.MethodKey),
 		TargetType:  strings.TrimSpace(params.TargetType),
 		TargetID:    strings.TrimSpace(params.TargetID),
-		Result:      strings.TrimSpace(params.Result),
+		Result:      params.Result,
 		RequestID:   strings.TrimSpace(params.RequestID),
 		BeforeData:  params.BeforeData,
 		AfterData:   params.AfterData,
 	})
+
+}
+
+func mapAuthorizedMethods(values []repository.Method) []AuthorizedMethod {
+
+	result := make([]AuthorizedMethod, 0, len(values))
+	for _, value := range values {
+		result = append(result, AuthorizedMethod{
+			Key:      value.Key,
+			Service:  value.Service,
+			GroupKey: value.GroupKey,
+			Scope:    AccessScope(value.Scope),
+			Position: value.Position,
+		})
+	}
+
+	return result
+
 }

@@ -11,49 +11,80 @@ import (
 // CompleteAuth accepts an identity already verified by an external auth adapter.
 // OAuth redirects and provider-specific exchange stay in the API adapter layer.
 func (a *Admin) CompleteAuth(ctx context.Context, params AuthIdentityParams) (AuthResult, error) {
+
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
-	account, created, err := a.repository.AuthenticateIdentity(mergedCtx, repository.IdentityInput{
-		Provider:    strings.TrimSpace(params.Provider),
-		Subject:     strings.TrimSpace(params.Subject),
-		DisplayName: strings.TrimSpace(params.DisplayName),
-		Payload:     params.Payload,
-	})
+
+	result, err := a.repository.CompleteAuth(
+		mergedCtx,
+		repository.IdentityInput{
+			Provider:    strings.TrimSpace(params.Provider),
+			Subject:     strings.TrimSpace(params.Subject),
+			DisplayName: strings.TrimSpace(params.DisplayName),
+			Payload:     params.Payload,
+		},
+		strings.TrimSpace(params.InviteToken),
+		repository.SessionInput{
+			IP:        strings.TrimSpace(params.IP),
+			UserAgent: strings.TrimSpace(params.UserAgent),
+			BindToIP:  params.BindToIP,
+			ExpiresAt: params.ExpiresAt,
+		},
+	)
 	if err != nil {
 		return AuthResult{}, err
 	}
-	metadata := repository.SessionInput{
-		IP:        params.IP,
-		UserAgent: params.UserAgent,
-		BindToIP:  params.BindToIP,
-		ExpiresAt: params.ExpiresAt,
-	}
-	requiresTwoFactor, err := a.repository.RequiresTwoFactor(mergedCtx, account.ID)
-	if err != nil {
-		return AuthResult{}, err
-	}
-	if requiresTwoFactor {
-		challenge, err := a.repository.CreateTwoFactorChallenge(mergedCtx, account.ID, metadata)
-		if err != nil {
-			return AuthResult{}, err
-		}
-		return AuthResult{
-			Account:            mapAccount(account),
-			TwoFactorRequired:  true,
-			TwoFactorChallenge: challenge,
-			Created:            created,
-		}, nil
-	}
-	session, token, err := a.repository.CreateSession(mergedCtx, account.ID, metadata)
-	if err != nil {
-		return AuthResult{}, err
-	}
+
 	return AuthResult{
-		Account:      mapAccount(account),
-		Session:      mapSession(session),
-		SessionToken: token,
-		Created:      created,
+		Account:            mapAccount(result.Account),
+		Session:            mapSession(result.Session),
+		SessionToken:       result.SessionToken,
+		TwoFactorRequired:  result.TwoFactorRequired,
+		TwoFactorChallenge: result.TwoFactorChallenge,
+		Created:            result.Created,
 	}, nil
+}
+
+func (a *Admin) IsInitialized(ctx context.Context) (bool, error) {
+
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+
+	return a.repository.IsInitialized(mergedCtx)
+
+}
+
+func (a *Admin) Initialize(ctx context.Context, params AuthIdentityParams) (AuthResult, error) {
+
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+
+	result, err := a.repository.Initialize(
+		mergedCtx,
+		repository.IdentityInput{
+			Provider:    strings.TrimSpace(params.Provider),
+			Subject:     strings.TrimSpace(params.Subject),
+			DisplayName: strings.TrimSpace(params.DisplayName),
+			Payload:     params.Payload,
+		},
+		repository.SessionInput{
+			IP:        strings.TrimSpace(params.IP),
+			UserAgent: strings.TrimSpace(params.UserAgent),
+			BindToIP:  params.BindToIP,
+			ExpiresAt: params.ExpiresAt,
+		},
+	)
+	if err != nil {
+		return AuthResult{}, err
+	}
+
+	return AuthResult{
+		Account:      mapAccount(result.Account),
+		Session:      mapSession(result.Session),
+		SessionToken: result.SessionToken,
+		Created:      result.Created,
+	}, nil
+
 }
 
 func (a *Admin) CompleteTwoFactor(ctx context.Context, challenge, code, ip string) (AuthResult, error) {
@@ -73,7 +104,11 @@ func (a *Admin) CompleteTwoFactor(ctx context.Context, challenge, code, ip strin
 	if err != nil {
 		return AuthResult{}, err
 	}
-	return AuthResult{Account: mapAccount(account), Session: mapSession(session), SessionToken: token}, nil
+	return AuthResult{
+		Account:      mapAccount(account),
+		Session:      mapSession(session),
+		SessionToken: token,
+	}, nil
 }
 
 func (a *Admin) GetAccount(ctx context.Context, accountID string) (AccountModel, error) {
@@ -104,20 +139,44 @@ func (a *Admin) ListIdentities(ctx context.Context, accountID string) ([]Identit
 }
 
 func (a *Admin) BindIdentity(ctx context.Context, accountID string, params AuthIdentityParams) error {
-	mergedCtx, cancel := a.withContext(ctx)
+
+	accountID = strings.TrimSpace(accountID)
+	provider := strings.TrimSpace(params.Provider)
+
+	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
+		Scope:      repository.ScopeGlobal,
+		ActorID:    accountID,
+		MethodKey:  "control.auth.identity.bind",
+		TargetType: "identity",
+		TargetID:   provider,
+	})
 	defer cancel()
-	return a.repository.BindIdentity(mergedCtx, strings.TrimSpace(accountID), repository.IdentityInput{
-		Provider:    strings.TrimSpace(params.Provider),
+
+	return a.repository.BindIdentity(mergedCtx, accountID, repository.IdentityInput{
+		Provider:    provider,
 		Subject:     strings.TrimSpace(params.Subject),
 		DisplayName: strings.TrimSpace(params.DisplayName),
 		Payload:     params.Payload,
 	})
+
 }
 
 func (a *Admin) UnbindIdentity(ctx context.Context, accountID, provider string) (int64, error) {
-	mergedCtx, cancel := a.withContext(ctx)
+
+	accountID = strings.TrimSpace(accountID)
+	provider = strings.TrimSpace(provider)
+
+	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
+		Scope:      repository.ScopeGlobal,
+		ActorID:    accountID,
+		MethodKey:  "control.auth.identity.unbind",
+		TargetType: "identity",
+		TargetID:   provider,
+	})
 	defer cancel()
-	return a.repository.UnbindIdentity(mergedCtx, strings.TrimSpace(accountID), strings.TrimSpace(provider))
+
+	return a.repository.UnbindIdentity(mergedCtx, accountID, provider)
+
 }
 
 func (a *Admin) ValidateSession(ctx context.Context, rawToken, ip string) (SessionModel, error) {
@@ -142,32 +201,90 @@ func (a *Admin) ListSessions(ctx context.Context, accountID string) ([]SessionMo
 }
 
 func (a *Admin) RevokeSession(ctx context.Context, accountID, sessionID string) (int64, error) {
-	mergedCtx, cancel := a.withContext(ctx)
+
+	accountID = strings.TrimSpace(accountID)
+	sessionID = strings.TrimSpace(sessionID)
+
+	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
+		Scope:      repository.ScopeGlobal,
+		ActorID:    accountID,
+		MethodKey:  "control.auth.session.revoke",
+		TargetType: "session",
+		TargetID:   sessionID,
+	})
 	defer cancel()
-	return a.repository.RevokeSession(mergedCtx, strings.TrimSpace(accountID), strings.TrimSpace(sessionID))
+
+	return a.repository.RevokeSession(mergedCtx, accountID, sessionID)
+
 }
 
 func (a *Admin) RevokeAllSessions(ctx context.Context, accountID, exceptSessionID string) (int64, error) {
-	mergedCtx, cancel := a.withContext(ctx)
+
+	accountID = strings.TrimSpace(accountID)
+	exceptSessionID = strings.TrimSpace(exceptSessionID)
+
+	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
+		Scope:      repository.ScopeGlobal,
+		ActorID:    accountID,
+		MethodKey:  "control.auth.session.revoke_all",
+		TargetType: "account",
+		TargetID:   accountID,
+	})
 	defer cancel()
-	return a.repository.RevokeAllSessions(mergedCtx, strings.TrimSpace(accountID), strings.TrimSpace(exceptSessionID))
+
+	return a.repository.RevokeAllSessions(mergedCtx, accountID, exceptSessionID)
+
 }
 
 func (a *Admin) BeginTwoFactor(ctx context.Context, accountID, issuer string) (TwoFactorSetupModel, error) {
-	mergedCtx, cancel := a.withContext(ctx)
+
+	accountID = strings.TrimSpace(accountID)
+
+	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
+		Scope:      repository.ScopeGlobal,
+		ActorID:    accountID,
+		MethodKey:  "control.auth.two_factor.begin",
+		TargetType: "account",
+		TargetID:   accountID,
+	})
 	defer cancel()
-	value, err := a.repository.BeginTwoFactor(mergedCtx, strings.TrimSpace(accountID), strings.TrimSpace(issuer))
+
+	value, err := a.repository.BeginTwoFactor(mergedCtx, accountID, strings.TrimSpace(issuer))
+
 	return TwoFactorSetupModel{Secret: value.Secret, URI: value.URI}, err
+
 }
 
 func (a *Admin) ConfirmTwoFactor(ctx context.Context, accountID, code string) ([]string, error) {
-	mergedCtx, cancel := a.withContext(ctx)
+
+	accountID = strings.TrimSpace(accountID)
+
+	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
+		Scope:      repository.ScopeGlobal,
+		ActorID:    accountID,
+		MethodKey:  "control.auth.two_factor.confirm",
+		TargetType: "account",
+		TargetID:   accountID,
+	})
 	defer cancel()
-	return a.repository.ConfirmTwoFactor(mergedCtx, strings.TrimSpace(accountID), code, time.Now())
+
+	return a.repository.ConfirmTwoFactor(mergedCtx, accountID, code, time.Now())
+
 }
 
 func (a *Admin) DisableTwoFactor(ctx context.Context, accountID, code string) (int64, error) {
-	mergedCtx, cancel := a.withContext(ctx)
+
+	accountID = strings.TrimSpace(accountID)
+
+	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
+		Scope:      repository.ScopeGlobal,
+		ActorID:    accountID,
+		MethodKey:  "control.auth.two_factor.disable",
+		TargetType: "account",
+		TargetID:   accountID,
+	})
 	defer cancel()
-	return a.repository.DisableTwoFactor(mergedCtx, strings.TrimSpace(accountID), code, time.Now())
+
+	return a.repository.DisableTwoFactor(mergedCtx, accountID, code, time.Now())
+
 }

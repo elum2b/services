@@ -25,9 +25,20 @@ func VKID(ctx context.Context, params OAuth2AuthParams) (admin.AuthIdentityParam
 	if err != nil {
 		return admin.AuthIdentityParams{}, err
 	}
-	identity, err := provider.Resolve(ctx, Request{Code: params.Code, AccessToken: params.AccessToken, RedirectURI: params.RedirectURI})
+	identity, err := provider.Resolve(ctx, Request{
+		Code:        params.Code,
+		AccessToken: params.AccessToken,
+		RedirectURI: params.RedirectURI,
+	})
 	if err != nil {
 		return admin.AuthIdentityParams{}, err
 	}
-	return identityAuthParams(identity, params.IP, params.UserAgent, params.BindToIP, params.ExpiresAt), nil
+	return identityAuthParams(
+		identity,
+		params.InviteToken,
+		params.IP,
+		params.UserAgent,
+		params.BindToIP,
+		params.ExpiresAt,
+	), nil
 }

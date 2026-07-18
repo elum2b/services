@@ -1,45 +1,71 @@
-# Control methods
+# Control API
 
-Только методы слоя `admin`, которые можно использовать как основу будущего API.
+У `control` нет user-слоя. `Admin` используется административным приложением,
+`Internal` - доверенным orchestration-слоем для проверки access и аудита.
 
-## admin
+Публичные статусы и audit result берутся из `control/model`. Create-методы
+возвращают сохранённые БД timestamps; duplicate slug/code возвращает
+`repository.ErrAlreadyExists`.
 
-| Метод | Что принимаем | Что делает |
-| --- | --- | --- |
-| `Admin.CompleteAuth(ctx, params)` | `AuthIdentityParams{Provider, Subject, DisplayName, Payload, IP, UserAgent, BindToIP, ExpiresAt}`. | Принимает identity от уже проверенного OAuth-adapter-а, находит или создаёт account и создаёт session либо 2FA challenge. |
-| `Admin.CompleteTwoFactor(ctx, challenge, code, ip)` | Одноразовый challenge token, TOTP/backup-код, IP. | Завершает вход с 2FA и выдаёт session token. |
-| `Admin.CreateAccount(ctx, id, displayName)` | `id`, `displayName`. | Создаёт account оператора напрямую; нужен для административной инициализации или ручного bootstrap-сценария. |
-| `Admin.GetAccount(ctx, accountID)` | `accountID` оператора. | Возвращает профиль оператора. |
-| `Admin.ListIdentities(ctx, accountID)` | `accountID` текущего оператора. | Возвращает внешние аккаунты, привязанные к оператору. |
-| `Admin.BindIdentity(ctx, accountID, params)` | `accountID`, проверенная `AuthIdentityParams`. | Привязывает дополнительный аккаунт GitHub, GitLab, Google, VK или Yandex. |
-| `Admin.UnbindIdentity(ctx, accountID, provider)` | `accountID`, provider. | Отвязывает provider, если у account останется хотя бы один способ входа. |
-| `Admin.ValidateSession(ctx, token, ip)` | Session token, IP. | Проверяет сессию, срок действия и IP binding. |
-| `Admin.BeginTwoFactor(ctx, accountID, issuer)` | `accountID`, issuer. | Создаёт TOTP secret и URI для подключения 2FA. |
-| `Admin.ConfirmTwoFactor(ctx, accountID, code)` | `accountID`, первый TOTP-код. | Активирует 2FA и возвращает одноразовые backup-коды. |
-| `Admin.DisableTwoFactor(ctx, accountID, code)` | `accountID`, TOTP или backup-код. | Отключает 2FA после подтверждения. |
-| `Admin.ListSessions(ctx, accountID)` | `accountID`. | Возвращает активные сессии оператора без токенов. |
-| `Admin.RevokeSession(ctx, accountID, sessionID)` | `accountID`, `sessionID`. | Отзывает одну сессию оператора. |
-| `Admin.RevokeAllSessions(ctx, accountID, exceptSessionID)` | `accountID`, опциональный `exceptSessionID`. | Отзывает все сессии, кроме при необходимости текущей. |
-| `Admin.ListWorkspaces(ctx, accountID, limit, offset)` | `accountID`, пагинация. | Возвращает workspace, в которых оператор является активным участником. |
-| `Admin.AcceptInvite(ctx, accountID, token)` | `accountID`, исходный invite token. | Принимает invite и добавляет оператора в workspace с заданными ролями. |
-| `Admin.CreateWorkspace(ctx, params)` | `CreateWorkspaceParams{ActorID, ID, Slug, Title}`. | Создаёт workspace, добавляет создателя и системную owner-роль. |
-| `Admin.GetWorkspace(ctx, workspaceID)` | `workspaceID`. | Возвращает workspace. |
-| `Admin.UpdateWorkspace(ctx, params)` | `UpdateWorkspaceParams{ActorID, WorkspaceID, Slug, Title, Status}`. | Обновляет реквизиты или архивирует workspace после проверки права. |
-| `Admin.ListMembers(ctx, workspaceID, limit, offset)` | `workspaceID`, пагинация. | Возвращает активных участников и назначенные роли. |
-| `Admin.RemoveMember(ctx, actorID, workspaceID, accountID)` | Actor, workspace и участник. | Удаляет участника при наличии метода и строгом превосходстве роли actor. |
-| `Admin.CreateInvite(ctx, params)` | `CreateInviteParams{ActorID, WorkspaceID, RoleIDs, ExpiresAt, MaxUses}`. | Создаёт invite с ролями, сроком действия и лимитом использований. |
-| `Admin.ListInvites(ctx, workspaceID, limit, offset)` | `workspaceID`, пагинация. | Возвращает приглашения workspace без исходного токена. |
-| `Admin.RevokeInvite(ctx, actorID, workspaceID, inviteID)` | Actor, workspace и invite. | Отзывает invite после проверки права и иерархии его ролей. |
-| `Admin.CreateRole(ctx, params)` | `CreateRoleParams{ActorID, WorkspaceID, Code, Title, Description, Position}`. | Создаёт роль строго ниже высшей роли actor. |
-| `Admin.UpdateRole(ctx, params)` | `UpdateRoleParams{ActorID, WorkspaceID, RoleID, Title, Description, Position}`. | Обновляет роль только если она строго ниже actor. |
-| `Admin.DeleteRole(ctx, actorID, workspaceID, roleID)` | Actor, workspace и роль. | Удаляет роль и её назначения, если она строго ниже actor. |
-| `Admin.ListRoles(ctx, workspaceID)` | `workspaceID`. | Возвращает роли workspace с количеством участников и включёнными methods. |
-| `Admin.SetRoleMember(ctx, params)` | `SetRoleMemberParams{ActorID, WorkspaceID, AccountID, RoleID}`. | Назначает роль, если target account и role строго ниже actor. |
-| `Admin.RemoveRoleMember(ctx, params)` | `RemoveRoleMemberParams{ActorID, WorkspaceID, AccountID, RoleID}`. | Снимает роль с участника при той же проверке иерархии. |
-| `Admin.ListRolePermissions(ctx, workspaceID, roleID)` | `workspaceID`, `roleID`. | Возвращает включённые method keys роли. |
-| `Admin.SetRolePermission(ctx, params)` | `SetRolePermissionParams{ActorID, WorkspaceID, RoleID, MethodKey, Enabled}`. | Включает или выключает method key у роли, если роль строго ниже actor. |
-| `Admin.ClearRolePermissions(ctx, params)` | `ClearRolePermissionsParams{ActorID, WorkspaceID, RoleID}`. | Удаляет все включённые methods роли, если роль строго ниже actor. |
-| `Admin.ListMethods(ctx)` | Нет параметров. | Возвращает все зарегистрированные методы для административного интерфейса. |
-| `Admin.GetMethod(ctx, methodKey)` | `methodKey`. | Возвращает публичные метаданные зарегистрированного метода. |
-| `Admin.ListAccess(ctx, locale)` | `locale`. | Возвращает локализованный каталог access: сервисы, группы и access-keys в правильном порядке для UI управления ролями. |
-| `Admin.ListAudit(ctx, workspaceID, page)` | `workspaceID`, `Page{Limit, Offset}`. | Возвращает аудит workspace с пагинацией. |
+## Авторизация
+
+| Метод | Принимает | Что делает |
+|---|---|---|
+| `Admin.IsInitialized` | `context` | Проверяет, создан ли первый владелец платформы. |
+| `Admin.Initialize` | Проверенную identity и metadata session | Атомарно создает первого глобального владельца. Доступен один раз. |
+| `Admin.CompleteAuth` | Проверенную identity, optional `InviteToken`, metadata session | Авторизует существующий account или регистрирует новый только по одноразовому invite. |
+| `Admin.CompleteTwoFactor` | Challenge, TOTP/backup code, IP | Завершает 2FA, атомарно расходует TOTP counter либо backup code, принимает отложенный invite и создает session. |
+| `Admin.GetAccount` | Account ID | Возвращает account без секретных данных. |
+| `Admin.BindIdentity` / `UnbindIdentity` | Account и provider identity | Добавляет или удаляет способ входа; последний способ удалить нельзя. Операции сериализуются с auth, identity другого account отклоняется. |
+| `Admin.ValidateSession` | Token и IP | Проверяет session, account и platform membership одним запросом. |
+| `Admin.ListSessions` / `RevokeSession` / `RevokeAllSessions` | Account/session IDs | Управляет сессиями account; изменения записываются в audit. |
+| `Admin.BeginTwoFactor` / `ConfirmTwoFactor` / `DisableTwoFactor` | Account, issuer, code | Управляет TOTP и одноразовыми backup codes. |
+
+## Global
+
+| Метод | Принимает | Что делает |
+|---|---|---|
+| `Admin.CreateGlobalInvite` | Actor, global role IDs, expiry | Создает одноразовое приглашение на платформу. |
+| `Admin.ListGlobalInvites` / `RevokeInvite` | Cursor либо invite ID | Показывает или отзывает приглашения. |
+| `Admin.ListPlatformMembers` / `RemovePlatformMember` | Cursor либо account ID | Управляет участниками платформы. Владельца platform/workspace удалить нельзя; удаление отзывает sessions, 2FA challenges, созданные member pending invites и pending workspace-limit request. |
+| `Admin.TransferGlobalOwnership` | Actor и target account | Передает глобальное владение активному участнику. |
+| `Admin.CreateGlobalRole` | Actor и role | Создает глобальную роль ниже позиции actor. |
+| `Admin.ListGlobalRoles` | `context` | Возвращает глобальные роли. |
+| `Admin.UpdateGlobalRole` / `DeleteGlobalRole` | Actor и role | Изменяет или удаляет роль с проверкой иерархии. |
+| `Admin.AssignGlobalRole` / `RemoveGlobalRole` | Actor, account, role | Назначает или снимает глобальную роль. |
+| `Admin.ReplaceGlobalRolePermissions` | Actor, role, method keys | Атомарно заменяет global accesses роли. |
+| `Admin.RequestWorkspaceLimit` | Account, новый лимит, причина | Создает запрос на увеличение числа принадлежащих account workspace. |
+| `Admin.ListLimitRequests` / `ResolveLimitRequest` | Actor, фильтр/cursor либо решение | Просматривает, одобряет или отклоняет запросы лимитов. |
+| `Admin.CancelLimitRequest` | Requester и request ID | Отменяет собственный pending request и записывает audit в scope этого запроса. |
+
+## Workspace
+
+| Метод | Принимает | Что делает |
+|---|---|---|
+| `Admin.CreateWorkspace` | Actor, UUID, slug, title | Проверяет global access и ownership limit, затем создает workspace. |
+| `Admin.GetWorkspace` / `ListWorkspaces` | Workspace ID либо account + cursor | Возвращает workspace или memberships account. |
+| `Admin.UpdateWorkspace` / `ArchiveWorkspace` | Actor и workspace | Изменяет либо архивирует workspace. Архивация освобождает ownership slot и отменяет pending employee-limit request. |
+| `Admin.TransferWorkspaceOwnership` | Actor, workspace, target account | Передает workspace активному участнику с проверкой его ownership limit. |
+| `Admin.CreateWorkspaceInvite` | Actor, workspace, role IDs, expiry | Создает одноразовое приглашение и резервирует employee slot. |
+| `Admin.ListWorkspaceInvites` / `RevokeInvite` | Workspace + cursor либо invite ID | Просматривает или отзывает приглашения. |
+| `Admin.ListMembers` / `RemoveMember` | Workspace + cursor либо account | Управляет сотрудниками; owner удалить нельзя. Удаление отзывает созданные member pending invites этого workspace. |
+| `Admin.CreateWorkspaceRole` | Actor, workspace, role | Создает роль ниже позиции actor. |
+| `Admin.ListWorkspaceRoles` | Workspace ID | Возвращает роли workspace. |
+| `Admin.UpdateWorkspaceRole` / `DeleteWorkspaceRole` | Actor и role | Изменяет или удаляет роль с проверкой иерархии. |
+| `Admin.AssignWorkspaceRole` / `RemoveWorkspaceRole` | Actor, member, role | Назначает или снимает роль только у активного member. |
+| `Admin.ReplaceWorkspaceRolePermissions` | Actor, role, method keys | Атомарно заменяет workspace accesses роли. |
+| `Admin.RequestEmployeeLimit` | Owner, workspace, новый лимит, причина | Создает запрос на увеличение лимита сотрудников. |
+
+## Каталог и аудит
+
+| Метод | Принимает | Что делает |
+|---|---|---|
+| `Admin.ListMethods` / `GetMethod` | Optional method key | Читает статичный registry access keys. |
+| `Admin.ListAccess` | Locale и optional scope | Возвращает кэшированное локализованное дерево прав. |
+| `Admin.ListGlobalAudit` / `ListWorkspaceAudit` | Scope cursor | Возвращает аудит выбранного scope. |
+| `Internal.RegisterManifest` | Methods service | Атомарно регистрирует keys существующих групп в namespace service, затем инвалидирует access cache; чужой key перехватить нельзя. |
+| `Internal.CheckGlobalAccess` | Account и method key | Проверяет глобальное право. |
+| `Internal.CheckWorkspaceAccess` | Account, workspace, method key | Проверяет право внутри workspace. |
+| `Internal.GetAuthorizedGlobalMethods` | Account | Возвращает разрешенные global methods. |
+| `Internal.GetAuthorizedWorkspaceMethods` | Account и workspace | Возвращает разрешенные workspace methods. |
+| `Internal.AppendAudit` | Typed audit event | Записывает доверенное событие global/workspace scope. |

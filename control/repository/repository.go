@@ -12,24 +12,54 @@ import (
 	controlsqlc "github.com/elum2b/services/control/sqlc"
 	serviceerrors "github.com/elum2b/services/errors"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
-	ErrNotFound     = serviceerrors.New(serviceerrors.CodeNotFound, "control entity not found")
-	ErrInvalidScope = serviceerrors.New(
+	ErrInvalidArgument = serviceerrors.New(
 		serviceerrors.CodeInvalidFields,
-		"control workspace or account is required",
+		"control invalid argument",
 	)
-	ErrForbidden         = serviceerrors.New(serviceerrors.CodeForbidden, "control access denied")
-	ErrRoleHierarchy     = serviceerrors.New(serviceerrors.CodeForbidden, "control role hierarchy denied")
-	ErrMethodNotFound    = serviceerrors.New(serviceerrors.CodeNotFound, "control method not found")
-	ErrMethodOwner       = serviceerrors.New(serviceerrors.CodeConflict, "control method belongs to another service")
-	ErrRoleNotFound      = serviceerrors.New(serviceerrors.CodeNotFound, "control role not found")
-	ErrAccountNotFound   = serviceerrors.New(serviceerrors.CodeNotFound, "control account not found")
-	ErrWorkspaceNotFound = serviceerrors.New(serviceerrors.CodeNotFound, "control workspace not found")
-	ErrInviteMaxUses     = serviceerrors.New(
-		serviceerrors.CodeInvalidFields,
-		"control invite max uses must be between 1 and 2147483647",
+	ErrNotFound           = serviceerrors.New(serviceerrors.CodeNotFound, "control entity not found")
+	ErrForbidden          = serviceerrors.New(serviceerrors.CodeForbidden, "control access denied")
+	ErrRoleHierarchy      = serviceerrors.New(serviceerrors.CodeForbidden, "control role hierarchy denied")
+	ErrMethodNotFound     = serviceerrors.New(serviceerrors.CodeNotFound, "control method not found")
+	ErrMethodOwner        = serviceerrors.New(serviceerrors.CodeConflict, "control method belongs to another service")
+	ErrRoleNotFound       = serviceerrors.New(serviceerrors.CodeNotFound, "control role not found")
+	ErrAccountNotFound    = serviceerrors.New(serviceerrors.CodeNotFound, "control account not found")
+	ErrWorkspaceNotFound  = serviceerrors.New(serviceerrors.CodeNotFound, "control workspace not found")
+	ErrNotInitialized     = serviceerrors.New(serviceerrors.CodeNotReady, "control is not initialized")
+	ErrAlreadyInitialized = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"control is already initialized",
+	)
+	ErrAlreadyExists = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"control entity already exists",
+	)
+	ErrInviteRequired = serviceerrors.New(
+		serviceerrors.CodeForbidden,
+		"control invite is required for a new account",
+	)
+	ErrInviteUnavailable = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"control invite is unavailable",
+	)
+	ErrWorkspaceLimit = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"control account workspace ownership limit reached",
+	)
+	ErrEmployeeLimit = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"control workspace employee limit reached",
+	)
+	ErrOwnershipTransfer = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"control ownership transfer is not allowed",
+	)
+	ErrLimitRequest = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"control limit request is not allowed",
 	)
 	ErrTwoFactorEnabled = serviceerrors.New(
 		serviceerrors.CodeConflict,
@@ -144,7 +174,7 @@ func requireWorkspaceID(workspaceID string) error {
 func required(values ...string) error {
 	for _, value := range values {
 		if normalizeID(value) == "" {
-			return ErrInvalidScope
+			return ErrInvalidArgument
 		}
 	}
 	return nil
@@ -155,4 +185,15 @@ func noRows(err error, fallback error) error {
 		return fallback
 	}
 	return err
+}
+
+func writeConflict(err error) error {
+
+	var postgresError *pgconn.PgError
+	if errors.As(err, &postgresError) && postgresError.Code == "23505" {
+		return ErrAlreadyExists
+	}
+
+	return err
+
 }

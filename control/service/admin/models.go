@@ -1,38 +1,77 @@
 package admin
 
 import (
-	json "github.com/goccy/go-json"
 	"time"
+
+	controlmodel "github.com/elum2b/services/control/model"
+	json "github.com/goccy/go-json"
+)
+
+type AccessScope string
+
+const (
+	ScopeGlobal    AccessScope = "global"
+	ScopeWorkspace AccessScope = "workspace"
+)
+
+type InviteKind string
+
+const (
+	InviteKindGlobal    InviteKind = "global"
+	InviteKindWorkspace InviteKind = "workspace"
+)
+
+type LimitKind string
+
+const (
+	LimitKindAccountWorkspace  LimitKind = "account_workspace"
+	LimitKindWorkspaceEmployee LimitKind = "workspace_employee"
 )
 
 type Page struct {
-	Limit, Offset int32
+	Limit    int32
+	CursorAt time.Time
+	CursorID string
 }
 
 type AccountModel struct {
-	ID, DisplayName, Status string
-	CreatedAt, UpdatedAt    time.Time
+	ID          string
+	DisplayName string
+	Status      controlmodel.AccountStatus
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type IdentityModel struct {
-	AccountID, Provider, Subject string
-	CreatedAt, UpdatedAt         time.Time
+	AccountID string
+	Provider  string
+	Subject   string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type SessionModel struct {
-	ID, AccountID, IP, UserAgent string
-	BindToIP                     bool
-	ExpiresAt                    time.Time
-	RevokedAt                    *time.Time
-	LastUsedAt, CreatedAt        time.Time
+	ID         string
+	AccountID  string
+	IP         string
+	UserAgent  string
+	BindToIP   bool
+	ExpiresAt  time.Time
+	RevokedAt  *time.Time
+	LastUsedAt time.Time
+	CreatedAt  time.Time
 }
 
 type AuthIdentityParams struct {
-	Provider, Subject, DisplayName string
-	Payload                        json.RawMessage
-	IP, UserAgent                  string
-	BindToIP                       bool
-	ExpiresAt                      time.Time
+	Provider    string
+	Subject     string
+	DisplayName string
+	Payload     json.RawMessage
+	InviteToken string
+	IP          string
+	UserAgent   string
+	BindToIP    bool
+	ExpiresAt   time.Time
 }
 
 type AuthResult struct {
@@ -44,90 +83,190 @@ type AuthResult struct {
 	Created            bool
 }
 
-type TwoFactorSetupModel struct{ Secret, URI string }
+type TwoFactorSetupModel struct {
+	Secret string
+	URI    string
+}
 
 type WorkspaceModel struct {
-	ID, Slug, Title, Status, CreatedBy string
-	CreatedAt, UpdatedAt               time.Time
+	ID             string
+	Slug           string
+	Title          string
+	Status         controlmodel.WorkspaceStatus
+	CreatedBy      string
+	OwnerAccountID string
+	EmployeeLimit  int32
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type PlatformMemberModel struct {
+	AccountID           string
+	DisplayName         string
+	Status              controlmodel.MembershipStatus
+	WorkspaceLimit      int32
+	OwnedWorkspaceCount int64
+	InvitedBy           string
+	JoinedAt            time.Time
+	UpdatedAt           time.Time
 }
 
 type MemberModel struct {
-	WorkspaceID, AccountID, DisplayName string
-	Position                            int32
-	JoinedAt, UpdatedAt                 time.Time
+	WorkspaceID string
+	AccountID   string
+	DisplayName string
+	IsOwner     bool
+	RoleIDs     []string
+	JoinedAt    time.Time
+	UpdatedAt   time.Time
 }
 
 type InviteModel struct {
-	ID, WorkspaceID, CreatedBy string
-	MaxUses, UsedCount         *uint32
-	ExpiresAt, RevokedAt       *time.Time
-	CreatedAt                  time.Time
-	RoleIDs                    []string
+	ID          string
+	Kind        InviteKind
+	WorkspaceID string
+	CreatedBy   string
+	ExpiresAt   *time.Time
+	AcceptedBy  string
+	AcceptedAt  *time.Time
+	RevokedAt   *time.Time
+	CreatedAt   time.Time
+	RoleIDs     []string
+}
+
+type LimitRequestModel struct {
+	ID             string
+	Kind           LimitKind
+	AccountID      string
+	WorkspaceID    string
+	CurrentLimit   int32
+	RequestedLimit int32
+	ApprovedLimit  *int32
+	Reason         string
+	Status         controlmodel.LimitRequestStatus
+	RequestedBy    string
+	ReviewedBy     string
+	ReviewComment  string
+	CreatedAt      time.Time
+	ReviewedAt     *time.Time
 }
 
 type AuditEventModel struct {
-	ID, WorkspaceID, ActorID, MethodKey, TargetType, TargetID, Result, RequestID string
-	BeforeData, AfterData                                                        json.RawMessage
-	OccurredAt                                                                   time.Time
+	ID          string
+	Scope       AccessScope
+	WorkspaceID string
+	ActorID     string
+	MethodKey   string
+	TargetType  string
+	TargetID    string
+	Result      controlmodel.AuditResult
+	RequestID   string
+	BeforeData  json.RawMessage
+	AfterData   json.RawMessage
+	OccurredAt  time.Time
 }
 
 type RoleModel struct {
-	ID, WorkspaceID, Code, Title, Description string
-	Position                                  int32
-	IsOwner                                   bool
-	MemberCount                               int64
-	CreatedAt, UpdatedAt                      time.Time
+	ID          string
+	WorkspaceID string
+	Code        string
+	Title       string
+	Description string
+	Position    int32
+	MemberCount int64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type MethodModel struct {
-	Key, Service, GroupKey string
-	CreatedAt, UpdatedAt   time.Time
+	Key       string
+	Service   string
+	GroupKey  string
+	Scope     AccessScope
+	Position  int32
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type AccessModel struct {
-	Key, Title, Desc string
+	Key   string
+	Scope AccessScope
+	Title string
+	Desc  string
 }
 
 type AccessGroups struct {
-	Key, Title, Description string
-	Accesses                []AccessModel
+	Key         string
+	Title       string
+	Description string
+	Accesses    []AccessModel
 }
 
 type AccessGroupModel struct {
-	Service, Title, Description string
-	Groups                      []AccessGroups
+	Service     string
+	Title       string
+	Description string
+	Groups      []AccessGroups
 }
 
 type CreateWorkspaceParams struct {
-	ActorID, ID, Slug, Title string
+	ActorID string
+	ID      string
+	Slug    string
+	Title   string
 }
 
 type UpdateWorkspaceParams struct {
-	ActorID, WorkspaceID, Slug, Title, Status string
+	ActorID     string
+	WorkspaceID string
+	Slug        string
+	Title       string
 }
 
 type CreateRoleParams struct {
-	ActorID, ID, WorkspaceID, Code, Title, Description string
-	Position                                           int32
+	ActorID     string
+	ID          string
+	WorkspaceID string
+	Code        string
+	Title       string
+	Description string
+	Position    int32
 }
 
 type UpdateRoleParams struct {
-	ActorID, ID, WorkspaceID, Title, Description string
-	Position                                     int32
+	ActorID     string
+	ID          string
+	WorkspaceID string
+	Title       string
+	Description string
+	Position    int32
 }
 
 type SetRoleMemberParams struct {
-	ActorID, WorkspaceID, AccountID, RoleID string
+	ActorID     string
+	WorkspaceID string
+	AccountID   string
+	RoleID      string
 }
 
 type CreateInviteParams struct {
-	ActorID, WorkspaceID string
-	RoleIDs              []string
-	ExpiresAt            *time.Time
-	MaxUses              *uint32
+	ActorID     string
+	WorkspaceID string
+	RoleIDs     []string
+	ExpiresAt   *time.Time
 }
 
-type SetRolePermissionParams struct {
-	ActorID, WorkspaceID, RoleID, MethodKey string
-	Enabled                                 bool
+type ReplaceRolePermissionsParams struct {
+	ActorID     string
+	WorkspaceID string
+	RoleID      string
+	MethodKeys  []string
+}
+
+type ResolveLimitRequestParams struct {
+	ActorID       string
+	RequestID     string
+	Approved      bool
+	ApprovedLimit int32
+	Comment       string
 }
