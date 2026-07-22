@@ -584,6 +584,10 @@ WHERE po.id = pa.order_id
 ALTER TABLE payment_attempt
     ALTER COLUMN workspace_id SET NOT NULL;
 
+-- Telegram Stars charge identifiers can exceed 128 characters.
+ALTER TABLE payment_attempt
+    ALTER COLUMN provider_charge_id TYPE VARCHAR(256);
+
 DO $$
 BEGIN
     IF EXISTS (
@@ -667,6 +671,10 @@ WHERE workspace_id IS NULL;
 
 ALTER TABLE payment_event
     ALTER COLUMN workspace_id SET NOT NULL;
+
+-- Provider event IDs may embed a long Telegram Stars charge identifier.
+ALTER TABLE payment_event
+    ALTER COLUMN provider_event_id TYPE VARCHAR(256);
 
 DO $$
 BEGIN
@@ -816,6 +824,10 @@ CREATE TABLE IF NOT EXISTS payment_subscription_renewal (
 
 CREATE INDEX IF NOT EXISTS payment_subscription_renewal_order_idx
     ON payment_subscription_renewal (workspace_id, order_id, created_at DESC);
+
+-- Telegram Stars renewal charge identifiers can exceed 128 characters.
+ALTER TABLE payment_subscription_renewal
+    ALTER COLUMN provider_charge_id TYPE VARCHAR(256);
 
 WITH duplicate_renewals AS (
     SELECT

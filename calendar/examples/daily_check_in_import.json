@@ -1,0 +1,226 @@
+{
+  "package": {
+    "format": "calendar.export.v1",
+    "service": "calendar",
+    "created_at": "2026-07-20T00:00:00Z",
+    "calendars": [
+      {
+        "type": "daily_check_in",
+        "mode": "sequential_reset",
+        "interval_type": "calendar",
+        "interval_unit": "day",
+        "interval_count": 1,
+        "reset_after_intervals": 1,
+        "end_behavior": "restart",
+        "timezone": "UTC",
+        "hide_future_rewards": false,
+        "is_active": true,
+        "localization": {
+          "ru": {
+            "title": "Ежедневная отметка",
+            "description": "Заходите в приложение каждый день, чтобы получать награды. Пропустите день, и серия начнется заново."
+          },
+          "en": {
+            "title": "Daily check-in",
+            "description": "Open the app every day to claim rewards. Miss a day and your streak resets."
+          }
+        },
+        "steps": [
+          {
+            "position": 1,
+            "rewards": [
+              {
+                "key": "lightning",
+                "type": "quantity",
+                "quantity": 30,
+                "scale": 0,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 2,
+            "rewards": [
+              {
+                "key": "odds_roulete",
+                "type": "quantity",
+                "quantity": 40,
+                "scale": 0,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 3,
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 200,
+                "scale": 2,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 4,
+            "rewards": [
+              {
+                "key": "lightning",
+                "type": "quantity",
+                "quantity": 100,
+                "scale": 0,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 5,
+            "rewards": [
+              {
+                "key": "lightning",
+                "type": "quantity",
+                "quantity": 200,
+                "scale": 0,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 6,
+            "rewards": [
+              {
+                "key": "bonus_stars",
+                "type": "quantity",
+                "quantity": 300,
+                "scale": 2,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 7,
+            "rewards": [
+              {
+                "key": "odds_mines",
+                "type": "quantity",
+                "quantity": 40,
+                "scale": 0,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 8,
+            "rewards": [
+              {
+                "key": "lightning",
+                "type": "quantity",
+                "quantity": 300,
+                "scale": 0,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 9,
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 200,
+                "scale": 2,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 10,
+            "rewards": [
+              {
+                "key": "lightning",
+                "type": "quantity",
+                "quantity": 200,
+                "scale": 0,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 11,
+            "rewards": [
+              {
+                "key": "odds_crush",
+                "type": "quantity",
+                "quantity": 40,
+                "scale": 0,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 12,
+            "rewards": [
+              {
+                "key": "bonus_stars",
+                "type": "quantity",
+                "quantity": 300,
+                "scale": 2,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 13,
+            "rewards": [
+              {
+                "key": "lightning",
+                "type": "quantity",
+                "quantity": 500,
+                "scale": 0,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 14,
+            "rewards": [
+              {
+                "key": "odds_coin",
+                "type": "quantity",
+                "quantity": 40,
+                "scale": 0,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 15,
+            "rewards": [
+              {
+                "key": "stars",
+                "type": "quantity",
+                "quantity": 500,
+                "scale": 2,
+                "position": 1
+              }
+            ]
+          },
+          {
+            "position": 16,
+            "rewards": [
+              {
+                "key": "lightning",
+                "type": "quantity",
+                "quantity": 300,
+                "scale": 0,
+                "position": 1
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "conflict_strategy": "update_existing"
+}
