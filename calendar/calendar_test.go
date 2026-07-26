@@ -859,6 +859,50 @@ func TestCalendarAdminSurfaceAndCallbackControls(t *testing.T) {
 
 }
 
+func TestCalendarIdentityCollisionIsolation(t *testing.T) {
+	service := newCalendarTestService(t)
+	workspaceID := testsupport.WorkspaceID("calendar-identity-collision")
+	calendarID := createCalendar(t, service, admin.SaveCalendarParams{
+		WorkspaceID:   workspaceID,
+		Type:          "identity-collision",
+		Mode:          repository.ModeSequential,
+		IntervalType:  repository.IntervalFloating,
+		IntervalUnit:  "day",
+		IntervalCount: 1,
+		EndBehavior:   repository.EndStop,
+		Timezone:      "UTC",
+		IsActive:      true,
+	})
+	createStepReward(t, service, workspaceID, calendarID, 1, "coin", 1)
+
+	identities := []user.Identity{
+		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "shared-user"},
+		{WorkspaceID: workspaceID, AppID: 101, PlatformID: 200, PlatformUserID: "shared-user"},
+		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 201, PlatformUserID: "shared-user"},
+		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "other-user"},
+	}
+	operationRows := make(map[uint64]struct{}, len(identities))
+	now := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
+	for _, identity := range identities {
+		result := record(t, service, identity, calendarID, "shared-operation", now)
+		if !result.Granted || result.Status != repository.StatusGranted {
+			t.Fatalf("identity %#v collided during record: %+v", identity, result)
+		}
+		if _, exists := operationRows[result.OperationRowID]; exists {
+			t.Fatalf("operation row %d reused across identities", result.OperationRowID)
+		}
+		operationRows[result.OperationRowID] = struct{}{}
+
+		progress, err := service.User.GetProgress(context.Background(), user.GetProgressParams{
+			Identity:   identity,
+			CalendarID: calendarID,
+		})
+		if err != nil || progress == nil || progress.ClaimCount != 1 {
+			t.Fatalf("identity %#v progress=%+v err=%v", identity, progress, err)
+		}
+	}
+}
+
 type stepReward struct {
 	stepID   uint64
 	rewardID uint64

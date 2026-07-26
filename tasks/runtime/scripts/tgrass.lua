@@ -17,6 +17,8 @@ function callback(event)
         issue_ref = body.issue_ref or body.task_ref,
         external_click_id = body.external_click_id or body.click_id,
         external_id = external_id,
+        app_id = body.app_id,
+        platform_id = body.platform_id,
         platform_user_id = platform_user_id,
         lookup = {
             platform_user_id = platform_user_id,
@@ -49,6 +51,9 @@ function list(event)
     event.variables = event.variables or {}
     event.config.settings = event.config.settings or {}
     local body = {
+        app_id = event.identity.app_id,
+        platform_id = event.identity.platform_id,
+        platform_user_id = event.identity.platform_user_id,
         tg_user_id = tonumber(event.identity.platform_user_id) or event.identity.platform_user_id,
         is_premium = event.identity.is_premium,
         lang = event.locale
@@ -139,6 +144,9 @@ function check(event)
             ["Content-Type"] = "application/json"
         },
         body = json.encode({
+            app_id = event.identity.app_id,
+            platform_id = event.identity.platform_id,
+            platform_user_id = event.identity.platform_user_id,
             tg_user_id = tonumber(event.identity.platform_user_id) or event.identity.platform_user_id,
             offer_id = offer_id
         })

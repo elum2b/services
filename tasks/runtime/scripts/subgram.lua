@@ -40,6 +40,9 @@ function list(event)
     local chat_id = subgram_first_non_empty(event.variables.chat_id, event.identity.platform_user_id)
     local body = {
         chat_id = subgram_partner_number(chat_id),
+        app_id = event.identity.app_id,
+        platform_id = event.identity.platform_id,
+        platform_user_id = event.identity.platform_user_id,
         user_id = subgram_partner_number(event.identity.platform_user_id),
         language_code = event.locale,
         is_premium = event.identity.is_premium,
@@ -132,6 +135,8 @@ function subgram_callback_item(body)
         issue_ref = body.issue_ref or body.task_ref,
         external_click_id = body.external_click_id or body.click_id,
         external_id = external_id,
+        app_id = body.app_id,
+        platform_id = body.platform_id,
         platform_user_id = subgram_first_non_empty(body.platform_user_id, body.user_id, body.tg_user_id, body.chat_id),
         payload = {
             provider = "subgram",
@@ -167,6 +172,9 @@ function check(event)
     event.config.settings = event.config.settings or {}
     local private = event.issue.private_payload or {}
     local body = {
+        app_id = event.identity.app_id,
+        platform_id = event.identity.platform_id,
+        platform_user_id = event.identity.platform_user_id,
         user_id = subgram_partner_number(event.identity.platform_user_id)
     }
     if private.link ~= nil and private.link ~= "" then

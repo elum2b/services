@@ -65,6 +65,7 @@ func (p SubGramProvider) ListPartnerTasks(
 		"max_sponsors":  maxSponsors,
 		"get_links":     1,
 	}
+	addPartnerIdentity(body, params.Identity)
 	if value := partnerString(params.Variables, "first_name"); value != "" {
 		body["first_name"] = value
 	}
@@ -112,6 +113,7 @@ func (p SubGramProvider) CheckPartnerTask(
 	}
 	_ = json.Unmarshal(params.Issue.PrivatePayload, &private)
 	body := map[string]any{"user_id": partnerInt64String(params.Identity.PlatformUserID)}
+	addPartnerIdentity(body, params.Identity)
 	if private.Link != "" {
 		body["links"] = []string{private.Link}
 	}

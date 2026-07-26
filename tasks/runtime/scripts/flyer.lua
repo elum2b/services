@@ -33,6 +33,9 @@ function list(event)
     event.config.settings = event.config.settings or {}
     local body = {
         key = event.config.secret,
+        app_id = event.identity.app_id,
+        platform_id = event.identity.platform_id,
+        platform_user_id = event.identity.platform_user_id,
         user_id = flyer_partner_number(event.identity.platform_user_id),
         language_code = event.locale,
         limit = event.limit
@@ -110,6 +113,8 @@ function callback(event)
         issue_ref = body.issue_ref or body.task_ref,
         external_click_id = body.external_click_id or body.click_id,
         external_id = flyer_first_non_empty(body.external_id, body.signature, body.task_id, body.offer_id),
+        app_id = body.app_id,
+        platform_id = body.platform_id,
         platform_user_id = flyer_first_non_empty(body.platform_user_id, body.user_id, body.tg_user_id, body.chat_id),
         payload = {
             provider = "flyer",
@@ -138,6 +143,9 @@ function check(event)
         },
         body = json.encode({
             key = event.config.secret,
+            app_id = event.identity.app_id,
+            platform_id = event.identity.platform_id,
+            platform_user_id = event.identity.platform_user_id,
             signature = private.signature
         })
     })

@@ -21,6 +21,12 @@ type partnerHTTPClient struct {
 	baseURL string
 }
 
+func addPartnerIdentity(body map[string]any, identity Identity) {
+	body["app_id"] = identity.AppID
+	body["platform_id"] = identity.PlatformID
+	body["platform_user_id"] = identity.PlatformUserID
+}
+
 func (c partnerHTTPClient) postJSON(
 	ctx context.Context,
 	path string,

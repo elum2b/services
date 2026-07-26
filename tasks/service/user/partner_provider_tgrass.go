@@ -47,6 +47,7 @@ func (p TgrassProvider) ListPartnerTasks(
 		"is_premium": params.Identity.IsPremium,
 		"lang":       params.Locale,
 	}
+	addPartnerIdentity(body, params.Identity)
 	if body["lang"] == "" {
 		body["lang"] = partnerString(params.Variables, "lang")
 	}
@@ -117,13 +118,15 @@ func (p TgrassProvider) CheckPartnerTask(
 			private.OfferID = parsed
 		}
 	}
+	body := map[string]any{
+		"tg_user_id": partnerInt64String(params.Identity.PlatformUserID),
+		"offer_id":   private.OfferID,
+	}
+	addPartnerIdentity(body, params.Identity)
 	var response tgrassCheckResponse
 	if err := p.client().postJSON(ctx, "/check", map[string]string{
 		"Auth": partnerSecret(params.Config.Secret),
-	}, map[string]any{
-		"tg_user_id": partnerInt64String(params.Identity.PlatformUserID),
-		"offer_id":   private.OfferID,
-	}, &response); err != nil {
+	}, body, &response); err != nil {
 		return PartnerCheckResult{}, err
 	}
 	completed := response.Status == "subscribed" && !response.IsFake

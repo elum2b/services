@@ -295,6 +295,66 @@ const (
 	promoTestDB         = "promo_test"
 )
 
+func TestPromoIdentityCollisionIsolation(t *testing.T) {
+	service := newPromoTestService(t)
+	ctx := context.Background()
+	workspaceID := testsupport.WorkspaceID("promo-identity-collision")
+	promoID, err := service.Admin.CreatePromo(ctx, admin.SavePromoParams{
+		WorkspaceID:    workspaceID,
+		Code:           "IDENTITY-COLLISION",
+		Payload:        json.RawMessage(`{}`),
+		MaxActivations: 10,
+		IsActive:       true,
+	})
+	if err != nil {
+		t.Fatalf("create collision promo: %v", err)
+	}
+
+	identities := []user.Identity{
+		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "shared-user"},
+		{WorkspaceID: workspaceID, AppID: 101, PlatformID: 200, PlatformUserID: "shared-user"},
+		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 201, PlatformUserID: "shared-user"},
+		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "other-user"},
+	}
+	redemptions := make(map[uint64]struct{}, len(identities))
+	for _, identity := range identities {
+		applied, err := service.User.Apply(ctx, user.ApplyParams{
+			Identity: identity,
+			Code:     "IDENTITY-COLLISION",
+			Locale:   "ru",
+		})
+		if err != nil {
+			t.Fatalf("apply promo for %#v: %v", identity, err)
+		}
+		if applied.Status != repository.StatusSuccess || applied.Redemption == nil {
+			t.Fatalf("identity %#v collided during apply: %+v", identity, applied)
+		}
+		if _, exists := redemptions[applied.Redemption.ID]; exists {
+			t.Fatalf("redemption %d reused across identities", applied.Redemption.ID)
+		}
+		redemptions[applied.Redemption.ID] = struct{}{}
+
+		repeated, err := service.User.Apply(ctx, user.ApplyParams{
+			Identity: identity,
+			Code:     "IDENTITY-COLLISION",
+			Locale:   "ru",
+		})
+		if err != nil {
+			t.Fatalf("repeat promo for %#v: %v", identity, err)
+		}
+		if repeated.Status != repository.StatusAlreadyApplied ||
+			repeated.Redemption == nil ||
+			repeated.Redemption.ID != applied.Redemption.ID {
+			t.Fatalf("identity %#v did not retain redemption: %+v", identity, repeated)
+		}
+
+		redemption, err := service.Admin.GetUserRedemption(ctx, identity, promoID)
+		if err != nil || redemption == nil || redemption.ID != applied.Redemption.ID {
+			t.Fatalf("identity %#v redemption=%+v err=%v", identity, redemption, err)
+		}
+	}
+}
+
 func TestPromoApplyLifecycleAndCallback(t *testing.T) {
 	service := newPromoTestService(t)
 	ctx := context.Background()

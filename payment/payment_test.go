@@ -2490,6 +2490,25 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	}); !errors.Is(err, repository.ErrProductLocked) {
 		t.Fatalf("same full identity must hit user limit, got %v", err)
 	}
+	for name, identity := range identities {
+		productValue, err := env.api.User.GetProduct(env.ctx, product.GetParams{
+			Identity:  identity,
+			ProductID: limitedProductID,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		})
+		if err != nil {
+			t.Fatalf("get limited product for %s: %v", name, err)
+		}
+		if (productValue.Limit.User.LockUntil != nil) != (name == "base") {
+			t.Fatalf(
+				"%s user limit lock=%v, want locked=%t",
+				name,
+				productValue.Limit.User.LockUntil,
+				name == "base",
+			)
+		}
+	}
 	for _, name := range []string{"other_app", "other_platform", "other_user"} {
 		identity := identities[name]
 		if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{

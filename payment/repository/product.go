@@ -182,7 +182,13 @@ func (r *PaymentRepository) GetProduct(ctx context.Context, params ProductGetPar
 		return Product{}, sql.ErrNoRows
 	}
 
-	if err := r.attachProductLimitLocks(ctx, &product, params.PlatformID, params.PlatformUserID); err != nil {
+	if err := r.attachProductLimitLocks(
+		ctx,
+		&product,
+		params.AppID,
+		params.PlatformID,
+		params.PlatformUserID,
+	); err != nil {
 		return Product{}, err
 	}
 
@@ -279,12 +285,14 @@ func (r *PaymentRepository) getProductCatalog(
 func (r *PaymentRepository) attachProductLimitLocks(
 	ctx context.Context,
 	product *Product,
+	appID int64,
 	platformID int64,
 	platformUserID string,
 ) error {
 	var err error
 	product.Limit.Global.LockUntil, err = r.getProductLimitLock(ctx, productLimitQuery{
 		workspaceID:    product.WorkspaceID,
+		appID:          0,
 		platformID:     platformID,
 		platformUserID: "",
 		productID:      product.ID,
@@ -298,6 +306,7 @@ func (r *PaymentRepository) attachProductLimitLocks(
 
 	product.Limit.User.LockUntil, err = r.getProductLimitLock(ctx, productLimitQuery{
 		workspaceID:    product.WorkspaceID,
+		appID:          appID,
 		platformID:     platformID,
 		platformUserID: platformUserID,
 		productID:      product.ID,
@@ -337,7 +346,13 @@ func (r *PaymentRepository) getCheckoutProduct(ctx context.Context, params Produ
 	) {
 		return Product{}, sql.ErrNoRows
 	}
-	if err := r.attachProductLimitLocks(ctx, &product, params.PlatformID, params.PlatformUserID); err != nil {
+	if err := r.attachProductLimitLocks(
+		ctx,
+		&product,
+		params.AppID,
+		params.PlatformID,
+		params.PlatformUserID,
+	); err != nil {
 		return Product{}, err
 	}
 
@@ -422,6 +437,7 @@ func (r *PaymentRepository) GetProductPreview(
 
 	product.Limit.Global.LockUntil, err = r.getProductLimitLock(ctx, productLimitQuery{
 		workspaceID:    product.WorkspaceID,
+		appID:          0,
 		platformID:     params.PlatformID,
 		platformUserID: "",
 		productID:      product.ID,
@@ -435,6 +451,7 @@ func (r *PaymentRepository) GetProductPreview(
 
 	product.Limit.User.LockUntil, err = r.getProductLimitLock(ctx, productLimitQuery{
 		workspaceID:    product.WorkspaceID,
+		appID:          params.AppID,
 		platformID:     params.PlatformID,
 		platformUserID: params.PlatformUserID,
 		productID:      product.ID,

@@ -142,6 +142,107 @@ func TestTasksRecordRejectsIntegrationAndCompositeActions(t *testing.T) {
 	}
 }
 
+func TestTasksIdentityCollisionIsolation(t *testing.T) {
+	service := newTasksTestService(t)
+	ctx := context.Background()
+	workspaceID := testsupport.WorkspaceID("tasks-identity-collision")
+	createStandaloneTask(t, service, workspaceID, "identity-collision", "identity-event", 1, 1)
+
+	identities := []internalapi.Identity{
+		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "shared-user"},
+		{WorkspaceID: workspaceID, AppID: 101, PlatformID: 200, PlatformUserID: "shared-user"},
+		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 201, PlatformUserID: "shared-user"},
+		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "other-user"},
+	}
+	for index, identity := range identities {
+		recorded, err := service.Internal.Record(ctx, internalapi.RecordParams{
+			Identity:         identity,
+			ActionKey:        "identity-event",
+			Amount:           1,
+			Source:           "collision-test",
+			ExternalEventKey: "shared-external-event",
+		})
+		if err != nil {
+			t.Fatalf("record for %#v: %v", identity, err)
+		}
+		if recorded.Status != repository.RecordStatusRecorded ||
+			recorded.Consumed != 1 ||
+			len(recorded.Tasks) != 1 {
+			t.Fatalf("identity %#v collided during record: %+v", identity, recorded)
+		}
+
+		claimed, err := service.User.Claim(ctx, user.ClaimParams{
+			Identity:    user.Identity(identity),
+			TaskRef:     "identity-collision",
+			OperationID: fmt.Sprintf("collision-claim-%d", index),
+		})
+		if err != nil {
+			t.Fatalf("claim for %#v: %v", identity, err)
+		}
+		if claimed.Status != repository.ClaimStatusClaimed {
+			t.Fatalf("identity %#v collided during claim: %+v", identity, claimed)
+		}
+	}
+
+	repeated, err := service.Internal.Record(ctx, internalapi.RecordParams{
+		Identity:         identities[0],
+		ActionKey:        "identity-event",
+		Amount:           1,
+		Source:           "collision-test",
+		ExternalEventKey: "shared-external-event",
+	})
+	if err != nil {
+		t.Fatalf("repeat record: %v", err)
+	}
+	if repeated.Status != repository.RecordStatusDuplicate {
+		t.Fatalf("same full identity record status=%q, want duplicate", repeated.Status)
+	}
+
+	db, err := openTasksPostgres(tasksTestDB)
+	if err != nil {
+		t.Fatalf("open tasks collision database: %v", err)
+	}
+	defer db.Close()
+	var progressCount, eventCount, callbackIdentityCount int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM task_progress
+		WHERE workspace_id = $1
+		  AND task_id = (SELECT id FROM task_definition WHERE workspace_id = $1 AND key = $2)
+	`, workspaceID, "identity-collision").Scan(&progressCount); err != nil {
+		t.Fatalf("count collision progress: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM task_progress_event
+		WHERE workspace_id = $1 AND external_event_key = $2
+	`, workspaceID, "shared-external-event").Scan(&eventCount); err != nil {
+		t.Fatalf("count collision events: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(DISTINCT (
+			(convert_from(payload, 'UTF8')::jsonb)->>'app_id',
+			(convert_from(payload, 'UTF8')::jsonb)->>'platform_id',
+			(convert_from(payload, 'UTF8')::jsonb)->>'platform_user_id'
+		))
+		FROM tasks_clb_event
+		WHERE workspace_id = $1 AND event_type = $2
+	`, workspaceID, repository.CallbackEventClaimed).Scan(&callbackIdentityCount); err != nil {
+		t.Fatalf("count collision callback identities: %v", err)
+	}
+	if progressCount != len(identities) ||
+		eventCount != len(identities) ||
+		callbackIdentityCount != len(identities) {
+		t.Fatalf(
+			"identity rows progress=%d events=%d callback identities=%d, want %d each",
+			progressCount,
+			eventCount,
+			callbackIdentityCount,
+			len(identities),
+		)
+	}
+}
+
 func TestTasksAdminRejectsIncompatibleTaskAndActionKinds(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
@@ -3846,18 +3947,49 @@ func partnerDailyStats(t testing.TB, service *Tasks, workspaceID string) admin.P
 	return stats[0]
 }
 
+func assertPartnerRequestIdentity(
+	t testing.TB,
+	r *http.Request,
+	appID int64,
+	platformID int64,
+	platformUserID string,
+) {
+	t.Helper()
+	var body struct {
+		AppID          int64  `json:"app_id"`
+		PlatformID     int64  `json:"platform_id"`
+		PlatformUserID string `json:"platform_user_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		t.Fatalf("decode partner identity body: %v", err)
+	}
+	if body.AppID != appID ||
+		body.PlatformID != platformID ||
+		body.PlatformUserID != platformUserID {
+		t.Fatalf(
+			"partner identity body = %+v, want app=%d platform=%d user=%q",
+			body,
+			appID,
+			platformID,
+			platformUserID,
+		)
+	}
+}
+
 func TestTgrassProviderListAndCheck(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/offers", func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Auth"); got != "token" {
 			t.Fatalf("Auth header = %q", got)
 		}
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
 		_, _ = w.Write([]byte(`{
 			"status":"ok",
 			"offers":[{"name":"Tech","link":"https://t.me/tech","subscribed":false,"type":"channel","channel_id":"-100","offer_id":1054}]
 		}`))
 	})
 	mux.HandleFunc("/check", func(w http.ResponseWriter, r *http.Request) {
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
 		_, _ = w.Write([]byte(`{"status":"subscribed","is_fake":false}`))
 	})
 	server := httptest.NewServer(mux)
@@ -3866,10 +3998,69 @@ func TestTgrassProviderListAndCheck(t *testing.T) {
 	secret := "token"
 	provider := user.TgrassProvider{BaseURL: server.URL}
 	params := user.PartnerListProviderParams{
-		Identity: user.Identity{WorkspaceID: testsupport.WorkspaceID("w"), PlatformUserID: "123", IsPremium: true},
-		Config:   repository.PartnerConfig{Provider: "tgrass", GroupKey: "tgrass", Platform: "telegram", Secret: &secret},
-		Locale:   "ru",
-		Limit:    1,
+		Identity: user.Identity{
+			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88,
+			PlatformUserID: "123", IsPremium: true,
+		},
+		Config: repository.PartnerConfig{Provider: "tgrass", GroupKey: "tgrass", Platform: "telegram", Secret: &secret},
+		Locale: "ru",
+		Limit:  1,
+	}
+	tasks, err := provider.ListPartnerTasks(context.Background(), params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 || tasks[0].ExternalID != "1054" || tasks[0].ExternalType != "channel" {
+		t.Fatalf("unexpected tasks: %+v", tasks)
+	}
+	check, err := provider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
+		Identity: params.Identity,
+		Config:   params.Config,
+		Issue: repository.PartnerIssue{
+			ExternalID: "1054", PrivatePayload: tasks[0].PrivatePayload,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !check.Completed || check.Status != "subscribed" {
+		t.Fatalf("unexpected check: %+v", check)
+	}
+}
+
+func TestTgrassLuaProviderListAndCheck(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/offers", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Auth"); got != "token" {
+			t.Fatalf("Auth header = %q", got)
+		}
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
+		_, _ = w.Write([]byte(`{
+			"status":"ok",
+			"offers":[{"name":"Tech","link":"https://t.me/tech","subscribed":false,"type":"channel","channel_id":"-100","offer_id":1054}]
+		}`))
+	})
+	mux.HandleFunc("/check", func(w http.ResponseWriter, r *http.Request) {
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
+		_, _ = w.Write([]byte(`{"status":"subscribed","is_fake":false}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	secret := "token"
+	provider, closeRuntime := newLuaProviderForScript(t, "tgrass", taskruntime.TgrassScript)
+	defer closeRuntime()
+	params := user.PartnerListProviderParams{
+		Identity: user.Identity{
+			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88,
+			PlatformUserID: "123", IsPremium: true,
+		},
+		Config: repository.PartnerConfig{
+			Provider: "tgrass", GroupKey: "tgrass", Platform: "telegram", Secret: &secret,
+			Settings: json.RawMessage(`{"base_url":"` + server.URL + `"}`),
+		},
+		Locale: "ru",
+		Limit:  1,
 	}
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
 	if err != nil {
@@ -3896,12 +4087,14 @@ func TestTgrassProviderListAndCheck(t *testing.T) {
 func TestSubGramProviderListAndCheck(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/get-sponsors", func(w http.ResponseWriter, r *http.Request) {
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
 		_, _ = w.Write([]byte(`{
 			"status":"warning",
 			"additional":{"sponsors":[{"ads_id":"42","link":"https://t.me/s","resource_id":"-100","type":"channel","status":"unsubscribed","available_now":true,"button_text":"Join"}]}
 		}`))
 	})
 	mux.HandleFunc("/get-user-subscriptions", func(w http.ResponseWriter, r *http.Request) {
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
 		_, _ = w.Write([]byte(`{
 			"status":"ok",
 			"additional":{"sponsors":[{"link":"https://t.me/s","status":"subscribed"}]}
@@ -3913,9 +4106,11 @@ func TestSubGramProviderListAndCheck(t *testing.T) {
 	secret := "token"
 	provider := user.SubGramProvider{BaseURL: server.URL}
 	params := user.PartnerListProviderParams{
-		Identity: user.Identity{WorkspaceID: testsupport.WorkspaceID("w"), PlatformUserID: "123"},
-		Config:   repository.PartnerConfig{Provider: "subgram", GroupKey: "subgram", Secret: &secret, Settings: json.RawMessage(`{"action":"task"}`)},
-		Locale:   "ru",
+		Identity: user.Identity{
+			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88, PlatformUserID: "123",
+		},
+		Config: repository.PartnerConfig{Provider: "subgram", GroupKey: "subgram", Secret: &secret, Settings: json.RawMessage(`{"action":"task"}`)},
+		Locale: "ru",
 	}
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
 	if err != nil {
@@ -3943,12 +4138,14 @@ func TestSubGramLuaProviderListAndCheck(t *testing.T) {
 		if got := r.Header.Get("Auth"); got != "token" {
 			t.Fatalf("Auth header = %q", got)
 		}
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
 		_, _ = w.Write([]byte(`{
 			"status":"warning",
 			"additional":{"sponsors":[{"ads_id":"42","link":"https://t.me/s","resource_id":"-100","type":"channel","status":"unsubscribed","available_now":true,"button_text":"Join"}]}
 		}`))
 	})
 	mux.HandleFunc("/get-user-subscriptions", func(w http.ResponseWriter, r *http.Request) {
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
 		_, _ = w.Write([]byte(`{
 			"status":"ok",
 			"additional":{"sponsors":[{"link":"https://t.me/s","status":"subscribed"}]}
@@ -3961,7 +4158,9 @@ func TestSubGramLuaProviderListAndCheck(t *testing.T) {
 	provider, closeRuntime := newLuaProviderForScript(t, "subgram", taskruntime.SubGramScript)
 	defer closeRuntime()
 	params := user.PartnerListProviderParams{
-		Identity: user.Identity{WorkspaceID: testsupport.WorkspaceID("w"), PlatformUserID: "123"},
+		Identity: user.Identity{
+			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88, PlatformUserID: "123",
+		},
 		Config: repository.PartnerConfig{
 			Provider: "subgram", GroupKey: "subgram", Secret: &secret,
 			Settings: json.RawMessage(`{"action":"task","base_url":"` + server.URL + `"}`),
@@ -3991,9 +4190,11 @@ func TestSubGramLuaProviderListAndCheck(t *testing.T) {
 func TestFlyerProviderListAndCheck(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/get_tasks", func(w http.ResponseWriter, r *http.Request) {
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
 		_, _ = w.Write([]byte(`{"tasks":[{"signature":"sig","task_type":"subscribe channel","link":"https://t.me/c","title":"Channel"}]}`))
 	})
 	mux.HandleFunc("/check_task", func(w http.ResponseWriter, r *http.Request) {
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
 		_, _ = w.Write([]byte(`{"status":"completed"}`))
 	})
 	server := httptest.NewServer(mux)
@@ -4002,9 +4203,11 @@ func TestFlyerProviderListAndCheck(t *testing.T) {
 	secret := "key"
 	provider := user.FlyerProvider{BaseURL: server.URL}
 	params := user.PartnerListProviderParams{
-		Identity: user.Identity{WorkspaceID: testsupport.WorkspaceID("w"), PlatformUserID: "123"},
-		Config:   repository.PartnerConfig{Provider: "flyer", GroupKey: "flyer", Platform: "telegram", Secret: &secret},
-		Locale:   "ru",
+		Identity: user.Identity{
+			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88, PlatformUserID: "123",
+		},
+		Config: repository.PartnerConfig{Provider: "flyer", GroupKey: "flyer", Platform: "telegram", Secret: &secret},
+		Locale: "ru",
 	}
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
 	if err != nil {
@@ -4029,9 +4232,11 @@ func TestFlyerProviderListAndCheck(t *testing.T) {
 func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/get_tasks", func(w http.ResponseWriter, r *http.Request) {
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
 		_, _ = w.Write([]byte(`{"tasks":[{"signature":"sig","task_type":"subscribe channel","link":"https://t.me/c","title":"Channel"}]}`))
 	})
 	mux.HandleFunc("/check_task", func(w http.ResponseWriter, r *http.Request) {
+		assertPartnerRequestIdentity(t, r, 77, 88, "123")
 		_, _ = w.Write([]byte(`{"status":"completed"}`))
 	})
 	server := httptest.NewServer(mux)
@@ -4041,7 +4246,9 @@ func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 	provider, closeRuntime := newLuaProviderForScript(t, "flyer", taskruntime.FlyerScript)
 	defer closeRuntime()
 	params := user.PartnerListProviderParams{
-		Identity: user.Identity{WorkspaceID: testsupport.WorkspaceID("w"), PlatformUserID: "123"},
+		Identity: user.Identity{
+			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88, PlatformUserID: "123",
+		},
 		Config: repository.PartnerConfig{
 			Provider: "flyer", GroupKey: "flyer", Platform: "telegram", Secret: &secret,
 			Settings: json.RawMessage(`{"base_url":"` + server.URL + `"}`),

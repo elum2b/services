@@ -198,6 +198,54 @@ func TestCPA_UserGetCodeReusesExistingAssignment(t *testing.T) {
 	}
 }
 
+func TestCPAIdentityCollisionIsolation(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	upsertSharedOffer(t, env, "identity_collision_offer", true)
+
+	identities := []user.Identity{
+		{WorkspaceID: cpaTestWorkspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "shared-user"},
+		{WorkspaceID: cpaTestWorkspaceID, AppID: 101, PlatformID: 200, PlatformUserID: "shared-user"},
+		{WorkspaceID: cpaTestWorkspaceID, AppID: 100, PlatformID: 201, PlatformUserID: "shared-user"},
+		{WorkspaceID: cpaTestWorkspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "other-user"},
+	}
+	assignments := make(map[uint64]struct{}, len(identities))
+	for _, identity := range identities {
+		issued, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
+			Identity: identity,
+			CPAID:    "identity_collision_offer",
+		})
+		if err != nil {
+			t.Fatalf("issue code for %#v: %v", identity, err)
+		}
+		if issued.AlreadyIssued {
+			t.Fatalf("identity %#v reused another assignment: %+v", identity, issued)
+		}
+		if _, exists := assignments[issued.Assignment.ID]; exists {
+			t.Fatalf("assignment %d reused across identities", issued.Assignment.ID)
+		}
+		assignments[issued.Assignment.ID] = struct{}{}
+
+		repeated, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
+			Identity: identity,
+			CPAID:    "identity_collision_offer",
+		})
+		if err != nil {
+			t.Fatalf("repeat code lookup for %#v: %v", identity, err)
+		}
+		if !repeated.AlreadyIssued || repeated.Assignment.ID != issued.Assignment.ID {
+			t.Fatalf("identity %#v did not retain its assignment: %+v", identity, repeated)
+		}
+
+		status, err := env.Service.User.GetStatus(env.Context, user.GetStatusParams{
+			Identity: identity,
+			CPAID:    "identity_collision_offer",
+		})
+		if err != nil || status == nil || status.ID != issued.Assignment.ID {
+			t.Fatalf("identity %#v status=%+v err=%v", identity, status, err)
+		}
+	}
+}
+
 func TestCPA_AssignmentKeepsRewardSnapshotAfterCatalogChanges(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	upsertSharedOffer(t, env, "snapshot_offer", true)

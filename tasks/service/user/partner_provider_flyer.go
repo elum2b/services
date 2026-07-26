@@ -52,6 +52,7 @@ func (p FlyerProvider) ListPartnerTasks(
 		"language_code": params.Locale,
 		"limit":         partnerLimit(params.Limit, 5),
 	}
+	addPartnerIdentity(body, params.Identity)
 	var response flyerTasksResponse
 	path := "/get_tasks"
 	if params.Config.Platform == "max" {
@@ -102,6 +103,7 @@ func (p FlyerProvider) CheckPartnerTask(
 	}
 	_ = json.Unmarshal(params.Issue.PrivatePayload, &private)
 	body := map[string]any{"key": partnerSecret(params.Config.Secret), "signature": private.Signature}
+	addPartnerIdentity(body, params.Identity)
 	path := "/check_task"
 	if params.Config.Platform == "max" {
 		path = "/max/check_task"
