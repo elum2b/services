@@ -45,6 +45,7 @@ type SubscriptionStatusUpdateParams struct {
 
 type SubscriptionIsActiveParams struct {
 	WorkspaceID    string
+	AppID          int64
 	PlatformID     int64
 	PlatformUserID string
 	ProductID      string
@@ -453,6 +454,7 @@ func (r *PaymentRepository) IsSubscriptionActive(ctx context.Context, params Sub
 		count, err = r.q.CountActivePaymentSubscriptionsForProductProvider(
 			ctx,
 			paymentsqlc.CountActivePaymentSubscriptionsForProductProviderParams{
+				AppID:          params.AppID,
 				PlatformID:     params.PlatformID,
 				PlatformUserID: params.PlatformUserID,
 				WorkspaceID:    workspaceID,
@@ -463,6 +465,7 @@ func (r *PaymentRepository) IsSubscriptionActive(ctx context.Context, params Sub
 		)
 	} else if params.ProductID != "" {
 		count, err = r.q.CountActivePaymentSubscriptionsForProduct(ctx, paymentsqlc.CountActivePaymentSubscriptionsForProductParams{
+			AppID:          params.AppID,
 			PlatformID:     params.PlatformID,
 			PlatformUserID: params.PlatformUserID,
 			WorkspaceID:    workspaceID,
@@ -471,6 +474,7 @@ func (r *PaymentRepository) IsSubscriptionActive(ctx context.Context, params Sub
 		})
 	} else if params.ProviderCode != "" {
 		count, err = r.q.CountActivePaymentSubscriptionsForProvider(ctx, paymentsqlc.CountActivePaymentSubscriptionsForProviderParams{
+			AppID:          params.AppID,
 			PlatformID:     params.PlatformID,
 			PlatformUserID: params.PlatformUserID,
 			WorkspaceID:    workspaceID,
@@ -479,6 +483,7 @@ func (r *PaymentRepository) IsSubscriptionActive(ctx context.Context, params Sub
 		})
 	} else {
 		count, err = r.q.CountActivePaymentSubscriptionsAll(ctx, paymentsqlc.CountActivePaymentSubscriptionsAllParams{
+			AppID:          params.AppID,
 			PlatformID:     params.PlatformID,
 			PlatformUserID: params.PlatformUserID,
 			WorkspaceID:    workspaceID,

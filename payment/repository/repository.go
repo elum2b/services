@@ -47,6 +47,7 @@ var (
 	ErrInvalidAsset         = serviceerrors.New(serviceerrors.CodeInvalidFields, "payment asset is invalid")
 	ErrInvalidProviderAsset = serviceerrors.New(serviceerrors.CodeInvalidFields, "payment provider asset is invalid")
 	ErrInvalidDateRange     = serviceerrors.New(serviceerrors.CodeInvalidFields, "payment date range is invalid")
+	ErrPaymentReportInvalid = serviceerrors.New(serviceerrors.CodeInvalidFields, "payment report parameters are invalid")
 )
 
 func NewPaymentRepository(db *sqlwrap.Client) *PaymentRepository {

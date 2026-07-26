@@ -12,6 +12,7 @@ import (
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	paymentvkma "github.com/elum2b/services/payment/adapters/vkma"
 	"github.com/elum2b/services/payment/repository"
+	"github.com/elum2b/services/payment/service/admin"
 	"github.com/elum2b/services/payment/service/checkout"
 	"github.com/elum2b/services/payment/service/product"
 	"github.com/elum2b/services/payment/service/subscription"
@@ -1813,7 +1814,8 @@ func benchmarkCompleteAttemptBreakdown(b *testing.B, env paymentBenchmarkEnv, pr
 			start = time.Now()
 			_, err = qtx.EnsureProductLimitCounter(env.ctx, paymentsqlc.EnsureProductLimitCounterParams{
 				WorkspaceID:    lockedOrder.WorkspaceID,
-				PlatformID:     lockedOrder.PlatformID,
+				AppID:          0,
+				PlatformID:     0,
 				ProductID:      lockedOrder.ProductID,
 				CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
 				PlatformUserID: "",
@@ -1826,7 +1828,8 @@ func benchmarkCompleteAttemptBreakdown(b *testing.B, env paymentBenchmarkEnv, pr
 			start = time.Now()
 			_, err = qtx.IncrementProductLimitCounter(env.ctx, paymentsqlc.IncrementProductLimitCounterParams{
 				WorkspaceID:    lockedOrder.WorkspaceID,
-				PlatformID:     lockedOrder.PlatformID,
+				AppID:          0,
+				PlatformID:     0,
 				ProductID:      lockedOrder.ProductID,
 				CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
 				PlatformUserID: "",
@@ -1848,6 +1851,7 @@ func benchmarkCompleteAttemptBreakdown(b *testing.B, env paymentBenchmarkEnv, pr
 			start = time.Now()
 			_, err = qtx.EnsureProductLimitCounter(env.ctx, paymentsqlc.EnsureProductLimitCounterParams{
 				WorkspaceID:    lockedOrder.WorkspaceID,
+				AppID:          lockedOrder.AppID,
 				PlatformID:     lockedOrder.PlatformID,
 				ProductID:      lockedOrder.ProductID,
 				CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeUser,
@@ -1861,6 +1865,7 @@ func benchmarkCompleteAttemptBreakdown(b *testing.B, env paymentBenchmarkEnv, pr
 			start = time.Now()
 			_, err = qtx.IncrementProductLimitCounter(env.ctx, paymentsqlc.IncrementProductLimitCounterParams{
 				WorkspaceID:    lockedOrder.WorkspaceID,
+				AppID:          lockedOrder.AppID,
 				PlatformID:     lockedOrder.PlatformID,
 				ProductID:      lockedOrder.ProductID,
 				CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeUser,
@@ -2999,18 +3004,6 @@ func BenchmarkPaymentAdminStats(b *testing.B) {
 	from := time.Now().Add(-365 * 24 * time.Hour)
 	until := time.Now().Add(24 * time.Hour)
 
-	b.Run("GetStats", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_, err := env.api.Admin.GetStats(env.ctx, benchWorkspaceID)
-			benchNoError(b, err)
-		}
-	})
-	b.Run("GetProductStats", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_, err := env.api.Admin.GetProductStats(env.ctx, benchWorkspaceID, productID)
-			benchNoError(b, err)
-		}
-	})
 	b.Run("ListDailyStats", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_, err := env.api.Admin.ListDailyStats(env.ctx, benchWorkspaceID, productID, from, until)
@@ -3026,6 +3019,25 @@ func BenchmarkPaymentAdminStats(b *testing.B) {
 	b.Run("RefreshDailyStats", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			benchNoError(b, env.api.Admin.RefreshDailyStats(env.ctx, benchWorkspaceID, from, until))
+		}
+	})
+	b.Run("GetPaymentReport", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+				WorkspaceID: benchWorkspaceID,
+				Page:        admin.PageParams{Limit: 100},
+			})
+			benchNoError(b, err)
+		}
+	})
+	b.Run("GetPaymentReportForProduct", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+				WorkspaceID: benchWorkspaceID,
+				ProductID:   productID,
+				Page:        admin.PageParams{Limit: 100},
+			})
+			benchNoError(b, err)
 		}
 	})
 }

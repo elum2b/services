@@ -1252,16 +1252,18 @@ ORDER BY pc.locale;
 SELECT paid_count + reserved_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
-  AND platform_id = $2
-  AND product_id = $3
-  AND counter_scope = $4
-  AND platform_user_id = $5
-  AND window_start = $6
-  AND window_end = $7
+  AND app_id = $2
+  AND platform_id = $3
+  AND product_id = $4
+  AND counter_scope = $5
+  AND platform_user_id = $6
+  AND window_start = $7
+  AND window_end = $8
 LIMIT 1;
 
 -- name: ListActiveProductLimitCounters :many
 SELECT
+    app_id,
     product_id,
     counter_scope,
     platform_user_id,
@@ -1270,15 +1272,17 @@ SELECT
     paid_count + reserved_count AS paid_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
-  AND platform_id IN (0, $2)
-  AND platform_user_id IN ('', $3)
-  AND window_start <= $4
-  AND window_end > $5
+  AND app_id IN (0, $2)
+  AND platform_id IN (0, $3)
+  AND platform_user_id IN ('', $4)
+  AND window_start <= $5
+  AND window_end > $6
 ORDER BY product_id, counter_scope, platform_user_id;
 
 -- name: EnsureProductLimitCounter :execrows
 INSERT INTO payment_product_limit_counter (
     workspace_id,
+    app_id,
     platform_id,
     product_id,
     counter_scope,
@@ -1288,21 +1292,22 @@ INSERT INTO payment_product_limit_counter (
     paid_count,
     reserved_count
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0)
-ON CONFLICT (workspace_id, platform_id, product_id, counter_scope, platform_user_id, window_start, window_end) DO NOTHING;
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 0)
+ON CONFLICT (workspace_id, app_id, platform_id, product_id, counter_scope, platform_user_id, window_start, window_end) DO NOTHING;
 
 -- name: ReserveProductLimitCounter :execrows
 UPDATE payment_product_limit_counter
 SET reserved_count = reserved_count + $1,
     updated_at = now()
 WHERE workspace_id = $2
-  AND platform_id = $3
-  AND product_id = $4
-  AND counter_scope = $5
-  AND platform_user_id = $6
-  AND window_start = $7
-  AND window_end = $8
-  AND paid_count + reserved_count + $9 <= $10;
+  AND app_id = $3
+  AND platform_id = $4
+  AND product_id = $5
+  AND counter_scope = $6
+  AND platform_user_id = $7
+  AND window_start = $8
+  AND window_end = $9
+  AND paid_count + reserved_count + $10 <= $11;
 
 -- name: ConsumeProductLimitReservation :execrows
 UPDATE payment_product_limit_counter
@@ -1310,6 +1315,21 @@ SET reserved_count = reserved_count - $1,
     paid_count = paid_count + $2,
     updated_at = now()
 WHERE workspace_id = $3
+  AND app_id = $4
+  AND platform_id = $5
+  AND product_id = $6
+  AND counter_scope = $7
+  AND platform_user_id = $8
+  AND window_start = $9
+  AND window_end = $10
+  AND reserved_count >= $11;
+
+-- name: ReleaseProductLimitReservation :execrows
+UPDATE payment_product_limit_counter
+SET reserved_count = reserved_count - $1,
+    updated_at = now()
+WHERE workspace_id = $2
+  AND app_id = $3
   AND platform_id = $4
   AND product_id = $5
   AND counter_scope = $6
@@ -1318,31 +1338,19 @@ WHERE workspace_id = $3
   AND window_end = $9
   AND reserved_count >= $10;
 
--- name: ReleaseProductLimitReservation :execrows
-UPDATE payment_product_limit_counter
-SET reserved_count = reserved_count - $1,
-    updated_at = now()
-WHERE workspace_id = $2
-  AND platform_id = $3
-  AND product_id = $4
-  AND counter_scope = $5
-  AND platform_user_id = $6
-  AND window_start = $7
-  AND window_end = $8
-  AND reserved_count >= $9;
-
 -- name: IncrementProductLimitCounter :execrows
 UPDATE payment_product_limit_counter
 SET paid_count = paid_count + $1,
     updated_at = now()
 WHERE workspace_id = $2
-  AND platform_id = $3
-  AND product_id = $4
-  AND counter_scope = $5
-  AND platform_user_id = $6
-  AND window_start = $7
-  AND window_end = $8
-  AND paid_count + $9 <= $10;
+  AND app_id = $3
+  AND platform_id = $4
+  AND product_id = $5
+  AND counter_scope = $6
+  AND platform_user_id = $7
+  AND window_start = $8
+  AND window_end = $9
+  AND paid_count + $10 <= $11;
 
 -- name: GetProductLimitConfig :one
 SELECT
@@ -2419,42 +2427,46 @@ LIMIT 1;
 -- name: CountActivePaymentSubscriptionsAll :one
 SELECT COUNT(*)
 FROM payment_subscription
-WHERE platform_id = $1
-  AND platform_user_id = $2
-  AND workspace_id = $3
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND app_id = sqlc.arg(app_id)
+  AND platform_id = sqlc.arg(platform_id)
+  AND platform_user_id = sqlc.arg(platform_user_id)
   AND status = 'active'
-  AND (ended_at IS NULL OR ended_at > $4);
+  AND (ended_at IS NULL OR ended_at > sqlc.arg(ended_at));
 
 -- name: CountActivePaymentSubscriptionsForProduct :one
 SELECT COUNT(*)
 FROM payment_subscription
-WHERE platform_id = $1
-  AND platform_user_id = $2
-  AND workspace_id = $3
-  AND product_id = $4
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND app_id = sqlc.arg(app_id)
+  AND platform_id = sqlc.arg(platform_id)
+  AND platform_user_id = sqlc.arg(platform_user_id)
+  AND product_id = sqlc.arg(product_id)
   AND status = 'active'
-  AND (ended_at IS NULL OR ended_at > $5);
+  AND (ended_at IS NULL OR ended_at > sqlc.arg(ended_at));
 
 -- name: CountActivePaymentSubscriptionsForProvider :one
 SELECT COUNT(*)
 FROM payment_subscription
-WHERE platform_id = $1
-  AND platform_user_id = $2
-  AND workspace_id = $3
-  AND provider_code = $4
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND app_id = sqlc.arg(app_id)
+  AND platform_id = sqlc.arg(platform_id)
+  AND platform_user_id = sqlc.arg(platform_user_id)
+  AND provider_code = sqlc.arg(provider_code)
   AND status = 'active'
-  AND (ended_at IS NULL OR ended_at > $5);
+  AND (ended_at IS NULL OR ended_at > sqlc.arg(ended_at));
 
 -- name: CountActivePaymentSubscriptionsForProductProvider :one
 SELECT COUNT(*)
 FROM payment_subscription
-WHERE platform_id = $1
-  AND platform_user_id = $2
-  AND workspace_id = $3
-  AND product_id = $4
-  AND provider_code = $5
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND app_id = sqlc.arg(app_id)
+  AND platform_id = sqlc.arg(platform_id)
+  AND platform_user_id = sqlc.arg(platform_user_id)
+  AND product_id = sqlc.arg(product_id)
+  AND provider_code = sqlc.arg(provider_code)
   AND status = 'active'
-  AND (ended_at IS NULL OR ended_at > $6);
+  AND (ended_at IS NULL OR ended_at > sqlc.arg(ended_at));
 
 -- name: LockPaymentAttempt :one
 SELECT
@@ -3262,6 +3274,7 @@ LIMIT $6 OFFSET $7;
 -- name: AdminListProductLimitCounters :many
 SELECT
     workspace_id,
+    app_id,
     platform_id,
     product_id,
     counter_scope,
@@ -3273,21 +3286,23 @@ SELECT
     updated_at
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
-  AND ($2 = '' OR product_id = $3)
-  AND ($4 = 0 OR platform_id = $5)
-  AND ($6 = '' OR platform_user_id = $7)
+  AND ($2 = 0 OR app_id = $3)
+  AND ($4 = '' OR product_id = $5)
+  AND ($6 = 0 OR platform_id = $7)
+  AND ($8 = '' OR platform_user_id = $9)
 ORDER BY window_end DESC, product_id, counter_scope, platform_user_id
-LIMIT $8 OFFSET $9;
+LIMIT $10 OFFSET $11;
 
 -- name: AdminDeleteProductLimitCounter :execrows
 DELETE FROM payment_product_limit_counter
 WHERE workspace_id = $1
-  AND platform_id = $2
-  AND product_id = $3
-  AND counter_scope = $4
-  AND platform_user_id = $5
-  AND window_start = $6
-  AND window_end = $7;
+  AND app_id = $2
+  AND platform_id = $3
+  AND product_id = $4
+  AND counter_scope = $5
+  AND platform_user_id = $6
+  AND window_start = $7
+  AND window_end = $8;
 
 -- name: AdminGetPurchaseKey :one
 SELECT
@@ -3330,12 +3345,13 @@ SELECT
     updated_at
 FROM payment_purchase_key
 WHERE workspace_id = $1
-  AND ($2 = '' OR product_id = $3)
-  AND ($4 = '' OR CAST(status AS TEXT) = $5)
-  AND ($6 = 0 OR platform_id = $7)
-  AND ($8 = '' OR platform_user_id = $9)
+  AND ($2 = 0 OR app_id = $3)
+  AND ($4 = '' OR product_id = $5)
+  AND ($6 = '' OR CAST(status AS TEXT) = $7)
+  AND ($8 = 0 OR platform_id = $9)
+  AND ($10 = '' OR platform_user_id = $11)
 ORDER BY created_at DESC, id DESC
-LIMIT $10 OFFSET $11;
+LIMIT $12 OFFSET $13;
 
 -- name: AdminUpdatePurchaseKeyStatus :execrows
 UPDATE payment_purchase_key
@@ -3385,12 +3401,240 @@ SELECT
     updated_at
 FROM payment_order
 WHERE workspace_id = $1
-  AND ($2 = '' OR CAST(status AS TEXT) = $3)
-  AND ($4 = '' OR product_id = $5)
-  AND ($6 = 0 OR platform_id = $7)
-  AND ($8 = '' OR platform_user_id = $9)
+  AND ($2 = 0 OR app_id = $3)
+  AND ($4 = '' OR CAST(status AS TEXT) = $5)
+  AND ($6 = '' OR product_id = $7)
+  AND ($8 = 0 OR platform_id = $9)
+  AND ($10 = '' OR platform_user_id = $11)
 ORDER BY created_at DESC, id DESC
-LIMIT $10 OFFSET $11;
+LIMIT $12 OFFSET $13;
+
+-- name: AdminListPaymentReport :many
+WITH payment_rows AS (
+    SELECT
+        po.id,
+        po.public_id,
+        po.workspace_id,
+        po.app_id,
+        po.platform_id AS recipient_platform_id,
+        po.platform_user_id AS recipient_user_id,
+        COALESCE(po.payer_platform_id, po.platform_id) AS initiator_platform_id,
+        COALESCE(po.payer_platform_user_id, po.platform_user_id) AS initiator_user_id,
+        po.product_id,
+        po.quantity,
+        po.asset_code,
+        po.list_amount_minor,
+        po.discount_amount_minor,
+        po.payable_amount_minor,
+        COALESCE(refunds.refund_count, 0)::bigint AS refund_count,
+        COALESCE(refunds.refund_amount_minor, 0)::bigint AS refund_amount_minor,
+        COALESCE(attempt.provider_code, '')::text AS provider_code,
+        po.status,
+        po.paid_at,
+        po.fulfilled_at,
+        po.created_at,
+        po.updated_at
+    FROM payment_order po
+    LEFT JOIN LATERAL (
+        SELECT pa.provider_code
+        FROM payment_attempt pa
+        WHERE pa.order_id = po.id
+        ORDER BY
+            CASE WHEN pa.status = 'succeeded' THEN 0 ELSE 1 END,
+            pa.created_at DESC,
+            pa.id DESC
+        LIMIT 1
+    ) attempt ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT
+            COUNT(*) FILTER (WHERE pr.status = 'succeeded')::bigint AS refund_count,
+            COALESCE(SUM(pr.amount_minor) FILTER (WHERE pr.status = 'succeeded'), 0)::bigint AS refund_amount_minor
+        FROM payment_refund pr
+        WHERE pr.order_id = po.id
+    ) refunds ON TRUE
+    WHERE po.workspace_id = sqlc.arg(workspace_id)
+      AND (sqlc.arg(app_id)::bigint = 0 OR po.app_id = sqlc.arg(app_id))
+      AND (sqlc.arg(platform_id)::bigint = 0 OR po.platform_id = sqlc.arg(platform_id))
+      AND (sqlc.arg(platform_user_id)::text = '' OR po.platform_user_id = sqlc.arg(platform_user_id))
+      AND (sqlc.arg(status)::text = '' OR po.status::text = sqlc.arg(status))
+      AND (sqlc.arg(product_id)::text = '' OR po.product_id = sqlc.arg(product_id))
+      AND (sqlc.arg(provider_code)::text = '' OR EXISTS (
+          SELECT 1
+          FROM payment_attempt filter_attempt
+          WHERE filter_attempt.order_id = po.id
+            AND filter_attempt.provider_code = sqlc.arg(provider_code)
+      ))
+      AND (sqlc.arg(asset_code)::text = '' OR po.asset_code = sqlc.arg(asset_code))
+      AND (sqlc.narg(created_from)::timestamptz IS NULL OR po.created_at >= sqlc.narg(created_from))
+      AND (sqlc.narg(created_until)::timestamptz IS NULL OR po.created_at < sqlc.narg(created_until))
+      AND (sqlc.arg(min_amount_minor)::bigint = 0 OR po.payable_amount_minor >= sqlc.arg(min_amount_minor))
+      AND (sqlc.arg(max_amount_minor)::bigint = 0 OR po.payable_amount_minor <= sqlc.arg(max_amount_minor))
+      AND (
+          sqlc.arg(identity_app_id)::bigint = 0
+          OR (
+              po.app_id = sqlc.arg(identity_app_id)
+              AND (
+                  (
+                      sqlc.arg(identity_role)::text = 'recipient'
+                      AND po.platform_id = sqlc.arg(identity_platform_id)
+                      AND po.platform_user_id = sqlc.arg(identity_platform_user_id)
+                  )
+                  OR (
+                      sqlc.arg(identity_role)::text = 'initiator'
+                      AND COALESCE(po.payer_platform_id, po.platform_id) = sqlc.arg(identity_platform_id)
+                      AND COALESCE(po.payer_platform_user_id, po.platform_user_id) = sqlc.arg(identity_platform_user_id)
+                  )
+                  OR (
+                      sqlc.arg(identity_role)::text = 'either'
+                      AND (
+                          (
+                              po.platform_id = sqlc.arg(identity_platform_id)
+                              AND po.platform_user_id = sqlc.arg(identity_platform_user_id)
+                          )
+                          OR (
+                              COALESCE(po.payer_platform_id, po.platform_id) = sqlc.arg(identity_platform_id)
+                              AND COALESCE(po.payer_platform_user_id, po.platform_user_id) = sqlc.arg(identity_platform_user_id)
+                          )
+                      )
+                  )
+              )
+          )
+      )
+)
+SELECT *
+FROM payment_rows
+ORDER BY
+    CASE WHEN sqlc.arg(sort_field)::text = 'created_at' AND sqlc.arg(sort_direction)::text = 'asc' THEN created_at END ASC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'created_at' AND sqlc.arg(sort_direction)::text = 'desc' THEN created_at END DESC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'paid_at' AND sqlc.arg(sort_direction)::text = 'asc' THEN paid_at END ASC NULLS LAST,
+    CASE WHEN sqlc.arg(sort_field)::text = 'paid_at' AND sqlc.arg(sort_direction)::text = 'desc' THEN paid_at END DESC NULLS LAST,
+    CASE WHEN sqlc.arg(sort_field)::text = 'fulfilled_at' AND sqlc.arg(sort_direction)::text = 'asc' THEN fulfilled_at END ASC NULLS LAST,
+    CASE WHEN sqlc.arg(sort_field)::text = 'fulfilled_at' AND sqlc.arg(sort_direction)::text = 'desc' THEN fulfilled_at END DESC NULLS LAST,
+    CASE WHEN sqlc.arg(sort_field)::text = 'amount_minor' AND sqlc.arg(sort_direction)::text = 'asc' THEN payable_amount_minor END ASC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'amount_minor' AND sqlc.arg(sort_direction)::text = 'desc' THEN payable_amount_minor END DESC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'refund_amount_minor' AND sqlc.arg(sort_direction)::text = 'asc' THEN refund_amount_minor END ASC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'refund_amount_minor' AND sqlc.arg(sort_direction)::text = 'desc' THEN refund_amount_minor END DESC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'status' AND sqlc.arg(sort_direction)::text = 'asc' THEN status::text END ASC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'status' AND sqlc.arg(sort_direction)::text = 'desc' THEN status::text END DESC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'provider' AND sqlc.arg(sort_direction)::text = 'asc' THEN provider_code END ASC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'provider' AND sqlc.arg(sort_direction)::text = 'desc' THEN provider_code END DESC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'product_id' AND sqlc.arg(sort_direction)::text = 'asc' THEN product_id END ASC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'product_id' AND sqlc.arg(sort_direction)::text = 'desc' THEN product_id END DESC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'app_id' AND sqlc.arg(sort_direction)::text = 'asc' THEN app_id END ASC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'app_id' AND sqlc.arg(sort_direction)::text = 'desc' THEN app_id END DESC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'platform_id' AND sqlc.arg(sort_direction)::text = 'asc' THEN recipient_platform_id END ASC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'platform_id' AND sqlc.arg(sort_direction)::text = 'desc' THEN recipient_platform_id END DESC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'platform_user_id' AND sqlc.arg(sort_direction)::text = 'asc' THEN recipient_user_id END ASC,
+    CASE WHEN sqlc.arg(sort_field)::text = 'platform_user_id' AND sqlc.arg(sort_direction)::text = 'desc' THEN recipient_user_id END DESC,
+    created_at DESC,
+    id DESC
+LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
+
+-- name: AdminGetPaymentReportStats :many
+WITH payment_rows AS (
+    SELECT
+        po.app_id,
+        COALESCE(po.payer_platform_id, po.platform_id) AS initiator_platform_id,
+        COALESCE(po.payer_platform_user_id, po.platform_user_id) AS initiator_user_id,
+        po.asset_code,
+        po.status,
+        po.quantity,
+        po.payable_amount_minor,
+        COALESCE(refunds.refund_count, 0)::bigint AS refund_count,
+        COALESCE(refunds.refund_amount_minor, 0)::bigint AS refund_amount_minor
+    FROM payment_order po
+    LEFT JOIN LATERAL (
+        SELECT
+            COUNT(*) FILTER (WHERE pr.status = 'succeeded')::bigint AS refund_count,
+            COALESCE(SUM(pr.amount_minor) FILTER (WHERE pr.status = 'succeeded'), 0)::bigint AS refund_amount_minor
+        FROM payment_refund pr
+        WHERE pr.order_id = po.id
+    ) refunds ON TRUE
+    WHERE po.workspace_id = sqlc.arg(workspace_id)
+      AND (sqlc.arg(app_id)::bigint = 0 OR po.app_id = sqlc.arg(app_id))
+      AND (sqlc.arg(platform_id)::bigint = 0 OR po.platform_id = sqlc.arg(platform_id))
+      AND (sqlc.arg(platform_user_id)::text = '' OR po.platform_user_id = sqlc.arg(platform_user_id))
+      AND (sqlc.arg(status)::text = '' OR po.status::text = sqlc.arg(status))
+      AND (sqlc.arg(product_id)::text = '' OR po.product_id = sqlc.arg(product_id))
+      AND (sqlc.arg(provider_code)::text = '' OR EXISTS (
+          SELECT 1
+          FROM payment_attempt filter_attempt
+          WHERE filter_attempt.order_id = po.id
+            AND filter_attempt.provider_code = sqlc.arg(provider_code)
+      ))
+      AND (sqlc.arg(asset_code)::text = '' OR po.asset_code = sqlc.arg(asset_code))
+      AND (sqlc.narg(created_from)::timestamptz IS NULL OR po.created_at >= sqlc.narg(created_from))
+      AND (sqlc.narg(created_until)::timestamptz IS NULL OR po.created_at < sqlc.narg(created_until))
+      AND (sqlc.arg(min_amount_minor)::bigint = 0 OR po.payable_amount_minor >= sqlc.arg(min_amount_minor))
+      AND (sqlc.arg(max_amount_minor)::bigint = 0 OR po.payable_amount_minor <= sqlc.arg(max_amount_minor))
+      AND (
+          sqlc.arg(identity_app_id)::bigint = 0
+          OR (
+              po.app_id = sqlc.arg(identity_app_id)
+              AND (
+                  (
+                      sqlc.arg(identity_role)::text = 'recipient'
+                      AND po.platform_id = sqlc.arg(identity_platform_id)
+                      AND po.platform_user_id = sqlc.arg(identity_platform_user_id)
+                  )
+                  OR (
+                      sqlc.arg(identity_role)::text = 'initiator'
+                      AND COALESCE(po.payer_platform_id, po.platform_id) = sqlc.arg(identity_platform_id)
+                      AND COALESCE(po.payer_platform_user_id, po.platform_user_id) = sqlc.arg(identity_platform_user_id)
+                  )
+                  OR (
+                      sqlc.arg(identity_role)::text = 'either'
+                      AND (
+                          (
+                              po.platform_id = sqlc.arg(identity_platform_id)
+                              AND po.platform_user_id = sqlc.arg(identity_platform_user_id)
+                          )
+                          OR (
+                              COALESCE(po.payer_platform_id, po.platform_id) = sqlc.arg(identity_platform_id)
+                              AND COALESCE(po.payer_platform_user_id, po.platform_user_id) = sqlc.arg(identity_platform_user_id)
+                          )
+                      )
+                  )
+              )
+          )
+      )
+)
+SELECT
+    asset_code,
+    COUNT(*)::bigint AS order_count,
+    COUNT(*) FILTER (WHERE status = 'draft')::bigint AS draft_orders,
+    COUNT(*) FILTER (WHERE status = 'pending_payment')::bigint AS pending_payment_orders,
+    COUNT(*) FILTER (WHERE status IN ('draft', 'pending_payment', 'paid'))::bigint AS pending_orders,
+    COUNT(*) FILTER (WHERE status = 'paid')::bigint AS paid_orders,
+    COUNT(*) FILTER (WHERE status = 'fulfilled')::bigint AS fulfilled_orders,
+    COUNT(*) FILTER (WHERE status = 'canceled')::bigint AS canceled_orders,
+    COUNT(*) FILTER (WHERE status = 'expired')::bigint AS expired_orders,
+    COUNT(*) FILTER (WHERE status = 'refunded')::bigint AS refunded_orders,
+    COUNT(*) FILTER (WHERE status = 'chargebacked')::bigint AS chargebacked_orders,
+    COUNT(*) FILTER (WHERE status = 'failed')::bigint AS failed_orders,
+    COUNT(*) FILTER (
+        WHERE status IN ('fulfilled', 'refunded', 'chargebacked')
+    )::bigint AS purchase_count,
+    COALESCE(SUM(quantity) FILTER (
+        WHERE status IN ('fulfilled', 'refunded', 'chargebacked')
+    ), 0)::bigint AS purchase_quantity,
+    (
+        SELECT COUNT(DISTINCT (
+            unique_rows.app_id,
+            unique_rows.initiator_platform_id,
+            unique_rows.initiator_user_id
+        ))::bigint
+        FROM payment_rows unique_rows
+        WHERE unique_rows.status IN ('fulfilled', 'refunded', 'chargebacked')
+    ) AS unique_buyers,
+    COALESCE(SUM(payable_amount_minor) FILTER (
+        WHERE status IN ('paid', 'fulfilled', 'refunded', 'chargebacked')
+    ), 0)::bigint AS gross_amount_minor,
+    COALESCE(SUM(refund_count), 0)::bigint AS refund_count,
+    COALESCE(SUM(refund_amount_minor), 0)::bigint AS refund_amount_minor
+FROM payment_rows
+GROUP BY asset_code
+ORDER BY asset_code;
 
 -- name: AdminUpdateOrderStatus :execrows
 UPDATE payment_order
@@ -3548,13 +3792,14 @@ SELECT
     updated_at
 FROM payment_subscription
 WHERE workspace_id = $1
-  AND ($2 = '' OR provider_code = $3)
-  AND ($4 = '' OR product_id = $5)
-  AND ($6 = '' OR CAST(status AS TEXT) = $7)
-  AND ($8 = 0 OR platform_id = $9)
-  AND ($10 = '' OR platform_user_id = $11)
+  AND ($2 = 0 OR app_id = $3)
+  AND ($4 = '' OR provider_code = $5)
+  AND ($6 = '' OR product_id = $7)
+  AND ($8 = '' OR CAST(status AS TEXT) = $9)
+  AND ($10 = 0 OR platform_id = $11)
+  AND ($12 = '' OR platform_user_id = $13)
 ORDER BY created_at DESC, id DESC
-LIMIT $12 OFFSET $13;
+LIMIT $14 OFFSET $15;
 
 -- name: AdminGetFulfillment :one
 SELECT
@@ -3706,103 +3951,6 @@ WHERE po.workspace_id = $1
   AND ($6 = '' OR CAST(pr.status AS TEXT) = $7)
 ORDER BY pr.created_at DESC, pr.id DESC
 LIMIT $8 OFFSET $9;
-
--- name: AdminGetPaymentStats :one
-SELECT
-    p.products_total,
-    p.active_products,
-    p.visible_products,
-    o.orders_total,
-    o.pending_orders,
-    o.fulfilled_orders,
-    o.refunded_orders,
-    o.failed_orders,
-    o.canceled_orders,
-    e.purchase_count,
-    e.purchase_quantity,
-    e.unique_buyers
-FROM (
-    SELECT
-        COUNT(*) AS products_total,
-        CAST(COALESCE(SUM(CASE WHEN is_closed = FALSE AND available_from <= now() AND available_until > now() THEN 1 ELSE 0 END), 0) AS BIGINT) AS active_products,
-        CAST(COALESCE(SUM(CASE WHEN is_visible = TRUE AND is_closed = FALSE AND available_from <= now() AND available_until > now() THEN 1 ELSE 0 END), 0) AS BIGINT) AS visible_products
-    FROM payment_product product_rows
-    WHERE product_rows.workspace_id = $1
-) p
-CROSS JOIN (
-    SELECT
-        COUNT(*) AS orders_total,
-        CAST(COALESCE(SUM(CASE WHEN status IN ('draft', 'pending_payment', 'paid') THEN 1 ELSE 0 END), 0) AS BIGINT) AS pending_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'fulfilled' THEN 1 ELSE 0 END), 0) AS BIGINT) AS fulfilled_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END), 0) AS BIGINT) AS refunded_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS BIGINT) AS failed_orders,
-        CAST(COALESCE(SUM(CASE WHEN status IN ('canceled', 'expired') THEN 1 ELSE 0 END), 0) AS BIGINT) AS canceled_orders
-    FROM payment_order order_rows
-    WHERE order_rows.workspace_id = $2
-) o
-CROSS JOIN (
-    SELECT
-        CAST(COALESCE(SUM(CASE WHEN event_type = 'purchase' THEN 1 ELSE 0 END), 0) AS BIGINT) AS purchase_count,
-        CAST(COALESCE(SUM(CASE WHEN event_type = 'purchase' THEN quantity ELSE 0 END), 0) AS BIGINT) AS purchase_quantity,
-        COUNT(DISTINCT CASE WHEN event_type = 'purchase' THEN CONCAT_WS(':', app_id, platform_id, platform_user_id) ELSE NULL END) AS unique_buyers
-    FROM payment_stats_event event_rows
-    WHERE event_rows.workspace_id = $3
-) e;
-
--- name: AdminGetPaymentProductStats :one
-SELECT
-    p.id AS product_id,
-    COALESCE(o.orders_total, 0) AS orders_total,
-    COALESCE(o.pending_orders, 0) AS pending_orders,
-    COALESCE(o.fulfilled_orders, 0) AS fulfilled_orders,
-    COALESCE(o.refunded_orders, 0) AS refunded_orders,
-    COALESCE(o.failed_orders, 0) AS failed_orders,
-    COALESCE(o.canceled_orders, 0) AS canceled_orders,
-    COALESCE(e.purchase_count, 0) AS purchase_count,
-    COALESCE(e.purchase_quantity, 0) AS purchase_quantity,
-    COALESCE(e.unique_buyers, 0) AS unique_buyers
-FROM payment_product p
-LEFT JOIN (
-    SELECT
-        order_rows.workspace_id,
-        order_rows.product_id,
-        COUNT(*) AS orders_total,
-        CAST(COALESCE(SUM(CASE WHEN status IN ('draft', 'pending_payment', 'paid') THEN 1 ELSE 0 END), 0) AS BIGINT) AS pending_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'fulfilled' THEN 1 ELSE 0 END), 0) AS BIGINT) AS fulfilled_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END), 0) AS BIGINT) AS refunded_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS BIGINT) AS failed_orders,
-        CAST(COALESCE(SUM(CASE WHEN status IN ('canceled', 'expired') THEN 1 ELSE 0 END), 0) AS BIGINT) AS canceled_orders
-    FROM payment_order order_rows
-    WHERE order_rows.workspace_id = $1 AND order_rows.product_id = $2
-    GROUP BY order_rows.workspace_id, order_rows.product_id
-) o ON o.workspace_id = p.workspace_id AND o.product_id = p.id
-LEFT JOIN (
-    SELECT
-        event_rows.workspace_id,
-        event_rows.product_id,
-        CAST(COALESCE(SUM(CASE WHEN event_type = 'purchase' THEN 1 ELSE 0 END), 0) AS BIGINT) AS purchase_count,
-        CAST(COALESCE(SUM(CASE WHEN event_type = 'purchase' THEN quantity ELSE 0 END), 0) AS BIGINT) AS purchase_quantity,
-        COUNT(DISTINCT CASE WHEN event_type = 'purchase' THEN CONCAT_WS(':', app_id, platform_id, platform_user_id) ELSE NULL END) AS unique_buyers
-    FROM payment_stats_event event_rows
-    WHERE event_rows.workspace_id = $3 AND event_rows.product_id = $4
-    GROUP BY event_rows.workspace_id, event_rows.product_id
-) e ON e.workspace_id = p.workspace_id AND e.product_id = p.id
-WHERE p.workspace_id = $5 AND p.id = $6
-LIMIT 1;
-
--- name: AdminListPaymentAssetStats :many
-SELECT
-    asset_code,
-    CAST(SUM(CASE WHEN event_type = 'purchase' THEN 1 ELSE 0 END) AS BIGINT) AS purchase_count,
-    CAST(SUM(CASE WHEN event_type = 'purchase' THEN quantity ELSE 0 END) AS BIGINT) AS purchase_quantity,
-    CAST(SUM(CASE WHEN event_type = 'purchase' THEN amount_minor ELSE 0 END) AS BIGINT) AS gross_amount_minor,
-    CAST(SUM(CASE WHEN event_type = 'refund' THEN 1 ELSE 0 END) AS BIGINT) AS refund_count,
-    CAST(SUM(CASE WHEN event_type = 'refund' THEN amount_minor ELSE 0 END) AS BIGINT) AS refund_amount_minor
-FROM payment_stats_event
-WHERE workspace_id = $1
-  AND ($2 = '' OR product_id = $3)
-GROUP BY asset_code
-ORDER BY asset_code;
 
 -- name: AdminListPaymentDailyStats :many
 SELECT
@@ -4219,6 +4367,11 @@ SET paid_count = GREATEST(plc.paid_count - po.quantity, 0),
     updated_at = now()
 FROM payment_order po
 WHERE po.workspace_id = plc.workspace_id
+  AND (
+      (plc.counter_scope = 'global' AND plc.app_id = 0)
+      OR
+      (plc.counter_scope = 'user' AND po.app_id = plc.app_id)
+  )
   AND (
       (plc.counter_scope = 'global' AND plc.platform_id = 0)
       OR

@@ -50,8 +50,8 @@
 | `Admin.CreatePrice(ctx, params)` | `paymentsqlc.CreateProductPriceParams`. | Создает цену. |
 | `Admin.UpdatePrice(ctx, params)` | `paymentsqlc.UpdateProductPriceParams`. | Обновляет цену. |
 | `Admin.DeletePrice(ctx, workspaceID, id)` | `workspaceID`, `id`. | Удаляет цену. |
-| `Admin.ListProductLimitCounters(ctx, params)` | `ProductLimitCounterListParams{WorkspaceID, ProductID, PlatformID, PlatformUserID, Page}`. | Возвращает счетчики лимитов продуктов. |
-| `Admin.DeleteProductLimitCounter(ctx, params)` | `paymentsqlc.AdminDeleteProductLimitCounterParams`. | Удаляет счетчик лимита продукта. |
+| `Admin.ListProductLimitCounters(ctx, params)` | `ProductLimitCounterListParams{WorkspaceID, AppID, ProductID, PlatformID, PlatformUserID, Page}`. | Возвращает счетчики лимитов продуктов; user scope разделен полным identity. |
+| `Admin.DeleteProductLimitCounter(ctx, params)` | `ProductLimitCounterDeleteParams{WorkspaceID, AppID, PlatformID, ProductID, CounterScope, PlatformUserID, WindowStart, WindowEnd}`. | Удаляет конкретный счетчик лимита продукта. |
 | `Admin.ListProviders(ctx)` | Только `ctx`. | Возвращает платежных провайдеров. |
 | `Admin.GetProvider(ctx, code)` | `code`. | Возвращает провайдера. |
 | `Admin.ListAssets(ctx)` | Только `ctx`. | Возвращает assets. |
@@ -65,10 +65,12 @@
 | `Admin.ListAssetRates(ctx, params)` | `AssetRateListParams{AssetCode, ReferenceAssetCode, Page}`. | Возвращает список курсов assets. |
 | `Admin.CreateProductKey(ctx, params)` | `CreateProductKeyParams`. | Создает purchase key для продукта. |
 | `Admin.RebuildProductCache(ctx, workspaceID)` | `workspaceID`. | Пересобирает кеш каталога продуктов рабочей области. |
-| `Admin.ListPurchaseKeys(ctx, params)` | `PurchaseKeyListParams{WorkspaceID, ProductID, Status, PlatformID, PlatformUserID, Page}`. | Возвращает purchase keys. |
+| `Admin.ListPurchaseKeys(ctx, params)` | `PurchaseKeyListParams{WorkspaceID, AppID, ProductID, Status, PlatformID, PlatformUserID, Page}`. | Возвращает purchase keys. Фильтр по `PlatformUserID` требует также `AppID` и `PlatformID`. |
 | `Admin.GetPurchaseKey(ctx, workspaceID, id)` | `workspaceID`, `id`. | Возвращает purchase key. |
 | `Admin.UpdatePurchaseKeyStatus(ctx, workspaceID, id, status)` | `workspaceID`, `id`, `status`. | Обновляет статус purchase key. |
-| `Admin.ListOrders(ctx, params)` | `OrderListParams{WorkspaceID, Status, ProductID, PlatformID, PlatformUserID, Page}`. | Возвращает платежные заказы. |
+| `Admin.ListOrders(ctx, params)` | `OrderListParams{WorkspaceID, AppID, Status, ProductID, PlatformID, PlatformUserID, Page}`. | Возвращает платежные заказы; все фильтры, кроме `WorkspaceID`, опциональны. |
+| `Admin.ListUserOrders(ctx, params)` | `UserOrderListParams{Identity, Status, Page}`; `Identity{WorkspaceID, AppID, PlatformID, PlatformUserID}`. | Возвращает историю платежных заказов конкретного пользователя по полному идентификатору. |
+| `Admin.GetPaymentReport(ctx, params)` | `PaymentReportParams{WorkspaceID, Identity, IdentityRole, AppID, PlatformID, PlatformUserID, Status, ProductID, ProviderCode, AssetCode, CreatedFrom, CreatedUntil, MinAmountMinor, MaxAmountMinor, Sort, Direction, Page}`. | Единый метод списка и агрегированной статистики платежей. Возвращает страницу платежей, статусы заказов, покупки, количество товаров, уникальных покупателей и суммы по assets по тем же фильтрам. Каждая строка содержит `Initiator` и `Recipient` как полные `Identity`; отсутствующий фильтр не ограничивает выборку. |
 | `Admin.GetOrder(ctx, id)` | `id`. | Возвращает заказ. |
 | `Admin.GetOrderByPublicID(ctx, publicID)` | `publicID`. | Возвращает заказ по публичному id. |
 | `Admin.UpdateOrderStatus(ctx, workspaceID, id, status)` | `workspaceID`, `id`, `status`. | Обновляет статус заказа. |
@@ -78,7 +80,7 @@
 | `Admin.ListPaymentEvents(ctx, params)` | `EventListParams{WorkspaceID, ProviderCode, ProcessingStatus, Page}`. | Возвращает платежные события. |
 | `Admin.GetPaymentEvent(ctx, id)` | `id`. | Возвращает платежное событие. |
 | `Admin.UpdatePaymentEventProcessingStatus(ctx, id, status, message)` | `id`, `status`, `message`. | Обновляет статус обработки платежного события. |
-| `Admin.ListSubscriptions(ctx, params)` | `SubscriptionListParams{WorkspaceID, ProviderCode, ProductID, Status, PlatformID, PlatformUserID, Page}`. | Возвращает подписки. |
+| `Admin.ListSubscriptions(ctx, params)` | `SubscriptionListParams{WorkspaceID, AppID, ProviderCode, ProductID, Status, PlatformID, PlatformUserID, Page}`. | Возвращает подписки. Фильтр по `PlatformUserID` требует также `AppID` и `PlatformID`. |
 | `Admin.GetSubscription(ctx, workspaceID, id)` | `workspaceID`, `id`. | Возвращает подписку. |
 | `Admin.GetSubscriptionByProviderID(ctx, providerCode, providerSubscriptionID)` | `providerCode`, `providerSubscriptionID`. | Возвращает подписку по id провайдера. |
 | `Admin.UpsertSubscription(ctx, params)` | `paymentsqlc.UpsertPaymentSubscriptionParams`. | Создает или обновляет подписку. |
@@ -92,8 +94,6 @@
 | `Admin.ListRefunds(ctx, params)` | `RefundListParams{WorkspaceID, OrderID, ProviderCode, Status, Page}`. | Возвращает refunds. |
 | `Admin.GetRefund(ctx, id)` | `id`. | Возвращает refund. |
 | `Admin.UpdateRefundStatus(ctx, id, status, reason)` | `id`, `status`, `reason`. | Обновляет статус refund. |
-| `Admin.GetStats(ctx, workspaceID)` | `workspaceID`. | Возвращает общую статистику платежей. |
-| `Admin.GetProductStats(ctx, workspaceID, productID)` | `workspaceID`, `productID`. | Возвращает статистику продукта. |
 | `Admin.ListDailyStats(ctx, workspaceID, productID, from, until)` | `workspaceID`, `productID`, `from`, `until`. | Возвращает дневную статистику. |
 | `Admin.ListDailyOverview(ctx, workspaceID, from, until)` | `workspaceID`, `from`, `until`. | Возвращает дневный обзор платежей. |
 | `Admin.RefreshDailyStats(ctx, workspaceID, from, until)` | `workspaceID`, `from`, `until`. | Пересчитывает дневную статистику только указанной workspace. |

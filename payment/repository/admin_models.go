@@ -3,6 +3,7 @@ package repository
 import (
 	"time"
 
+	"github.com/elum2b/services"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
 	json "github.com/goccy/go-json"
 )
@@ -193,6 +194,7 @@ type AdminPriceModel struct {
 
 type AdminProductLimitCounterModel struct {
 	WorkspaceID    string    `json:"workspace_id"`
+	AppID          int64     `json:"app_id"`
 	PlatformID     int64     `json:"platform_id"`
 	ProductID      string    `json:"product_id"`
 	CounterScope   string    `json:"counter_scope"`
@@ -260,6 +262,81 @@ type AdminOrderModel struct {
 	ExpiresAt                   NullableTime   `json:"expires_at"`
 	CreatedAt                   time.Time      `json:"created_at"`
 	UpdatedAt                   time.Time      `json:"updated_at"`
+}
+
+type PaymentReportParams struct {
+	WorkspaceID    string
+	Identity       *services.Identity
+	IdentityRole   string
+	AppID          int64
+	PlatformID     int64
+	PlatformUserID string
+	Status         string
+	ProductID      string
+	ProviderCode   string
+	AssetCode      string
+	CreatedFrom    *time.Time
+	CreatedUntil   *time.Time
+	MinAmountMinor uint64
+	MaxAmountMinor uint64
+	Sort           string
+	Direction      string
+	Limit          int32
+	Offset         int32
+}
+
+type PaymentReportModel struct {
+	ID                  uint64
+	PublicID            string
+	WorkspaceID         string
+	AppID               int64
+	RecipientPlatformID int64
+	RecipientUserID     string
+	InitiatorPlatformID int64
+	InitiatorUserID     string
+	ProductID           string
+	Quantity            uint64
+	AssetCode           string
+	ListAmountMinor     uint64
+	DiscountAmountMinor uint64
+	PayableAmountMinor  uint64
+	RefundCount         uint64
+	RefundAmountMinor   uint64
+	ProviderCode        string
+	Status              string
+	PaidAt              *time.Time
+	FulfilledAt         *time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type PaymentReportStatsModel struct {
+	TotalOrders          uint64
+	DraftOrders          uint64
+	PendingPaymentOrders uint64
+	PendingOrders        uint64
+	PaidOrders           uint64
+	FulfilledOrders      uint64
+	CanceledOrders       uint64
+	ExpiredOrders        uint64
+	RefundedOrders       uint64
+	ChargebackedOrders   uint64
+	FailedOrders         uint64
+	PurchaseCount        uint64
+	PurchaseQuantity     uint64
+	UniqueBuyers         uint64
+	Assets               []PaymentReportAssetStatsModel
+}
+
+type PaymentReportAssetStatsModel struct {
+	AssetCode         string
+	OrderCount        uint64
+	PurchaseCount     uint64
+	PurchaseQuantity  uint64
+	GrossAmountMinor  uint64
+	RefundCount       uint64
+	RefundAmountMinor uint64
+	NetAmountMinor    uint64
 }
 
 type AdminPaymentAttemptModel struct {
@@ -557,6 +634,7 @@ func mapAdminPrice(row paymentsqlc.PaymentPrice) AdminPriceModel {
 func mapAdminProductLimitCounter(row paymentsqlc.PaymentProductLimitCounter) AdminProductLimitCounterModel {
 	return AdminProductLimitCounterModel{
 		WorkspaceID:    row.WorkspaceID,
+		AppID:          row.AppID,
 		PlatformID:     row.PlatformID,
 		ProductID:      row.ProductID,
 		CounterScope:   string(row.CounterScope),

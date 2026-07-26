@@ -16,6 +16,7 @@ func (a *Subscription) IsActive(ctx context.Context, params IsActiveParams) (boo
 
 	return a.repository.IsSubscriptionActive(mergedCtx, repository.SubscriptionIsActiveParams{
 		WorkspaceID:    params.Identity.WorkspaceID,
+		AppID:          params.Identity.AppID,
 		PlatformID:     params.Identity.PlatformID,
 		PlatformUserID: params.Identity.PlatformUserID,
 		ProductID:      params.ProductID,

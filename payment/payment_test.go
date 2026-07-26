@@ -908,6 +908,26 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 		t.Fatalf("gift payer = %v, want %q", giftOrder.PayerPlatformUserID, payer.PlatformUserID)
 	}
 
+	giftReport, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+		WorkspaceID:  testWorkspaceID,
+		Identity:     &payer,
+		IdentityRole: admin.PaymentIdentityRoleInitiator,
+	})
+	if err != nil {
+		t.Fatalf("get gift payment report: %v", err)
+	}
+	if len(giftReport.Payments) != 1 || giftReport.Payments[0].ID != giftOrder.ID {
+		t.Fatalf("unexpected gift payment report: %#v", giftReport.Payments)
+	}
+	if giftReport.Payments[0].Initiator != payer ||
+		giftReport.Payments[0].Recipient != recipient {
+		t.Fatalf(
+			"unexpected gift parties: initiator=%#v recipient=%#v",
+			giftReport.Payments[0].Initiator,
+			giftReport.Payments[0].Recipient,
+		)
+	}
+
 	giftPaymentID := uniquePaymentID("direct-gift-attempt")
 	if _, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
 		Identity:          payer,
@@ -1906,7 +1926,9 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	}
 	keys, err := env.api.Admin.ListPurchaseKeys(env.ctx, admin.PurchaseKeyListParams{
 		WorkspaceID:    testWorkspaceID,
+		AppID:          7301,
 		ProductID:      order.ProductID,
+		PlatformID:     1,
 		PlatformUserID: "admin-key-owner",
 	})
 	if err != nil {
@@ -2045,6 +2067,466 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 		Status:      "processed",
 	}); err != nil {
 		t.Fatalf("update payment event status: %v", err)
+	}
+}
+
+func TestPaymentIdentityCollisionIsolation(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	productID := createPaymentProduct(t, env, testProductOptions{
+		ProductID:       "identity_collision_product",
+		AssetCode:       "RUB",
+		ListAmountMinor: 1000,
+	})
+
+	identities := map[string]services.Identity{
+		"base":           paymentTestIdentity(testWorkspaceID, 9100, 10, "shared-user"),
+		"other_app":      paymentTestIdentity(testWorkspaceID, 9101, 10, "shared-user"),
+		"other_platform": paymentTestIdentity(testWorkspaceID, 9100, 11, "shared-user"),
+		"other_user":     paymentTestIdentity(testWorkspaceID, 9100, 10, "other-user"),
+	}
+	createOrder := func(identity services.Identity, payer *services.Identity) *checkout.Order {
+		t.Helper()
+		params := checkout.CreateOrderParams{
+			Identity:  identity,
+			ProductID: productID,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		}
+		if payer != nil {
+			params.Payer = &services.Actor{
+				PlatformID:     payer.PlatformID,
+				PlatformUserID: payer.PlatformUserID,
+			}
+		}
+		order, err := env.api.User.CreateOrder(env.ctx, params)
+		if err != nil {
+			t.Fatalf("create identity collision order for %#v: %v", identity, err)
+		}
+		return order
+	}
+
+	orderIDs := make(map[string]uint64, len(identities))
+	for name, identity := range identities {
+		orderIDs[name] = createOrder(identity, nil).ID
+	}
+	giftOrder := createOrder(identities["base"], utils.Ref(identities["other_user"]))
+
+	assertOrderIDs := func(label string, orders []admin.OrderModel, want ...uint64) {
+		t.Helper()
+		got := make(map[uint64]struct{}, len(orders))
+		for _, order := range orders {
+			got[uint64(order.ID)] = struct{}{}
+		}
+		if len(got) != len(want) {
+			t.Fatalf("%s order count = %d, want %d: %#v", label, len(got), len(want), orders)
+		}
+		for _, id := range want {
+			if _, ok := got[id]; !ok {
+				t.Fatalf("%s does not contain order %d: %#v", label, id, orders)
+			}
+		}
+	}
+	assertPaymentIDs := func(label string, report admin.PaymentReport, want ...uint64) {
+		t.Helper()
+		got := make(map[uint64]struct{}, len(report.Payments))
+		for _, payment := range report.Payments {
+			got[payment.ID] = struct{}{}
+		}
+		if len(got) != len(want) || report.Stats.TotalOrders != uint64(len(want)) {
+			t.Fatalf(
+				"%s payment count=%d stats=%d, want %d: %#v",
+				label,
+				len(got),
+				report.Stats.TotalOrders,
+				len(want),
+				report,
+			)
+		}
+		for _, id := range want {
+			if _, ok := got[id]; !ok {
+				t.Fatalf("%s does not contain payment %d: %#v", label, id, report.Payments)
+			}
+		}
+	}
+
+	type identityExpectation struct {
+		name      string
+		recipient []uint64
+		initiator []uint64
+		either    []uint64
+	}
+	expectations := []identityExpectation{
+		{
+			name:      "base",
+			recipient: []uint64{orderIDs["base"], giftOrder.ID},
+			initiator: []uint64{orderIDs["base"]},
+			either:    []uint64{orderIDs["base"], giftOrder.ID},
+		},
+		{
+			name:      "other_app",
+			recipient: []uint64{orderIDs["other_app"]},
+			initiator: []uint64{orderIDs["other_app"]},
+			either:    []uint64{orderIDs["other_app"]},
+		},
+		{
+			name:      "other_platform",
+			recipient: []uint64{orderIDs["other_platform"]},
+			initiator: []uint64{orderIDs["other_platform"]},
+			either:    []uint64{orderIDs["other_platform"]},
+		},
+		{
+			name:      "other_user",
+			recipient: []uint64{orderIDs["other_user"]},
+			initiator: []uint64{orderIDs["other_user"], giftOrder.ID},
+			either:    []uint64{orderIDs["other_user"], giftOrder.ID},
+		},
+	}
+
+	for _, expectation := range expectations {
+		identity := identities[expectation.name]
+		t.Run("orders_"+expectation.name, func(t *testing.T) {
+			userOrders, err := env.api.Admin.ListUserOrders(env.ctx, admin.UserOrderListParams{
+				Identity: identity,
+			})
+			if err != nil {
+				t.Fatalf("list user orders: %v", err)
+			}
+			assertOrderIDs("user orders", userOrders, expectation.recipient...)
+
+			filteredOrders, err := env.api.Admin.ListOrders(env.ctx, admin.OrderListParams{
+				WorkspaceID:    identity.WorkspaceID,
+				AppID:          identity.AppID,
+				PlatformID:     identity.PlatformID,
+				PlatformUserID: identity.PlatformUserID,
+			})
+			if err != nil {
+				t.Fatalf("list filtered orders: %v", err)
+			}
+			assertOrderIDs("filtered orders", filteredOrders, expectation.recipient...)
+		})
+
+		for _, role := range []struct {
+			name string
+			role admin.PaymentIdentityRole
+			want []uint64
+		}{
+			{name: "recipient", role: admin.PaymentIdentityRoleRecipient, want: expectation.recipient},
+			{name: "initiator", role: admin.PaymentIdentityRoleInitiator, want: expectation.initiator},
+			{name: "either", role: admin.PaymentIdentityRoleEither, want: expectation.either},
+		} {
+			t.Run("report_"+expectation.name+"_"+role.name, func(t *testing.T) {
+				report, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+					WorkspaceID:  identity.WorkspaceID,
+					Identity:     &identity,
+					IdentityRole: role.role,
+				})
+				if err != nil {
+					t.Fatalf("get identity payment report: %v", err)
+				}
+				assertPaymentIDs("identity payment report", report, role.want...)
+			})
+		}
+
+		t.Run("raw_report_filter_"+expectation.name, func(t *testing.T) {
+			report, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+				WorkspaceID:    identity.WorkspaceID,
+				AppID:          identity.AppID,
+				PlatformID:     identity.PlatformID,
+				PlatformUserID: identity.PlatformUserID,
+			})
+			if err != nil {
+				t.Fatalf("get raw identity payment report: %v", err)
+			}
+			assertPaymentIDs("raw identity payment report", report, expectation.recipient...)
+		})
+	}
+
+	baseReport, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+		WorkspaceID:  testWorkspaceID,
+		Identity:     utils.Ref(identities["base"]),
+		IdentityRole: admin.PaymentIdentityRoleEither,
+	})
+	if err != nil {
+		t.Fatalf("get base identity report: %v", err)
+	}
+	for _, payment := range baseReport.Payments {
+		switch payment.ID {
+		case orderIDs["base"]:
+			if payment.Initiator != identities["base"] || payment.Recipient != identities["base"] {
+				t.Fatalf("self-payment identity mismatch: %#v", payment)
+			}
+		case giftOrder.ID:
+			if payment.Initiator != identities["other_user"] || payment.Recipient != identities["base"] {
+				t.Fatalf("gift identity mismatch: %#v", payment)
+			}
+		default:
+			t.Fatalf("base report leaked payment %#v", payment)
+		}
+	}
+
+	otherWorkspaceID := testsupport.WorkspaceID("payment-identity-collision-other")
+	createPaymentProduct(t, env, testProductOptions{
+		WorkspaceID:     otherWorkspaceID,
+		ProductID:       productID,
+		AssetCode:       "RUB",
+		ListAmountMinor: 1000,
+	})
+	otherWorkspaceIdentity := paymentTestIdentity(
+		otherWorkspaceID,
+		identities["base"].AppID,
+		identities["base"].PlatformID,
+		identities["base"].PlatformUserID,
+	)
+	otherWorkspaceOrder, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
+		Identity:  otherWorkspaceIdentity,
+		ProductID: productID,
+		AssetCode: "RUB",
+		Locale:    "ru",
+	})
+	if err != nil {
+		t.Fatalf("create same identity tuple in another workspace: %v", err)
+	}
+	otherWorkspaceOrders, err := env.api.Admin.ListUserOrders(env.ctx, admin.UserOrderListParams{
+		Identity: otherWorkspaceIdentity,
+	})
+	if err != nil {
+		t.Fatalf("list another workspace identity orders: %v", err)
+	}
+	assertOrderIDs("another workspace orders", otherWorkspaceOrders, otherWorkspaceOrder.ID)
+	baseOrders, err := env.api.Admin.ListUserOrders(env.ctx, admin.UserOrderListParams{
+		Identity: identities["base"],
+	})
+	if err != nil {
+		t.Fatalf("list base orders after another workspace order: %v", err)
+	}
+	assertOrderIDs("base workspace orders", baseOrders, orderIDs["base"], giftOrder.ID)
+
+	for _, invalidFilter := range []struct {
+		name string
+		run  func() error
+	}{
+		{
+			name: "orders",
+			run: func() error {
+				_, err := env.api.Admin.ListOrders(env.ctx, admin.OrderListParams{
+					WorkspaceID:    testWorkspaceID,
+					PlatformID:     identities["base"].PlatformID,
+					PlatformUserID: identities["base"].PlatformUserID,
+				})
+				return err
+			},
+		},
+		{
+			name: "purchase_keys",
+			run: func() error {
+				_, err := env.api.Admin.ListPurchaseKeys(env.ctx, admin.PurchaseKeyListParams{
+					WorkspaceID:    testWorkspaceID,
+					AppID:          identities["base"].AppID,
+					PlatformUserID: identities["base"].PlatformUserID,
+				})
+				return err
+			},
+		},
+		{
+			name: "subscriptions",
+			run: func() error {
+				_, err := env.api.Admin.ListSubscriptions(env.ctx, admin.SubscriptionListParams{
+					WorkspaceID:    testWorkspaceID,
+					PlatformID:     identities["base"].PlatformID,
+					PlatformUserID: identities["base"].PlatformUserID,
+				})
+				return err
+			},
+		},
+		{
+			name: "limit_counters",
+			run: func() error {
+				_, err := env.api.Admin.ListProductLimitCounters(
+					env.ctx,
+					admin.ProductLimitCounterListParams{
+						WorkspaceID:    testWorkspaceID,
+						AppID:          identities["base"].AppID,
+						PlatformUserID: identities["base"].PlatformUserID,
+					},
+				)
+				return err
+			},
+		},
+	} {
+		t.Run("reject_partial_identity_"+invalidFilter.name, func(t *testing.T) {
+			if err := invalidFilter.run(); !errors.Is(err, repository.ErrPaymentReportInvalid) {
+				t.Fatalf("partial identity filter error = %v, want %v", err, repository.ErrPaymentReportInvalid)
+			}
+		})
+	}
+
+	for name, identity := range identities {
+		if _, err := env.api.Admin.CreateProductKey(env.ctx, admin.CreateProductKeyParams{
+			WorkspaceID:    identity.WorkspaceID,
+			AppID:          identity.AppID,
+			PlatformID:     identity.PlatformID,
+			PlatformUserID: identity.PlatformUserID,
+			ProductID:      productID,
+			MaxUses:        1,
+		}); err != nil {
+			t.Fatalf("create %s purchase key: %v", name, err)
+		}
+	}
+	for name, identity := range identities {
+		keys, err := env.api.Admin.ListPurchaseKeys(env.ctx, admin.PurchaseKeyListParams{
+			WorkspaceID:    identity.WorkspaceID,
+			AppID:          identity.AppID,
+			PlatformID:     identity.PlatformID,
+			PlatformUserID: identity.PlatformUserID,
+			ProductID:      productID,
+		})
+		if err != nil {
+			t.Fatalf("list %s purchase keys: %v", name, err)
+		}
+		if len(keys) != 1 ||
+			keys[0].AppID != identity.AppID ||
+			keys[0].PlatformID != identity.PlatformID ||
+			keys[0].PlatformUserID != identity.PlatformUserID {
+			t.Fatalf("%s purchase keys collided: %#v", name, keys)
+		}
+	}
+
+	subscriptionStatuses := map[string]string{
+		"base":           "active",
+		"other_app":      "canceled",
+		"other_platform": "refunded",
+		"other_user":     "expired",
+	}
+	for name, identity := range identities {
+		if _, err := env.api.Admin.UpsertSubscription(env.ctx, admin.SubscriptionUpsertParams{
+			WorkspaceID:            identity.WorkspaceID,
+			ProviderCode:           "yookassa",
+			ProviderSubscriptionID: uniquePaymentID("identity-subscription-" + name),
+			AppID:                  identity.AppID,
+			PlatformID:             identity.PlatformID,
+			PlatformUserID:         identity.PlatformUserID,
+			ProductID:              productID,
+			Status:                 subscriptionStatuses[name],
+			StartedAt:              time.Now().UTC(),
+		}); err != nil {
+			t.Fatalf("upsert %s subscription: %v", name, err)
+		}
+	}
+	for name, identity := range identities {
+		subscriptions, err := env.api.Admin.ListSubscriptions(env.ctx, admin.SubscriptionListParams{
+			WorkspaceID:    identity.WorkspaceID,
+			AppID:          identity.AppID,
+			PlatformID:     identity.PlatformID,
+			PlatformUserID: identity.PlatformUserID,
+			ProductID:      productID,
+		})
+		if err != nil {
+			t.Fatalf("list %s subscriptions: %v", name, err)
+		}
+		if len(subscriptions) != 1 ||
+			subscriptions[0].Status != subscriptionStatuses[name] ||
+			subscriptions[0].AppID != identity.AppID ||
+			subscriptions[0].PlatformID != identity.PlatformID ||
+			subscriptions[0].PlatformUserID != identity.PlatformUserID {
+			t.Fatalf("%s subscriptions collided: %#v", name, subscriptions)
+		}
+
+		active, err := env.api.User.IsSubscriptionActive(env.ctx, subscription.IsActiveParams{
+			Identity:     identity,
+			ProductID:    productID,
+			ProviderCode: "yookassa",
+		})
+		if err != nil {
+			t.Fatalf("check %s subscription: %v", name, err)
+		}
+		if active != (name == "base") {
+			t.Fatalf("%s subscription active=%t, want %t", name, active, name == "base")
+		}
+	}
+
+	limitedProductID := createPaymentProduct(t, env, testProductOptions{
+		ProductID:         "identity_collision_limited_product",
+		AssetCode:         "RUB",
+		ListAmountMinor:   1000,
+		UserLimit:         1,
+		UserInterval:      "ONCE",
+		UserIntervalCount: 1,
+	})
+	limitedOrder, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
+		Identity:  identities["base"],
+		ProductID: limitedProductID,
+		AssetCode: "RUB",
+		Locale:    "ru",
+	})
+	if err != nil {
+		t.Fatalf("create base limited order: %v", err)
+	}
+	providerPaymentID := uniquePaymentID("identity-limit-base")
+	limitedAttempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
+		Identity:          identities["base"],
+		OrderID:           limitedOrder.ID,
+		ProviderCode:      "yookassa",
+		ProviderPaymentID: &providerPaymentID,
+	})
+	if err != nil {
+		t.Fatalf("create base limited attempt: %v", err)
+	}
+	if _, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
+		WorkspaceID:       testWorkspaceID,
+		AttemptID:         limitedAttempt.ID,
+		ProviderCode:      "yookassa",
+		ProviderPaymentID: &providerPaymentID,
+		AmountMinor:       limitedAttempt.AmountMinor,
+		AssetCode:         "RUB",
+	}); err != nil {
+		t.Fatalf("complete base limited attempt: %v", err)
+	}
+
+	if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
+		Identity:  identities["base"],
+		ProductID: limitedProductID,
+		AssetCode: "RUB",
+		Locale:    "ru",
+	}); !errors.Is(err, repository.ErrProductLocked) {
+		t.Fatalf("same full identity must hit user limit, got %v", err)
+	}
+	for _, name := range []string{"other_app", "other_platform", "other_user"} {
+		identity := identities[name]
+		if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
+			Identity:  identity,
+			ProductID: limitedProductID,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		}); err != nil {
+			t.Fatalf("%s identity collided with user limit: %v", name, err)
+		}
+	}
+	for name, identity := range identities {
+		counters, err := env.api.Admin.ListProductLimitCounters(
+			env.ctx,
+			admin.ProductLimitCounterListParams{
+				WorkspaceID:    identity.WorkspaceID,
+				AppID:          identity.AppID,
+				ProductID:      limitedProductID,
+				PlatformID:     identity.PlatformID,
+				PlatformUserID: identity.PlatformUserID,
+			},
+		)
+		if err != nil {
+			t.Fatalf("list %s limit counters: %v", name, err)
+		}
+		if len(counters) != 1 ||
+			counters[0].AppID != identity.AppID ||
+			counters[0].PlatformID != identity.PlatformID ||
+			counters[0].PlatformUserID != identity.PlatformUserID {
+			t.Fatalf("%s limit counters collided: %#v", name, counters)
+		}
+		if name == "base" && (counters[0].PaidCount != 1 || counters[0].ReservedCount != 0) {
+			t.Fatalf("base limit counter = %#v, want paid=1 reserved=0", counters[0])
+		}
+		if name != "base" && (counters[0].PaidCount != 0 || counters[0].ReservedCount != 1) {
+			t.Fatalf("%s limit counter = %#v, want paid=0 reserved=1", name, counters[0])
+		}
 	}
 }
 
@@ -2249,6 +2731,7 @@ func TestPaymentAdminProductLimitCounterSurface(t *testing.T) {
 
 	counters, err := env.api.Admin.ListProductLimitCounters(env.ctx, admin.ProductLimitCounterListParams{
 		WorkspaceID:    testWorkspaceID,
+		AppID:          identity.AppID,
 		ProductID:      productID,
 		PlatformID:     identity.PlatformID,
 		PlatformUserID: identity.PlatformUserID,
@@ -2265,6 +2748,7 @@ func TestPaymentAdminProductLimitCounterSurface(t *testing.T) {
 
 	rows, err := env.api.Admin.DeleteProductLimitCounter(env.ctx, admin.ProductLimitCounterDeleteParams{
 		WorkspaceID:    counters[0].WorkspaceID,
+		AppID:          counters[0].AppID,
 		PlatformID:     counters[0].PlatformID,
 		ProductID:      counters[0].ProductID,
 		CounterScope:   counters[0].CounterScope,
@@ -3430,25 +3914,32 @@ func assertCallbackStatus(t *testing.T, ctx context.Context, db *sql.DB, eventTy
 
 func assertPaymentPurchaseStats(t *testing.T, env paymentTestEnv, productID string, purchaseCount, purchaseQuantity, uniqueBuyers, grossAmount uint64) {
 	t.Helper()
-	stats, err := env.api.Admin.GetStats(env.ctx, testWorkspaceID)
+	report, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+		WorkspaceID: testWorkspaceID,
+	})
 	if err != nil {
-		t.Fatalf("get payment stats: %v", err)
+		t.Fatalf("get payment report: %v", err)
 	}
-	if stats.ProductsTotal != 1 || stats.PurchaseCount != purchaseCount ||
-		stats.PurchaseQuantity != purchaseQuantity || stats.UniqueBuyers != uniqueBuyers {
-		t.Fatalf("unexpected payment stats: %#v", stats)
+	if report.Stats.PurchaseCount != purchaseCount ||
+		report.Stats.PurchaseQuantity != purchaseQuantity ||
+		report.Stats.UniqueBuyers != uniqueBuyers {
+		t.Fatalf("unexpected payment report stats: %#v", report.Stats)
 	}
-	if len(stats.Assets) != 1 || stats.Assets[0].AssetCode != "RUB" ||
-		stats.Assets[0].GrossAmountMinor != grossAmount {
-		t.Fatalf("unexpected payment asset stats: %#v", stats.Assets)
+	if len(report.Stats.Assets) != 1 || report.Stats.Assets[0].AssetCode != "RUB" ||
+		report.Stats.Assets[0].GrossAmountMinor != grossAmount {
+		t.Fatalf("unexpected payment asset stats: %#v", report.Stats.Assets)
 	}
 
-	productStats, err := env.api.Admin.GetProductStats(env.ctx, testWorkspaceID, productID)
+	productReport, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+		WorkspaceID: testWorkspaceID,
+		ProductID:   productID,
+	})
 	if err != nil {
-		t.Fatalf("get payment product stats: %v", err)
+		t.Fatalf("get payment product report: %v", err)
 	}
-	if productStats.PurchaseCount != purchaseCount || productStats.PurchaseQuantity != purchaseQuantity {
-		t.Fatalf("unexpected payment product stats: %#v", productStats)
+	if productReport.Stats.PurchaseCount != purchaseCount ||
+		productReport.Stats.PurchaseQuantity != purchaseQuantity {
+		t.Fatalf("unexpected payment product stats: %#v", productReport.Stats)
 	}
 
 	now := time.Now()
@@ -3504,6 +3995,76 @@ func assertAdminPaymentReadMethods(t *testing.T, env paymentTestEnv, productID s
 	}
 	if len(orders) == 0 || uint64(orders[0].ID) != orderID {
 		t.Fatalf("unexpected admin orders: %#v", orders)
+	}
+
+	userOrders, err := env.api.Admin.ListUserOrders(env.ctx, admin.UserOrderListParams{
+		Identity: paymentTestIdentity(testWorkspaceID, 1001, 1, "buyer-regular"),
+		Status:   "fulfilled",
+	})
+	if err != nil {
+		t.Fatalf("admin list user orders: %v", err)
+	}
+	if len(userOrders) != 1 || uint64(userOrders[0].ID) != orderID {
+		t.Fatalf("unexpected user orders: %#v", userOrders)
+	}
+
+	otherAppOrders, err := env.api.Admin.ListUserOrders(env.ctx, admin.UserOrderListParams{
+		Identity: paymentTestIdentity(testWorkspaceID, 1002, 1, "buyer-regular"),
+	})
+	if err != nil {
+		t.Fatalf("admin list other app user orders: %v", err)
+	}
+	if len(otherAppOrders) != 0 {
+		t.Fatalf("unexpected other app user orders: %#v", otherAppOrders)
+	}
+
+	report, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+		WorkspaceID: testWorkspaceID,
+		Identity: utils.Ref(paymentTestIdentity(
+			testWorkspaceID,
+			1001,
+			1,
+			"buyer-regular",
+		)),
+		IdentityRole: admin.PaymentIdentityRoleEither,
+		Status:       "fulfilled",
+		Sort:         admin.PaymentSortAmount,
+		Direction:    admin.SortDescending,
+		Page:         admin.PageParams{Limit: 1},
+	})
+	if err != nil {
+		t.Fatalf("admin get payment report: %v", err)
+	}
+	if len(report.Payments) != 1 || report.Payments[0].ID != orderID {
+		t.Fatalf("unexpected payment report: %#v", report.Payments)
+	}
+	if report.Payments[0].Initiator != report.Payments[0].Recipient {
+		t.Fatalf(
+			"self payment parties differ: initiator=%#v recipient=%#v",
+			report.Payments[0].Initiator,
+			report.Payments[0].Recipient,
+		)
+	}
+	if report.Stats.TotalOrders != 1 ||
+		report.Stats.FulfilledOrders != 1 ||
+		len(report.Stats.Assets) != 1 ||
+		report.Stats.Assets[0].GrossAmountMinor != report.Payments[0].PayableAmountMinor {
+		t.Fatalf("unexpected payment report stats: %#v", report.Stats)
+	}
+
+	_, err = env.api.Admin.ListUserOrders(env.ctx, admin.UserOrderListParams{
+		Identity: paymentTestIdentity(testWorkspaceID, 0, 1, "buyer-regular"),
+	})
+	if err == nil {
+		t.Fatal("expected invalid user identity error")
+	}
+
+	_, err = env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+		WorkspaceID:    testWorkspaceID,
+		PlatformUserID: "buyer-regular",
+	})
+	if err == nil {
+		t.Fatal("expected incomplete payment report identity error")
 	}
 
 	attempts, err := env.api.Admin.ListPaymentAttempts(env.ctx, admin.AttemptListParams{
@@ -4833,7 +5394,7 @@ func TestPaymentLimitsAcrossAllIntervals(t *testing.T) {
 
 			// User purchase limit.
 			// Complete one purchase for a user-limited product in the selected interval.
-			// Verify the same user is blocked while another user can still buy it.
+			// Verify the same identity is blocked while another app or user can still buy it.
 			productID := createPaymentProduct(t, env, testProductOptions{
 				AssetCode:           "RUB",
 				ListAmountMinor:     1000,
@@ -4859,8 +5420,8 @@ func TestPaymentLimitsAcrossAllIntervals(t *testing.T) {
 				ProductID: productID,
 				AssetCode: "RUB",
 				Locale:    "ru",
-			}); !errors.Is(err, repository.ErrProductLocked) {
-				t.Fatalf("expected user limit lock across AppID, got %v", err)
+			}); err != nil {
+				t.Fatalf("expected another app identity to bypass user limit, got %v", err)
 			}
 
 			if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
@@ -7935,13 +8496,17 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if refundCount != 1 || refundStatus != "succeeded" {
 		t.Fatalf("unexpected vkma refund state: count=%d status=%s", refundCount, refundStatus)
 	}
-	productStats, err := env.api.Admin.GetProductStats(env.ctx, testWorkspaceID, productID)
+	productReport, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+		WorkspaceID: testWorkspaceID,
+		ProductID:   productID,
+	})
 	if err != nil {
-		t.Fatalf("get refunded product stats: %v", err)
+		t.Fatalf("get refunded product report: %v", err)
 	}
-	if len(productStats.Assets) != 1 || productStats.Assets[0].RefundCount != 1 ||
-		productStats.Assets[0].RefundAmountMinor != 35 {
-		t.Fatalf("unexpected refunded product stats: %#v", productStats)
+	if len(productReport.Stats.Assets) != 1 ||
+		productReport.Stats.Assets[0].RefundCount != 1 ||
+		productReport.Stats.Assets[0].RefundAmountMinor != 35 {
+		t.Fatalf("unexpected refunded product stats: %#v", productReport.Stats)
 	}
 	assertVKMARefundedCallback(t, env, PaymentRefundedCallbackPayload{
 		OrderID:           regular.AppOrderID,
@@ -7975,12 +8540,15 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if refundCount != 1 {
 		t.Fatalf("expected one idempotent vkma refund, got %d", refundCount)
 	}
-	productStats, err = env.api.Admin.GetProductStats(env.ctx, testWorkspaceID, productID)
+	productReport, err = env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
+		WorkspaceID: testWorkspaceID,
+		ProductID:   productID,
+	})
 	if err != nil {
-		t.Fatalf("get duplicate refunded product stats: %v", err)
+		t.Fatalf("get duplicate refunded product report: %v", err)
 	}
-	if len(productStats.Assets) != 1 || productStats.Assets[0].RefundCount != 1 {
-		t.Fatalf("duplicate vkma refund created extra stats: %#v", productStats.Assets)
+	if len(productReport.Stats.Assets) != 1 || productReport.Stats.Assets[0].RefundCount != 1 {
+		t.Fatalf("duplicate vkma refund created extra stats: %#v", productReport.Stats.Assets)
 	}
 	now := time.Now()
 	overview, err := env.api.Admin.ListDailyOverview(
@@ -8060,6 +8628,18 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	}
 	if !active {
 		t.Fatal("expected active subscription after chargeable")
+	}
+
+	otherAppActive, err := env.api.User.IsSubscriptionActive(env.ctx, subscription.IsActiveParams{
+		Identity:     paymentTestIdentity(testWorkspaceID, 3004, paymentvkma.PlatformID, "8002"),
+		ProductID:    productID,
+		ProviderCode: paymentvkma.ProviderCode,
+	})
+	if err != nil {
+		t.Fatalf("subscription is active for other app: %v", err)
+	}
+	if otherAppActive {
+		t.Fatal("subscription leaked to the same platform user in another app")
 	}
 
 	wrongWorkspaceID := "00000000-0000-0000-0000-000000000999"

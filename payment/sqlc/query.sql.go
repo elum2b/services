@@ -70,16 +70,18 @@ func (q *Queries) AdminCreateRefund(ctx context.Context, arg AdminCreateRefundPa
 const adminDeleteProductLimitCounter = `-- name: AdminDeleteProductLimitCounter :execrows
 DELETE FROM payment_product_limit_counter
 WHERE workspace_id = $1
-  AND platform_id = $2
-  AND product_id = $3
-  AND counter_scope = $4
-  AND platform_user_id = $5
-  AND window_start = $6
-  AND window_end = $7
+  AND app_id = $2
+  AND platform_id = $3
+  AND product_id = $4
+  AND counter_scope = $5
+  AND platform_user_id = $6
+  AND window_start = $7
+  AND window_end = $8
 `
 
 type AdminDeleteProductLimitCounterParams struct {
 	WorkspaceID    string                                 `json:"workspace_id"`
+	AppID          int64                                  `json:"app_id"`
 	PlatformID     int64                                  `json:"platform_id"`
 	ProductID      string                                 `json:"product_id"`
 	CounterScope   PaymentProductLimitCounterCounterScope `json:"counter_scope"`
@@ -91,6 +93,7 @@ type AdminDeleteProductLimitCounterParams struct {
 func (q *Queries) AdminDeleteProductLimitCounter(ctx context.Context, arg AdminDeleteProductLimitCounterParams) (int64, error) {
 	result, err := q.exec(ctx, q.adminDeleteProductLimitCounterStmt, adminDeleteProductLimitCounter,
 		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.ProductID,
 		arg.CounterScope,
@@ -586,177 +589,210 @@ func (q *Queries) AdminGetPaymentEventForWorkspace(ctx context.Context, arg Admi
 	return i, err
 }
 
-const adminGetPaymentProductStats = `-- name: AdminGetPaymentProductStats :one
+const adminGetPaymentReportStats = `-- name: AdminGetPaymentReportStats :many
+WITH payment_rows AS (
+    SELECT
+        po.app_id,
+        COALESCE(po.payer_platform_id, po.platform_id) AS initiator_platform_id,
+        COALESCE(po.payer_platform_user_id, po.platform_user_id) AS initiator_user_id,
+        po.asset_code,
+        po.status,
+        po.quantity,
+        po.payable_amount_minor,
+        COALESCE(refunds.refund_count, 0)::bigint AS refund_count,
+        COALESCE(refunds.refund_amount_minor, 0)::bigint AS refund_amount_minor
+    FROM payment_order po
+    LEFT JOIN LATERAL (
+        SELECT
+            COUNT(*) FILTER (WHERE pr.status = 'succeeded')::bigint AS refund_count,
+            COALESCE(SUM(pr.amount_minor) FILTER (WHERE pr.status = 'succeeded'), 0)::bigint AS refund_amount_minor
+        FROM payment_refund pr
+        WHERE pr.order_id = po.id
+    ) refunds ON TRUE
+    WHERE po.workspace_id = $1
+      AND ($2::bigint = 0 OR po.app_id = $2)
+      AND ($3::bigint = 0 OR po.platform_id = $3)
+      AND ($4::text = '' OR po.platform_user_id = $4)
+      AND ($5::text = '' OR po.status::text = $5)
+      AND ($6::text = '' OR po.product_id = $6)
+      AND ($7::text = '' OR EXISTS (
+          SELECT 1
+          FROM payment_attempt filter_attempt
+          WHERE filter_attempt.order_id = po.id
+            AND filter_attempt.provider_code = $7
+      ))
+      AND ($8::text = '' OR po.asset_code = $8)
+      AND ($9::timestamptz IS NULL OR po.created_at >= $9)
+      AND ($10::timestamptz IS NULL OR po.created_at < $10)
+      AND ($11::bigint = 0 OR po.payable_amount_minor >= $11)
+      AND ($12::bigint = 0 OR po.payable_amount_minor <= $12)
+      AND (
+          $13::bigint = 0
+          OR (
+              po.app_id = $13
+              AND (
+                  (
+                      $14::text = 'recipient'
+                      AND po.platform_id = $15
+                      AND po.platform_user_id = $16
+                  )
+                  OR (
+                      $14::text = 'initiator'
+                      AND COALESCE(po.payer_platform_id, po.platform_id) = $15
+                      AND COALESCE(po.payer_platform_user_id, po.platform_user_id) = $16
+                  )
+                  OR (
+                      $14::text = 'either'
+                      AND (
+                          (
+                              po.platform_id = $15
+                              AND po.platform_user_id = $16
+                          )
+                          OR (
+                              COALESCE(po.payer_platform_id, po.platform_id) = $15
+                              AND COALESCE(po.payer_platform_user_id, po.platform_user_id) = $16
+                          )
+                      )
+                  )
+              )
+          )
+      )
+)
 SELECT
-    p.id AS product_id,
-    COALESCE(o.orders_total, 0) AS orders_total,
-    COALESCE(o.pending_orders, 0) AS pending_orders,
-    COALESCE(o.fulfilled_orders, 0) AS fulfilled_orders,
-    COALESCE(o.refunded_orders, 0) AS refunded_orders,
-    COALESCE(o.failed_orders, 0) AS failed_orders,
-    COALESCE(o.canceled_orders, 0) AS canceled_orders,
-    COALESCE(e.purchase_count, 0) AS purchase_count,
-    COALESCE(e.purchase_quantity, 0) AS purchase_quantity,
-    COALESCE(e.unique_buyers, 0) AS unique_buyers
-FROM payment_product p
-LEFT JOIN (
-    SELECT
-        order_rows.workspace_id,
-        order_rows.product_id,
-        COUNT(*) AS orders_total,
-        CAST(COALESCE(SUM(CASE WHEN status IN ('draft', 'pending_payment', 'paid') THEN 1 ELSE 0 END), 0) AS BIGINT) AS pending_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'fulfilled' THEN 1 ELSE 0 END), 0) AS BIGINT) AS fulfilled_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END), 0) AS BIGINT) AS refunded_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS BIGINT) AS failed_orders,
-        CAST(COALESCE(SUM(CASE WHEN status IN ('canceled', 'expired') THEN 1 ELSE 0 END), 0) AS BIGINT) AS canceled_orders
-    FROM payment_order order_rows
-    WHERE order_rows.workspace_id = $1 AND order_rows.product_id = $2
-    GROUP BY order_rows.workspace_id, order_rows.product_id
-) o ON o.workspace_id = p.workspace_id AND o.product_id = p.id
-LEFT JOIN (
-    SELECT
-        event_rows.workspace_id,
-        event_rows.product_id,
-        CAST(COALESCE(SUM(CASE WHEN event_type = 'purchase' THEN 1 ELSE 0 END), 0) AS BIGINT) AS purchase_count,
-        CAST(COALESCE(SUM(CASE WHEN event_type = 'purchase' THEN quantity ELSE 0 END), 0) AS BIGINT) AS purchase_quantity,
-        COUNT(DISTINCT CASE WHEN event_type = 'purchase' THEN CONCAT_WS(':', app_id, platform_id, platform_user_id) ELSE NULL END) AS unique_buyers
-    FROM payment_stats_event event_rows
-    WHERE event_rows.workspace_id = $3 AND event_rows.product_id = $4
-    GROUP BY event_rows.workspace_id, event_rows.product_id
-) e ON e.workspace_id = p.workspace_id AND e.product_id = p.id
-WHERE p.workspace_id = $5 AND p.id = $6
-LIMIT 1
+    asset_code,
+    COUNT(*)::bigint AS order_count,
+    COUNT(*) FILTER (WHERE status = 'draft')::bigint AS draft_orders,
+    COUNT(*) FILTER (WHERE status = 'pending_payment')::bigint AS pending_payment_orders,
+    COUNT(*) FILTER (WHERE status IN ('draft', 'pending_payment', 'paid'))::bigint AS pending_orders,
+    COUNT(*) FILTER (WHERE status = 'paid')::bigint AS paid_orders,
+    COUNT(*) FILTER (WHERE status = 'fulfilled')::bigint AS fulfilled_orders,
+    COUNT(*) FILTER (WHERE status = 'canceled')::bigint AS canceled_orders,
+    COUNT(*) FILTER (WHERE status = 'expired')::bigint AS expired_orders,
+    COUNT(*) FILTER (WHERE status = 'refunded')::bigint AS refunded_orders,
+    COUNT(*) FILTER (WHERE status = 'chargebacked')::bigint AS chargebacked_orders,
+    COUNT(*) FILTER (WHERE status = 'failed')::bigint AS failed_orders,
+    COUNT(*) FILTER (
+        WHERE status IN ('fulfilled', 'refunded', 'chargebacked')
+    )::bigint AS purchase_count,
+    COALESCE(SUM(quantity) FILTER (
+        WHERE status IN ('fulfilled', 'refunded', 'chargebacked')
+    ), 0)::bigint AS purchase_quantity,
+    (
+        SELECT COUNT(DISTINCT (
+            unique_rows.app_id,
+            unique_rows.initiator_platform_id,
+            unique_rows.initiator_user_id
+        ))::bigint
+        FROM payment_rows unique_rows
+        WHERE unique_rows.status IN ('fulfilled', 'refunded', 'chargebacked')
+    ) AS unique_buyers,
+    COALESCE(SUM(payable_amount_minor) FILTER (
+        WHERE status IN ('paid', 'fulfilled', 'refunded', 'chargebacked')
+    ), 0)::bigint AS gross_amount_minor,
+    COALESCE(SUM(refund_count), 0)::bigint AS refund_count,
+    COALESCE(SUM(refund_amount_minor), 0)::bigint AS refund_amount_minor
+FROM payment_rows
+GROUP BY asset_code
+ORDER BY asset_code
 `
 
-type AdminGetPaymentProductStatsParams struct {
-	WorkspaceID   string `json:"workspace_id"`
-	ProductID     string `json:"product_id"`
-	WorkspaceID_2 string `json:"workspace_id_2"`
-	ProductID_2   string `json:"product_id_2"`
-	WorkspaceID_3 string `json:"workspace_id_3"`
-	ID            string `json:"id"`
+type AdminGetPaymentReportStatsParams struct {
+	WorkspaceID            string       `json:"workspace_id"`
+	AppID                  int64        `json:"app_id"`
+	PlatformID             int64        `json:"platform_id"`
+	PlatformUserID         string       `json:"platform_user_id"`
+	Status                 string       `json:"status"`
+	ProductID              string       `json:"product_id"`
+	ProviderCode           string       `json:"provider_code"`
+	AssetCode              string       `json:"asset_code"`
+	CreatedFrom            sql.NullTime `json:"created_from"`
+	CreatedUntil           sql.NullTime `json:"created_until"`
+	MinAmountMinor         int64        `json:"min_amount_minor"`
+	MaxAmountMinor         int64        `json:"max_amount_minor"`
+	IdentityAppID          int64        `json:"identity_app_id"`
+	IdentityRole           string       `json:"identity_role"`
+	IdentityPlatformID     int64        `json:"identity_platform_id"`
+	IdentityPlatformUserID string       `json:"identity_platform_user_id"`
 }
 
-type AdminGetPaymentProductStatsRow struct {
-	ProductID        string `json:"product_id"`
-	OrdersTotal      int64  `json:"orders_total"`
-	PendingOrders    int64  `json:"pending_orders"`
-	FulfilledOrders  int64  `json:"fulfilled_orders"`
-	RefundedOrders   int64  `json:"refunded_orders"`
-	FailedOrders     int64  `json:"failed_orders"`
-	CanceledOrders   int64  `json:"canceled_orders"`
-	PurchaseCount    int64  `json:"purchase_count"`
-	PurchaseQuantity int64  `json:"purchase_quantity"`
-	UniqueBuyers     int64  `json:"unique_buyers"`
+type AdminGetPaymentReportStatsRow struct {
+	AssetCode            string `json:"asset_code"`
+	OrderCount           int64  `json:"order_count"`
+	DraftOrders          int64  `json:"draft_orders"`
+	PendingPaymentOrders int64  `json:"pending_payment_orders"`
+	PendingOrders        int64  `json:"pending_orders"`
+	PaidOrders           int64  `json:"paid_orders"`
+	FulfilledOrders      int64  `json:"fulfilled_orders"`
+	CanceledOrders       int64  `json:"canceled_orders"`
+	ExpiredOrders        int64  `json:"expired_orders"`
+	RefundedOrders       int64  `json:"refunded_orders"`
+	ChargebackedOrders   int64  `json:"chargebacked_orders"`
+	FailedOrders         int64  `json:"failed_orders"`
+	PurchaseCount        int64  `json:"purchase_count"`
+	PurchaseQuantity     int64  `json:"purchase_quantity"`
+	UniqueBuyers         int64  `json:"unique_buyers"`
+	GrossAmountMinor     int64  `json:"gross_amount_minor"`
+	RefundCount          int64  `json:"refund_count"`
+	RefundAmountMinor    int64  `json:"refund_amount_minor"`
 }
 
-func (q *Queries) AdminGetPaymentProductStats(ctx context.Context, arg AdminGetPaymentProductStatsParams) (AdminGetPaymentProductStatsRow, error) {
-	row := q.queryRow(ctx, q.adminGetPaymentProductStatsStmt, adminGetPaymentProductStats,
+func (q *Queries) AdminGetPaymentReportStats(ctx context.Context, arg AdminGetPaymentReportStatsParams) ([]AdminGetPaymentReportStatsRow, error) {
+	rows, err := q.query(ctx, q.adminGetPaymentReportStatsStmt, adminGetPaymentReportStats,
 		arg.WorkspaceID,
+		arg.AppID,
+		arg.PlatformID,
+		arg.PlatformUserID,
+		arg.Status,
 		arg.ProductID,
-		arg.WorkspaceID_2,
-		arg.ProductID_2,
-		arg.WorkspaceID_3,
-		arg.ID,
+		arg.ProviderCode,
+		arg.AssetCode,
+		arg.CreatedFrom,
+		arg.CreatedUntil,
+		arg.MinAmountMinor,
+		arg.MaxAmountMinor,
+		arg.IdentityAppID,
+		arg.IdentityRole,
+		arg.IdentityPlatformID,
+		arg.IdentityPlatformUserID,
 	)
-	var i AdminGetPaymentProductStatsRow
-	err := row.Scan(
-		&i.ProductID,
-		&i.OrdersTotal,
-		&i.PendingOrders,
-		&i.FulfilledOrders,
-		&i.RefundedOrders,
-		&i.FailedOrders,
-		&i.CanceledOrders,
-		&i.PurchaseCount,
-		&i.PurchaseQuantity,
-		&i.UniqueBuyers,
-	)
-	return i, err
-}
-
-const adminGetPaymentStats = `-- name: AdminGetPaymentStats :one
-SELECT
-    p.products_total,
-    p.active_products,
-    p.visible_products,
-    o.orders_total,
-    o.pending_orders,
-    o.fulfilled_orders,
-    o.refunded_orders,
-    o.failed_orders,
-    o.canceled_orders,
-    e.purchase_count,
-    e.purchase_quantity,
-    e.unique_buyers
-FROM (
-    SELECT
-        COUNT(*) AS products_total,
-        CAST(COALESCE(SUM(CASE WHEN is_closed = FALSE AND available_from <= now() AND available_until > now() THEN 1 ELSE 0 END), 0) AS BIGINT) AS active_products,
-        CAST(COALESCE(SUM(CASE WHEN is_visible = TRUE AND is_closed = FALSE AND available_from <= now() AND available_until > now() THEN 1 ELSE 0 END), 0) AS BIGINT) AS visible_products
-    FROM payment_product product_rows
-    WHERE product_rows.workspace_id = $1
-) p
-CROSS JOIN (
-    SELECT
-        COUNT(*) AS orders_total,
-        CAST(COALESCE(SUM(CASE WHEN status IN ('draft', 'pending_payment', 'paid') THEN 1 ELSE 0 END), 0) AS BIGINT) AS pending_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'fulfilled' THEN 1 ELSE 0 END), 0) AS BIGINT) AS fulfilled_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END), 0) AS BIGINT) AS refunded_orders,
-        CAST(COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS BIGINT) AS failed_orders,
-        CAST(COALESCE(SUM(CASE WHEN status IN ('canceled', 'expired') THEN 1 ELSE 0 END), 0) AS BIGINT) AS canceled_orders
-    FROM payment_order order_rows
-    WHERE order_rows.workspace_id = $2
-) o
-CROSS JOIN (
-    SELECT
-        CAST(COALESCE(SUM(CASE WHEN event_type = 'purchase' THEN 1 ELSE 0 END), 0) AS BIGINT) AS purchase_count,
-        CAST(COALESCE(SUM(CASE WHEN event_type = 'purchase' THEN quantity ELSE 0 END), 0) AS BIGINT) AS purchase_quantity,
-        COUNT(DISTINCT CASE WHEN event_type = 'purchase' THEN CONCAT_WS(':', app_id, platform_id, platform_user_id) ELSE NULL END) AS unique_buyers
-    FROM payment_stats_event event_rows
-    WHERE event_rows.workspace_id = $3
-) e
-`
-
-type AdminGetPaymentStatsParams struct {
-	WorkspaceID   string `json:"workspace_id"`
-	WorkspaceID_2 string `json:"workspace_id_2"`
-	WorkspaceID_3 string `json:"workspace_id_3"`
-}
-
-type AdminGetPaymentStatsRow struct {
-	ProductsTotal    int64 `json:"products_total"`
-	ActiveProducts   int64 `json:"active_products"`
-	VisibleProducts  int64 `json:"visible_products"`
-	OrdersTotal      int64 `json:"orders_total"`
-	PendingOrders    int64 `json:"pending_orders"`
-	FulfilledOrders  int64 `json:"fulfilled_orders"`
-	RefundedOrders   int64 `json:"refunded_orders"`
-	FailedOrders     int64 `json:"failed_orders"`
-	CanceledOrders   int64 `json:"canceled_orders"`
-	PurchaseCount    int64 `json:"purchase_count"`
-	PurchaseQuantity int64 `json:"purchase_quantity"`
-	UniqueBuyers     int64 `json:"unique_buyers"`
-}
-
-func (q *Queries) AdminGetPaymentStats(ctx context.Context, arg AdminGetPaymentStatsParams) (AdminGetPaymentStatsRow, error) {
-	row := q.queryRow(ctx, q.adminGetPaymentStatsStmt, adminGetPaymentStats, arg.WorkspaceID, arg.WorkspaceID_2, arg.WorkspaceID_3)
-	var i AdminGetPaymentStatsRow
-	err := row.Scan(
-		&i.ProductsTotal,
-		&i.ActiveProducts,
-		&i.VisibleProducts,
-		&i.OrdersTotal,
-		&i.PendingOrders,
-		&i.FulfilledOrders,
-		&i.RefundedOrders,
-		&i.FailedOrders,
-		&i.CanceledOrders,
-		&i.PurchaseCount,
-		&i.PurchaseQuantity,
-		&i.UniqueBuyers,
-	)
-	return i, err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AdminGetPaymentReportStatsRow
+	for rows.Next() {
+		var i AdminGetPaymentReportStatsRow
+		if err := rows.Scan(
+			&i.AssetCode,
+			&i.OrderCount,
+			&i.DraftOrders,
+			&i.PendingPaymentOrders,
+			&i.PendingOrders,
+			&i.PaidOrders,
+			&i.FulfilledOrders,
+			&i.CanceledOrders,
+			&i.ExpiredOrders,
+			&i.RefundedOrders,
+			&i.ChargebackedOrders,
+			&i.FailedOrders,
+			&i.PurchaseCount,
+			&i.PurchaseQuantity,
+			&i.UniqueBuyers,
+			&i.GrossAmountMinor,
+			&i.RefundCount,
+			&i.RefundAmountMinor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const adminGetPrice = `-- name: AdminGetPrice :one
@@ -1575,23 +1611,26 @@ SELECT
     updated_at
 FROM payment_order
 WHERE workspace_id = $1
-  AND ($2 = '' OR CAST(status AS TEXT) = $3)
-  AND ($4 = '' OR product_id = $5)
-  AND ($6 = 0 OR platform_id = $7)
-  AND ($8 = '' OR platform_user_id = $9)
+  AND ($2 = 0 OR app_id = $3)
+  AND ($4 = '' OR CAST(status AS TEXT) = $5)
+  AND ($6 = '' OR product_id = $7)
+  AND ($8 = 0 OR platform_id = $9)
+  AND ($10 = '' OR platform_user_id = $11)
 ORDER BY created_at DESC, id DESC
-LIMIT $10 OFFSET $11
+LIMIT $12 OFFSET $13
 `
 
 type AdminListOrdersParams struct {
 	WorkspaceID    string             `json:"workspace_id"`
 	Column2        interface{}        `json:"column_2"`
-	Status         PaymentOrderStatus `json:"status"`
+	AppID          int64              `json:"app_id"`
 	Column4        interface{}        `json:"column_4"`
-	ProductID      string             `json:"product_id"`
+	Status         PaymentOrderStatus `json:"status"`
 	Column6        interface{}        `json:"column_6"`
-	PlatformID     int64              `json:"platform_id"`
+	ProductID      string             `json:"product_id"`
 	Column8        interface{}        `json:"column_8"`
+	PlatformID     int64              `json:"platform_id"`
+	Column10       interface{}        `json:"column_10"`
 	PlatformUserID string             `json:"platform_user_id"`
 	Limit          int32              `json:"limit"`
 	Offset         int32              `json:"offset"`
@@ -1601,12 +1640,14 @@ func (q *Queries) AdminListOrders(ctx context.Context, arg AdminListOrdersParams
 	rows, err := q.query(ctx, q.adminListOrdersStmt, adminListOrders,
 		arg.WorkspaceID,
 		arg.Column2,
-		arg.Status,
+		arg.AppID,
 		arg.Column4,
-		arg.ProductID,
+		arg.Status,
 		arg.Column6,
-		arg.PlatformID,
+		arg.ProductID,
 		arg.Column8,
+		arg.PlatformID,
+		arg.Column10,
 		arg.PlatformUserID,
 		arg.Limit,
 		arg.Offset,
@@ -1656,66 +1697,6 @@ func (q *Queries) AdminListOrders(ctx context.Context, arg AdminListOrdersParams
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const adminListPaymentAssetStats = `-- name: AdminListPaymentAssetStats :many
-SELECT
-    asset_code,
-    CAST(SUM(CASE WHEN event_type = 'purchase' THEN 1 ELSE 0 END) AS BIGINT) AS purchase_count,
-    CAST(SUM(CASE WHEN event_type = 'purchase' THEN quantity ELSE 0 END) AS BIGINT) AS purchase_quantity,
-    CAST(SUM(CASE WHEN event_type = 'purchase' THEN amount_minor ELSE 0 END) AS BIGINT) AS gross_amount_minor,
-    CAST(SUM(CASE WHEN event_type = 'refund' THEN 1 ELSE 0 END) AS BIGINT) AS refund_count,
-    CAST(SUM(CASE WHEN event_type = 'refund' THEN amount_minor ELSE 0 END) AS BIGINT) AS refund_amount_minor
-FROM payment_stats_event
-WHERE workspace_id = $1
-  AND ($2 = '' OR product_id = $3)
-GROUP BY asset_code
-ORDER BY asset_code
-`
-
-type AdminListPaymentAssetStatsParams struct {
-	WorkspaceID string      `json:"workspace_id"`
-	Column2     interface{} `json:"column_2"`
-	ProductID   string      `json:"product_id"`
-}
-
-type AdminListPaymentAssetStatsRow struct {
-	AssetCode         string `json:"asset_code"`
-	PurchaseCount     int64  `json:"purchase_count"`
-	PurchaseQuantity  int64  `json:"purchase_quantity"`
-	GrossAmountMinor  int64  `json:"gross_amount_minor"`
-	RefundCount       int64  `json:"refund_count"`
-	RefundAmountMinor int64  `json:"refund_amount_minor"`
-}
-
-func (q *Queries) AdminListPaymentAssetStats(ctx context.Context, arg AdminListPaymentAssetStatsParams) ([]AdminListPaymentAssetStatsRow, error) {
-	rows, err := q.query(ctx, q.adminListPaymentAssetStatsStmt, adminListPaymentAssetStats, arg.WorkspaceID, arg.Column2, arg.ProductID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []AdminListPaymentAssetStatsRow
-	for rows.Next() {
-		var i AdminListPaymentAssetStatsRow
-		if err := rows.Scan(
-			&i.AssetCode,
-			&i.PurchaseCount,
-			&i.PurchaseQuantity,
-			&i.GrossAmountMinor,
-			&i.RefundCount,
-			&i.RefundAmountMinor,
 		); err != nil {
 			return nil, err
 		}
@@ -2125,6 +2106,243 @@ func (q *Queries) AdminListPaymentEvents(ctx context.Context, arg AdminListPayme
 	return items, nil
 }
 
+const adminListPaymentReport = `-- name: AdminListPaymentReport :many
+WITH payment_rows AS (
+    SELECT
+        po.id,
+        po.public_id,
+        po.workspace_id,
+        po.app_id,
+        po.platform_id AS recipient_platform_id,
+        po.platform_user_id AS recipient_user_id,
+        COALESCE(po.payer_platform_id, po.platform_id) AS initiator_platform_id,
+        COALESCE(po.payer_platform_user_id, po.platform_user_id) AS initiator_user_id,
+        po.product_id,
+        po.quantity,
+        po.asset_code,
+        po.list_amount_minor,
+        po.discount_amount_minor,
+        po.payable_amount_minor,
+        COALESCE(refunds.refund_count, 0)::bigint AS refund_count,
+        COALESCE(refunds.refund_amount_minor, 0)::bigint AS refund_amount_minor,
+        COALESCE(attempt.provider_code, '')::text AS provider_code,
+        po.status,
+        po.paid_at,
+        po.fulfilled_at,
+        po.created_at,
+        po.updated_at
+    FROM payment_order po
+    LEFT JOIN LATERAL (
+        SELECT pa.provider_code
+        FROM payment_attempt pa
+        WHERE pa.order_id = po.id
+        ORDER BY
+            CASE WHEN pa.status = 'succeeded' THEN 0 ELSE 1 END,
+            pa.created_at DESC,
+            pa.id DESC
+        LIMIT 1
+    ) attempt ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT
+            COUNT(*) FILTER (WHERE pr.status = 'succeeded')::bigint AS refund_count,
+            COALESCE(SUM(pr.amount_minor) FILTER (WHERE pr.status = 'succeeded'), 0)::bigint AS refund_amount_minor
+        FROM payment_refund pr
+        WHERE pr.order_id = po.id
+    ) refunds ON TRUE
+    WHERE po.workspace_id = $5
+      AND ($6::bigint = 0 OR po.app_id = $6)
+      AND ($7::bigint = 0 OR po.platform_id = $7)
+      AND ($8::text = '' OR po.platform_user_id = $8)
+      AND ($9::text = '' OR po.status::text = $9)
+      AND ($10::text = '' OR po.product_id = $10)
+      AND ($11::text = '' OR EXISTS (
+          SELECT 1
+          FROM payment_attempt filter_attempt
+          WHERE filter_attempt.order_id = po.id
+            AND filter_attempt.provider_code = $11
+      ))
+      AND ($12::text = '' OR po.asset_code = $12)
+      AND ($13::timestamptz IS NULL OR po.created_at >= $13)
+      AND ($14::timestamptz IS NULL OR po.created_at < $14)
+      AND ($15::bigint = 0 OR po.payable_amount_minor >= $15)
+      AND ($16::bigint = 0 OR po.payable_amount_minor <= $16)
+      AND (
+          $17::bigint = 0
+          OR (
+              po.app_id = $17
+              AND (
+                  (
+                      $18::text = 'recipient'
+                      AND po.platform_id = $19
+                      AND po.platform_user_id = $20
+                  )
+                  OR (
+                      $18::text = 'initiator'
+                      AND COALESCE(po.payer_platform_id, po.platform_id) = $19
+                      AND COALESCE(po.payer_platform_user_id, po.platform_user_id) = $20
+                  )
+                  OR (
+                      $18::text = 'either'
+                      AND (
+                          (
+                              po.platform_id = $19
+                              AND po.platform_user_id = $20
+                          )
+                          OR (
+                              COALESCE(po.payer_platform_id, po.platform_id) = $19
+                              AND COALESCE(po.payer_platform_user_id, po.platform_user_id) = $20
+                          )
+                      )
+                  )
+              )
+          )
+      )
+)
+SELECT id, public_id, workspace_id, app_id, recipient_platform_id, recipient_user_id, initiator_platform_id, initiator_user_id, product_id, quantity, asset_code, list_amount_minor, discount_amount_minor, payable_amount_minor, refund_count, refund_amount_minor, provider_code, status, paid_at, fulfilled_at, created_at, updated_at
+FROM payment_rows
+ORDER BY
+    CASE WHEN $1::text = 'created_at' AND $2::text = 'asc' THEN created_at END ASC,
+    CASE WHEN $1::text = 'created_at' AND $2::text = 'desc' THEN created_at END DESC,
+    CASE WHEN $1::text = 'paid_at' AND $2::text = 'asc' THEN paid_at END ASC NULLS LAST,
+    CASE WHEN $1::text = 'paid_at' AND $2::text = 'desc' THEN paid_at END DESC NULLS LAST,
+    CASE WHEN $1::text = 'fulfilled_at' AND $2::text = 'asc' THEN fulfilled_at END ASC NULLS LAST,
+    CASE WHEN $1::text = 'fulfilled_at' AND $2::text = 'desc' THEN fulfilled_at END DESC NULLS LAST,
+    CASE WHEN $1::text = 'amount_minor' AND $2::text = 'asc' THEN payable_amount_minor END ASC,
+    CASE WHEN $1::text = 'amount_minor' AND $2::text = 'desc' THEN payable_amount_minor END DESC,
+    CASE WHEN $1::text = 'refund_amount_minor' AND $2::text = 'asc' THEN refund_amount_minor END ASC,
+    CASE WHEN $1::text = 'refund_amount_minor' AND $2::text = 'desc' THEN refund_amount_minor END DESC,
+    CASE WHEN $1::text = 'status' AND $2::text = 'asc' THEN status::text END ASC,
+    CASE WHEN $1::text = 'status' AND $2::text = 'desc' THEN status::text END DESC,
+    CASE WHEN $1::text = 'provider' AND $2::text = 'asc' THEN provider_code END ASC,
+    CASE WHEN $1::text = 'provider' AND $2::text = 'desc' THEN provider_code END DESC,
+    CASE WHEN $1::text = 'product_id' AND $2::text = 'asc' THEN product_id END ASC,
+    CASE WHEN $1::text = 'product_id' AND $2::text = 'desc' THEN product_id END DESC,
+    CASE WHEN $1::text = 'app_id' AND $2::text = 'asc' THEN app_id END ASC,
+    CASE WHEN $1::text = 'app_id' AND $2::text = 'desc' THEN app_id END DESC,
+    CASE WHEN $1::text = 'platform_id' AND $2::text = 'asc' THEN recipient_platform_id END ASC,
+    CASE WHEN $1::text = 'platform_id' AND $2::text = 'desc' THEN recipient_platform_id END DESC,
+    CASE WHEN $1::text = 'platform_user_id' AND $2::text = 'asc' THEN recipient_user_id END ASC,
+    CASE WHEN $1::text = 'platform_user_id' AND $2::text = 'desc' THEN recipient_user_id END DESC,
+    created_at DESC,
+    id DESC
+LIMIT $4 OFFSET $3
+`
+
+type AdminListPaymentReportParams struct {
+	SortField              string       `json:"sort_field"`
+	SortDirection          string       `json:"sort_direction"`
+	PageOffset             int32        `json:"page_offset"`
+	PageLimit              int32        `json:"page_limit"`
+	WorkspaceID            string       `json:"workspace_id"`
+	AppID                  int64        `json:"app_id"`
+	PlatformID             int64        `json:"platform_id"`
+	PlatformUserID         string       `json:"platform_user_id"`
+	Status                 string       `json:"status"`
+	ProductID              string       `json:"product_id"`
+	ProviderCode           string       `json:"provider_code"`
+	AssetCode              string       `json:"asset_code"`
+	CreatedFrom            sql.NullTime `json:"created_from"`
+	CreatedUntil           sql.NullTime `json:"created_until"`
+	MinAmountMinor         int64        `json:"min_amount_minor"`
+	MaxAmountMinor         int64        `json:"max_amount_minor"`
+	IdentityAppID          int64        `json:"identity_app_id"`
+	IdentityRole           string       `json:"identity_role"`
+	IdentityPlatformID     int64        `json:"identity_platform_id"`
+	IdentityPlatformUserID string       `json:"identity_platform_user_id"`
+}
+
+type AdminListPaymentReportRow struct {
+	ID                  int64              `json:"id"`
+	PublicID            string             `json:"public_id"`
+	WorkspaceID         string             `json:"workspace_id"`
+	AppID               int64              `json:"app_id"`
+	RecipientPlatformID int64              `json:"recipient_platform_id"`
+	RecipientUserID     string             `json:"recipient_user_id"`
+	InitiatorPlatformID int64              `json:"initiator_platform_id"`
+	InitiatorUserID     string             `json:"initiator_user_id"`
+	ProductID           string             `json:"product_id"`
+	Quantity            int64              `json:"quantity"`
+	AssetCode           string             `json:"asset_code"`
+	ListAmountMinor     int64              `json:"list_amount_minor"`
+	DiscountAmountMinor int64              `json:"discount_amount_minor"`
+	PayableAmountMinor  int64              `json:"payable_amount_minor"`
+	RefundCount         int64              `json:"refund_count"`
+	RefundAmountMinor   int64              `json:"refund_amount_minor"`
+	ProviderCode        string             `json:"provider_code"`
+	Status              PaymentOrderStatus `json:"status"`
+	PaidAt              sql.NullTime       `json:"paid_at"`
+	FulfilledAt         sql.NullTime       `json:"fulfilled_at"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
+}
+
+func (q *Queries) AdminListPaymentReport(ctx context.Context, arg AdminListPaymentReportParams) ([]AdminListPaymentReportRow, error) {
+	rows, err := q.query(ctx, q.adminListPaymentReportStmt, adminListPaymentReport,
+		arg.SortField,
+		arg.SortDirection,
+		arg.PageOffset,
+		arg.PageLimit,
+		arg.WorkspaceID,
+		arg.AppID,
+		arg.PlatformID,
+		arg.PlatformUserID,
+		arg.Status,
+		arg.ProductID,
+		arg.ProviderCode,
+		arg.AssetCode,
+		arg.CreatedFrom,
+		arg.CreatedUntil,
+		arg.MinAmountMinor,
+		arg.MaxAmountMinor,
+		arg.IdentityAppID,
+		arg.IdentityRole,
+		arg.IdentityPlatformID,
+		arg.IdentityPlatformUserID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AdminListPaymentReportRow
+	for rows.Next() {
+		var i AdminListPaymentReportRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.WorkspaceID,
+			&i.AppID,
+			&i.RecipientPlatformID,
+			&i.RecipientUserID,
+			&i.InitiatorPlatformID,
+			&i.InitiatorUserID,
+			&i.ProductID,
+			&i.Quantity,
+			&i.AssetCode,
+			&i.ListAmountMinor,
+			&i.DiscountAmountMinor,
+			&i.PayableAmountMinor,
+			&i.RefundCount,
+			&i.RefundAmountMinor,
+			&i.ProviderCode,
+			&i.Status,
+			&i.PaidAt,
+			&i.FulfilledAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const adminListPrices = `-- name: AdminListPrices :many
 SELECT
     id,
@@ -2338,6 +2556,7 @@ func (q *Queries) AdminListProductItems(ctx context.Context, arg AdminListProduc
 const adminListProductLimitCounters = `-- name: AdminListProductLimitCounters :many
 SELECT
     workspace_id,
+    app_id,
     platform_id,
     product_id,
     counter_scope,
@@ -2349,20 +2568,23 @@ SELECT
     updated_at
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
-  AND ($2 = '' OR product_id = $3)
-  AND ($4 = 0 OR platform_id = $5)
-  AND ($6 = '' OR platform_user_id = $7)
+  AND ($2 = 0 OR app_id = $3)
+  AND ($4 = '' OR product_id = $5)
+  AND ($6 = 0 OR platform_id = $7)
+  AND ($8 = '' OR platform_user_id = $9)
 ORDER BY window_end DESC, product_id, counter_scope, platform_user_id
-LIMIT $8 OFFSET $9
+LIMIT $10 OFFSET $11
 `
 
 type AdminListProductLimitCountersParams struct {
 	WorkspaceID    string      `json:"workspace_id"`
 	Column2        interface{} `json:"column_2"`
-	ProductID      string      `json:"product_id"`
+	AppID          int64       `json:"app_id"`
 	Column4        interface{} `json:"column_4"`
-	PlatformID     int64       `json:"platform_id"`
+	ProductID      string      `json:"product_id"`
 	Column6        interface{} `json:"column_6"`
+	PlatformID     int64       `json:"platform_id"`
+	Column8        interface{} `json:"column_8"`
 	PlatformUserID string      `json:"platform_user_id"`
 	Limit          int32       `json:"limit"`
 	Offset         int32       `json:"offset"`
@@ -2372,10 +2594,12 @@ func (q *Queries) AdminListProductLimitCounters(ctx context.Context, arg AdminLi
 	rows, err := q.query(ctx, q.adminListProductLimitCountersStmt, adminListProductLimitCounters,
 		arg.WorkspaceID,
 		arg.Column2,
-		arg.ProductID,
+		arg.AppID,
 		arg.Column4,
-		arg.PlatformID,
+		arg.ProductID,
 		arg.Column6,
+		arg.PlatformID,
+		arg.Column8,
 		arg.PlatformUserID,
 		arg.Limit,
 		arg.Offset,
@@ -2389,6 +2613,7 @@ func (q *Queries) AdminListProductLimitCounters(ctx context.Context, arg AdminLi
 		var i PaymentProductLimitCounter
 		if err := rows.Scan(
 			&i.WorkspaceID,
+			&i.AppID,
 			&i.PlatformID,
 			&i.ProductID,
 			&i.CounterScope,
@@ -2764,23 +2989,26 @@ SELECT
     updated_at
 FROM payment_purchase_key
 WHERE workspace_id = $1
-  AND ($2 = '' OR product_id = $3)
-  AND ($4 = '' OR CAST(status AS TEXT) = $5)
-  AND ($6 = 0 OR platform_id = $7)
-  AND ($8 = '' OR platform_user_id = $9)
+  AND ($2 = 0 OR app_id = $3)
+  AND ($4 = '' OR product_id = $5)
+  AND ($6 = '' OR CAST(status AS TEXT) = $7)
+  AND ($8 = 0 OR platform_id = $9)
+  AND ($10 = '' OR platform_user_id = $11)
 ORDER BY created_at DESC, id DESC
-LIMIT $10 OFFSET $11
+LIMIT $12 OFFSET $13
 `
 
 type AdminListPurchaseKeysParams struct {
 	WorkspaceID    string                   `json:"workspace_id"`
 	Column2        interface{}              `json:"column_2"`
-	ProductID      string                   `json:"product_id"`
+	AppID          int64                    `json:"app_id"`
 	Column4        interface{}              `json:"column_4"`
-	Status         PaymentPurchaseKeyStatus `json:"status"`
+	ProductID      string                   `json:"product_id"`
 	Column6        interface{}              `json:"column_6"`
-	PlatformID     int64                    `json:"platform_id"`
+	Status         PaymentPurchaseKeyStatus `json:"status"`
 	Column8        interface{}              `json:"column_8"`
+	PlatformID     int64                    `json:"platform_id"`
+	Column10       interface{}              `json:"column_10"`
 	PlatformUserID string                   `json:"platform_user_id"`
 	Limit          int32                    `json:"limit"`
 	Offset         int32                    `json:"offset"`
@@ -2790,12 +3018,14 @@ func (q *Queries) AdminListPurchaseKeys(ctx context.Context, arg AdminListPurcha
 	rows, err := q.query(ctx, q.adminListPurchaseKeysStmt, adminListPurchaseKeys,
 		arg.WorkspaceID,
 		arg.Column2,
-		arg.ProductID,
+		arg.AppID,
 		arg.Column4,
-		arg.Status,
+		arg.ProductID,
 		arg.Column6,
-		arg.PlatformID,
+		arg.Status,
 		arg.Column8,
+		arg.PlatformID,
+		arg.Column10,
 		arg.PlatformUserID,
 		arg.Limit,
 		arg.Offset,
@@ -2942,26 +3172,29 @@ SELECT
     updated_at
 FROM payment_subscription
 WHERE workspace_id = $1
-  AND ($2 = '' OR provider_code = $3)
-  AND ($4 = '' OR product_id = $5)
-  AND ($6 = '' OR CAST(status AS TEXT) = $7)
-  AND ($8 = 0 OR platform_id = $9)
-  AND ($10 = '' OR platform_user_id = $11)
+  AND ($2 = 0 OR app_id = $3)
+  AND ($4 = '' OR provider_code = $5)
+  AND ($6 = '' OR product_id = $7)
+  AND ($8 = '' OR CAST(status AS TEXT) = $9)
+  AND ($10 = 0 OR platform_id = $11)
+  AND ($12 = '' OR platform_user_id = $13)
 ORDER BY created_at DESC, id DESC
-LIMIT $12 OFFSET $13
+LIMIT $14 OFFSET $15
 `
 
 type AdminListSubscriptionsParams struct {
 	WorkspaceID    string                    `json:"workspace_id"`
 	Column2        interface{}               `json:"column_2"`
-	ProviderCode   string                    `json:"provider_code"`
+	AppID          int64                     `json:"app_id"`
 	Column4        interface{}               `json:"column_4"`
-	ProductID      string                    `json:"product_id"`
+	ProviderCode   string                    `json:"provider_code"`
 	Column6        interface{}               `json:"column_6"`
-	Status         PaymentSubscriptionStatus `json:"status"`
+	ProductID      string                    `json:"product_id"`
 	Column8        interface{}               `json:"column_8"`
-	PlatformID     int64                     `json:"platform_id"`
+	Status         PaymentSubscriptionStatus `json:"status"`
 	Column10       interface{}               `json:"column_10"`
+	PlatformID     int64                     `json:"platform_id"`
+	Column12       interface{}               `json:"column_12"`
 	PlatformUserID string                    `json:"platform_user_id"`
 	Limit          int32                     `json:"limit"`
 	Offset         int32                     `json:"offset"`
@@ -2971,14 +3204,16 @@ func (q *Queries) AdminListSubscriptions(ctx context.Context, arg AdminListSubsc
 	rows, err := q.query(ctx, q.adminListSubscriptionsStmt, adminListSubscriptions,
 		arg.WorkspaceID,
 		arg.Column2,
-		arg.ProviderCode,
+		arg.AppID,
 		arg.Column4,
-		arg.ProductID,
+		arg.ProviderCode,
 		arg.Column6,
-		arg.Status,
+		arg.ProductID,
 		arg.Column8,
-		arg.PlatformID,
+		arg.Status,
 		arg.Column10,
+		arg.PlatformID,
+		arg.Column12,
 		arg.PlatformUserID,
 		arg.Limit,
 		arg.Offset,
@@ -3633,19 +3868,21 @@ SET reserved_count = reserved_count - $1,
     paid_count = paid_count + $2,
     updated_at = now()
 WHERE workspace_id = $3
-  AND platform_id = $4
-  AND product_id = $5
-  AND counter_scope = $6
-  AND platform_user_id = $7
-  AND window_start = $8
-  AND window_end = $9
-  AND reserved_count >= $10
+  AND app_id = $4
+  AND platform_id = $5
+  AND product_id = $6
+  AND counter_scope = $7
+  AND platform_user_id = $8
+  AND window_start = $9
+  AND window_end = $10
+  AND reserved_count >= $11
 `
 
 type ConsumeProductLimitReservationParams struct {
 	ReservedCount   int64                                  `json:"reserved_count"`
 	PaidCount       int64                                  `json:"paid_count"`
 	WorkspaceID     string                                 `json:"workspace_id"`
+	AppID           int64                                  `json:"app_id"`
 	PlatformID      int64                                  `json:"platform_id"`
 	ProductID       string                                 `json:"product_id"`
 	CounterScope    PaymentProductLimitCounterCounterScope `json:"counter_scope"`
@@ -3660,6 +3897,7 @@ func (q *Queries) ConsumeProductLimitReservation(ctx context.Context, arg Consum
 		arg.ReservedCount,
 		arg.PaidCount,
 		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.ProductID,
 		arg.CounterScope,
@@ -3698,25 +3936,28 @@ func (q *Queries) ConsumePurchaseKeyReservation(ctx context.Context, id int64) (
 const countActivePaymentSubscriptionsAll = `-- name: CountActivePaymentSubscriptionsAll :one
 SELECT COUNT(*)
 FROM payment_subscription
-WHERE platform_id = $1
-  AND platform_user_id = $2
-  AND workspace_id = $3
+WHERE workspace_id = $1
+  AND app_id = $2
+  AND platform_id = $3
+  AND platform_user_id = $4
   AND status = 'active'
-  AND (ended_at IS NULL OR ended_at > $4)
+  AND (ended_at IS NULL OR ended_at > $5)
 `
 
 type CountActivePaymentSubscriptionsAllParams struct {
+	WorkspaceID    string       `json:"workspace_id"`
+	AppID          int64        `json:"app_id"`
 	PlatformID     int64        `json:"platform_id"`
 	PlatformUserID string       `json:"platform_user_id"`
-	WorkspaceID    string       `json:"workspace_id"`
 	EndedAt        sql.NullTime `json:"ended_at"`
 }
 
 func (q *Queries) CountActivePaymentSubscriptionsAll(ctx context.Context, arg CountActivePaymentSubscriptionsAllParams) (int64, error) {
 	row := q.queryRow(ctx, q.countActivePaymentSubscriptionsAllStmt, countActivePaymentSubscriptionsAll,
+		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.PlatformUserID,
-		arg.WorkspaceID,
 		arg.EndedAt,
 	)
 	var count int64
@@ -3727,27 +3968,30 @@ func (q *Queries) CountActivePaymentSubscriptionsAll(ctx context.Context, arg Co
 const countActivePaymentSubscriptionsForProduct = `-- name: CountActivePaymentSubscriptionsForProduct :one
 SELECT COUNT(*)
 FROM payment_subscription
-WHERE platform_id = $1
-  AND platform_user_id = $2
-  AND workspace_id = $3
-  AND product_id = $4
+WHERE workspace_id = $1
+  AND app_id = $2
+  AND platform_id = $3
+  AND platform_user_id = $4
+  AND product_id = $5
   AND status = 'active'
-  AND (ended_at IS NULL OR ended_at > $5)
+  AND (ended_at IS NULL OR ended_at > $6)
 `
 
 type CountActivePaymentSubscriptionsForProductParams struct {
+	WorkspaceID    string       `json:"workspace_id"`
+	AppID          int64        `json:"app_id"`
 	PlatformID     int64        `json:"platform_id"`
 	PlatformUserID string       `json:"platform_user_id"`
-	WorkspaceID    string       `json:"workspace_id"`
 	ProductID      string       `json:"product_id"`
 	EndedAt        sql.NullTime `json:"ended_at"`
 }
 
 func (q *Queries) CountActivePaymentSubscriptionsForProduct(ctx context.Context, arg CountActivePaymentSubscriptionsForProductParams) (int64, error) {
 	row := q.queryRow(ctx, q.countActivePaymentSubscriptionsForProductStmt, countActivePaymentSubscriptionsForProduct,
+		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.PlatformUserID,
-		arg.WorkspaceID,
 		arg.ProductID,
 		arg.EndedAt,
 	)
@@ -3759,19 +4003,21 @@ func (q *Queries) CountActivePaymentSubscriptionsForProduct(ctx context.Context,
 const countActivePaymentSubscriptionsForProductProvider = `-- name: CountActivePaymentSubscriptionsForProductProvider :one
 SELECT COUNT(*)
 FROM payment_subscription
-WHERE platform_id = $1
-  AND platform_user_id = $2
-  AND workspace_id = $3
-  AND product_id = $4
-  AND provider_code = $5
+WHERE workspace_id = $1
+  AND app_id = $2
+  AND platform_id = $3
+  AND platform_user_id = $4
+  AND product_id = $5
+  AND provider_code = $6
   AND status = 'active'
-  AND (ended_at IS NULL OR ended_at > $6)
+  AND (ended_at IS NULL OR ended_at > $7)
 `
 
 type CountActivePaymentSubscriptionsForProductProviderParams struct {
+	WorkspaceID    string       `json:"workspace_id"`
+	AppID          int64        `json:"app_id"`
 	PlatformID     int64        `json:"platform_id"`
 	PlatformUserID string       `json:"platform_user_id"`
-	WorkspaceID    string       `json:"workspace_id"`
 	ProductID      string       `json:"product_id"`
 	ProviderCode   string       `json:"provider_code"`
 	EndedAt        sql.NullTime `json:"ended_at"`
@@ -3779,9 +4025,10 @@ type CountActivePaymentSubscriptionsForProductProviderParams struct {
 
 func (q *Queries) CountActivePaymentSubscriptionsForProductProvider(ctx context.Context, arg CountActivePaymentSubscriptionsForProductProviderParams) (int64, error) {
 	row := q.queryRow(ctx, q.countActivePaymentSubscriptionsForProductProviderStmt, countActivePaymentSubscriptionsForProductProvider,
+		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.PlatformUserID,
-		arg.WorkspaceID,
 		arg.ProductID,
 		arg.ProviderCode,
 		arg.EndedAt,
@@ -3794,27 +4041,30 @@ func (q *Queries) CountActivePaymentSubscriptionsForProductProvider(ctx context.
 const countActivePaymentSubscriptionsForProvider = `-- name: CountActivePaymentSubscriptionsForProvider :one
 SELECT COUNT(*)
 FROM payment_subscription
-WHERE platform_id = $1
-  AND platform_user_id = $2
-  AND workspace_id = $3
-  AND provider_code = $4
+WHERE workspace_id = $1
+  AND app_id = $2
+  AND platform_id = $3
+  AND platform_user_id = $4
+  AND provider_code = $5
   AND status = 'active'
-  AND (ended_at IS NULL OR ended_at > $5)
+  AND (ended_at IS NULL OR ended_at > $6)
 `
 
 type CountActivePaymentSubscriptionsForProviderParams struct {
+	WorkspaceID    string       `json:"workspace_id"`
+	AppID          int64        `json:"app_id"`
 	PlatformID     int64        `json:"platform_id"`
 	PlatformUserID string       `json:"platform_user_id"`
-	WorkspaceID    string       `json:"workspace_id"`
 	ProviderCode   string       `json:"provider_code"`
 	EndedAt        sql.NullTime `json:"ended_at"`
 }
 
 func (q *Queries) CountActivePaymentSubscriptionsForProvider(ctx context.Context, arg CountActivePaymentSubscriptionsForProviderParams) (int64, error) {
 	row := q.queryRow(ctx, q.countActivePaymentSubscriptionsForProviderStmt, countActivePaymentSubscriptionsForProvider,
+		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.PlatformUserID,
-		arg.WorkspaceID,
 		arg.ProviderCode,
 		arg.EndedAt,
 	)
@@ -4746,6 +4996,11 @@ SET paid_count = GREATEST(plc.paid_count - po.quantity, 0),
 FROM payment_order po
 WHERE po.workspace_id = plc.workspace_id
   AND (
+      (plc.counter_scope = 'global' AND plc.app_id = 0)
+      OR
+      (plc.counter_scope = 'user' AND po.app_id = plc.app_id)
+  )
+  AND (
       (plc.counter_scope = 'global' AND plc.platform_id = 0)
       OR
       (plc.counter_scope = 'user' AND po.platform_id = plc.platform_id)
@@ -4968,6 +5223,7 @@ func (q *Queries) DeleteWorkspaceProductCache(ctx context.Context, workspaceID s
 const ensureProductLimitCounter = `-- name: EnsureProductLimitCounter :execrows
 INSERT INTO payment_product_limit_counter (
     workspace_id,
+    app_id,
     platform_id,
     product_id,
     counter_scope,
@@ -4977,12 +5233,13 @@ INSERT INTO payment_product_limit_counter (
     paid_count,
     reserved_count
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0)
-ON CONFLICT (workspace_id, platform_id, product_id, counter_scope, platform_user_id, window_start, window_end) DO NOTHING
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 0)
+ON CONFLICT (workspace_id, app_id, platform_id, product_id, counter_scope, platform_user_id, window_start, window_end) DO NOTHING
 `
 
 type EnsureProductLimitCounterParams struct {
 	WorkspaceID    string                                 `json:"workspace_id"`
+	AppID          int64                                  `json:"app_id"`
 	PlatformID     int64                                  `json:"platform_id"`
 	ProductID      string                                 `json:"product_id"`
 	CounterScope   PaymentProductLimitCounterCounterScope `json:"counter_scope"`
@@ -4994,6 +5251,7 @@ type EnsureProductLimitCounterParams struct {
 func (q *Queries) EnsureProductLimitCounter(ctx context.Context, arg EnsureProductLimitCounterParams) (int64, error) {
 	result, err := q.exec(ctx, q.ensureProductLimitCounterStmt, ensureProductLimitCounter,
 		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.ProductID,
 		arg.CounterScope,
@@ -6430,17 +6688,19 @@ const getProductLimitCounterCount = `-- name: GetProductLimitCounterCount :one
 SELECT paid_count + reserved_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
-  AND platform_id = $2
-  AND product_id = $3
-  AND counter_scope = $4
-  AND platform_user_id = $5
-  AND window_start = $6
-  AND window_end = $7
+  AND app_id = $2
+  AND platform_id = $3
+  AND product_id = $4
+  AND counter_scope = $5
+  AND platform_user_id = $6
+  AND window_start = $7
+  AND window_end = $8
 LIMIT 1
 `
 
 type GetProductLimitCounterCountParams struct {
 	WorkspaceID    string                                 `json:"workspace_id"`
+	AppID          int64                                  `json:"app_id"`
 	PlatformID     int64                                  `json:"platform_id"`
 	ProductID      string                                 `json:"product_id"`
 	CounterScope   PaymentProductLimitCounterCounterScope `json:"counter_scope"`
@@ -6452,6 +6712,7 @@ type GetProductLimitCounterCountParams struct {
 func (q *Queries) GetProductLimitCounterCount(ctx context.Context, arg GetProductLimitCounterCountParams) (int32, error) {
 	row := q.queryRow(ctx, q.getProductLimitCounterCountStmt, getProductLimitCounterCount,
 		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.ProductID,
 		arg.CounterScope,
@@ -7559,18 +7820,20 @@ UPDATE payment_product_limit_counter
 SET paid_count = paid_count + $1,
     updated_at = now()
 WHERE workspace_id = $2
-  AND platform_id = $3
-  AND product_id = $4
-  AND counter_scope = $5
-  AND platform_user_id = $6
-  AND window_start = $7
-  AND window_end = $8
-  AND paid_count + $9 <= $10
+  AND app_id = $3
+  AND platform_id = $4
+  AND product_id = $5
+  AND counter_scope = $6
+  AND platform_user_id = $7
+  AND window_start = $8
+  AND window_end = $9
+  AND paid_count + $10 <= $11
 `
 
 type IncrementProductLimitCounterParams struct {
 	PaidCount      int64                                  `json:"paid_count"`
 	WorkspaceID    string                                 `json:"workspace_id"`
+	AppID          int64                                  `json:"app_id"`
 	PlatformID     int64                                  `json:"platform_id"`
 	ProductID      string                                 `json:"product_id"`
 	CounterScope   PaymentProductLimitCounterCounterScope `json:"counter_scope"`
@@ -7585,6 +7848,7 @@ func (q *Queries) IncrementProductLimitCounter(ctx context.Context, arg Incremen
 	result, err := q.exec(ctx, q.incrementProductLimitCounterStmt, incrementProductLimitCounter,
 		arg.PaidCount,
 		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.ProductID,
 		arg.CounterScope,
@@ -7662,6 +7926,7 @@ func (q *Queries) InsertPaidOrderIndexFromOrder(ctx context.Context, id int64) (
 
 const listActiveProductLimitCounters = `-- name: ListActiveProductLimitCounters :many
 SELECT
+    app_id,
     product_id,
     counter_scope,
     platform_user_id,
@@ -7670,15 +7935,17 @@ SELECT
     paid_count + reserved_count AS paid_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
-  AND platform_id IN (0, $2)
-  AND platform_user_id IN ('', $3)
-  AND window_start <= $4
-  AND window_end > $5
+  AND app_id IN (0, $2)
+  AND platform_id IN (0, $3)
+  AND platform_user_id IN ('', $4)
+  AND window_start <= $5
+  AND window_end > $6
 ORDER BY product_id, counter_scope, platform_user_id
 `
 
 type ListActiveProductLimitCountersParams struct {
 	WorkspaceID    string    `json:"workspace_id"`
+	AppID          int64     `json:"app_id"`
 	PlatformID     int64     `json:"platform_id"`
 	PlatformUserID string    `json:"platform_user_id"`
 	WindowStart    time.Time `json:"window_start"`
@@ -7686,6 +7953,7 @@ type ListActiveProductLimitCountersParams struct {
 }
 
 type ListActiveProductLimitCountersRow struct {
+	AppID          int64                                  `json:"app_id"`
 	ProductID      string                                 `json:"product_id"`
 	CounterScope   PaymentProductLimitCounterCounterScope `json:"counter_scope"`
 	PlatformUserID string                                 `json:"platform_user_id"`
@@ -7697,6 +7965,7 @@ type ListActiveProductLimitCountersRow struct {
 func (q *Queries) ListActiveProductLimitCounters(ctx context.Context, arg ListActiveProductLimitCountersParams) ([]ListActiveProductLimitCountersRow, error) {
 	rows, err := q.query(ctx, q.listActiveProductLimitCountersStmt, listActiveProductLimitCounters,
 		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.PlatformUserID,
 		arg.WindowStart,
@@ -7710,6 +7979,7 @@ func (q *Queries) ListActiveProductLimitCounters(ctx context.Context, arg ListAc
 	for rows.Next() {
 		var i ListActiveProductLimitCountersRow
 		if err := rows.Scan(
+			&i.AppID,
 			&i.ProductID,
 			&i.CounterScope,
 			&i.PlatformUserID,
@@ -10061,18 +10331,20 @@ UPDATE payment_product_limit_counter
 SET reserved_count = reserved_count - $1,
     updated_at = now()
 WHERE workspace_id = $2
-  AND platform_id = $3
-  AND product_id = $4
-  AND counter_scope = $5
-  AND platform_user_id = $6
-  AND window_start = $7
-  AND window_end = $8
-  AND reserved_count >= $9
+  AND app_id = $3
+  AND platform_id = $4
+  AND product_id = $5
+  AND counter_scope = $6
+  AND platform_user_id = $7
+  AND window_start = $8
+  AND window_end = $9
+  AND reserved_count >= $10
 `
 
 type ReleaseProductLimitReservationParams struct {
 	ReservedCount   int64                                  `json:"reserved_count"`
 	WorkspaceID     string                                 `json:"workspace_id"`
+	AppID           int64                                  `json:"app_id"`
 	PlatformID      int64                                  `json:"platform_id"`
 	ProductID       string                                 `json:"product_id"`
 	CounterScope    PaymentProductLimitCounterCounterScope `json:"counter_scope"`
@@ -10086,6 +10358,7 @@ func (q *Queries) ReleaseProductLimitReservation(ctx context.Context, arg Releas
 	result, err := q.exec(ctx, q.releaseProductLimitReservationStmt, releaseProductLimitReservation,
 		arg.ReservedCount,
 		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.ProductID,
 		arg.CounterScope,
@@ -10121,18 +10394,20 @@ UPDATE payment_product_limit_counter
 SET reserved_count = reserved_count + $1,
     updated_at = now()
 WHERE workspace_id = $2
-  AND platform_id = $3
-  AND product_id = $4
-  AND counter_scope = $5
-  AND platform_user_id = $6
-  AND window_start = $7
-  AND window_end = $8
-  AND paid_count + reserved_count + $9 <= $10
+  AND app_id = $3
+  AND platform_id = $4
+  AND product_id = $5
+  AND counter_scope = $6
+  AND platform_user_id = $7
+  AND window_start = $8
+  AND window_end = $9
+  AND paid_count + reserved_count + $10 <= $11
 `
 
 type ReserveProductLimitCounterParams struct {
 	ReservedCount  int64                                  `json:"reserved_count"`
 	WorkspaceID    string                                 `json:"workspace_id"`
+	AppID          int64                                  `json:"app_id"`
 	PlatformID     int64                                  `json:"platform_id"`
 	ProductID      string                                 `json:"product_id"`
 	CounterScope   PaymentProductLimitCounterCounterScope `json:"counter_scope"`
@@ -10147,6 +10422,7 @@ func (q *Queries) ReserveProductLimitCounter(ctx context.Context, arg ReservePro
 	result, err := q.exec(ctx, q.reserveProductLimitCounterStmt, reserveProductLimitCounter,
 		arg.ReservedCount,
 		arg.WorkspaceID,
+		arg.AppID,
 		arg.PlatformID,
 		arg.ProductID,
 		arg.CounterScope,

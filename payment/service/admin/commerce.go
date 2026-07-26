@@ -12,16 +12,26 @@ func (a *Admin) ListPurchaseKeys(ctx context.Context, params PurchaseKeyListPara
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
+	if err := validateOptionalIdentityFilter(
+		params.WorkspaceID,
+		params.AppID,
+		params.PlatformID,
+		params.PlatformUserID,
+	); err != nil {
+		return nil, err
+	}
 	limit, offset := normalizePage(params.Page)
 	return a.repository.AdminListPurchaseKeys(ctx, paymentsqlc.AdminListPurchaseKeysParams{
 		WorkspaceID:    params.WorkspaceID,
-		Column2:        params.ProductID,
+		Column2:        params.AppID,
+		AppID:          params.AppID,
+		Column4:        params.ProductID,
 		ProductID:      params.ProductID,
-		Column4:        params.Status,
+		Column6:        params.Status,
 		Status:         paymentsqlc.PaymentPurchaseKeyStatus(params.Status),
-		Column6:        params.PlatformID,
+		Column8:        params.PlatformID,
 		PlatformID:     params.PlatformID,
-		Column8:        params.PlatformUserID,
+		Column10:       params.PlatformUserID,
 		PlatformUserID: params.PlatformUserID,
 		Limit:          limit,
 		Offset:         offset,
@@ -58,16 +68,51 @@ func (a *Admin) ListOrders(ctx context.Context, params OrderListParams) ([]Order
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
+	if err := validateOptionalIdentityFilter(
+		params.WorkspaceID,
+		params.AppID,
+		params.PlatformID,
+		params.PlatformUserID,
+	); err != nil {
+		return nil, err
+	}
+	return a.listOrders(ctx, params)
+}
+
+func (a *Admin) ListUserOrders(ctx context.Context, params UserOrderListParams) ([]OrderModel, error) {
+
+	mergedCtx, paymentRequestCancel := a.withContext(ctx)
+	defer paymentRequestCancel()
+	ctx = mergedCtx
+
+	if err := params.Identity.Validate(); err != nil {
+		return nil, err
+	}
+
+	return a.listOrders(ctx, OrderListParams{
+		WorkspaceID:    params.Identity.WorkspaceID,
+		AppID:          params.Identity.AppID,
+		Status:         params.Status,
+		PlatformID:     params.Identity.PlatformID,
+		PlatformUserID: params.Identity.PlatformUserID,
+		Page:           params.Page,
+	})
+}
+
+func (a *Admin) listOrders(ctx context.Context, params OrderListParams) ([]OrderModel, error) {
+
 	limit, offset := normalizePage(params.Page)
 	return a.repository.AdminListOrders(ctx, paymentsqlc.AdminListOrdersParams{
 		WorkspaceID:    params.WorkspaceID,
-		Column2:        params.Status,
+		Column2:        params.AppID,
+		AppID:          params.AppID,
+		Column4:        params.Status,
 		Status:         paymentsqlc.PaymentOrderStatus(params.Status),
-		Column4:        params.ProductID,
+		Column6:        params.ProductID,
 		ProductID:      params.ProductID,
-		Column6:        params.PlatformID,
+		Column8:        params.PlatformID,
 		PlatformID:     params.PlatformID,
-		Column8:        params.PlatformUserID,
+		Column10:       params.PlatformUserID,
 		PlatformUserID: params.PlatformUserID,
 		Limit:          limit,
 		Offset:         offset,
@@ -177,18 +222,28 @@ func (a *Admin) ListSubscriptions(ctx context.Context, params SubscriptionListPa
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
+	if err := validateOptionalIdentityFilter(
+		params.WorkspaceID,
+		params.AppID,
+		params.PlatformID,
+		params.PlatformUserID,
+	); err != nil {
+		return nil, err
+	}
 	limit, offset := normalizePage(params.Page)
 	return a.repository.AdminListSubscriptions(ctx, paymentsqlc.AdminListSubscriptionsParams{
 		WorkspaceID:    params.WorkspaceID,
-		Column2:        params.ProviderCode,
+		Column2:        params.AppID,
+		AppID:          params.AppID,
+		Column4:        params.ProviderCode,
 		ProviderCode:   params.ProviderCode,
-		Column4:        params.ProductID,
+		Column6:        params.ProductID,
 		ProductID:      params.ProductID,
-		Column6:        params.Status,
+		Column8:        params.Status,
 		Status:         paymentsqlc.PaymentSubscriptionStatus(params.Status),
-		Column8:        params.PlatformID,
+		Column10:       params.PlatformID,
 		PlatformID:     params.PlatformID,
-		Column10:       params.PlatformUserID,
+		Column12:       params.PlatformUserID,
 		PlatformUserID: params.PlatformUserID,
 		Limit:          limit,
 		Offset:         offset,

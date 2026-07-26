@@ -276,14 +276,24 @@ func (a *Admin) ListProductLimitCounters(
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
+	if err := validateOptionalIdentityFilter(
+		params.WorkspaceID,
+		params.AppID,
+		params.PlatformID,
+		params.PlatformUserID,
+	); err != nil {
+		return nil, err
+	}
 	limit, offset := normalizePage(params.Page)
 	return a.repository.AdminListProductLimitCounters(ctx, paymentsqlc.AdminListProductLimitCountersParams{
 		WorkspaceID:    params.WorkspaceID,
-		Column2:        params.ProductID,
+		Column2:        params.AppID,
+		AppID:          params.AppID,
+		Column4:        params.ProductID,
 		ProductID:      params.ProductID,
-		Column4:        params.PlatformID,
+		Column6:        params.PlatformID,
 		PlatformID:     params.PlatformID,
-		Column6:        params.PlatformUserID,
+		Column8:        params.PlatformUserID,
 		PlatformUserID: params.PlatformUserID,
 		Limit:          limit,
 		Offset:         offset,
@@ -294,8 +304,28 @@ func (a *Admin) DeleteProductLimitCounter(ctx context.Context, params ProductLim
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
+	if params.CounterScope == "user" {
+		if err := validateOptionalIdentityFilter(
+			params.WorkspaceID,
+			params.AppID,
+			params.PlatformID,
+			params.PlatformUserID,
+		); err != nil {
+			return 0, err
+		}
+	} else if params.CounterScope == "global" {
+		if err := validateOptionalIdentityFilter(params.WorkspaceID, 0, 0, ""); err != nil {
+			return 0, err
+		}
+		if params.AppID != 0 || params.PlatformID != 0 || params.PlatformUserID != "" {
+			return 0, repository.ErrPaymentReportInvalid
+		}
+	} else {
+		return 0, repository.ErrPaymentReportInvalid
+	}
 	return a.repository.AdminDeleteProductLimitCounter(ctx, paymentsqlc.AdminDeleteProductLimitCounterParams{
 		WorkspaceID:    params.WorkspaceID,
+		AppID:          params.AppID,
 		PlatformID:     params.PlatformID,
 		ProductID:      params.ProductID,
 		CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScope(params.CounterScope),

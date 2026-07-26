@@ -1650,6 +1650,7 @@ type PaymentProductItem struct {
 
 type PaymentProductLimitCounter struct {
 	WorkspaceID    string                                 `json:"workspace_id"`
+	AppID          int64                                  `json:"app_id"`
 	PlatformID     int64                                  `json:"platform_id"`
 	ProductID      string                                 `json:"product_id"`
 	CounterScope   PaymentProductLimitCounterCounterScope `json:"counter_scope"`

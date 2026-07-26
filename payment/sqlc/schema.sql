@@ -453,6 +453,7 @@ ALTER TABLE payment_order_item
 
 CREATE TABLE IF NOT EXISTS payment_product_limit_counter (
     workspace_id VARCHAR(36) NOT NULL,
+    app_id BIGINT NOT NULL DEFAULT 0,
     platform_id BIGINT NOT NULL,
     product_id VARCHAR(64) NOT NULL,
     counter_scope payment_product_limit_counter_counter_scope NOT NULL,
@@ -464,6 +465,7 @@ CREATE TABLE IF NOT EXISTS payment_product_limit_counter (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (
         workspace_id,
+        app_id,
         platform_id,
         product_id,
         counter_scope,
@@ -477,7 +479,34 @@ CREATE TABLE IF NOT EXISTS payment_product_limit_counter (
 );
 
 ALTER TABLE payment_product_limit_counter
-    ADD COLUMN IF NOT EXISTS reserved_count BIGINT NOT NULL DEFAULT 0;
+    ADD COLUMN IF NOT EXISTS reserved_count BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS app_id BIGINT NOT NULL DEFAULT 0;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'payment_product_limit_counter'::regclass
+          AND contype = 'p'
+          AND pg_get_constraintdef(oid) NOT LIKE '%app_id%'
+    ) THEN
+        ALTER TABLE payment_product_limit_counter
+            DROP CONSTRAINT payment_product_limit_counter_pkey;
+        ALTER TABLE payment_product_limit_counter
+            ADD PRIMARY KEY (
+                workspace_id,
+                app_id,
+                platform_id,
+                product_id,
+                counter_scope,
+                platform_user_id,
+                window_start,
+                window_end
+            );
+    END IF;
+END
+$$;
 
 -- Global limits are workspace-wide. Merge counters created by older versions
 -- that partitioned the global scope by platform_id.
@@ -489,6 +518,7 @@ WITH removed AS (
 ), aggregated AS (
     SELECT
         workspace_id,
+        0::bigint AS app_id,
         product_id,
         counter_scope,
         platform_user_id,
@@ -499,6 +529,7 @@ WITH removed AS (
     FROM removed
     GROUP BY
         workspace_id,
+        app_id,
         product_id,
         counter_scope,
         platform_user_id,
@@ -507,6 +538,7 @@ WITH removed AS (
 )
 INSERT INTO payment_product_limit_counter (
     workspace_id,
+    app_id,
     platform_id,
     product_id,
     counter_scope,
@@ -518,6 +550,7 @@ INSERT INTO payment_product_limit_counter (
 )
 SELECT
     workspace_id,
+    app_id,
     0,
     product_id,
     counter_scope,
@@ -529,6 +562,7 @@ SELECT
 FROM aggregated
 ON CONFLICT (
     workspace_id,
+    app_id,
     platform_id,
     product_id,
     counter_scope,
@@ -538,6 +572,61 @@ ON CONFLICT (
 ) DO UPDATE SET
     paid_count = payment_product_limit_counter.paid_count + EXCLUDED.paid_count,
     reserved_count = payment_product_limit_counter.reserved_count + EXCLUDED.reserved_count,
+    updated_at = now();
+
+-- Rebuild user-scoped counters from immutable order snapshots so historical
+-- rows created before app_id partitioning cannot collide across applications.
+DELETE FROM payment_product_limit_counter
+WHERE counter_scope = 'user';
+
+INSERT INTO payment_product_limit_counter (
+    workspace_id,
+    app_id,
+    platform_id,
+    product_id,
+    counter_scope,
+    platform_user_id,
+    window_start,
+    window_end,
+    paid_count,
+    reserved_count
+)
+SELECT
+    workspace_id,
+    app_id,
+    platform_id,
+    product_id,
+    'user'::payment_product_limit_counter_counter_scope,
+    platform_user_id,
+    user_window_start_snapshot,
+    user_window_end_snapshot,
+    SUM(CASE WHEN status IN ('paid', 'fulfilled') THEN quantity ELSE 0 END)::bigint,
+    SUM(CASE WHEN status IN ('draft', 'pending_payment') THEN quantity ELSE 0 END)::bigint
+FROM payment_order
+WHERE user_limit_snapshot > 0
+  AND user_window_start_snapshot IS NOT NULL
+  AND user_window_end_snapshot IS NOT NULL
+  AND status IN ('draft', 'pending_payment', 'paid', 'fulfilled')
+GROUP BY
+    workspace_id,
+    app_id,
+    platform_id,
+    product_id,
+    platform_user_id,
+    user_window_start_snapshot,
+    user_window_end_snapshot
+ON CONFLICT (
+    workspace_id,
+    app_id,
+    platform_id,
+    product_id,
+    counter_scope,
+    platform_user_id,
+    window_start,
+    window_end
+) DO UPDATE SET
+    paid_count = EXCLUDED.paid_count,
+    reserved_count = EXCLUDED.reserved_count,
     updated_at = now();
 
 CREATE TABLE IF NOT EXISTS payment_attempt (
@@ -1123,7 +1212,10 @@ CREATE INDEX IF NOT EXISTS payment_price_dynamic_idx ON payment_price (workspace
 CREATE INDEX IF NOT EXISTS payment_purchase_key_product_status_idx ON payment_purchase_key (workspace_id, product_id, status);
 CREATE INDEX IF NOT EXISTS payment_purchase_key_target_idx ON payment_purchase_key (app_id, platform_id, platform_user_id);
 CREATE INDEX IF NOT EXISTS payment_order_user_product_status_idx ON payment_order (workspace_id, platform_id, platform_user_id, product_id, status);
+CREATE INDEX IF NOT EXISTS payment_order_identity_created_idx ON payment_order (workspace_id, app_id, platform_id, platform_user_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS payment_order_report_created_idx ON payment_order (workspace_id, created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS payment_order_payer_idx ON payment_order (app_id, payer_platform_id, payer_platform_user_id);
+CREATE INDEX IF NOT EXISTS payment_order_payer_identity_created_idx ON payment_order (workspace_id, app_id, payer_platform_id, payer_platform_user_id, created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS payment_order_purchase_key_idx ON payment_order (purchase_key_id);
 CREATE INDEX IF NOT EXISTS payment_order_status_created_idx ON payment_order (status, created_at);
 CREATE INDEX IF NOT EXISTS payment_paid_order_global_window_idx ON payment_paid_order_index (workspace_id, platform_id, product_id, paid_at);
@@ -1131,7 +1223,9 @@ CREATE INDEX IF NOT EXISTS payment_paid_order_user_window_idx ON payment_paid_or
 CREATE INDEX IF NOT EXISTS payment_paid_order_purchase_key_idx ON payment_paid_order_index (purchase_key_id);
 CREATE INDEX IF NOT EXISTS payment_order_item_item_idx ON payment_order_item (workspace_id, item_id);
 CREATE INDEX IF NOT EXISTS payment_product_limit_counter_window_idx ON payment_product_limit_counter (window_end, workspace_id, platform_id, product_id);
+CREATE INDEX IF NOT EXISTS payment_product_limit_counter_identity_window_idx ON payment_product_limit_counter (workspace_id, app_id, platform_id, platform_user_id, product_id, window_end);
 CREATE INDEX IF NOT EXISTS payment_attempt_order_idx ON payment_attempt (order_id);
+CREATE INDEX IF NOT EXISTS payment_attempt_order_provider_idx ON payment_attempt (order_id, provider_code, created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS payment_attempt_provider_status_idx ON payment_attempt (provider_code, status, created_at);
 CREATE INDEX IF NOT EXISTS payment_event_attempt_idx ON payment_event (attempt_id);
 CREATE INDEX IF NOT EXISTS payment_event_order_idx ON payment_event (order_id);
@@ -1144,6 +1238,7 @@ CREATE INDEX IF NOT EXISTS payment_subscription_active_product_provider_idx ON p
 CREATE INDEX IF NOT EXISTS payment_subscription_order_idx ON payment_subscription (order_id);
 CREATE INDEX IF NOT EXISTS payment_fulfillment_user_status_idx ON payment_fulfillment (internal_user_id, status);
 CREATE INDEX IF NOT EXISTS payment_refund_order_idx ON payment_refund (order_id);
+CREATE INDEX IF NOT EXISTS payment_refund_order_status_idx ON payment_refund (order_id, status);
 CREATE INDEX IF NOT EXISTS payment_stats_daily_date_idx ON payment_stats_daily (workspace_id, stats_date, product_id);
 CREATE INDEX IF NOT EXISTS payment_stats_daily_overview_date_idx ON payment_stats_daily_overview (stats_date, workspace_id);
 CREATE INDEX IF NOT EXISTS payment_stats_daily_buyer_date_idx ON payment_stats_daily_buyer (stats_date, workspace_id);

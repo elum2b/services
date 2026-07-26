@@ -66,11 +66,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.adminGetPaymentEventForWorkspaceStmt, err = db.PrepareContext(ctx, adminGetPaymentEventForWorkspace); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetPaymentEventForWorkspace: %w", err)
 	}
-	if q.adminGetPaymentProductStatsStmt, err = db.PrepareContext(ctx, adminGetPaymentProductStats); err != nil {
-		return nil, fmt.Errorf("error preparing query AdminGetPaymentProductStats: %w", err)
-	}
-	if q.adminGetPaymentStatsStmt, err = db.PrepareContext(ctx, adminGetPaymentStats); err != nil {
-		return nil, fmt.Errorf("error preparing query AdminGetPaymentStats: %w", err)
+	if q.adminGetPaymentReportStatsStmt, err = db.PrepareContext(ctx, adminGetPaymentReportStats); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminGetPaymentReportStats: %w", err)
 	}
 	if q.adminGetPriceStmt, err = db.PrepareContext(ctx, adminGetPrice); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetPrice: %w", err)
@@ -120,9 +117,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.adminListOrdersStmt, err = db.PrepareContext(ctx, adminListOrders); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListOrders: %w", err)
 	}
-	if q.adminListPaymentAssetStatsStmt, err = db.PrepareContext(ctx, adminListPaymentAssetStats); err != nil {
-		return nil, fmt.Errorf("error preparing query AdminListPaymentAssetStats: %w", err)
-	}
 	if q.adminListPaymentAttemptsStmt, err = db.PrepareContext(ctx, adminListPaymentAttempts); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListPaymentAttempts: %w", err)
 	}
@@ -134,6 +128,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.adminListPaymentEventsStmt, err = db.PrepareContext(ctx, adminListPaymentEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListPaymentEvents: %w", err)
+	}
+	if q.adminListPaymentReportStmt, err = db.PrepareContext(ctx, adminListPaymentReport); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminListPaymentReport: %w", err)
 	}
 	if q.adminListPricesStmt, err = db.PrepareContext(ctx, adminListPrices); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListPrices: %w", err)
@@ -726,14 +723,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing adminGetPaymentEventForWorkspaceStmt: %w", cerr)
 		}
 	}
-	if q.adminGetPaymentProductStatsStmt != nil {
-		if cerr := q.adminGetPaymentProductStatsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing adminGetPaymentProductStatsStmt: %w", cerr)
-		}
-	}
-	if q.adminGetPaymentStatsStmt != nil {
-		if cerr := q.adminGetPaymentStatsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing adminGetPaymentStatsStmt: %w", cerr)
+	if q.adminGetPaymentReportStatsStmt != nil {
+		if cerr := q.adminGetPaymentReportStatsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminGetPaymentReportStatsStmt: %w", cerr)
 		}
 	}
 	if q.adminGetPriceStmt != nil {
@@ -816,11 +808,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing adminListOrdersStmt: %w", cerr)
 		}
 	}
-	if q.adminListPaymentAssetStatsStmt != nil {
-		if cerr := q.adminListPaymentAssetStatsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing adminListPaymentAssetStatsStmt: %w", cerr)
-		}
-	}
 	if q.adminListPaymentAttemptsStmt != nil {
 		if cerr := q.adminListPaymentAttemptsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminListPaymentAttemptsStmt: %w", cerr)
@@ -839,6 +826,11 @@ func (q *Queries) Close() error {
 	if q.adminListPaymentEventsStmt != nil {
 		if cerr := q.adminListPaymentEventsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminListPaymentEventsStmt: %w", cerr)
+		}
+	}
+	if q.adminListPaymentReportStmt != nil {
+		if cerr := q.adminListPaymentReportStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminListPaymentReportStmt: %w", cerr)
 		}
 	}
 	if q.adminListPricesStmt != nil {
@@ -1754,8 +1746,7 @@ type Queries struct {
 	adminGetPaymentAttemptForWorkspaceStmt                *sql.Stmt
 	adminGetPaymentEventStmt                              *sql.Stmt
 	adminGetPaymentEventForWorkspaceStmt                  *sql.Stmt
-	adminGetPaymentProductStatsStmt                       *sql.Stmt
-	adminGetPaymentStatsStmt                              *sql.Stmt
+	adminGetPaymentReportStatsStmt                        *sql.Stmt
 	adminGetPriceStmt                                     *sql.Stmt
 	adminGetProductStmt                                   *sql.Stmt
 	adminGetProductGroupStmt                              *sql.Stmt
@@ -1772,11 +1763,11 @@ type Queries struct {
 	adminListFulfillmentsStmt                             *sql.Stmt
 	adminListLocalizationsStmt                            *sql.Stmt
 	adminListOrdersStmt                                   *sql.Stmt
-	adminListPaymentAssetStatsStmt                        *sql.Stmt
 	adminListPaymentAttemptsStmt                          *sql.Stmt
 	adminListPaymentDailyOverviewStmt                     *sql.Stmt
 	adminListPaymentDailyStatsStmt                        *sql.Stmt
 	adminListPaymentEventsStmt                            *sql.Stmt
+	adminListPaymentReportStmt                            *sql.Stmt
 	adminListPricesStmt                                   *sql.Stmt
 	adminListProductGroupsStmt                            *sql.Stmt
 	adminListProductItemsStmt                             *sql.Stmt
@@ -1969,8 +1960,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		adminGetPaymentAttemptForWorkspaceStmt:                q.adminGetPaymentAttemptForWorkspaceStmt,
 		adminGetPaymentEventStmt:                              q.adminGetPaymentEventStmt,
 		adminGetPaymentEventForWorkspaceStmt:                  q.adminGetPaymentEventForWorkspaceStmt,
-		adminGetPaymentProductStatsStmt:                       q.adminGetPaymentProductStatsStmt,
-		adminGetPaymentStatsStmt:                              q.adminGetPaymentStatsStmt,
+		adminGetPaymentReportStatsStmt:                        q.adminGetPaymentReportStatsStmt,
 		adminGetPriceStmt:                                     q.adminGetPriceStmt,
 		adminGetProductStmt:                                   q.adminGetProductStmt,
 		adminGetProductGroupStmt:                              q.adminGetProductGroupStmt,
@@ -1987,11 +1977,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		adminListFulfillmentsStmt:                             q.adminListFulfillmentsStmt,
 		adminListLocalizationsStmt:                            q.adminListLocalizationsStmt,
 		adminListOrdersStmt:                                   q.adminListOrdersStmt,
-		adminListPaymentAssetStatsStmt:                        q.adminListPaymentAssetStatsStmt,
 		adminListPaymentAttemptsStmt:                          q.adminListPaymentAttemptsStmt,
 		adminListPaymentDailyOverviewStmt:                     q.adminListPaymentDailyOverviewStmt,
 		adminListPaymentDailyStatsStmt:                        q.adminListPaymentDailyStatsStmt,
 		adminListPaymentEventsStmt:                            q.adminListPaymentEventsStmt,
+		adminListPaymentReportStmt:                            q.adminListPaymentReportStmt,
 		adminListPricesStmt:                                   q.adminListPricesStmt,
 		adminListProductGroupsStmt:                            q.adminListProductGroupsStmt,
 		adminListProductItemsStmt:                             q.adminListProductItemsStmt,

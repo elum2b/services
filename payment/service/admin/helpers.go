@@ -1,6 +1,11 @@
 package admin
 
-import "database/sql"
+import (
+	"database/sql"
+
+	services "github.com/elum2b/services"
+	"github.com/elum2b/services/payment/repository"
+)
 
 func normalizePage(params PageParams) (int32, int32) {
 	limit := params.Limit
@@ -22,4 +27,21 @@ func nullString(value *string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: *value, Valid: true}
+}
+
+func validateOptionalIdentityFilter(
+	workspaceID string,
+	appID int64,
+	platformID int64,
+	platformUserID string,
+) error {
+	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
+		return err
+	}
+	if appID < 0 || platformID < 0 ||
+		(platformUserID != "" && (appID <= 0 || platformID <= 0)) {
+		return repository.ErrPaymentReportInvalid
+	}
+
+	return nil
 }

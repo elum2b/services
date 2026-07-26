@@ -298,7 +298,14 @@ func (r *PaymentRepository) CreateOrder(ctx context.Context, params OrderCreateP
 		if product.QuantityMode != string(sqlc.PaymentProductCacheQuantityModeFlexible) && quantity != 1 {
 			return ErrProductQuantityFixed
 		}
-		if err := txRepo.ensureProductLimitAvailable(ctx, product, params.PlatformID, params.PlatformUserID, quantity); err != nil {
+		if err := txRepo.ensureProductLimitAvailable(
+			ctx,
+			product,
+			params.AppID,
+			params.PlatformID,
+			params.PlatformUserID,
+			quantity,
+		); err != nil {
 			return err
 		}
 		listAmountMinor, err := multiplyMinorAmount(product.Price.ListAmountMinor, quantity)
@@ -377,6 +384,7 @@ func (r *PaymentRepository) CreateOrder(ctx context.Context, params OrderCreateP
 		if err := txRepo.reserveOrderLimit(
 			ctx,
 			product.WorkspaceID,
+			params.AppID,
 			params.PlatformID,
 			params.PlatformUserID,
 			product.ID,
@@ -389,6 +397,7 @@ func (r *PaymentRepository) CreateOrder(ctx context.Context, params OrderCreateP
 		if err := txRepo.reserveOrderLimit(
 			ctx,
 			product.WorkspaceID,
+			params.AppID,
 			params.PlatformID,
 			params.PlatformUserID,
 			product.ID,
@@ -453,6 +462,7 @@ func newOrderLimitSnapshot(rule ProductLimitRule, now time.Time) orderLimitSnaps
 func (r *PaymentRepository) reserveOrderLimit(
 	ctx context.Context,
 	workspaceID string,
+	appID int64,
 	platformID int64,
 	platformUserID string,
 	productID string,
@@ -464,12 +474,14 @@ func (r *PaymentRepository) reserveOrderLimit(
 		return nil
 	}
 	if scope == sqlc.PaymentProductLimitCounterCounterScopeGlobal {
+		appID = 0
 		platformID = 0
 		platformUserID = ""
 	}
 
 	ensure := sqlc.EnsureProductLimitCounterParams{
 		WorkspaceID:    workspaceID,
+		AppID:          appID,
 		PlatformID:     platformID,
 		ProductID:      productID,
 		CounterScope:   scope,
@@ -485,6 +497,7 @@ func (r *PaymentRepository) reserveOrderLimit(
 	rows, err := r.q.ReserveProductLimitCounter(ctx, sqlc.ReserveProductLimitCounterParams{
 		ReservedCount:  amount,
 		WorkspaceID:    workspaceID,
+		AppID:          appID,
 		PlatformID:     platformID,
 		ProductID:      productID,
 		CounterScope:   scope,
@@ -601,12 +614,14 @@ func validateOrderItemSnapshots(items []ProductItem, quantity uint64) error {
 func (r *PaymentRepository) ensureProductLimitAvailable(
 	ctx context.Context,
 	product Product,
+	appID int64,
 	platformID int64,
 	platformUserID string,
 	quantity uint64,
 ) error {
 	globalLock, err := r.getProductLimitLock(ctx, productLimitQuery{
 		workspaceID:    product.WorkspaceID,
+		appID:          0,
 		platformID:     platformID,
 		platformUserID: "",
 		productID:      product.ID,
@@ -624,6 +639,7 @@ func (r *PaymentRepository) ensureProductLimitAvailable(
 
 	userLock, err := r.getProductLimitLock(ctx, productLimitQuery{
 		workspaceID:    product.WorkspaceID,
+		appID:          appID,
 		platformID:     platformID,
 		platformUserID: platformUserID,
 		productID:      product.ID,
@@ -1604,8 +1620,10 @@ func (r *PaymentRepository) consumeOrderLimit(
 		return nil
 	}
 	platformUserID := ""
+	appID := int64(0)
 	platformID := int64(0)
 	if scope == sqlc.PaymentProductLimitCounterCounterScopeUser {
+		appID = order.AppID
 		platformID = order.PlatformID
 		platformUserID = order.PlatformUserID
 	}
@@ -1615,6 +1633,7 @@ func (r *PaymentRepository) consumeOrderLimit(
 		ReservedCount:   amount,
 		PaidCount:       amount,
 		WorkspaceID:     order.WorkspaceID,
+		AppID:           appID,
 		PlatformID:      platformID,
 		ProductID:       order.ProductID,
 		CounterScope:    scope,
@@ -1663,8 +1682,10 @@ func (r *PaymentRepository) releaseOrderLimit(
 		return nil
 	}
 	platformUserID := ""
+	appID := int64(0)
 	platformID := int64(0)
 	if scope == sqlc.PaymentProductLimitCounterCounterScopeUser {
+		appID = order.AppID
 		platformID = order.PlatformID
 		platformUserID = order.PlatformUserID
 	}
@@ -1673,6 +1694,7 @@ func (r *PaymentRepository) releaseOrderLimit(
 	rows, err := r.q.ReleaseProductLimitReservation(ctx, sqlc.ReleaseProductLimitReservationParams{
 		ReservedCount:   amount,
 		WorkspaceID:     order.WorkspaceID,
+		AppID:           appID,
 		PlatformID:      platformID,
 		ProductID:       order.ProductID,
 		CounterScope:    scope,

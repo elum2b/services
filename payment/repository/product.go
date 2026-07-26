@@ -233,7 +233,15 @@ func (r *PaymentRepository) ListProducts(ctx context.Context, params ProductList
 	if len(products) == 0 {
 		return []Product{}, nil
 	}
-	if err := r.attachProductsLimitLocks(ctx, products, workspaceID, params.PlatformID, params.PlatformUserID, now); err != nil {
+	if err := r.attachProductsLimitLocks(
+		ctx,
+		products,
+		workspaceID,
+		params.AppID,
+		params.PlatformID,
+		params.PlatformUserID,
+		now,
+	); err != nil {
 		return nil, err
 	}
 	return products, nil
@@ -692,12 +700,14 @@ func (r *PaymentRepository) attachProductsLimitLocks(
 	ctx context.Context,
 	products []Product,
 	workspaceID string,
+	appID int64,
 	platformID int64,
 	platformUserID string,
 	now time.Time,
 ) error {
 	rows, err := r.q.ListActiveProductLimitCounters(ctx, sqlc.ListActiveProductLimitCountersParams{
 		WorkspaceID:    workspaceID,
+		AppID:          appID,
 		PlatformID:     platformID,
 		PlatformUserID: platformUserID,
 		WindowStart:    now,
@@ -946,6 +956,7 @@ func splitProviderCodes(value []byte) []string {
 
 type productLimitQuery struct {
 	workspaceID    string
+	appID          int64
 	platformID     int64
 	platformUserID string
 	productID      string
@@ -981,6 +992,7 @@ func (r *PaymentRepository) getProductLimitLock(ctx context.Context, query produ
 
 	total, err := r.q.GetProductLimitCounterCount(ctx, sqlc.GetProductLimitCounterCountParams{
 		WorkspaceID:    query.workspaceID,
+		AppID:          query.appID,
 		PlatformID:     limitCounterPlatformID(scope, query.platformID),
 		ProductID:      query.productID,
 		CounterScope:   scope,

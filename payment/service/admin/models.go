@@ -3,6 +3,7 @@ package admin
 import (
 	"time"
 
+	"github.com/elum2b/services"
 	"github.com/elum2b/services/payment/repository"
 	json "github.com/goccy/go-json"
 )
@@ -46,45 +47,6 @@ type TONWalletModel = repository.AdminTONWalletModel
 type PageParams struct {
 	Limit  int32
 	Offset int32
-}
-
-type StatsModel struct {
-	ProductsTotal    uint64            `json:"products_total"`
-	ActiveProducts   uint64            `json:"active_products"`
-	VisibleProducts  uint64            `json:"visible_products"`
-	OrdersTotal      uint64            `json:"orders_total"`
-	PendingOrders    uint64            `json:"pending_orders"`
-	FulfilledOrders  uint64            `json:"fulfilled_orders"`
-	RefundedOrders   uint64            `json:"refunded_orders"`
-	FailedOrders     uint64            `json:"failed_orders"`
-	CanceledOrders   uint64            `json:"canceled_orders"`
-	PurchaseCount    uint64            `json:"purchase_count"`
-	PurchaseQuantity uint64            `json:"purchase_quantity"`
-	UniqueBuyers     uint64            `json:"unique_buyers"`
-	Assets           []AssetStatsModel `json:"assets"`
-}
-
-type ProductStatsModel struct {
-	ProductID        string            `json:"product_id"`
-	OrdersTotal      uint64            `json:"orders_total"`
-	PendingOrders    uint64            `json:"pending_orders"`
-	FulfilledOrders  uint64            `json:"fulfilled_orders"`
-	RefundedOrders   uint64            `json:"refunded_orders"`
-	FailedOrders     uint64            `json:"failed_orders"`
-	CanceledOrders   uint64            `json:"canceled_orders"`
-	PurchaseCount    uint64            `json:"purchase_count"`
-	PurchaseQuantity uint64            `json:"purchase_quantity"`
-	UniqueBuyers     uint64            `json:"unique_buyers"`
-	Assets           []AssetStatsModel `json:"assets"`
-}
-
-type AssetStatsModel struct {
-	AssetCode         string `json:"asset_code"`
-	PurchaseCount     uint64 `json:"purchase_count"`
-	PurchaseQuantity  uint64 `json:"purchase_quantity"`
-	GrossAmountMinor  uint64 `json:"gross_amount_minor"`
-	RefundCount       uint64 `json:"refund_count"`
-	RefundAmountMinor uint64 `json:"refund_amount_minor"`
 }
 
 type DailyStatsModel struct {
@@ -248,6 +210,7 @@ type AssetRateListParams struct {
 
 type ProductLimitCounterListParams struct {
 	WorkspaceID    string
+	AppID          int64
 	ProductID      string
 	PlatformID     int64
 	PlatformUserID string
@@ -256,6 +219,7 @@ type ProductLimitCounterListParams struct {
 
 type ProductLimitCounterDeleteParams struct {
 	WorkspaceID    string
+	AppID          int64
 	PlatformID     int64
 	ProductID      string
 	CounterScope   string
@@ -266,6 +230,7 @@ type ProductLimitCounterDeleteParams struct {
 
 type PurchaseKeyListParams struct {
 	WorkspaceID    string
+	AppID          int64
 	ProductID      string
 	Status         string
 	PlatformID     int64
@@ -275,11 +240,125 @@ type PurchaseKeyListParams struct {
 
 type OrderListParams struct {
 	WorkspaceID    string
+	AppID          int64
 	Status         string
 	ProductID      string
 	PlatformID     int64
 	PlatformUserID string
 	Page           PageParams
+}
+
+// UserOrderListParams scopes an order history to one canonical service identity.
+type UserOrderListParams struct {
+	Identity services.Identity
+	Status   string
+	Page     PageParams
+}
+
+type PaymentIdentityRole string
+
+const (
+	PaymentIdentityRoleRecipient PaymentIdentityRole = "recipient"
+	PaymentIdentityRoleInitiator PaymentIdentityRole = "initiator"
+	PaymentIdentityRoleEither    PaymentIdentityRole = "either"
+)
+
+type PaymentSortField string
+
+const (
+	PaymentSortCreatedAt      PaymentSortField = "created_at"
+	PaymentSortPaidAt         PaymentSortField = "paid_at"
+	PaymentSortFulfilledAt    PaymentSortField = "fulfilled_at"
+	PaymentSortAmount         PaymentSortField = "amount_minor"
+	PaymentSortRefundAmount   PaymentSortField = "refund_amount_minor"
+	PaymentSortStatus         PaymentSortField = "status"
+	PaymentSortProvider       PaymentSortField = "provider"
+	PaymentSortProductID      PaymentSortField = "product_id"
+	PaymentSortAppID          PaymentSortField = "app_id"
+	PaymentSortPlatformID     PaymentSortField = "platform_id"
+	PaymentSortPlatformUserID PaymentSortField = "platform_user_id"
+)
+
+type SortDirection string
+
+const (
+	SortAscending  SortDirection = "asc"
+	SortDescending SortDirection = "desc"
+)
+
+type PaymentReportParams struct {
+	WorkspaceID    string
+	Identity       *services.Identity
+	IdentityRole   PaymentIdentityRole
+	AppID          int64
+	PlatformID     int64
+	PlatformUserID string
+	Status         string
+	ProductID      string
+	ProviderCode   string
+	AssetCode      string
+	CreatedFrom    *time.Time
+	CreatedUntil   *time.Time
+	MinAmountMinor uint64
+	MaxAmountMinor uint64
+	Sort           PaymentSortField
+	Direction      SortDirection
+	Page           PageParams
+}
+
+type PaymentReport struct {
+	Payments []PaymentModel     `json:"payments"`
+	Stats    PaymentReportStats `json:"stats"`
+}
+
+type PaymentModel struct {
+	ID                  uint64            `json:"id"`
+	PublicID            string            `json:"public_id"`
+	Initiator           services.Identity `json:"initiator"`
+	Recipient           services.Identity `json:"recipient"`
+	ProductID           string            `json:"product_id"`
+	Quantity            uint64            `json:"quantity"`
+	AssetCode           string            `json:"asset_code"`
+	ListAmountMinor     uint64            `json:"list_amount_minor"`
+	DiscountAmountMinor uint64            `json:"discount_amount_minor"`
+	PayableAmountMinor  uint64            `json:"payable_amount_minor"`
+	RefundCount         uint64            `json:"refund_count"`
+	RefundAmountMinor   uint64            `json:"refund_amount_minor"`
+	ProviderCode        string            `json:"provider_code,omitempty"`
+	Status              string            `json:"status"`
+	PaidAt              *time.Time        `json:"paid_at,omitempty"`
+	FulfilledAt         *time.Time        `json:"fulfilled_at,omitempty"`
+	CreatedAt           time.Time         `json:"created_at"`
+	UpdatedAt           time.Time         `json:"updated_at"`
+}
+
+type PaymentReportStats struct {
+	TotalOrders          uint64                    `json:"total_orders"`
+	DraftOrders          uint64                    `json:"draft_orders"`
+	PendingPaymentOrders uint64                    `json:"pending_payment_orders"`
+	PendingOrders        uint64                    `json:"pending_orders"`
+	PaidOrders           uint64                    `json:"paid_orders"`
+	FulfilledOrders      uint64                    `json:"fulfilled_orders"`
+	CanceledOrders       uint64                    `json:"canceled_orders"`
+	ExpiredOrders        uint64                    `json:"expired_orders"`
+	RefundedOrders       uint64                    `json:"refunded_orders"`
+	ChargebackedOrders   uint64                    `json:"chargebacked_orders"`
+	FailedOrders         uint64                    `json:"failed_orders"`
+	PurchaseCount        uint64                    `json:"purchase_count"`
+	PurchaseQuantity     uint64                    `json:"purchase_quantity"`
+	UniqueBuyers         uint64                    `json:"unique_buyers"`
+	Assets               []PaymentReportAssetStats `json:"assets"`
+}
+
+type PaymentReportAssetStats struct {
+	AssetCode         string `json:"asset_code"`
+	OrderCount        uint64 `json:"order_count"`
+	PurchaseCount     uint64 `json:"purchase_count"`
+	PurchaseQuantity  uint64 `json:"purchase_quantity"`
+	GrossAmountMinor  uint64 `json:"gross_amount_minor"`
+	RefundCount       uint64 `json:"refund_count"`
+	RefundAmountMinor uint64 `json:"refund_amount_minor"`
+	NetAmountMinor    uint64 `json:"net_amount_minor"`
 }
 
 type OrderRefParams struct {
@@ -332,6 +411,7 @@ type EventStatusParams struct {
 
 type SubscriptionListParams struct {
 	WorkspaceID    string
+	AppID          int64
 	ProviderCode   string
 	ProductID      string
 	Status         string
