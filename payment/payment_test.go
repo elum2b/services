@@ -28,6 +28,7 @@ import (
 	"github.com/elum2b/services/payment/service/subscription"
 	"github.com/elum2b/services/payment/service/user"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
+	"github.com/elum2b/services/payment/tonconnect"
 	json "github.com/goccy/go-json"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/xssnick/tonutils-go/address"
@@ -3642,6 +3643,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		Network:          paymentton.NetworkMainnet,
 		WalletAddress:    walletAddress,
 		NetworkConfigURL: &walletConfigURL,
+		Manifest:         testTONConnectManifest(),
 		IsEnabled:        true,
 	}); err != nil {
 		t.Fatalf("save ton wallet: %v", err)
@@ -3651,7 +3653,10 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	if len(pkg.TONWallets) != 1 || pkg.TONWallets[0].WalletAddress != expectedWalletAddress {
+	if len(pkg.TONWallets) != 1 ||
+		pkg.TONWallets[0].WalletAddress != expectedWalletAddress ||
+		pkg.TONWallets[0].Manifest == nil ||
+		*pkg.TONWallets[0].Manifest != testTONConnectManifest() {
 		t.Fatalf("unexpected exported ton wallets: %+v", pkg.TONWallets)
 	}
 	if _, err := env.api.Admin.Import(env.ctx, targetWorkspace, admin.ImportRequest{
@@ -3671,6 +3676,9 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	importedWallet, err := env.api.Admin.GetTONWallet(env.ctx, targetWorkspace)
 	if err != nil {
 		t.Fatalf("get imported ton wallet: %v", err)
+	}
+	if importedWallet.Manifest != testTONConnectManifest() {
+		t.Fatalf("unexpected imported ton connect manifest: %+v", importedWallet.Manifest)
 	}
 	if importedWallet.Network != paymentton.NetworkMainnet || importedWallet.WalletAddress != expectedWalletAddress ||
 		!importedWallet.NetworkConfigUrl.Valid || importedWallet.NetworkConfigUrl.String != walletConfigURL || !importedWallet.IsEnabled {
@@ -8315,6 +8323,7 @@ func configureTONWallet(t *testing.T, env paymentTestEnv, workspaceID string, ne
 		WorkspaceID:   workspaceID,
 		Network:       network,
 		WalletAddress: wallet,
+		Manifest:      testTONConnectManifest(),
 		IsEnabled:     true,
 	}); err != nil {
 		t.Fatalf("configure ton wallet: %v", err)
@@ -8335,6 +8344,7 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 		Network:          paymentton.NetworkMainnet,
 		WalletAddress:    wallet,
 		NetworkConfigURL: &customConfigURL,
+		Manifest:         testTONConnectManifest(),
 		IsEnabled:        true,
 	}); err != nil {
 		t.Fatalf("save enabled ton wallet: %v", err)
@@ -8346,11 +8356,22 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	if got.WalletAddress != expectedWallet || !got.IsEnabled || !got.NetworkConfigUrl.Valid || got.NetworkConfigUrl.String != customConfigURL {
 		t.Fatalf("unexpected ton wallet: %+v", got)
 	}
+	if got.Manifest != testTONConnectManifest() {
+		t.Fatalf("unexpected ton connect manifest: %+v", got.Manifest)
+	}
+	manifest, err := env.api.Adapters.TON.GetManifest(env.ctx, testWorkspaceID)
+	if err != nil {
+		t.Fatalf("get public ton connect manifest: %v", err)
+	}
+	if manifest != testTONConnectManifest() {
+		t.Fatalf("unexpected public ton connect manifest: %+v", manifest)
+	}
 
 	if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
 		WorkspaceID:   testWorkspaceID,
 		Network:       paymentton.NetworkMainnet,
 		WalletAddress: wallet,
+		Manifest:      testTONConnectManifest(),
 		IsEnabled:     false,
 	}); err != nil {
 		t.Fatalf("disable ton wallet: %v", err)
@@ -8365,6 +8386,9 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	}
 	if got.IsEnabled || got.WalletAddress != expectedWallet {
 		t.Fatalf("unexpected disabled ton wallet: %+v", got)
+	}
+	if _, err := env.api.Adapters.TON.GetManifest(env.ctx, testWorkspaceID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("disabled wallet manifest error = %v, want %v", err, sql.ErrNoRows)
 	}
 
 	rows, err := env.api.Admin.DeleteTONWallet(env.ctx, testWorkspaceID)
@@ -8384,6 +8408,7 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 		WorkspaceID:   testWorkspaceID,
 		Network:       paymentton.NetworkMainnet,
 		WalletAddress: wallet,
+		Manifest:      testTONConnectManifest(),
 		IsEnabled:     true,
 	}); err != nil {
 		t.Fatalf("save first workspace ton wallet: %v", err)
@@ -8392,6 +8417,7 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 		WorkspaceID:   testWorkspaceID,
 		Network:       paymentton.NetworkTestnet,
 		WalletAddress: replacementWallet,
+		Manifest:      testTONConnectManifest(),
 		IsEnabled:     true,
 	}); err != nil {
 		t.Fatalf("replace workspace ton wallet: %v", err)
@@ -8402,6 +8428,61 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	}
 	if got.Network != paymentton.NetworkTestnet || got.WalletAddress != expectedReplacementWallet {
 		t.Fatalf("expected replaced workspace ton wallet: %+v", got)
+	}
+}
+
+func TestPaymentTONConnectManifestWorkspaceIsolation(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	firstWorkspaceID := "00000000-0000-0000-0000-000000000201"
+	secondWorkspaceID := "00000000-0000-0000-0000-000000000202"
+	wallet := "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ"
+	firstManifest := tonconnect.Manifest{
+		URL:     "https://first.example.com",
+		Name:    "First",
+		IconURL: "https://first.example.com/icon.png",
+	}
+	secondManifest := tonconnect.Manifest{
+		URL:     "https://second.example.com",
+		Name:    "Second",
+		IconURL: "https://second.example.com/icon.png",
+	}
+
+	for _, config := range []struct {
+		workspaceID string
+		manifest    tonconnect.Manifest
+	}{
+		{workspaceID: firstWorkspaceID, manifest: firstManifest},
+		{workspaceID: secondWorkspaceID, manifest: secondManifest},
+	} {
+		if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
+			WorkspaceID:   config.workspaceID,
+			Network:       paymentton.NetworkMainnet,
+			WalletAddress: wallet,
+			Manifest:      config.manifest,
+			IsEnabled:     true,
+		}); err != nil {
+			t.Fatalf("save TON wallet for %s: %v", config.workspaceID, err)
+		}
+	}
+
+	gotFirst, err := env.api.Adapters.TON.GetManifest(env.ctx, firstWorkspaceID)
+	if err != nil {
+		t.Fatalf("get first workspace manifest: %v", err)
+	}
+	gotSecond, err := env.api.Adapters.TON.GetManifest(env.ctx, secondWorkspaceID)
+	if err != nil {
+		t.Fatalf("get second workspace manifest: %v", err)
+	}
+	if gotFirst != firstManifest || gotSecond != secondManifest {
+		t.Fatalf("workspace manifests collided: first=%+v second=%+v", gotFirst, gotSecond)
+	}
+}
+
+func testTONConnectManifest() tonconnect.Manifest {
+	return tonconnect.Manifest{
+		URL:     "https://chimpbot.org",
+		Name:    "Chimp",
+		IconURL: "https://chimpbot.org/logo.png",
 	}
 }
 

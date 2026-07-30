@@ -1,8 +1,10 @@
 package repository
 
 import (
-	json "github.com/goccy/go-json"
 	"time"
+
+	"github.com/elum2b/services/payment/tonconnect"
+	json "github.com/goccy/go-json"
 )
 
 const (
@@ -92,10 +94,11 @@ type ExportPrice struct {
 }
 
 type ExportTONWallet struct {
-	Network          string  `json:"network"`
-	WalletAddress    string  `json:"wallet_address"`
-	NetworkConfigURL *string `json:"network_config_url,omitempty"`
-	IsEnabled        bool    `json:"is_enabled"`
+	Network          string               `json:"network"`
+	WalletAddress    string               `json:"wallet_address"`
+	NetworkConfigURL *string              `json:"network_config_url,omitempty"`
+	Manifest         *tonconnect.Manifest `json:"manifest,omitempty"`
+	IsEnabled        bool                 `json:"is_enabled"`
 }
 
 type ImportRequest struct {

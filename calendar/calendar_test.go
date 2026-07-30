@@ -528,6 +528,79 @@ func TestCalendarIntervalAndResetModes(t *testing.T) {
 	}
 }
 
+func TestCalendarSequentialResetNextMatchesRecordAfterMissedDay(t *testing.T) {
+	service := newCalendarTestService(t)
+	ctx := context.Background()
+	workspaceID := testsupport.WorkspaceID("workspace-daily-reset-preview")
+	identity := user.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "daily-user",
+	}
+	calendarID := createCalendar(t, service, admin.SaveCalendarParams{
+		WorkspaceID:         workspaceID,
+		Type:                "daily_check_in",
+		Mode:                repository.ModeSequentialReset,
+		IntervalType:        repository.IntervalCalendar,
+		IntervalUnit:        "day",
+		IntervalCount:       1,
+		ResetAfterIntervals: 1,
+		EndBehavior:         repository.EndRestart,
+		Timezone:            "UTC",
+		IsActive:            true,
+	})
+	createStepReward(t, service, workspaceID, calendarID, 1, "day-1", 1)
+	createStepReward(t, service, workspaceID, calendarID, 2, "day-2", 1)
+
+	firstClaimAt := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	first := record(t, service, identity, calendarID, "daily-reset-1", firstClaimAt)
+	if !first.Granted || first.Position == nil || *first.Position != 1 {
+		t.Fatalf("first daily claim: %+v", first)
+	}
+
+	nextDayPreview, err := service.User.Next(ctx, user.NextParams{
+		Identity:    identity,
+		CalendarRef: calendarID,
+		Now:         firstClaimAt.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("preview next day: %v", err)
+	}
+	if !nextDayPreview.Granted ||
+		nextDayPreview.Position == nil ||
+		*nextDayPreview.Position != 2 ||
+		nextDayPreview.Progress.LastWasReset {
+		t.Fatalf("next-day preview must continue with day 2: %+v", nextDayPreview)
+	}
+
+	afterMissAt := firstClaimAt.Add(48 * time.Hour)
+	resetPreview, err := service.User.Next(ctx, user.NextParams{
+		Identity:    identity,
+		CalendarRef: calendarID,
+		Now:         afterMissAt,
+	})
+	if err != nil {
+		t.Fatalf("preview after missed day: %v", err)
+	}
+	if !resetPreview.Granted ||
+		resetPreview.Position == nil ||
+		*resetPreview.Position != 1 ||
+		!resetPreview.Progress.LastWasReset ||
+		resetPreview.Progress.ResetCount != 1 {
+		t.Fatalf("preview after missed day must reset to day 1: %+v", resetPreview)
+	}
+
+	resetRecord := record(t, service, identity, calendarID, "daily-reset-2", afterMissAt)
+	if !resetRecord.Granted ||
+		resetRecord.Position == nil ||
+		*resetRecord.Position != 1 ||
+		!resetRecord.Progress.LastWasReset ||
+		resetRecord.Progress.ResetCount != 1 {
+		t.Fatalf("record after missed day must match reset preview: %+v", resetRecord)
+	}
+}
+
 func TestCalendarConcurrentSingleIntervalGrant(t *testing.T) {
 	service := newCalendarTestService(t)
 	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)

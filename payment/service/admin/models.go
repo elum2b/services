@@ -5,6 +5,7 @@ import (
 
 	"github.com/elum2b/services"
 	"github.com/elum2b/services/payment/repository"
+	"github.com/elum2b/services/payment/tonconnect"
 	json "github.com/goccy/go-json"
 )
 
@@ -93,6 +94,7 @@ type TONWalletUpsertParams struct {
 	Network          string
 	WalletAddress    string
 	NetworkConfigURL *string
+	Manifest         tonconnect.Manifest
 	IsEnabled        bool
 }
 

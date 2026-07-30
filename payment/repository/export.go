@@ -7,6 +7,7 @@ import (
 	"time"
 
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
+	"github.com/elum2b/services/payment/tonconnect"
 )
 
 func (r *PaymentRepository) Export(ctx context.Context, workspaceID string, req ExportRequest) (ExportPackage, error) {
@@ -240,10 +241,26 @@ func (r *PaymentRepository) exportTONWallets(ctx context.Context, workspaceID st
 			Network:          row.Network,
 			WalletAddress:    row.WalletAddress,
 			NetworkConfigURL: exportNullStringPtr(row.NetworkConfigUrl),
+			Manifest:         tonConnectManifestFromWallet(row),
 			IsEnabled:        row.IsEnabled,
 		})
 	}
 	return result, nil
+}
+
+func tonConnectManifestFromWallet(row paymentsqlc.PaymentTonWallet) *tonconnect.Manifest {
+	manifest := tonconnect.Manifest{
+		URL:              row.ManifestAppUrl,
+		Name:             row.ManifestName,
+		IconURL:          row.ManifestIconUrl,
+		TermsOfUseURL:    exportNullStringPtr(row.ManifestTermsOfUseUrl),
+		PrivacyPolicyURL: exportNullStringPtr(row.ManifestPrivacyPolicyUrl),
+	}
+	if manifest.Validate() != nil {
+		return nil
+	}
+
+	return &manifest
 }
 
 func exportProductItemDurationUnit(value paymentsqlc.NullPaymentProductItemDurationUnit) *string {

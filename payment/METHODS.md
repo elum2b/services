@@ -58,9 +58,10 @@
 | `Admin.GetAsset(ctx, code)` | `code`. | Возвращает asset. |
 | `Admin.ListProviderAssets(ctx, params)` | `ProviderAssetListParams{ProviderCode, AssetCode, Page}`. | Возвращает связи провайдеров и assets. |
 | `Admin.GetProviderAsset(ctx, providerCode, assetCode)` | `providerCode`, `assetCode`. | Возвращает связь провайдера и asset. |
-| `Admin.SaveTONWallet(ctx, params)` | `TONWalletUpsertParams{WorkspaceID, Network, WalletAddress, NetworkConfigURL, IsEnabled}`. | Создает или обновляет TON merchant wallet workspace для автоматической подписки на входящие платежи. `NetworkConfigURL` опционален, по умолчанию берется config mainnet/testnet. |
+| `Admin.SaveTONWallet(ctx, params)` | `TONWalletUpsertParams{WorkspaceID, Network, WalletAddress, NetworkConfigURL, Manifest, IsEnabled}`. | Создает или обновляет TON merchant wallet workspace и его публичный TON Connect manifest. `Manifest` содержит обязательные `URL`, `Name`, `IconURL` и опциональные `TermsOfUseURL`, `PrivacyPolicyURL`. `NetworkConfigURL` опционален, по умолчанию берется config mainnet/testnet. |
 | `Admin.GetTONWallet(ctx, workspaceID)` | `workspaceID`. | Возвращает единственную конфигурацию TON wallet workspace. |
 | `Admin.DeleteTONWallet(ctx, workspaceID)` | `workspaceID`. | Удаляет TON wallet workspace; runtime-синхронизация автоматически остановит соответствующий subscriber. |
+| `Adapters.TON.GetManifest(ctx, workspaceID)` | `workspaceID`. | Возвращает публичный TON Connect manifest включённого TON wallet workspace. Для отсутствующей, выключенной или ещё не дополненной manifest-конфигурации возвращает not found. |
 | `Admin.GetAssetRate(ctx, assetCode, referenceAssetCode)` | `assetCode`, `referenceAssetCode`. | Возвращает курс asset к reference asset. |
 | `Admin.ListAssetRates(ctx, params)` | `AssetRateListParams{AssetCode, ReferenceAssetCode, Page}`. | Возвращает список курсов assets. |
 | `Admin.CreateProductKey(ctx, params)` | `CreateProductKeyParams`. | Создает purchase key для продукта. |

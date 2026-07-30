@@ -360,6 +360,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getCurrentProductPriceStmt, err = db.PrepareContext(ctx, getCurrentProductPrice); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCurrentProductPrice: %w", err)
 	}
+	if q.getEnabledTONConnectManifestStmt, err = db.PrepareContext(ctx, getEnabledTONConnectManifest); err != nil {
+		return nil, fmt.Errorf("error preparing query GetEnabledTONConnectManifest: %w", err)
+	}
 	if q.getEnabledTONWalletForWorkspaceStmt, err = db.PrepareContext(ctx, getEnabledTONWalletForWorkspace); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEnabledTONWalletForWorkspace: %w", err)
 	}
@@ -1213,6 +1216,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getCurrentProductPriceStmt: %w", cerr)
 		}
 	}
+	if q.getEnabledTONConnectManifestStmt != nil {
+		if cerr := q.getEnabledTONConnectManifestStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getEnabledTONConnectManifestStmt: %w", cerr)
+		}
+	}
 	if q.getEnabledTONWalletForWorkspaceStmt != nil {
 		if cerr := q.getEnabledTONWalletForWorkspaceStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEnabledTONWalletForWorkspaceStmt: %w", cerr)
@@ -1844,6 +1852,7 @@ type Queries struct {
 	getAssetUSDTPriceStmt                                 *sql.Stmt
 	getCheckoutProductStmt                                *sql.Stmt
 	getCurrentProductPriceStmt                            *sql.Stmt
+	getEnabledTONConnectManifestStmt                      *sql.Stmt
 	getEnabledTONWalletForWorkspaceStmt                   *sql.Stmt
 	getFulfilledAttemptResultStmt                         *sql.Stmt
 	getFulfillmentForOrderStmt                            *sql.Stmt
@@ -2058,6 +2067,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAssetUSDTPriceStmt:                                 q.getAssetUSDTPriceStmt,
 		getCheckoutProductStmt:                                q.getCheckoutProductStmt,
 		getCurrentProductPriceStmt:                            q.getCurrentProductPriceStmt,
+		getEnabledTONConnectManifestStmt:                      q.getEnabledTONConnectManifestStmt,
 		getEnabledTONWalletForWorkspaceStmt:                   q.getEnabledTONWalletForWorkspaceStmt,
 		getFulfilledAttemptResultStmt:                         q.getFulfilledAttemptResultStmt,
 		getFulfillmentForOrderStmt:                            q.getFulfillmentForOrderStmt,

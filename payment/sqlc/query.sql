@@ -2130,13 +2130,23 @@ INSERT INTO payment_ton_wallet (
     network,
     wallet_address,
     network_config_url,
+    manifest_app_url,
+    manifest_name,
+    manifest_icon_url,
+    manifest_terms_of_use_url,
+    manifest_privacy_policy_url,
     is_enabled
 )
-VALUES ($1, $2, $3, $4, $5)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (workspace_id) DO UPDATE SET
     network = EXCLUDED.network,
     wallet_address = EXCLUDED.wallet_address,
     network_config_url = EXCLUDED.network_config_url,
+    manifest_app_url = EXCLUDED.manifest_app_url,
+    manifest_name = EXCLUDED.manifest_name,
+    manifest_icon_url = EXCLUDED.manifest_icon_url,
+    manifest_terms_of_use_url = EXCLUDED.manifest_terms_of_use_url,
+    manifest_privacy_policy_url = EXCLUDED.manifest_privacy_policy_url,
     is_enabled = EXCLUDED.is_enabled,
     updated_at = now();
 
@@ -2150,6 +2160,11 @@ SELECT
     network,
     wallet_address,
     network_config_url,
+    manifest_app_url,
+    manifest_name,
+    manifest_icon_url,
+    manifest_terms_of_use_url,
+    manifest_privacy_policy_url,
     is_enabled,
     created_at,
     updated_at
@@ -2163,6 +2178,11 @@ SELECT
     network,
     wallet_address,
     network_config_url,
+    manifest_app_url,
+    manifest_name,
+    manifest_icon_url,
+    manifest_terms_of_use_url,
+    manifest_privacy_policy_url,
     is_enabled,
     created_at,
     updated_at
@@ -2176,12 +2196,32 @@ SELECT
     network,
     wallet_address,
     network_config_url,
+    manifest_app_url,
+    manifest_name,
+    manifest_icon_url,
+    manifest_terms_of_use_url,
+    manifest_privacy_policy_url,
     is_enabled,
     created_at,
     updated_at
 FROM payment_ton_wallet
 WHERE workspace_id = $1
   AND is_enabled = true
+LIMIT 1;
+
+-- name: GetEnabledTONConnectManifest :one
+SELECT
+    manifest_app_url,
+    manifest_name,
+    manifest_icon_url,
+    manifest_terms_of_use_url,
+    manifest_privacy_policy_url
+FROM payment_ton_wallet
+WHERE workspace_id = $1
+  AND is_enabled = true
+  AND manifest_app_url <> ''
+  AND manifest_name <> ''
+  AND manifest_icon_url <> ''
 LIMIT 1;
 
 -- name: CreateProviderTransaction :one

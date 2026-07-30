@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/elum2b/services"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	paymentton "github.com/elum2b/services/payment/adapters/ton"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
@@ -12,12 +13,18 @@ import (
 func (a *Admin) SaveTONWallet(ctx context.Context, params TONWalletUpsertParams) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
+		return err
+	}
 	network, err := paymentton.NormalizeNetwork(params.Network)
 	if err != nil {
 		return err
 	}
 	walletAddress, err := paymentton.NormalizeWalletAddress(params.WalletAddress, network)
 	if err != nil {
+		return err
+	}
+	if err := params.Manifest.Validate(); err != nil {
 		return err
 	}
 	return a.repository.UpsertTONWallet(mergedCtx, paymentsqlc.UpsertTONWalletParams{
@@ -27,7 +34,12 @@ func (a *Admin) SaveTONWallet(ctx context.Context, params TONWalletUpsertParams)
 		NetworkConfigUrl: sqlwrap.NullFromPtr(params.NetworkConfigURL, func(v string) sql.NullString {
 			return sql.NullString{String: v, Valid: true}
 		}),
-		IsEnabled: params.IsEnabled,
+		ManifestAppUrl:           params.Manifest.URL,
+		ManifestName:             params.Manifest.Name,
+		ManifestIconUrl:          params.Manifest.IconURL,
+		ManifestTermsOfUseUrl:    optionalManifestURL(params.Manifest.TermsOfUseURL),
+		ManifestPrivacyPolicyUrl: optionalManifestURL(params.Manifest.PrivacyPolicyURL),
+		IsEnabled:                params.IsEnabled,
 	})
 }
 
@@ -41,4 +53,15 @@ func (a *Admin) GetTONWallet(ctx context.Context, workspaceID string) (TONWallet
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	return a.repository.AdminGetTONWallet(mergedCtx, workspaceID)
+}
+
+func optionalManifestURL(value *string) sql.NullString {
+	if value == nil {
+		return sql.NullString{}
+	}
+
+	return sql.NullString{
+		String: *value,
+		Valid:  true,
+	}
 }

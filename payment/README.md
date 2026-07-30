@@ -387,6 +387,7 @@ order/attempt с точным совпадением workspace, provider payment
 Возможности:
 
 - создание TON payment request;
+- workspace-specific TON Connect manifest;
 - native TON payment URI;
 - уникальный comment/order payload;
 - обработка входящего transfer;
@@ -395,6 +396,20 @@ order/attempt с точным совпадением workspace, provider payment
 - subscriber для входящих транзакций;
 - network-aware processing;
 - amount/comment/asset verification.
+
+TON Connect manifest сохраняется атомарно вместе с merchant wallet и содержит
+только публичные поля dApp: `url`, `name`, `iconUrl`, опциональные
+`termsOfUseUrl` и `privacyPolicyUrl`. Transport может отдавать результат
+`Adapters.TON.GetManifest` без авторизации, например:
+
+```text
+GET /payment.ton.manifest?workspace_id={uuid}
+```
+
+Endpoint не должен возвращать merchant wallet address, network config или
+другие внутренние поля. Для wallet без manifest либо с `is_enabled=false`
+публичный endpoint отвечает `404`. Ответ отдается как `application/json`,
+разрешает cross-origin `GET` и может кэшироваться публично на короткое время.
 
 ### TON Jettons
 

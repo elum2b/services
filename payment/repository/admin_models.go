@@ -5,6 +5,7 @@ import (
 
 	"github.com/elum2b/services"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
+	"github.com/elum2b/services/payment/tonconnect"
 	json "github.com/goccy/go-json"
 )
 
@@ -468,13 +469,14 @@ type AdminProviderTransactionModel struct {
 }
 
 type AdminTONWalletModel struct {
-	WorkspaceID      string         `json:"workspace_id"`
-	Network          string         `json:"network"`
-	WalletAddress    string         `json:"wallet_address"`
-	NetworkConfigUrl NullableString `json:"network_config_url"`
-	IsEnabled        bool           `json:"is_enabled"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
+	WorkspaceID      string              `json:"workspace_id"`
+	Network          string              `json:"network"`
+	WalletAddress    string              `json:"wallet_address"`
+	NetworkConfigUrl NullableString      `json:"network_config_url"`
+	Manifest         tonconnect.Manifest `json:"manifest"`
+	IsEnabled        bool                `json:"is_enabled"`
+	CreatedAt        time.Time           `json:"created_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
 }
 
 func mapAdminProvider(row paymentsqlc.PaymentProvider) AdminProviderModel {
@@ -855,9 +857,16 @@ func mapAdminTONWallet(row paymentsqlc.PaymentTonWallet) AdminTONWalletModel {
 		Network:          row.Network,
 		WalletAddress:    row.WalletAddress,
 		NetworkConfigUrl: NullableString(row.NetworkConfigUrl),
-		IsEnabled:        row.IsEnabled,
-		CreatedAt:        row.CreatedAt,
-		UpdatedAt:        row.UpdatedAt,
+		Manifest: tonconnect.Manifest{
+			URL:              row.ManifestAppUrl,
+			Name:             row.ManifestName,
+			IconURL:          row.ManifestIconUrl,
+			TermsOfUseURL:    exportNullStringPtr(row.ManifestTermsOfUseUrl),
+			PrivacyPolicyURL: exportNullStringPtr(row.ManifestPrivacyPolicyUrl),
+		},
+		IsEnabled: row.IsEnabled,
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
 	}
 }
 

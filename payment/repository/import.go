@@ -12,6 +12,7 @@ import (
 	importexport "github.com/elum2b/services/internal/utils/importexport"
 	"github.com/elum2b/services/internal/utils/target"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
+	"github.com/elum2b/services/payment/tonconnect"
 )
 
 func (r *PaymentRepository) PreviewImport(
@@ -589,18 +590,60 @@ func (r *PaymentRepository) importTONWalletsBulk(
 			defaultString(wallet.Network, "mainnet"),
 			wallet.WalletAddress,
 			nullableString(wallet.NetworkConfigURL),
+			manifestValue(wallet.Manifest, func(manifest tonconnect.Manifest) any {
+				return manifest.URL
+			}, ""),
+			manifestValue(wallet.Manifest, func(manifest tonconnect.Manifest) any {
+				return manifest.Name
+			}, ""),
+			manifestValue(wallet.Manifest, func(manifest tonconnect.Manifest) any {
+				return manifest.IconURL
+			}, ""),
+			manifestValue(wallet.Manifest, func(manifest tonconnect.Manifest) any {
+				return nullableString(manifest.TermsOfUseURL)
+			}, nil),
+			manifestValue(wallet.Manifest, func(manifest tonconnect.Manifest) any {
+				return nullableString(manifest.PrivacyPolicyURL)
+			}, nil),
 			wallet.IsEnabled,
 		})
 		result.Imported.TONWallets++
 	}
 	return r.execImportBulk(ctx, "payment_ton_wallet",
-		[]string{"workspace_id", "network", "wallet_address", "network_config_url", "is_enabled"},
+		[]string{
+			"workspace_id",
+			"network",
+			"wallet_address",
+			"network_config_url",
+			"manifest_app_url",
+			"manifest_name",
+			"manifest_icon_url",
+			"manifest_terms_of_use_url",
+			"manifest_privacy_policy_url",
+			"is_enabled",
+		},
 		rows,
 		"(workspace_id)",
 		"network = EXCLUDED.network, wallet_address = EXCLUDED.wallet_address, "+
-			"network_config_url = EXCLUDED.network_config_url, is_enabled = EXCLUDED.is_enabled, updated_at = now()",
+			"network_config_url = EXCLUDED.network_config_url, manifest_app_url = EXCLUDED.manifest_app_url, "+
+			"manifest_name = EXCLUDED.manifest_name, manifest_icon_url = EXCLUDED.manifest_icon_url, "+
+			"manifest_terms_of_use_url = EXCLUDED.manifest_terms_of_use_url, "+
+			"manifest_privacy_policy_url = EXCLUDED.manifest_privacy_policy_url, "+
+			"is_enabled = EXCLUDED.is_enabled, updated_at = now()",
 		strategy,
 	)
+}
+
+func manifestValue(
+	manifest *tonconnect.Manifest,
+	value func(tonconnect.Manifest) any,
+	fallback any,
+) any {
+	if manifest == nil {
+		return fallback
+	}
+
+	return value(*manifest)
 }
 
 func (r *PaymentRepository) execImportBulk(
@@ -694,6 +737,11 @@ func validateExportPackage(pkg ExportPackage) error {
 		if network := defaultString(strings.TrimSpace(wallet.Network), "mainnet"); network != "mainnet" &&
 			network != "testnet" {
 			return fmt.Errorf("payment import ton_wallets[%d].network is unsupported", index)
+		}
+		if wallet.Manifest != nil {
+			if err := wallet.Manifest.Validate(); err != nil {
+				return fmt.Errorf("payment import ton_wallets[%d].manifest: %w", index, err)
+			}
 		}
 	}
 

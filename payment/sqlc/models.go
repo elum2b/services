@@ -1861,11 +1861,16 @@ type PaymentSubscriptionRenewal struct {
 }
 
 type PaymentTonWallet struct {
-	WorkspaceID      string         `json:"workspace_id"`
-	Network          string         `json:"network"`
-	WalletAddress    string         `json:"wallet_address"`
-	NetworkConfigUrl sql.NullString `json:"network_config_url"`
-	IsEnabled        bool           `json:"is_enabled"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
+	WorkspaceID              string         `json:"workspace_id"`
+	Network                  string         `json:"network"`
+	WalletAddress            string         `json:"wallet_address"`
+	NetworkConfigUrl         sql.NullString `json:"network_config_url"`
+	ManifestAppUrl           string         `json:"manifest_app_url"`
+	ManifestName             string         `json:"manifest_name"`
+	ManifestIconUrl          string         `json:"manifest_icon_url"`
+	ManifestTermsOfUseUrl    sql.NullString `json:"manifest_terms_of_use_url"`
+	ManifestPrivacyPolicyUrl sql.NullString `json:"manifest_privacy_policy_url"`
+	IsEnabled                bool           `json:"is_enabled"`
+	CreatedAt                time.Time      `json:"created_at"`
+	UpdatedAt                time.Time      `json:"updated_at"`
 }
