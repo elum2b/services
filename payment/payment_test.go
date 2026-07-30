@@ -3695,6 +3695,55 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		t.Fatalf("unexpected imported ton wallet: %+v", importedWallet)
 	}
 
+	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
+		Identity:  paymentTestIdentity(targetWorkspace, 7007, 2, "import-update-user"),
+		ProductID: productID,
+		Quantity:  1,
+		AssetCode: "RUB",
+		Locale:    "ru",
+	})
+	if err != nil {
+		t.Fatalf("create order before updating imported price: %v", err)
+	}
+	var originalPriceID uint64
+	if err := env.db.QueryRowContext(
+		env.ctx,
+		"SELECT price_id FROM payment_order WHERE id = $1",
+		order.ID,
+	).Scan(&originalPriceID); err != nil {
+		t.Fatalf("get original imported order price id: %v", err)
+	}
+	pkg.Groups[0].Products[0].Prices[0].ListAmountMinor = 1200
+	if _, err := env.api.Admin.Import(env.ctx, targetWorkspace, admin.ImportRequest{
+		Package:          pkg,
+		ConflictStrategy: repository.ImportConflictUpdate,
+	}); err != nil {
+		t.Fatalf("update imported price referenced by order: %v", err)
+	}
+	var updatedPriceID uint64
+	var updatedListAmount uint64
+	if err := env.db.QueryRowContext(
+		env.ctx,
+		`SELECT payment_order.price_id, payment_price.list_amount_minor
+FROM payment_order
+JOIN payment_price ON payment_price.id = payment_order.price_id
+WHERE payment_order.id = $1`,
+		order.ID,
+	).Scan(&updatedPriceID, &updatedListAmount); err != nil {
+		t.Fatalf("get updated imported order price: %v", err)
+	}
+	if updatedPriceID != originalPriceID || updatedListAmount != 1200 {
+		t.Fatalf(
+			"updated referenced price id/amount = %d/%d, want %d/1200",
+			updatedPriceID,
+			updatedListAmount,
+			originalPriceID,
+		)
+	}
+	if _, err := env.db.ExecContext(env.ctx, "DELETE FROM payment_order WHERE id = $1", order.ID); err != nil {
+		t.Fatalf("delete import update test order: %v", err)
+	}
+
 	pkg.Groups[0].Localization = nil
 	pkg.Groups[0].Products[0].Localization = nil
 	pkg.Groups[0].Products[0].Items = nil

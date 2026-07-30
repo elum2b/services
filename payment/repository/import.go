@@ -344,15 +344,28 @@ func (r *PaymentRepository) replaceImportedPaymentChildren(
 	}
 
 	if len(productIDs) > 0 {
-		for _, table := range []string{"payment_product_item", "payment_price"} {
-			if _, err := r.executor.ExecContext(
-				ctx,
-				"DELETE FROM "+table+" WHERE workspace_id = $1 AND product_id = ANY($2::text[])",
-				workspaceID,
-				productIDs,
-			); err != nil {
-				return err
-			}
+		if _, err := r.executor.ExecContext(
+			ctx,
+			"DELETE FROM payment_product_item WHERE workspace_id = $1 AND product_id = ANY($2::text[])",
+			workspaceID,
+			productIDs,
+		); err != nil {
+			return err
+		}
+		if _, err := r.executor.ExecContext(
+			ctx,
+			`DELETE FROM payment_price AS price
+WHERE price.workspace_id = $1
+  AND price.product_id = ANY($2::text[])
+  AND NOT EXISTS (
+      SELECT 1
+      FROM payment_order AS payment_order
+      WHERE payment_order.price_id = price.id
+  )`,
+			workspaceID,
+			productIDs,
+		); err != nil {
+			return err
 		}
 	}
 	if len(localizationKeys) == 0 {
