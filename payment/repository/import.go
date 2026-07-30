@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -98,7 +99,12 @@ func (r *PaymentRepository) Import(ctx context.Context, workspaceID string, req 
 	if err != nil {
 		return ImportResult{}, err
 	}
-	return result, r.invalidateWorkspaceCache(workspaceID)
+	cacheErr := r.invalidateWorkspaceCache(workspaceID)
+	if len(req.Package.TONWallets) > 0 {
+		cacheErr = errors.Join(cacheErr, r.invalidateTONManifestCache(workspaceID))
+	}
+
+	return result, cacheErr
 }
 
 func (r *PaymentRepository) lockWorkspaceMutation(ctx context.Context, workspaceID string) error {

@@ -19,17 +19,18 @@ import (
 )
 
 type PaymentRepository struct {
-	db                            *sqlwrap.Client
-	q                             *paymentsqlc.Queries
-	callbacks                     *callbackutil.Store
-	executor                      paymentsqlc.DBTX
-	inTx                          bool
-	timeout                       time.Duration
-	cacheL1                       time.Duration
-	cacheL2                       time.Duration
-	pendingWorkspaceInvalidations map[string]struct{}
-	pendingInvalidateAll          bool
-	onCacheInvalidationError      func(error)
+	db                              *sqlwrap.Client
+	q                               *paymentsqlc.Queries
+	callbacks                       *callbackutil.Store
+	executor                        paymentsqlc.DBTX
+	inTx                            bool
+	timeout                         time.Duration
+	cacheL1                         time.Duration
+	cacheL2                         time.Duration
+	pendingWorkspaceInvalidations   map[string]struct{}
+	pendingTONManifestInvalidations map[string]struct{}
+	pendingInvalidateAll            bool
+	onCacheInvalidationError        func(error)
 }
 
 type Options struct {
@@ -97,6 +98,7 @@ func (r *PaymentRepository) Close() error {
 
 func (r *PaymentRepository) WithTx(ctx context.Context, fn func(*PaymentRepository) error) error {
 	pendingWorkspaces := make(map[string]struct{})
+	pendingTONManifests := make(map[string]struct{})
 	pendingInvalidateAll := false
 	_, err := sqlwrap.Transaction(
 		ctx,
@@ -104,16 +106,17 @@ func (r *PaymentRepository) WithTx(ctx context.Context, fn func(*PaymentReposito
 		sqlwrap.Params{Timeout: r.timeout},
 		func(ctx context.Context, tx *sql.Tx) (struct{}, error) {
 			txRepo := &PaymentRepository{
-				db:                            r.db,
-				q:                             r.q.WithTx(tx),
-				callbacks:                     r.callbacks.WithTx(tx),
-				executor:                      tx,
-				inTx:                          true,
-				timeout:                       r.timeout,
-				cacheL1:                       r.cacheL1,
-				cacheL2:                       r.cacheL2,
-				pendingWorkspaceInvalidations: pendingWorkspaces,
-				onCacheInvalidationError:      r.onCacheInvalidationError,
+				db:                              r.db,
+				q:                               r.q.WithTx(tx),
+				callbacks:                       r.callbacks.WithTx(tx),
+				executor:                        tx,
+				inTx:                            true,
+				timeout:                         r.timeout,
+				cacheL1:                         r.cacheL1,
+				cacheL2:                         r.cacheL2,
+				pendingWorkspaceInvalidations:   pendingWorkspaces,
+				pendingTONManifestInvalidations: pendingTONManifests,
+				onCacheInvalidationError:        r.onCacheInvalidationError,
 			}
 			callbackErr := fn(txRepo)
 			pendingInvalidateAll = txRepo.pendingInvalidateAll
@@ -131,6 +134,9 @@ func (r *PaymentRepository) WithTx(ctx context.Context, fn func(*PaymentReposito
 		for workspaceID := range pendingWorkspaces {
 			cacheErr = errors.Join(cacheErr, InvalidateWorkspaceCache(r.db, workspaceID))
 		}
+	}
+	for workspaceID := range pendingTONManifests {
+		cacheErr = errors.Join(cacheErr, InvalidateTONManifestCache(r.db, workspaceID))
 	}
 	r.reportCacheInvalidationError(cacheErr)
 	return nil

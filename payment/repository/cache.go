@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	services "github.com/elum2b/services"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
@@ -10,6 +11,7 @@ import (
 )
 
 const paymentGlobalCacheScope = "*"
+const paymentTONManifestCacheTTL = time.Hour
 
 func paymentCacheKey(parts ...any) string {
 	args := append([]any{"payment"}, parts...)
@@ -41,23 +43,27 @@ func queryPaymentCache[T any](
 func queryPaymentVersionedCache[T any](
 	ctx context.Context,
 	repository *PaymentRepository,
-	scope string,
 	versionScope []any,
 	key string,
+	cacheL1 time.Duration,
+	cacheL2 time.Duration,
 	loader func(context.Context) (T, error),
 ) (T, error) {
-	_ = scope
 	return sqlwrap.Query(ctx, repository.db, sqlwrap.Params{
 		Key:               key,
 		Timeout:           repository.timeout,
-		CacheL1Delay:      repository.cacheL1,
-		CacheL2Delay:      repository.cacheL2,
+		CacheL1Delay:      cacheL1,
+		CacheL2Delay:      cacheL2,
 		CacheVersionScope: versionScope,
 	}, loader)
 }
 
 func paymentProductLimitConfigVersionScope(workspaceID string) []any {
 	return []any{"payment", "product_limit_config", workspaceID}
+}
+
+func paymentTONManifestVersionScope(workspaceID string) []any {
+	return []any{"payment", "ton_manifest", workspaceID}
 }
 
 func cloneSlice[T any](items []T) []T {
@@ -90,6 +96,17 @@ func InvalidateAllCache(db *sqlwrap.Client) error {
 	return db.BumpCacheVersion(paymentCacheVersionScope(paymentGlobalCacheScope)...)
 }
 
+func InvalidateTONManifestCache(db *sqlwrap.Client, workspaceID string) error {
+	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
+		return err
+	}
+	if db == nil {
+		return nil
+	}
+
+	return db.BumpCacheVersion(paymentTONManifestVersionScope(workspaceID)...)
+}
+
 func (r *PaymentRepository) invalidateWorkspaceCache(workspaceID string) error {
 	if r == nil {
 		return nil
@@ -115,6 +132,23 @@ func (r *PaymentRepository) invalidateAllCache() error {
 		return nil
 	}
 	err := InvalidateAllCache(r.db)
+	r.reportCacheInvalidationError(err)
+	return nil
+}
+
+func (r *PaymentRepository) invalidateTONManifestCache(workspaceID string) error {
+	if r == nil {
+		return nil
+	}
+	if r.inTx {
+		if r.pendingTONManifestInvalidations == nil {
+			r.pendingTONManifestInvalidations = make(map[string]struct{})
+		}
+		r.pendingTONManifestInvalidations[workspaceID] = struct{}{}
+		return nil
+	}
+
+	err := InvalidateTONManifestCache(r.db, workspaceID)
 	r.reportCacheInvalidationError(err)
 	return nil
 }

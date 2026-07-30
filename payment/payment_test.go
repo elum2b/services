@@ -3659,6 +3659,9 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		*pkg.TONWallets[0].Manifest != testTONConnectManifest() {
 		t.Fatalf("unexpected exported ton wallets: %+v", pkg.TONWallets)
 	}
+	if _, err := env.api.Adapters.TON.GetManifest(env.ctx, targetWorkspace); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("warm missing target manifest error = %v, want %v", err, sql.ErrNoRows)
+	}
 	if _, err := env.api.Admin.Import(env.ctx, targetWorkspace, admin.ImportRequest{
 		Package: pkg, ConflictStrategy: repository.ImportConflictUpdate,
 	}); err != nil {
@@ -3679,6 +3682,13 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	}
 	if importedWallet.Manifest != testTONConnectManifest() {
 		t.Fatalf("unexpected imported ton connect manifest: %+v", importedWallet.Manifest)
+	}
+	importedManifest, err := env.api.Adapters.TON.GetManifest(env.ctx, targetWorkspace)
+	if err != nil {
+		t.Fatalf("get imported public ton connect manifest: %v", err)
+	}
+	if importedManifest != testTONConnectManifest() {
+		t.Fatalf("unexpected imported public ton connect manifest: %+v", importedManifest)
 	}
 	if importedWallet.Network != paymentton.NetworkMainnet || importedWallet.WalletAddress != expectedWalletAddress ||
 		!importedWallet.NetworkConfigUrl.Valid || importedWallet.NetworkConfigUrl.String != walletConfigURL || !importedWallet.IsEnabled {
@@ -5309,6 +5319,20 @@ func (c *paymentSharedTestCache) Reset() error {
 
 func (c *paymentSharedTestCache) Close() error {
 	return nil
+}
+
+func (c *paymentSharedTestCache) hasEntryTTLAtLeast(minimum time.Duration) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	now := time.Now()
+	for _, entry := range c.entries {
+		if !entry.expiresAt.IsZero() && entry.expiresAt.Sub(now) >= minimum {
+			return true
+		}
+	}
+
+	return false
 }
 
 var _ Storage = (*paymentSharedTestCache)(nil)
@@ -8475,6 +8499,93 @@ func TestPaymentTONConnectManifestWorkspaceIsolation(t *testing.T) {
 	}
 	if gotFirst != firstManifest || gotSecond != secondManifest {
 		t.Fatalf("workspace manifests collided: first=%+v second=%+v", gotFirst, gotSecond)
+	}
+}
+
+func TestPaymentTONConnectManifestCacheVersion(t *testing.T) {
+	cache := newPaymentSharedTestCache()
+	options := paymentTestOptions()
+	options.Cache = cache
+	options.CacheL1Delay = time.Minute
+	options.CacheL2Delay = time.Minute
+
+	env := setupPaymentIntegrationTestWithOptions(t, options)
+	nodeB, err := NewWithDatabase(env.ctx, env.db, options)
+	if err != nil {
+		t.Fatalf("create second payment node: %v", err)
+	}
+	t.Cleanup(func() { _ = nodeB.Close() })
+
+	wallet := "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ"
+	firstManifest := tonconnect.Manifest{
+		URL:     "https://first.example.com",
+		Name:    "First",
+		IconURL: "https://first.example.com/icon.png",
+	}
+	if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
+		WorkspaceID:   testWorkspaceID,
+		Network:       paymentton.NetworkMainnet,
+		WalletAddress: wallet,
+		Manifest:      firstManifest,
+		IsEnabled:     true,
+	}); err != nil {
+		t.Fatalf("save first TON manifest: %v", err)
+	}
+
+	warm, err := nodeB.Adapters.TON.GetManifest(env.ctx, testWorkspaceID)
+	if err != nil {
+		t.Fatalf("warm TON manifest cache: %v", err)
+	}
+	if warm != firstManifest {
+		t.Fatalf("warm manifest = %+v, want %+v", warm, firstManifest)
+	}
+	if !cache.hasEntryTTLAtLeast(55 * time.Minute) {
+		t.Fatal("TON manifest cache entry does not have an approximately one hour TTL")
+	}
+
+	if _, err := env.db.ExecContext(
+		env.ctx,
+		`UPDATE payment_ton_wallet SET manifest_name = 'Direct DB update' WHERE workspace_id = $1`,
+		testWorkspaceID,
+	); err != nil {
+		t.Fatalf("update manifest without cache version bump: %v", err)
+	}
+	stillCached, err := nodeB.Adapters.TON.GetManifest(env.ctx, testWorkspaceID)
+	if err != nil {
+		t.Fatalf("read cached TON manifest: %v", err)
+	}
+	if stillCached != firstManifest {
+		t.Fatalf("manifest cache missed before version bump: %+v", stillCached)
+	}
+
+	secondManifest := tonconnect.Manifest{
+		URL:     "https://second.example.com",
+		Name:    "Second",
+		IconURL: "https://second.example.com/icon.png",
+	}
+	if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
+		WorkspaceID:   testWorkspaceID,
+		Network:       paymentton.NetworkMainnet,
+		WalletAddress: wallet,
+		Manifest:      secondManifest,
+		IsEnabled:     true,
+	}); err != nil {
+		t.Fatalf("save second TON manifest: %v", err)
+	}
+
+	updated, err := nodeB.Adapters.TON.GetManifest(env.ctx, testWorkspaceID)
+	if err != nil {
+		t.Fatalf("read invalidated TON manifest: %v", err)
+	}
+	if updated != secondManifest {
+		t.Fatalf("manifest cache was not invalidated: got %+v want %+v", updated, secondManifest)
+	}
+
+	if _, err := env.api.Admin.DeleteTONWallet(env.ctx, testWorkspaceID); err != nil {
+		t.Fatalf("delete TON wallet: %v", err)
+	}
+	if _, err := nodeB.Adapters.TON.GetManifest(env.ctx, testWorkspaceID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted wallet manifest error = %v, want %v", err, sql.ErrNoRows)
 	}
 }
 

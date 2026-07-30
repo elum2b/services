@@ -411,6 +411,13 @@ Endpoint не должен возвращать merchant wallet address, network
 публичный endpoint отвечает `404`. Ответ отдается как `application/json`,
 разрешает cross-origin `GET` и может кэшироваться публично на короткое время.
 
+`Adapters.TON.GetManifest` использует отдельный versioned workspace cache с TTL
+один час. Кэшируется как найденный manifest, так и его отсутствие.
+`SaveTONWallet`, `DeleteTONWallet` и import TON wallet configuration повышают
+версию только после успешной записи, поэтому следующий read сразу загружает
+актуальное значение, не ожидая истечения TTL. Между несколькими нодами версия
+синхронизируется через настроенный общий L2 cache.
+
 ### TON Jettons
 
 Возможности:

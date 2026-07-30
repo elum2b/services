@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
 	"github.com/elum2b/services/payment/tonconnect"
@@ -12,7 +14,11 @@ func (r *PaymentRepository) UpsertTONWallet(ctx context.Context, params payments
 		return err
 	}
 
-	return r.q.UpsertTONWallet(ctx, params)
+	if err := r.q.UpsertTONWallet(ctx, params); err != nil {
+		return err
+	}
+
+	return r.invalidateTONManifestCache(params.WorkspaceID)
 }
 
 func (r *PaymentRepository) DeleteTONWallet(ctx context.Context, workspaceID string) (int64, error) {
@@ -20,7 +26,12 @@ func (r *PaymentRepository) DeleteTONWallet(ctx context.Context, workspaceID str
 		return 0, err
 	}
 
-	return r.q.DeleteTONWallet(ctx, workspaceID)
+	rows, err := r.q.DeleteTONWallet(ctx, workspaceID)
+	if err != nil {
+		return 0, err
+	}
+
+	return rows, r.invalidateTONManifestCache(workspaceID)
 }
 
 func (r *PaymentRepository) AdminGetTONWallet(
@@ -58,16 +69,60 @@ func (r *PaymentRepository) GetEnabledTONConnectManifest(
 		return tonconnect.Manifest{}, err
 	}
 
-	row, err := r.q.GetEnabledTONConnectManifest(ctx, workspaceID)
+	entry, err := queryPaymentVersionedCache(
+		ctx,
+		r,
+		paymentTONManifestVersionScope(workspaceID),
+		paymentCacheKey("ton_manifest", workspaceID),
+		paymentTONManifestCacheTTL,
+		paymentTONManifestCacheTTL,
+		func(ctx context.Context) (tonManifestCacheEntry, error) {
+			row, err := r.q.GetEnabledTONConnectManifest(ctx, workspaceID)
+			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return tonManifestCacheEntry{}, nil
+				}
+
+				return tonManifestCacheEntry{}, err
+			}
+
+			return tonManifestCacheEntry{
+				Found: true,
+				Manifest: tonconnect.Manifest{
+					URL:              row.ManifestAppUrl,
+					Name:             row.ManifestName,
+					IconURL:          row.ManifestIconUrl,
+					TermsOfUseURL:    exportNullStringPtr(row.ManifestTermsOfUseUrl),
+					PrivacyPolicyURL: exportNullStringPtr(row.ManifestPrivacyPolicyUrl),
+				},
+			}, nil
+		},
+	)
 	if err != nil {
 		return tonconnect.Manifest{}, err
 	}
+	if !entry.Found {
+		return tonconnect.Manifest{}, sql.ErrNoRows
+	}
 
-	return tonconnect.Manifest{
-		URL:              row.ManifestAppUrl,
-		Name:             row.ManifestName,
-		IconURL:          row.ManifestIconUrl,
-		TermsOfUseURL:    exportNullStringPtr(row.ManifestTermsOfUseUrl),
-		PrivacyPolicyURL: exportNullStringPtr(row.ManifestPrivacyPolicyUrl),
-	}, nil
+	return cloneTONConnectManifest(entry.Manifest), nil
+}
+
+type tonManifestCacheEntry struct {
+	Manifest tonconnect.Manifest `json:"manifest"`
+	Found    bool                `json:"found"`
+}
+
+func cloneTONConnectManifest(manifest tonconnect.Manifest) tonconnect.Manifest {
+	clone := manifest
+	if manifest.TermsOfUseURL != nil {
+		value := *manifest.TermsOfUseURL
+		clone.TermsOfUseURL = &value
+	}
+	if manifest.PrivacyPolicyURL != nil {
+		value := *manifest.PrivacyPolicyURL
+		clone.PrivacyPolicyURL = &value
+	}
+
+	return clone
 }
