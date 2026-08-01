@@ -144,7 +144,7 @@ func (a *Payment) OnCallback(ctx context.Context, handler CallbackHandler, opts 
 		a.lifecycleMu.Unlock()
 		return ErrCallbacksRegistrationClosed
 	}
-	if a.callbacks != nil {
+	if a.callbacks != nil && !a.client.IsUnavailable() {
 		a.lifecycleMu.Unlock()
 		return a.runCallback(ctx, handler, opts...)
 	}

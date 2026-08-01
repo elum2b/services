@@ -58,6 +58,7 @@ type Options struct {
 	PlategaReconcileMinAge       time.Duration
 	PlategaReconcileMissingAfter time.Duration
 	PlategaReconcileBatch        int32
+	DisablePlategaReconcile      bool
 
 	TONWalletSyncInterval    time.Duration
 	OnCacheInvalidationError func(error)

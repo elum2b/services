@@ -76,7 +76,13 @@ type Adapters struct {
 	YooKassa      *yookassa.YooKassa
 }
 
-func New() *Payment { return newAPI(context.Background(), sqlwrap.NewUnavailable(), true, Options{}) }
+func New() *Payment {
+	return newAPI(context.Background(), sqlwrap.NewUnavailable(), true, Options{
+		DisablePriceUpdater:     true,
+		DisableOrderExpiration:  true,
+		DisablePlategaReconcile: true,
+	})
+}
 
 func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Payment, error) {
 	client, err := sqlwrap.New(db, toSQLWrapOptions(options))
@@ -277,7 +283,9 @@ func newAPI(ctx context.Context, db *sqlwrap.Client, ownsClient bool, options Op
 	if !options.DisableOrderExpiration {
 		payments.startOrderExpirationWorker()
 	}
-	payments.startPlategaReconciliationWorker()
+	if !options.DisablePlategaReconcile {
+		payments.startPlategaReconciliationWorker()
+	}
 	tonAPI.StartManagedSubscribers(rootCtx, options.TONWalletSyncInterval)
 	return payments
 }
