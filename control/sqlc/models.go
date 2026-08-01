@@ -124,6 +124,17 @@ type ControlLocalization struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
+type ControlMcpToken struct {
+	ID         string       `json:"id"`
+	AccountID  string       `json:"account_id"`
+	Name       string       `json:"name"`
+	TokenHash  string       `json:"token_hash"`
+	ExpiresAt  sql.NullTime `json:"expires_at"`
+	RevokedAt  sql.NullTime `json:"revoked_at"`
+	LastUsedAt time.Time    `json:"last_used_at"`
+	CreatedAt  time.Time    `json:"created_at"`
+}
+
 type ControlMethod struct {
 	MethodKey string         `json:"method_key"`
 	Service   string         `json:"service"`

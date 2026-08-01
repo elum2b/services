@@ -93,6 +93,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createLimitRequestStmt, err = db.PrepareContext(ctx, createLimitRequest); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateLimitRequest: %w", err)
 	}
+	if q.createMCPTokenStmt, err = db.PrepareContext(ctx, createMCPToken); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateMCPToken: %w", err)
+	}
 	if q.createPlatformStmt, err = db.PrepareContext(ctx, createPlatform); err != nil {
 		return nil, fmt.Errorf("error preparing query CreatePlatform: %w", err)
 	}
@@ -249,6 +252,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listLimitRequestsStmt, err = db.PrepareContext(ctx, listLimitRequests); err != nil {
 		return nil, fmt.Errorf("error preparing query ListLimitRequests: %w", err)
 	}
+	if q.listMCPTokensStmt, err = db.PrepareContext(ctx, listMCPTokens); err != nil {
+		return nil, fmt.Errorf("error preparing query ListMCPTokens: %w", err)
+	}
 	if q.listMethodGroupsStmt, err = db.PrepareContext(ctx, listMethodGroups); err != nil {
 		return nil, fmt.Errorf("error preparing query ListMethodGroups: %w", err)
 	}
@@ -327,6 +333,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.revokeInviteStmt, err = db.PrepareContext(ctx, revokeInvite); err != nil {
 		return nil, fmt.Errorf("error preparing query RevokeInvite: %w", err)
 	}
+	if q.revokeMCPTokenStmt, err = db.PrepareContext(ctx, revokeMCPToken); err != nil {
+		return nil, fmt.Errorf("error preparing query RevokeMCPToken: %w", err)
+	}
 	if q.revokePendingInvitesByCreatorStmt, err = db.PrepareContext(ctx, revokePendingInvitesByCreator); err != nil {
 		return nil, fmt.Errorf("error preparing query RevokePendingInvitesByCreator: %w", err)
 	}
@@ -377,6 +386,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertTwoFactorStmt, err = db.PrepareContext(ctx, upsertTwoFactor); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTwoFactor: %w", err)
+	}
+	if q.validateAndTouchMCPTokenStmt, err = db.PrepareContext(ctx, validateAndTouchMCPToken); err != nil {
+		return nil, fmt.Errorf("error preparing query ValidateAndTouchMCPToken: %w", err)
 	}
 	if q.validateAndTouchSessionStmt, err = db.PrepareContext(ctx, validateAndTouchSession); err != nil {
 		return nil, fmt.Errorf("error preparing query ValidateAndTouchSession: %w", err)
@@ -499,6 +511,11 @@ func (q *Queries) Close() error {
 	if q.createLimitRequestStmt != nil {
 		if cerr := q.createLimitRequestStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createLimitRequestStmt: %w", cerr)
+		}
+	}
+	if q.createMCPTokenStmt != nil {
+		if cerr := q.createMCPTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createMCPTokenStmt: %w", cerr)
 		}
 	}
 	if q.createPlatformStmt != nil {
@@ -761,6 +778,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listLimitRequestsStmt: %w", cerr)
 		}
 	}
+	if q.listMCPTokensStmt != nil {
+		if cerr := q.listMCPTokensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listMCPTokensStmt: %w", cerr)
+		}
+	}
 	if q.listMethodGroupsStmt != nil {
 		if cerr := q.listMethodGroupsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listMethodGroupsStmt: %w", cerr)
@@ -891,6 +913,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing revokeInviteStmt: %w", cerr)
 		}
 	}
+	if q.revokeMCPTokenStmt != nil {
+		if cerr := q.revokeMCPTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing revokeMCPTokenStmt: %w", cerr)
+		}
+	}
 	if q.revokePendingInvitesByCreatorStmt != nil {
 		if cerr := q.revokePendingInvitesByCreatorStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing revokePendingInvitesByCreatorStmt: %w", cerr)
@@ -976,6 +1003,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertTwoFactorStmt: %w", cerr)
 		}
 	}
+	if q.validateAndTouchMCPTokenStmt != nil {
+		if cerr := q.validateAndTouchMCPTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing validateAndTouchMCPTokenStmt: %w", cerr)
+		}
+	}
 	if q.validateAndTouchSessionStmt != nil {
 		if cerr := q.validateAndTouchSessionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing validateAndTouchSessionStmt: %w", cerr)
@@ -1043,6 +1075,7 @@ type Queries struct {
 	createGlobalRoleStmt                         *sql.Stmt
 	createInviteStmt                             *sql.Stmt
 	createLimitRequestStmt                       *sql.Stmt
+	createMCPTokenStmt                           *sql.Stmt
 	createPlatformStmt                           *sql.Stmt
 	createSessionStmt                            *sql.Stmt
 	createTwoFactorChallengeStmt                 *sql.Stmt
@@ -1095,6 +1128,7 @@ type Queries struct {
 	listInviteGlobalRolesStmt                    *sql.Stmt
 	listInviteWorkspaceRolesStmt                 *sql.Stmt
 	listLimitRequestsStmt                        *sql.Stmt
+	listMCPTokensStmt                            *sql.Stmt
 	listMethodGroupsStmt                         *sql.Stmt
 	listMethodsStmt                              *sql.Stmt
 	listPlatformMembersStmt                      *sql.Stmt
@@ -1121,6 +1155,7 @@ type Queries struct {
 	resolveLimitRequestStmt                      *sql.Stmt
 	revokeAllSessionsStmt                        *sql.Stmt
 	revokeInviteStmt                             *sql.Stmt
+	revokeMCPTokenStmt                           *sql.Stmt
 	revokePendingInvitesByCreatorStmt            *sql.Stmt
 	revokePendingWorkspaceInvitesByCreatorStmt   *sql.Stmt
 	revokeSessionStmt                            *sql.Stmt
@@ -1138,6 +1173,7 @@ type Queries struct {
 	upsertMethodStmt                             *sql.Stmt
 	upsertMethodGroupStmt                        *sql.Stmt
 	upsertTwoFactorStmt                          *sql.Stmt
+	validateAndTouchMCPTokenStmt                 *sql.Stmt
 	validateAndTouchSessionStmt                  *sql.Stmt
 }
 
@@ -1168,6 +1204,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createGlobalRoleStmt:                         q.createGlobalRoleStmt,
 		createInviteStmt:                             q.createInviteStmt,
 		createLimitRequestStmt:                       q.createLimitRequestStmt,
+		createMCPTokenStmt:                           q.createMCPTokenStmt,
 		createPlatformStmt:                           q.createPlatformStmt,
 		createSessionStmt:                            q.createSessionStmt,
 		createTwoFactorChallengeStmt:                 q.createTwoFactorChallengeStmt,
@@ -1220,6 +1257,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listInviteGlobalRolesStmt:                    q.listInviteGlobalRolesStmt,
 		listInviteWorkspaceRolesStmt:                 q.listInviteWorkspaceRolesStmt,
 		listLimitRequestsStmt:                        q.listLimitRequestsStmt,
+		listMCPTokensStmt:                            q.listMCPTokensStmt,
 		listMethodGroupsStmt:                         q.listMethodGroupsStmt,
 		listMethodsStmt:                              q.listMethodsStmt,
 		listPlatformMembersStmt:                      q.listPlatformMembersStmt,
@@ -1246,6 +1284,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		resolveLimitRequestStmt:                      q.resolveLimitRequestStmt,
 		revokeAllSessionsStmt:                        q.revokeAllSessionsStmt,
 		revokeInviteStmt:                             q.revokeInviteStmt,
+		revokeMCPTokenStmt:                           q.revokeMCPTokenStmt,
 		revokePendingInvitesByCreatorStmt:            q.revokePendingInvitesByCreatorStmt,
 		revokePendingWorkspaceInvitesByCreatorStmt:   q.revokePendingWorkspaceInvitesByCreatorStmt,
 		revokeSessionStmt:                            q.revokeSessionStmt,
@@ -1263,6 +1302,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertMethodStmt:                             q.upsertMethodStmt,
 		upsertMethodGroupStmt:                        q.upsertMethodGroupStmt,
 		upsertTwoFactorStmt:                          q.upsertTwoFactorStmt,
+		validateAndTouchMCPTokenStmt:                 q.validateAndTouchMCPTokenStmt,
 		validateAndTouchSessionStmt:                  q.validateAndTouchSessionStmt,
 	}
 }

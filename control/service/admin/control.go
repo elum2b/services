@@ -1059,6 +1059,19 @@ func mapSession(value repository.Session) SessionModel {
 
 }
 
+func mapMCPToken(value repository.MCPToken) MCPTokenModel {
+
+	return MCPTokenModel{
+		ID:         value.ID,
+		AccountID:  value.AccountID,
+		Name:       value.Name,
+		ExpiresAt:  value.ExpiresAt,
+		RevokedAt:  value.RevokedAt,
+		LastUsedAt: value.LastUsedAt,
+		CreatedAt:  value.CreatedAt,
+	}
+}
+
 func mapWorkspace(value repository.Workspace) WorkspaceModel {
 
 	return WorkspaceModel{

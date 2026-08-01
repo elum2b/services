@@ -72,6 +72,16 @@ type Session struct {
 	CreatedAt  time.Time
 }
 
+type MCPToken struct {
+	ID         string
+	AccountID  string
+	Name       string
+	ExpiresAt  *time.Time
+	RevokedAt  *time.Time
+	LastUsedAt time.Time
+	CreatedAt  time.Time
+}
+
 type Platform struct {
 	OwnerAccountID string
 	InitializedBy  string

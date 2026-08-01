@@ -74,6 +74,24 @@ CREATE TABLE IF NOT EXISTS control_session (
 CREATE INDEX IF NOT EXISTS control_session_account_created_idx
     ON control_session (account_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS control_mcp_token (
+    id VARCHAR(64) NOT NULL,
+    account_id VARCHAR(64) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    token_hash CHAR(64) NOT NULL,
+    expires_at TIMESTAMPTZ NULL,
+    revoked_at TIMESTAMPTZ NULL,
+    last_used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id),
+    CONSTRAINT control_mcp_token_hash_uq UNIQUE (token_hash),
+    CONSTRAINT control_mcp_token_account_fk FOREIGN KEY (account_id)
+        REFERENCES control_account (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS control_mcp_token_account_created_idx
+    ON control_mcp_token (account_id, created_at DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS control_access_service (
     service VARCHAR(64) NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,

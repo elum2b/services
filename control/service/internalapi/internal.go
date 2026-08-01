@@ -3,6 +3,7 @@ package internalapi
 import (
 	"context"
 	"strings"
+	"time"
 
 	controlmodel "github.com/elum2b/services/control/model"
 	"github.com/elum2b/services/control/repository"
@@ -48,6 +49,18 @@ type AuthorizedMethod struct {
 	GroupKey string
 	Scope    AccessScope
 	Position int32
+}
+
+type MCPPrincipal struct {
+	AccountID   string
+	DisplayName string
+	TokenID     string
+	TokenName   string
+	ExpiresAt   *time.Time
+}
+
+type ValidateMCPTokenRequest struct {
+	Token string
 }
 
 type AuditEventParams struct {
@@ -129,6 +142,28 @@ func (i *Internal) CheckGlobalAccess(
 		strings.TrimSpace(value.MethodKey),
 	)
 
+}
+
+func (i *Internal) ValidateMCPToken(ctx context.Context, value ValidateMCPTokenRequest) (MCPPrincipal, error) {
+
+	mergedCtx, cancel := i.withContext(ctx)
+	defer cancel()
+
+	token, err := i.repository.ValidateMCPToken(mergedCtx, strings.TrimSpace(value.Token))
+	if err != nil {
+		return MCPPrincipal{}, err
+	}
+	account, err := i.repository.GetAccount(mergedCtx, token.AccountID)
+	if err != nil {
+		return MCPPrincipal{}, err
+	}
+	return MCPPrincipal{
+		AccountID:   account.ID,
+		DisplayName: account.DisplayName,
+		TokenID:     token.ID,
+		TokenName:   token.Name,
+		ExpiresAt:   token.ExpiresAt,
+	}, nil
 }
 
 func (i *Internal) CheckWorkspaceAccess(

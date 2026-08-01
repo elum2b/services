@@ -173,6 +173,41 @@ WHERE account_id = $1
   AND revoked_at IS NULL
   AND ($2 = '' OR id <> $2);
 
+-- name: CreateMCPToken :one
+INSERT INTO control_mcp_token (id, account_id, name, token_hash, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, account_id, name, token_hash, expires_at, revoked_at, last_used_at, created_at;
+
+-- name: ListMCPTokens :many
+SELECT id, account_id, name, token_hash, expires_at, revoked_at, last_used_at, created_at
+FROM control_mcp_token
+WHERE account_id = $1
+ORDER BY created_at DESC, id DESC;
+
+-- name: RevokeMCPToken :execrows
+UPDATE control_mcp_token
+SET revoked_at = now()
+WHERE id = $1
+  AND account_id = $2
+  AND revoked_at IS NULL;
+
+-- name: ValidateAndTouchMCPToken :one
+UPDATE control_mcp_token token
+SET last_used_at = CASE
+    WHEN token.last_used_at < now() - INTERVAL '5 minutes' THEN now()
+    ELSE token.last_used_at
+END
+FROM control_account account
+JOIN control_platform_member member ON member.account_id = account.id
+WHERE token.token_hash = $1
+  AND token.account_id = account.id
+  AND token.revoked_at IS NULL
+  AND (token.expires_at IS NULL OR token.expires_at > now())
+  AND account.status = 'active'
+  AND member.status = 'active'
+RETURNING token.id, token.account_id, token.name, token.token_hash,
+          token.expires_at, token.revoked_at, token.last_used_at, token.created_at;
+
 -- name: GetGlobalAuthorizationForUpdate :one
 SELECT
     p.owner_account_id = sqlc.arg(actor_id)::text AS actor_is_owner,

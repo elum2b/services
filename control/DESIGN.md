@@ -31,6 +31,21 @@ Telegram WebApp init data проверяется адаптером и по ум
 пять минут. После успешной проверки `control` выпускает собственную session,
 поэтому Telegram init data не используется для последующих запросов.
 
+## MCP-токены
+
+MCP-токен — отдельный длительный bearer secret для внешнего MCP transport. Он
+не является `control_session`, не передаётся через cookie и не привязывается к
+IP. В БД хранится только SHA-256 hash; исходный `mcp_...` secret возвращается
+ровно при выпуске. Срок — `never`, целое число дней или календарных месяцев;
+отзыв необратим.
+
+При проверке токена `control` одновременно проверяет срок, отзыв, active
+account и active platform membership. Principal содержит account и metadata
+токена. MCP transport получает фактические текущие права через существующие
+`GetAuthorizedGlobalMethods` и `GetAuthorizedWorkspaceMethods`, поэтому отзыв
+роли, удаление из workspace, удаление platform member или блокировка account
+немедленно ограничивают токен без его перевыпуска.
+
 ## Два уровня доступа
 
 Глобальный уровень управляет платформой:

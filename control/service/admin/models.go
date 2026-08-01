@@ -62,6 +62,49 @@ type SessionModel struct {
 	CreatedAt  time.Time
 }
 
+type MCPTokenLifetimeKind string
+
+const (
+	MCPTokenLifetimeNever  MCPTokenLifetimeKind = "never"
+	MCPTokenLifetimeDays   MCPTokenLifetimeKind = "days"
+	MCPTokenLifetimeMonths MCPTokenLifetimeKind = "months"
+)
+
+type MCPTokenLifetime struct {
+	Kind   MCPTokenLifetimeKind
+	Amount int32
+}
+
+type MCPTokenModel struct {
+	ID         string
+	AccountID  string
+	Name       string
+	ExpiresAt  *time.Time
+	RevokedAt  *time.Time
+	LastUsedAt time.Time
+	CreatedAt  time.Time
+}
+
+type CreateMCPTokenParams struct {
+	AccountID string
+	Name      string
+	Lifetime  MCPTokenLifetime
+}
+
+type CreateMCPTokenResult struct {
+	Token    MCPTokenModel
+	RawToken string
+}
+
+type ListMCPTokensParams struct {
+	AccountID string
+}
+
+type RevokeMCPTokenParams struct {
+	AccountID string
+	TokenID   string
+}
+
 type AuthIdentityParams struct {
 	Provider    string
 	Subject     string

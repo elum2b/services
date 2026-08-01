@@ -538,6 +538,42 @@ func (q *Queries) CreateLimitRequest(ctx context.Context, arg CreateLimitRequest
 	return result.RowsAffected()
 }
 
+const createMCPToken = `-- name: CreateMCPToken :one
+INSERT INTO control_mcp_token (id, account_id, name, token_hash, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, account_id, name, token_hash, expires_at, revoked_at, last_used_at, created_at
+`
+
+type CreateMCPTokenParams struct {
+	ID        string       `json:"id"`
+	AccountID string       `json:"account_id"`
+	Name      string       `json:"name"`
+	TokenHash string       `json:"token_hash"`
+	ExpiresAt sql.NullTime `json:"expires_at"`
+}
+
+func (q *Queries) CreateMCPToken(ctx context.Context, arg CreateMCPTokenParams) (ControlMcpToken, error) {
+	row := q.queryRow(ctx, q.createMCPTokenStmt, createMCPToken,
+		arg.ID,
+		arg.AccountID,
+		arg.Name,
+		arg.TokenHash,
+		arg.ExpiresAt,
+	)
+	var i ControlMcpToken
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.Name,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.LastUsedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createPlatform = `-- name: CreatePlatform :exec
 INSERT INTO control_platform (id, owner_account_id, initialized_by)
 VALUES (1, $1, $1)
@@ -2262,6 +2298,45 @@ func (q *Queries) ListLimitRequests(ctx context.Context, arg ListLimitRequestsPa
 	return items, nil
 }
 
+const listMCPTokens = `-- name: ListMCPTokens :many
+SELECT id, account_id, name, token_hash, expires_at, revoked_at, last_used_at, created_at
+FROM control_mcp_token
+WHERE account_id = $1
+ORDER BY created_at DESC, id DESC
+`
+
+func (q *Queries) ListMCPTokens(ctx context.Context, accountID string) ([]ControlMcpToken, error) {
+	rows, err := q.query(ctx, q.listMCPTokensStmt, listMCPTokens, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ControlMcpToken
+	for rows.Next() {
+		var i ControlMcpToken
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.Name,
+			&i.TokenHash,
+			&i.ExpiresAt,
+			&i.RevokedAt,
+			&i.LastUsedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMethodGroups = `-- name: ListMethodGroups :many
 SELECT service, group_key, position, created_at, updated_at
 FROM control_method_group
@@ -3060,6 +3135,27 @@ func (q *Queries) RevokeInvite(ctx context.Context, id string) (int64, error) {
 	return result.RowsAffected()
 }
 
+const revokeMCPToken = `-- name: RevokeMCPToken :execrows
+UPDATE control_mcp_token
+SET revoked_at = now()
+WHERE id = $1
+  AND account_id = $2
+  AND revoked_at IS NULL
+`
+
+type RevokeMCPTokenParams struct {
+	ID        string `json:"id"`
+	AccountID string `json:"account_id"`
+}
+
+func (q *Queries) RevokeMCPToken(ctx context.Context, arg RevokeMCPTokenParams) (int64, error) {
+	result, err := q.exec(ctx, q.revokeMCPTokenStmt, revokeMCPToken, arg.ID, arg.AccountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const revokePendingInvitesByCreator = `-- name: RevokePendingInvitesByCreator :execrows
 UPDATE control_invite
 SET revoked_at = now()
@@ -3437,6 +3533,40 @@ type UpsertTwoFactorParams struct {
 func (q *Queries) UpsertTwoFactor(ctx context.Context, arg UpsertTwoFactorParams) error {
 	_, err := q.exec(ctx, q.upsertTwoFactorStmt, upsertTwoFactor, arg.AccountID, arg.Secret, arg.BackupHashes)
 	return err
+}
+
+const validateAndTouchMCPToken = `-- name: ValidateAndTouchMCPToken :one
+UPDATE control_mcp_token token
+SET last_used_at = CASE
+    WHEN token.last_used_at < now() - INTERVAL '5 minutes' THEN now()
+    ELSE token.last_used_at
+END
+FROM control_account account
+JOIN control_platform_member member ON member.account_id = account.id
+WHERE token.token_hash = $1
+  AND token.account_id = account.id
+  AND token.revoked_at IS NULL
+  AND (token.expires_at IS NULL OR token.expires_at > now())
+  AND account.status = 'active'
+  AND member.status = 'active'
+RETURNING token.id, token.account_id, token.name, token.token_hash,
+          token.expires_at, token.revoked_at, token.last_used_at, token.created_at
+`
+
+func (q *Queries) ValidateAndTouchMCPToken(ctx context.Context, tokenHash string) (ControlMcpToken, error) {
+	row := q.queryRow(ctx, q.validateAndTouchMCPTokenStmt, validateAndTouchMCPToken, tokenHash)
+	var i ControlMcpToken
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.Name,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.LastUsedAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const validateAndTouchSession = `-- name: ValidateAndTouchSession :one

@@ -69,6 +69,82 @@ func TestControlInitializationAndInvitationOnlyRegistration(t *testing.T) {
 
 }
 
+func TestControlMCPTokenLifecycleAndPrincipal(t *testing.T) {
+
+	service := newControlTestService(t)
+	ctx := context.Background()
+	owner := initializeControl(t, service, "owner")
+
+	created, err := service.Admin.CreateMCPToken(ctx, admin.CreateMCPTokenParams{
+		AccountID: owner.Account.ID,
+		Name:      "Claude Desktop",
+		Lifetime: admin.MCPTokenLifetime{
+			Kind:   admin.MCPTokenLifetimeDays,
+			Amount: 7,
+		},
+	})
+	if err != nil {
+		t.Fatalf("create MCP token: %v", err)
+	}
+	if !strings.HasPrefix(created.RawToken, "mcp_") || created.Token.ExpiresAt == nil {
+		t.Fatalf("unexpected created MCP token: %#v", created)
+	}
+
+	principal, err := service.Internal.ValidateMCPToken(ctx, internalapi.ValidateMCPTokenRequest{
+		Token: created.RawToken,
+	})
+	if err != nil {
+		t.Fatalf("validate MCP token: %v", err)
+	}
+	if principal.AccountID != owner.Account.ID || principal.TokenID != created.Token.ID ||
+		principal.TokenName != "Claude Desktop" {
+		t.Fatalf("unexpected MCP principal: %#v", principal)
+	}
+
+	globalMethods, err := service.Internal.GetAuthorizedGlobalMethods(ctx, principal.AccountID)
+	if err != nil {
+		t.Fatalf("get MCP principal global permissions: %v", err)
+	}
+	if len(globalMethods) == 0 {
+		t.Fatal("platform owner has no global permissions")
+	}
+
+	tokens, err := service.Admin.ListMCPTokens(ctx, admin.ListMCPTokensParams{AccountID: owner.Account.ID})
+	if err != nil || len(tokens) != 1 || tokens[0].ID != created.Token.ID {
+		t.Fatalf("list MCP tokens = %#v, err=%v", tokens, err)
+	}
+	if _, err := service.Admin.RevokeMCPToken(ctx, admin.RevokeMCPTokenParams{
+		AccountID: owner.Account.ID,
+		TokenID:   created.Token.ID,
+	}); err != nil {
+		t.Fatalf("revoke MCP token: %v", err)
+	}
+	if _, err := service.Internal.ValidateMCPToken(ctx, internalapi.ValidateMCPTokenRequest{
+		Token: created.RawToken,
+	}); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("revoked MCP token validation error = %v", err)
+	}
+
+	never, err := service.Admin.CreateMCPToken(ctx, admin.CreateMCPTokenParams{
+		AccountID: owner.Account.ID,
+		Name:      "Local agent",
+		Lifetime:  admin.MCPTokenLifetime{Kind: admin.MCPTokenLifetimeNever},
+	})
+	if err != nil || never.Token.ExpiresAt != nil {
+		t.Fatalf("create never-expiring MCP token = %#v, err=%v", never, err)
+	}
+	if _, err := service.Admin.CreateMCPToken(ctx, admin.CreateMCPTokenParams{
+		AccountID: owner.Account.ID,
+		Name:      "invalid",
+		Lifetime: admin.MCPTokenLifetime{
+			Kind:   admin.MCPTokenLifetimeMonths,
+			Amount: 0,
+		},
+	}); !errors.Is(err, repository.ErrInvalidArgument) {
+		t.Fatalf("invalid MCP lifetime error = %v", err)
+	}
+}
+
 func TestControlWorkspaceLimitCountsOwnershipOnly(t *testing.T) {
 
 	service := newControlTestService(t)
