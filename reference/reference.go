@@ -27,12 +27,11 @@ type Reference struct {
 	rootCancel context.CancelFunc
 
 	lifecycleMu sync.Mutex
-	params      DatabaseParams
 	running     bool
 }
 
-func New(params DatabaseParams) *Reference {
-	return &Reference{params: params}
+func New() *Reference {
+	return newReference(context.Background(), sqlwrap.NewUnavailable(), true, Options{})
 }
 
 func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Reference, error) {
@@ -43,7 +42,7 @@ func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Referen
 	return newReference(ctx, client, false, options), nil
 }
 
-func (r *Reference) Run(ctx context.Context) error {
+func (r *Reference) Run(ctx context.Context, params DatabaseParams) error {
 	if r == nil {
 		return ErrServiceNil
 	}
@@ -53,7 +52,6 @@ func (r *Reference) Run(ctx context.Context) error {
 		return ErrServiceRunning
 	}
 	r.running = true
-	params := r.params
 	r.lifecycleMu.Unlock()
 
 	running, err := open(ctx, params)
@@ -177,5 +175,5 @@ func (r *Reference) IsReady() bool {
 	}
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
-	return r.rootCtx != nil && r.rootCtx.Err() == nil && r.Admin != nil && r.User != nil
+	return r.rootCtx != nil && r.rootCtx.Err() == nil && !r.client.IsUnavailable() && r.Admin != nil && r.User != nil
 }

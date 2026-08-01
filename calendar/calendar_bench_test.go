@@ -503,7 +503,7 @@ func BenchmarkCalendarLifecycle(b *testing.B) {
 	b.ReportAllocs()
 	b.Run("NewClose", func(b *testing.B) {
 		for range b.N {
-			service := New(DatabaseParams{})
+			service := New()
 			benchmarkError(b, service.Close())
 		}
 	})
@@ -518,7 +518,7 @@ func BenchmarkCalendarLifecycle(b *testing.B) {
 		for range b.N {
 			runCtx, cancel := context.WithCancel(ctx)
 			cancel()
-			benchmarkError(b, New(params).Run(runCtx))
+			benchmarkError(b, New().Run(runCtx, params))
 		}
 	})
 }

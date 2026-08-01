@@ -31,14 +31,11 @@ type CPA struct {
 	goroutines *goroutinemanager.Manager
 
 	lifecycleMu    sync.Mutex
-	params         DatabaseParams
 	callbacksToRun []callbackRegistration
 	running        bool
 }
 
-func New(params DatabaseParams) *CPA {
-	return &CPA{params: params}
-}
+func New() *CPA { return newCPA(context.Background(), sqlwrap.NewUnavailable(), true, Options{}) }
 
 func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*CPA, error) {
 	options = normalizeOptions(options)
@@ -49,7 +46,7 @@ func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*CPA, er
 	return newCPA(ctx, client, false, options), nil
 }
 
-func (c *CPA) Run(ctx context.Context) error {
+func (c *CPA) Run(ctx context.Context, params DatabaseParams) error {
 	if c == nil {
 		return ErrServiceNil
 	}
@@ -59,7 +56,6 @@ func (c *CPA) Run(ctx context.Context) error {
 		return ErrServiceRunning
 	}
 	c.running = true
-	params := c.params
 	registrations := append([]callbackRegistration(nil), c.callbacksToRun...)
 	c.lifecycleMu.Unlock()
 
@@ -78,7 +74,6 @@ func (c *CPA) Run(ctx context.Context) error {
 
 	errCh := make(chan error, len(registrations))
 	for _, registration := range registrations {
-		registration := registration
 		c.goroutines.Go("cpa.callback", func() {
 			errCh <- c.runCallback(registration.ctx, registration.handler, registration.options...)
 		})
@@ -213,7 +208,7 @@ func (c *CPA) IsReady() bool {
 	}
 	c.lifecycleMu.Lock()
 	defer c.lifecycleMu.Unlock()
-	return c.rootCtx != nil && c.rootCtx.Err() == nil && c.Admin != nil && c.User != nil
+	return c.rootCtx != nil && c.rootCtx.Err() == nil && !c.client.IsUnavailable() && c.Admin != nil && c.User != nil
 }
 
 func (c *CPA) bindContext(ctx context.Context) (context.Context, context.CancelFunc) {

@@ -648,7 +648,7 @@ func BenchmarkTasksLifecycle(b *testing.B) {
 	b.ReportAllocs()
 	b.Run("NewClose", func(b *testing.B) {
 		for range b.N {
-			service := New(DatabaseParams{})
+			service := New()
 			benchError(b, service.Close())
 		}
 	})
@@ -660,7 +660,7 @@ func BenchmarkTasksLifecycle(b *testing.B) {
 		for range b.N {
 			runCtx, cancel := context.WithCancel(ctx)
 			cancel()
-			benchError(b, New(params).Run(runCtx))
+			benchError(b, New().Run(runCtx, params))
 		}
 	})
 }

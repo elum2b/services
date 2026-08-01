@@ -22,12 +22,15 @@ func TestIsReady(t *testing.T) {
 	if nilService.IsReady() {
 		t.Fatal("nil promo must not be ready")
 	}
-	service := New(DatabaseParams{})
+	service := New()
 	if service.IsReady() {
 		t.Fatal("uninitialized promo must not be ready")
 	}
+	if _, err := service.Admin.GetPromo(context.Background(), "00000000-0000-0000-0000-000000000001", 1); !errors.Is(err, sqlwrap.ErrServiceNotReady) {
+		t.Fatalf("unready promo admin error = %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	service.rootCtx, service.Admin, service.User = ctx, &admin.Admin{}, &user.User{}
+	service.rootCtx, service.client, service.Admin, service.User = ctx, &sqlwrap.Client{}, &admin.Admin{}, &user.User{}
 	if !service.IsReady() {
 		t.Fatal("initialized promo must be ready")
 	}
@@ -39,18 +42,19 @@ func TestIsReady(t *testing.T) {
 
 func TestPromoRunBlocksUntilContextCanceled(t *testing.T) {
 	newPromoTestService(t)
-	service := New(DatabaseParams{
+	params := DatabaseParams{
 		User:     promoTestPGUser,
 		Password: promoTestPGPassword,
 		Database: promoTestDB,
 		Host:     promoTestPGHost,
 		Port:     promoTestPGPort,
 		Options:  promoTestOptions(),
-	})
+	}
+	service := New()
 	runCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- service.Run(runCtx)
+		done <- service.Run(runCtx, params)
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -68,7 +72,7 @@ func TestPromoRunBlocksUntilContextCanceled(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if err := service.Run(context.Background()); !errors.Is(err, ErrServiceRunning) {
+	if err := service.Run(context.Background(), params); !errors.Is(err, ErrServiceRunning) {
 		cancel()
 		t.Fatalf("second Run error = %v, want ErrServiceRunning", err)
 	}

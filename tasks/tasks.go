@@ -36,15 +36,12 @@ type Tasks struct {
 	goroutines *goroutinemanager.Manager
 
 	lifecycleMu    sync.Mutex
-	params         DatabaseParams
 	options        Options
 	callbacksToRun []callbackRegistration
 	running        bool
 }
 
-func New(params DatabaseParams) *Tasks {
-	return &Tasks{params: params, options: params.Options}
-}
+func New() *Tasks { return newTasks(context.Background(), sqlwrap.NewUnavailable(), true, Options{}) }
 
 func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Tasks, error) {
 	client, err := sqlwrap.New(db, toSQLWrapOptions(options))
@@ -56,7 +53,7 @@ func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Tasks, 
 	return service, nil
 }
 
-func (t *Tasks) Run(ctx context.Context) error {
+func (t *Tasks) Run(ctx context.Context, params DatabaseParams) error {
 	if t == nil {
 		return ErrServiceNil
 	}
@@ -66,7 +63,7 @@ func (t *Tasks) Run(ctx context.Context) error {
 		return ErrServiceRunning
 	}
 	t.running = true
-	params := t.params
+	t.options = params.Options
 	registrations := append([]callbackRegistration(nil), t.callbacksToRun...)
 	t.lifecycleMu.Unlock()
 
@@ -296,7 +293,7 @@ func (t *Tasks) IsReady() bool {
 	}
 	t.lifecycleMu.Lock()
 	defer t.lifecycleMu.Unlock()
-	return t.rootCtx != nil && t.rootCtx.Err() == nil &&
+	return t.rootCtx != nil && t.rootCtx.Err() == nil && !t.client.IsUnavailable() &&
 		t.Admin != nil && t.Internal != nil && t.Integration != nil && t.User != nil
 }
 

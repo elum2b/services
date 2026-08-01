@@ -30,13 +30,12 @@ type Calendar struct {
 	goroutines *goroutinemanager.Manager
 
 	lifecycleMu    sync.Mutex
-	params         DatabaseParams
 	callbacksToRun []callbackRegistration
 	running        bool
 }
 
-func New(params DatabaseParams) *Calendar {
-	return &Calendar{params: params}
+func New() *Calendar {
+	return newCalendar(context.Background(), sqlwrap.NewUnavailable(), true, Options{})
 }
 
 func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Calendar, error) {
@@ -47,7 +46,7 @@ func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Calenda
 	return newCalendar(ctx, client, false, options), nil
 }
 
-func (c *Calendar) Run(ctx context.Context) error {
+func (c *Calendar) Run(ctx context.Context, params DatabaseParams) error {
 	if c == nil {
 		return ErrServiceNil
 	}
@@ -57,7 +56,6 @@ func (c *Calendar) Run(ctx context.Context) error {
 		return ErrServiceRunning
 	}
 	c.running = true
-	params := c.params
 	registrations := append([]callbackRegistration(nil), c.callbacksToRun...)
 	c.lifecycleMu.Unlock()
 
@@ -209,7 +207,7 @@ func (c *Calendar) IsReady() bool {
 	}
 	c.lifecycleMu.Lock()
 	defer c.lifecycleMu.Unlock()
-	return c.rootCtx != nil && c.rootCtx.Err() == nil && c.Admin != nil && c.User != nil
+	return c.rootCtx != nil && c.rootCtx.Err() == nil && !c.client.IsUnavailable() && c.Admin != nil && c.User != nil
 }
 
 func (c *Calendar) bindContext(ctx context.Context) (context.Context, context.CancelFunc) {

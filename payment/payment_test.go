@@ -526,12 +526,15 @@ func TestIsReady(t *testing.T) {
 	if nilService.IsReady() {
 		t.Fatal("nil payment must not be ready")
 	}
-	service := New(DatabaseParams{})
+	service := New()
 	if service.IsReady() {
 		t.Fatal("uninitialized payment must not be ready")
 	}
+	if _, err := service.User.ListUSDTPrices(context.Background(), user.ListUSDTPricesParams{}); !errors.Is(err, sqlwrap.ErrServiceNotReady) {
+		t.Fatalf("unready payment user error = %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	service.rootCtx, service.Admin, service.Operational, service.User = ctx, &admin.Admin{}, &operational.Operational{}, &user.User{}
+	service.rootCtx, service.client, service.Admin, service.Operational, service.User = ctx, &sqlwrap.Client{}, &admin.Admin{}, &operational.Operational{}, &user.User{}
 	service.Adapters = &Adapters{}
 	if !service.IsReady() {
 		t.Fatal("initialized payment must be ready")
@@ -669,17 +672,18 @@ func TestRunCreatesDatabaseSchemaAndCallbackTable(t *testing.T) {
 	}
 	defer appDB.Close()
 
-	service := New(DatabaseParams{
+	params := DatabaseParams{
 		User:     paymentPostgresUsername,
 		Password: paymentPostgresPassword,
 		Database: database,
 		Host:     paymentPostgresHost,
 		Port:     paymentPostgresPort,
-	})
+	}
+	service := New()
 	runCtx, stop := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
-		done <- service.Run(runCtx)
+		done <- service.Run(runCtx, params)
 	}()
 
 	deadline := time.Now().Add(10 * time.Second)
@@ -3108,13 +3112,14 @@ func TestPaymentOptionAdaptersAreNilSafe(t *testing.T) {
 func TestPaymentRunBlocksUntilContextCanceled(t *testing.T) {
 	setupPaymentIntegrationTest(t)
 
-	service := New(DatabaseParams{
+	params := DatabaseParams{
 		User:     mysqlControlUsername,
 		Password: mysqlControlPassword,
 		Database: paymentTestDB,
 		Host:     mysqlControlHost,
 		Port:     paymentPostgresPort,
-	})
+	}
+	service := New()
 	if err := service.OnCallback(context.Background(), func(ctx Context) error {
 		return ctx.Successful()
 	},
@@ -3129,7 +3134,7 @@ func TestPaymentRunBlocksUntilContextCanceled(t *testing.T) {
 	runCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- service.Run(runCtx)
+		done <- service.Run(runCtx, params)
 	}()
 
 	select {

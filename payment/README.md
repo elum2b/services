@@ -21,7 +21,9 @@
 
 ## Состав API
 
-Сервис собирается через `payment.New(db)` и предоставляет несколько независимых областей:
+Сервис создаётся через `payment.New()`, затем запускается вызовом
+`Run(ctx, payment.DatabaseParams{...})`. Для тестов и embedding с уже открытой
+БД используется `payment.NewWithDatabase`.
 
 - `Asset` - управление активами, валютами и связями provider-asset.
 - `Product` - каталог товаров, групп, item-ов, локализаций, цен и purchase keys.

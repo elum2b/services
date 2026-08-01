@@ -3,16 +3,20 @@ package sql
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"sync"
 	"time"
+
+	serviceerrors "github.com/elum2b/services/errors"
 )
 
 const defaultQueryTimeout = time.Second
 
 var (
 	// ErrNilDB is returned when a nil *sql.DB is passed.
-	ErrNilDB = errors.New("sqlcwrap: nil db")
+	ErrNilDB           = errors.New("sqlcwrap: nil db")
+	ErrServiceNotReady = serviceerrors.New(serviceerrors.CodeNotReady, "service is not ready")
 )
 
 // Client is a sqlc-oriented DB wrapper with timeout + L1/L2 cache support.
@@ -27,6 +31,7 @@ type Client struct {
 	l2Expiry      sync.Map
 	cacheVersions sync.Map
 	CacheEnabled  bool
+	unavailable   bool
 }
 
 // Executor is a sqlc.DBTX-compatible view with an operation-specific timeout.
@@ -77,6 +82,61 @@ func New(db *sql.DB, opts ...Options) (*Client, error) {
 	}
 
 	return core, nil
+}
+
+func (c *Client) IsUnavailable() bool { return c == nil || c.unavailable }
+
+// NewUnavailable creates a client whose operations consistently return a
+// structured not-ready error until the owning service adopts a live client.
+func NewUnavailable(opts ...Options) *Client {
+
+	opt := defaultOptions(opts...)
+	client := &Client{
+		db:           sql.OpenDB(unavailableConnector{}),
+		queryTimeout: opt.QueryTimeout,
+		cache:        opt.Cache,
+		inMemory:     newL1Cache(opt.CacheSize, opt.CacheTTLCheck),
+		CacheEnabled: opt.CacheEnabled,
+		unavailable:  true,
+	}
+	if opt.Codec != nil {
+		client.codec = opt.Codec
+	} else {
+		client.codec = MsgpackCodec{}
+	}
+	if opt.Mutex != nil {
+		client.mutex = opt.Mutex
+	} else {
+		client.mutex = NewMutex()
+	}
+	return client
+}
+
+type unavailableConnector struct{}
+
+func (unavailableConnector) Connect(context.Context) (driver.Conn, error) {
+	return unavailableConn{}, nil
+}
+func (unavailableConnector) Driver() driver.Driver { return unavailableDriver{} }
+
+type unavailableDriver struct{}
+
+func (unavailableDriver) Open(string) (driver.Conn, error) { return unavailableConn{}, nil }
+
+type unavailableConn struct{}
+
+func (unavailableConn) Prepare(string) (driver.Stmt, error) { return nil, ErrServiceNotReady }
+func (unavailableConn) Close() error                        { return nil }
+func (unavailableConn) Begin() (driver.Tx, error)           { return nil, ErrServiceNotReady }
+func (unavailableConn) BeginTx(context.Context, driver.TxOptions) (driver.Tx, error) {
+	return nil, ErrServiceNotReady
+}
+func (unavailableConn) Ping(context.Context) error { return ErrServiceNotReady }
+func (unavailableConn) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
+	return nil, ErrServiceNotReady
+}
+func (unavailableConn) QueryContext(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
+	return nil, ErrServiceNotReady
 }
 
 // ExecContext implements sqlc.DBTX with the configured query timeout.

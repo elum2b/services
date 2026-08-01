@@ -64,7 +64,6 @@ type Payment struct {
 	plategaReconcileBatch        int32
 
 	lifecycleMu    sync.Mutex
-	params         DatabaseParams
 	callbacksToRun []callbackRegistration
 	running        bool
 }
@@ -77,9 +76,7 @@ type Adapters struct {
 	YooKassa      *yookassa.YooKassa
 }
 
-func New(params DatabaseParams) *Payment {
-	return &Payment{params: params}
-}
+func New() *Payment { return newAPI(context.Background(), sqlwrap.NewUnavailable(), true, Options{}) }
 
 func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Payment, error) {
 	client, err := sqlwrap.New(db, toSQLWrapOptions(options))
@@ -89,7 +86,7 @@ func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Payment
 	return newAPI(ctx, client, false, options), nil
 }
 
-func (a *Payment) Run(ctx context.Context) error {
+func (a *Payment) Run(ctx context.Context, params DatabaseParams) error {
 	if a == nil {
 		return ErrServiceNil
 	}
@@ -99,7 +96,6 @@ func (a *Payment) Run(ctx context.Context) error {
 		return ErrServiceRunning
 	}
 	a.running = true
-	params := a.params
 	registrations := append([]callbackRegistration(nil), a.callbacksToRun...)
 	a.lifecycleMu.Unlock()
 
@@ -354,7 +350,7 @@ func (a *Payment) IsReady() bool {
 	}
 	a.lifecycleMu.Lock()
 	defer a.lifecycleMu.Unlock()
-	return a.rootCtx != nil && a.rootCtx.Err() == nil &&
+	return a.rootCtx != nil && a.rootCtx.Err() == nil && !a.client.IsUnavailable() &&
 		a.Admin != nil && a.Operational != nil && a.User != nil && a.Adapters != nil
 }
 

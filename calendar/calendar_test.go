@@ -22,12 +22,21 @@ func TestIsReady(t *testing.T) {
 	if nilService.IsReady() {
 		t.Fatal("nil calendar must not be ready")
 	}
-	service := New(DatabaseParams{})
+	service := New()
+	if service.Admin == nil || service.User == nil {
+		t.Fatal("New must create calendar public facades")
+	}
 	if service.IsReady() {
 		t.Fatal("uninitialized calendar must not be ready")
 	}
+	if _, err := service.User.ListActive(context.Background(), user.ListActiveParams{
+		WorkspaceID: "00000000-0000-0000-0000-000000000001",
+		Locale:      "ru",
+	}); !errors.Is(err, sqlwrap.ErrServiceNotReady) {
+		t.Fatalf("unready calendar user error = %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	service.rootCtx, service.Admin, service.User = ctx, &admin.Admin{}, &user.User{}
+	service.rootCtx, service.client, service.Admin, service.User = ctx, &sqlwrap.Client{}, &admin.Admin{}, &user.User{}
 	if !service.IsReady() {
 		t.Fatal("initialized calendar must be ready")
 	}
@@ -39,18 +48,19 @@ func TestIsReady(t *testing.T) {
 
 func TestCalendarRunBlocksUntilContextCanceled(t *testing.T) {
 	newCalendarTestService(t)
-	service := New(DatabaseParams{
+	params := DatabaseParams{
 		User:     calendarTestPGUser,
 		Password: calendarTestPGPassword,
 		Database: calendarTestDB,
 		Host:     calendarTestPGHost,
 		Port:     calendarTestPGPort,
 		Options:  calendarTestOptions(),
-	})
+	}
+	service := New()
 	runCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- service.Run(runCtx)
+		done <- service.Run(runCtx, params)
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -68,7 +78,7 @@ func TestCalendarRunBlocksUntilContextCanceled(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if err := service.Run(context.Background()); !errors.Is(err, ErrServiceRunning) {
+	if err := service.Run(context.Background(), params); !errors.Is(err, ErrServiceRunning) {
 		cancel()
 		t.Fatalf("second Run error = %v, want ErrServiceRunning", err)
 	}

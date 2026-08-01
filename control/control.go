@@ -26,11 +26,12 @@ type Control struct {
 	rootCancel context.CancelFunc
 
 	lifecycleMu sync.Mutex
-	params      DatabaseParams
 	running     bool
 }
 
-func New(params DatabaseParams) *Control { return &Control{params: params} }
+func New() *Control {
+	return newControl(context.Background(), sqlwrap.NewUnavailable(), true, Options{})
+}
 
 func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Control, error) {
 	client, err := sqlwrap.New(db, toSQLWrapOptions(options))
@@ -40,7 +41,7 @@ func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Control
 	return newControl(ctx, client, false, options), nil
 }
 
-func (c *Control) Run(ctx context.Context) error {
+func (c *Control) Run(ctx context.Context, params DatabaseParams) error {
 	if c == nil {
 		return ErrServiceNil
 	}
@@ -50,7 +51,6 @@ func (c *Control) Run(ctx context.Context) error {
 		return ErrServiceRunning
 	}
 	c.running = true
-	params := c.params
 	c.lifecycleMu.Unlock()
 
 	running, err := open(ctx, params)
@@ -176,5 +176,5 @@ func (c *Control) IsReady() bool {
 	}
 	c.lifecycleMu.Lock()
 	defer c.lifecycleMu.Unlock()
-	return c.rootCtx != nil && c.rootCtx.Err() == nil && c.Admin != nil && c.Internal != nil
+	return c.rootCtx != nil && c.rootCtx.Err() == nil && !c.client.IsUnavailable() && c.Admin != nil && c.Internal != nil
 }

@@ -31,14 +31,11 @@ type Promo struct {
 	goroutines *goroutinemanager.Manager
 
 	lifecycleMu    sync.Mutex
-	params         DatabaseParams
 	callbacksToRun []callbackRegistration
 	running        bool
 }
 
-func New(params DatabaseParams) *Promo {
-	return &Promo{params: params}
-}
+func New() *Promo { return newPromo(context.Background(), sqlwrap.NewUnavailable(), true, Options{}) }
 
 func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Promo, error) {
 	client, err := sqlwrap.New(db, toSQLWrapOptions(options))
@@ -48,7 +45,7 @@ func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Promo, 
 	return newPromo(ctx, client, false, options), nil
 }
 
-func (p *Promo) Run(ctx context.Context) error {
+func (p *Promo) Run(ctx context.Context, params DatabaseParams) error {
 	if p == nil {
 		return ErrServiceNil
 	}
@@ -58,7 +55,6 @@ func (p *Promo) Run(ctx context.Context) error {
 		return ErrServiceRunning
 	}
 	p.running = true
-	params := p.params
 	registrations := append([]callbackRegistration(nil), p.callbacksToRun...)
 	p.lifecycleMu.Unlock()
 
@@ -210,7 +206,7 @@ func (p *Promo) IsReady() bool {
 	}
 	p.lifecycleMu.Lock()
 	defer p.lifecycleMu.Unlock()
-	return p.rootCtx != nil && p.rootCtx.Err() == nil && p.Admin != nil && p.User != nil
+	return p.rootCtx != nil && p.rootCtx.Err() == nil && !p.client.IsUnavailable() && p.Admin != nil && p.User != nil
 }
 
 func (p *Promo) bindContext(ctx context.Context) (context.Context, context.CancelFunc) {

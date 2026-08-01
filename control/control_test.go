@@ -69,6 +69,17 @@ func TestControlInitializationAndInvitationOnlyRegistration(t *testing.T) {
 
 }
 
+func TestControlNewPublicFacadesReturnNotReady(t *testing.T) {
+
+	service := control.New()
+	if service.Admin == nil || service.Internal == nil || service.IsReady() {
+		t.Fatal("new control public facades are invalid")
+	}
+	if _, err := service.Internal.GetAuthorizedGlobalMethods(context.Background(), "account"); !errors.Is(err, sqlwrap.ErrServiceNotReady) {
+		t.Fatalf("unready control internal error = %v", err)
+	}
+}
+
 func TestControlMCPTokenLifecycleAndPrincipal(t *testing.T) {
 
 	service := newControlTestService(t)

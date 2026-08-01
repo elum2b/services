@@ -1874,19 +1874,20 @@ func TestCPA_CallbackDeliversIssuedAssignment(t *testing.T) {
 
 func TestCPA_RunBlocksUntilContextCanceled(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
-	service := cpa.New(cpa.DatabaseParams{
+	params := cpa.DatabaseParams{
 		User:     cpaTestPGUser,
 		Password: cpaTestPGPassword,
 		Database: env.Name,
 		Host:     cpaTestPGHost,
 		Port:     cpaTestPGPort,
 		Options:  testCPAOptions(),
-	})
+	}
+	service := cpa.New()
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- service.Run(runCtx)
+		done <- service.Run(runCtx, params)
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -1904,7 +1905,7 @@ func TestCPA_RunBlocksUntilContextCanceled(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if err := service.Run(context.Background()); !errors.Is(err, cpa.ErrServiceRunning) {
+	if err := service.Run(context.Background(), params); !errors.Is(err, cpa.ErrServiceRunning) {
 		cancel()
 		t.Fatalf("second Run error = %v, want ErrServiceRunning", err)
 	}
@@ -1921,7 +1922,16 @@ func TestCPA_RunBlocksUntilContextCanceled(t *testing.T) {
 }
 
 func TestCPA_IsReadyReflectsInitialization(t *testing.T) {
-	if cpa.New(cpa.DatabaseParams{}).IsReady() {
+	service := cpa.New()
+	if service.Admin == nil || service.User == nil || service.IsReady() {
+		t.Fatal("new CPA public facades are invalid")
+	}
+	if _, err := service.User.ListActive(context.Background(), user.ListActiveParams{
+		Identity: user.Identity{WorkspaceID: cpaTestWorkspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "user"},
+	}); !errors.Is(err, sqlwrap.ErrServiceNotReady) {
+		t.Fatalf("unready CPA user error = %v", err)
+	}
+	if cpa.New().IsReady() {
 		t.Fatal("service without a database must not be ready")
 	}
 	env := newCPATestEnvironment(t, testCPAOptions())

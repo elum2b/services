@@ -305,8 +305,8 @@ func (u *User) GetCode(ctx context.Context, params GetCodeParams) (GetCodeResult
 
 ## 15. Lifecycle и фоновые задачи
 
-- `New(DatabaseParams)` только сохраняет конфигурацию.
-- `Run(ctx)` открывает PostgreSQL, выполняет идемпотентный bootstrap, собирает
+- `New()` создаёт пустой lifecycle shell без подключения к БД.
+- `Run(ctx, DatabaseParams)` открывает PostgreSQL, выполняет идемпотентный bootstrap, собирает
   сервис, запускает workers и блокируется до shutdown/error.
 - `NewWithDatabase` используется тестами/embedding и не закрывает чужую БД.
 - `Close` отменяет root context, останавливает workers, ждёт их завершения и

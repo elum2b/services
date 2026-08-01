@@ -4294,9 +4294,14 @@ func TestTasksIsReady(t *testing.T) {
 	if nilService.IsReady() {
 		t.Fatal("nil tasks must not be ready")
 	}
-	service := New(DatabaseParams{})
+	service := New()
 	if service.IsReady() {
 		t.Fatal("uninitialized tasks must not be ready")
+	}
+	if _, err := service.User.ListActive(context.Background(), user.ListActiveParams{
+		Identity: user.Identity{WorkspaceID: "00000000-0000-0000-0000-000000000001", AppID: 1, PlatformID: 1, PlatformUserID: "user"},
+	}); !errors.Is(err, sqlwrap.ErrServiceNotReady) {
+		t.Fatalf("unready tasks user error = %v", err)
 	}
 	initialized := newTasksTestService(t)
 	if !initialized.IsReady() {
@@ -4312,18 +4317,19 @@ func TestTasksIsReady(t *testing.T) {
 
 func TestTasksRunBlocksUntilContextCanceled(t *testing.T) {
 	newTasksTestService(t)
-	service := New(DatabaseParams{
+	params := DatabaseParams{
 		User:     pgUser,
 		Password: pgPassword,
 		Database: tasksTestDB,
 		Host:     pgHost,
 		Port:     pgPort,
 		Options:  tasksTestOptions(Options{}),
-	})
+	}
+	service := New()
 	runCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- service.Run(runCtx)
+		done <- service.Run(runCtx, params)
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -4341,7 +4347,7 @@ func TestTasksRunBlocksUntilContextCanceled(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if err := service.Run(context.Background()); !errors.Is(err, ErrServiceRunning) {
+	if err := service.Run(context.Background(), params); !errors.Is(err, ErrServiceRunning) {
 		cancel()
 		t.Fatalf("second Run error = %v, want ErrServiceRunning", err)
 	}
