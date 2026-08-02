@@ -89,10 +89,7 @@ func TestControlMCPTokenLifecycleAndPrincipal(t *testing.T) {
 	created, err := service.Admin.CreateMCPToken(ctx, admin.CreateMCPTokenParams{
 		AccountID: owner.Account.ID,
 		Name:      "Claude Desktop",
-		Lifetime: admin.MCPTokenLifetime{
-			Kind:   admin.MCPTokenLifetimeDays,
-			Amount: 7,
-		},
+		Duration:  time.Hour,
 	})
 	if err != nil {
 		t.Fatalf("create MCP token: %v", err)
@@ -139,7 +136,7 @@ func TestControlMCPTokenLifecycleAndPrincipal(t *testing.T) {
 	never, err := service.Admin.CreateMCPToken(ctx, admin.CreateMCPTokenParams{
 		AccountID: owner.Account.ID,
 		Name:      "Local agent",
-		Lifetime:  admin.MCPTokenLifetime{Kind: admin.MCPTokenLifetimeNever},
+		Duration:  0,
 	})
 	if err != nil || never.Token.ExpiresAt != nil {
 		t.Fatalf("create never-expiring MCP token = %#v, err=%v", never, err)
@@ -147,10 +144,7 @@ func TestControlMCPTokenLifecycleAndPrincipal(t *testing.T) {
 	if _, err := service.Admin.CreateMCPToken(ctx, admin.CreateMCPTokenParams{
 		AccountID: owner.Account.ID,
 		Name:      "invalid",
-		Lifetime: admin.MCPTokenLifetime{
-			Kind:   admin.MCPTokenLifetimeMonths,
-			Amount: 0,
-		},
+		Duration:  -time.Hour,
 	}); !errors.Is(err, repository.ErrInvalidArgument) {
 		t.Fatalf("invalid MCP lifetime error = %v", err)
 	}

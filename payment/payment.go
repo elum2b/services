@@ -286,7 +286,9 @@ func newAPI(ctx context.Context, db *sqlwrap.Client, ownsClient bool, options Op
 	if !options.DisablePlategaReconcile {
 		payments.startPlategaReconciliationWorker()
 	}
-	tonAPI.StartManagedSubscribers(rootCtx, options.TONWalletSyncInterval)
+	if !db.IsUnavailable() {
+		tonAPI.StartManagedSubscribers(rootCtx, options.TONWalletSyncInterval)
+	}
 	return payments
 }
 

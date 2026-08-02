@@ -21,7 +21,7 @@ func (a *Admin) CreateMCPToken(ctx context.Context, params CreateMCPTokenParams)
 	})
 	defer cancel()
 
-	expiresAt, err := mcpTokenExpiresAt(params.Lifetime, time.Now().UTC())
+	expiresAt, err := mcpTokenExpiresAt(params.Duration, time.Now().UTC())
 	if err != nil {
 		return CreateMCPTokenResult{}, err
 	}
@@ -78,27 +78,14 @@ func (a *Admin) RevokeMCPToken(ctx context.Context, params RevokeMCPTokenParams)
 	)
 }
 
-func mcpTokenExpiresAt(value MCPTokenLifetime, now time.Time) (*time.Time, error) {
+func mcpTokenExpiresAt(duration time.Duration, now time.Time) (*time.Time, error) {
 
-	switch value.Kind {
-	case MCPTokenLifetimeNever:
-		if value.Amount != 0 {
-			return nil, repository.ErrInvalidArgument
-		}
+	if duration == 0 {
 		return nil, nil
-	case MCPTokenLifetimeDays:
-		if value.Amount < 1 || value.Amount > 36500 {
-			return nil, repository.ErrInvalidArgument
-		}
-		expiresAt := now.AddDate(0, 0, int(value.Amount))
-		return &expiresAt, nil
-	case MCPTokenLifetimeMonths:
-		if value.Amount < 1 || value.Amount > 1200 {
-			return nil, repository.ErrInvalidArgument
-		}
-		expiresAt := now.AddDate(0, int(value.Amount), 0)
-		return &expiresAt, nil
-	default:
+	}
+	if duration < 0 {
 		return nil, repository.ErrInvalidArgument
 	}
+	expiresAt := now.Add(duration)
+	return &expiresAt, nil
 }

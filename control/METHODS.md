@@ -19,7 +19,7 @@
 | `Admin.BindIdentity` / `UnbindIdentity` | Account и provider identity | Добавляет или удаляет способ входа; последний способ удалить нельзя. Операции сериализуются с auth, identity другого account отклоняется. |
 | `Admin.ValidateSession` | Token и IP | Проверяет session, account и platform membership одним запросом. |
 | `Admin.ListSessions` / `RevokeSession` / `RevokeAllSessions` | Account/session IDs | Управляет сессиями account; изменения записываются в audit. |
-| `Admin.CreateMCPToken` | Account, name, lifetime `never`/N days/N months | Выпускает отдельный MCP token от имени account; исходный секрет с префиксом `mcp_` возвращается только один раз. |
+| `Admin.CreateMCPToken` | Account, name, `Duration time.Duration` | Выпускает отдельный MCP token от имени account; любое положительное duration задаёт срок, `0` — бессрочный token. Исходный секрет с префиксом `mcp_` возвращается только один раз. |
 | `Admin.ListMCPTokens` / `RevokeMCPToken` | Account либо account/token ID | Показывает metadata MCP-токенов без секрета либо необратимо отзывает один токен. |
 | `Admin.BeginTwoFactor` / `ConfirmTwoFactor` / `DisableTwoFactor` | Account, issuer, code | Управляет TOTP и одноразовыми backup codes. |
 

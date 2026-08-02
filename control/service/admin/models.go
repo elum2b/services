@@ -62,19 +62,6 @@ type SessionModel struct {
 	CreatedAt  time.Time
 }
 
-type MCPTokenLifetimeKind string
-
-const (
-	MCPTokenLifetimeNever  MCPTokenLifetimeKind = "never"
-	MCPTokenLifetimeDays   MCPTokenLifetimeKind = "days"
-	MCPTokenLifetimeMonths MCPTokenLifetimeKind = "months"
-)
-
-type MCPTokenLifetime struct {
-	Kind   MCPTokenLifetimeKind
-	Amount int32
-}
-
 type MCPTokenModel struct {
 	ID         string
 	AccountID  string
@@ -88,7 +75,7 @@ type MCPTokenModel struct {
 type CreateMCPTokenParams struct {
 	AccountID string
 	Name      string
-	Lifetime  MCPTokenLifetime
+	Duration  time.Duration
 }
 
 type CreateMCPTokenResult struct {
