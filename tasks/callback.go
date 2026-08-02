@@ -60,7 +60,7 @@ func (t *Tasks) OnCallback(ctx context.Context, handler CallbackHandler, opts ..
 		t.lifecycleMu.Unlock()
 		return ErrCallbacksRegistrationClosed
 	}
-	if t.callbacks != nil {
+	if t.callbacks != nil && !t.client.IsUnavailable() {
 		t.lifecycleMu.Unlock()
 		return t.runCallback(ctx, handler, opts...)
 	}

@@ -60,7 +60,7 @@ func (p *Promo) OnCallback(ctx context.Context, handler CallbackHandler, opts ..
 		p.lifecycleMu.Unlock()
 		return ErrCallbacksRegistrationClosed
 	}
-	if p.callbacks != nil {
+	if p.callbacks != nil && !p.client.IsUnavailable() {
 		p.lifecycleMu.Unlock()
 		return p.runCallback(ctx, handler, opts...)
 	}

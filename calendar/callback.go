@@ -62,7 +62,7 @@ func (c *Calendar) OnCallback(ctx context.Context, handler CallbackHandler, opts
 		c.lifecycleMu.Unlock()
 		return ErrCallbacksRegistrationClosed
 	}
-	if c.callbacks != nil {
+	if c.callbacks != nil && !c.client.IsUnavailable() {
 		c.lifecycleMu.Unlock()
 		return c.runCallback(ctx, handler, opts...)
 	}
