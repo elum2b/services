@@ -29,11 +29,11 @@ type apiError struct {
 func (e *apiError) Error() string { return e.err.Error() }
 func (e *apiError) Unwrap() error { return e.err }
 
-func wrapAPIError(action string, status int, code int, description string, body string) error {
+func wrapAPIError(action string, status int, code int, _ string, _ string) error {
 	return &apiError{status: status, err: serviceerrors.Wrap(
 		serviceerrors.CodeUnavailable,
 		fmt.Sprintf("telegram_stars %s failed with status %d code %d", action, status, code),
-		errors.New(description+": "+body),
+		errors.New("provider response omitted"),
 	)}
 }
 

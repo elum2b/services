@@ -596,7 +596,7 @@ func TestCPA_AdminAddCodesRechecksOfferModeInsideWorkspaceLock(t *testing.T) {
 	if _, err := tx.ExecContext(
 		env.Context,
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-		cpaTestWorkspaceID,
+		"cpa:"+cpaTestWorkspaceID,
 	); err != nil {
 		t.Fatalf("lock workspace: %v", err)
 	}
@@ -691,7 +691,7 @@ func TestCPA_NestedCatalogMutationsUseWorkspaceLock(t *testing.T) {
 			if _, err := tx.ExecContext(
 				env.Context,
 				"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-				cpaTestWorkspaceID,
+				"cpa:"+cpaTestWorkspaceID,
 			); err != nil {
 				_ = tx.Rollback()
 				t.Fatalf("lock workspace: %v", err)
@@ -1527,7 +1527,7 @@ func TestCPA_AdminImportFailOnConflictIsAtomicAgainstConcurrentOfferWrite(t *tes
 	if _, err := transaction.ExecContext(
 		env.Context,
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-		cpaTestWorkspaceID,
+		"cpa:"+cpaTestWorkspaceID,
 	); err != nil {
 		t.Fatalf("lock workspace for competing write: %v", err)
 	}
@@ -1951,7 +1951,11 @@ func newCPATestEnvironment(tb testing.TB, options cpa.Options) cpaTestEnvironmen
 	}
 	tb.Cleanup(func() { _ = adminDB.Close() })
 
-	database := fmt.Sprintf("cpa_test_%d", cpaTestDatabaseSequence.Add(1))
+	database := fmt.Sprintf(
+		"cpa_test_%d_%d",
+		time.Now().UnixNano(),
+		cpaTestDatabaseSequence.Add(1),
+	)
 	if _, err := adminDB.ExecContext(ctx, "CREATE DATABASE "+database); err != nil {
 		tb.Fatalf("create test database: %v", err)
 	}

@@ -268,7 +268,7 @@ func (i *Internal) HandlePartnerWebhook(
 	result, err := i.runtime.Handle(mergedCtx, config.Provider, taskruntime.Event{
 		Action:   "callback",
 		Provider: config.Provider,
-		Config:   internalPartnerConfigMap(config),
+		Config:   webhookPartnerConfigMap(config),
 		Request: map[string]any{
 			"headers":  stringMapToAny(params.Headers),
 			"query":    stringMapToAny(params.Query),
@@ -352,13 +352,14 @@ func (i *Internal) applyPartnerWebhookCallback(
 	})
 }
 
-func internalPartnerConfigMap(config repository.PartnerConfig) map[string]any {
+// webhookPartnerConfigMap exposes only the credential that validates inbound
+// partner callbacks. Provider API credentials are not available to callbacks.
+func webhookPartnerConfigMap(config repository.PartnerConfig) map[string]any {
 	return map[string]any{
 		"workspace_id":   config.WorkspaceID,
 		"provider":       config.Provider,
 		"group_key":      config.GroupKey,
 		"platform":       config.Platform,
-		"secret":         stringPtrValue(config.Secret),
 		"webhook_secret": stringPtrValue(config.WebhookSecret),
 		"settings":       rawObject(config.Settings),
 		"target":         rawObject(config.Target),

@@ -71,7 +71,9 @@ func (r *Repository) UpsertApplicationPlatform(
 		return ApplicationPlatform{}, err
 	}
 
-	r.bumpApplicationCacheVersion(value.WorkspaceID, value.AppID, value.PlatformID)
+	if err := r.bumpApplicationCacheVersion(value.WorkspaceID, value.AppID, value.PlatformID); err != nil {
+		return ApplicationPlatform{}, err
+	}
 	return result, nil
 
 }
@@ -131,7 +133,9 @@ func (r *Repository) DeleteApplicationPlatform(
 		return 0, err
 	}
 
-	r.bumpApplicationCacheVersion(workspaceID, appID, platformID)
+	if err := r.bumpApplicationCacheVersion(workspaceID, appID, platformID); err != nil {
+		return affected, err
+	}
 	return affected, nil
 
 }
@@ -215,9 +219,19 @@ func applicationCacheScope(workspaceID string, appID, platformID int64) []any {
 
 }
 
-func (r *Repository) bumpApplicationCacheVersion(workspaceID string, appID, platformID int64) {
+func (r *Repository) bumpApplicationCacheVersion(workspaceID string, appID, platformID int64) error {
 
-	r.bumpCacheVersion(applicationCacheScope(workspaceID, appID, platformID)...)
+	if r == nil || r.db == nil {
+		return nil
+	}
+	err := r.db.BumpCacheVersion(applicationCacheScope(workspaceID, appID, platformID)...)
+	if err != nil && r.onCacheInvalidationError != nil {
+		func() {
+			defer func() { _ = recover() }()
+			r.onCacheInvalidationError(err)
+		}()
+	}
+	return err
 
 }
 

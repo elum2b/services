@@ -20,16 +20,20 @@ var (
 		serviceerrors.CodeInvalidFields,
 		"control invalid argument",
 	)
-	ErrNotFound           = serviceerrors.New(serviceerrors.CodeNotFound, "control entity not found")
-	ErrForbidden          = serviceerrors.New(serviceerrors.CodeForbidden, "control access denied")
-	ErrRoleHierarchy      = serviceerrors.New(serviceerrors.CodeForbidden, "control role hierarchy denied")
-	ErrMethodNotFound     = serviceerrors.New(serviceerrors.CodeNotFound, "control method not found")
-	ErrMethodOwner        = serviceerrors.New(serviceerrors.CodeConflict, "control method belongs to another service")
-	ErrRoleNotFound       = serviceerrors.New(serviceerrors.CodeNotFound, "control role not found")
-	ErrAccountNotFound    = serviceerrors.New(serviceerrors.CodeNotFound, "control account not found")
-	ErrWorkspaceNotFound  = serviceerrors.New(serviceerrors.CodeNotFound, "control workspace not found")
-	ErrNotInitialized     = serviceerrors.New(serviceerrors.CodeNotReady, "control is not initialized")
-	ErrAlreadyInitialized = serviceerrors.New(
+	ErrNotFound  = serviceerrors.New(serviceerrors.CodeNotFound, "control entity not found")
+	ErrForbidden = serviceerrors.New(serviceerrors.CodeForbidden, "control access denied")
+	// ErrAuthenticationDenied deliberately has one public form for all failed
+	// interactive-authentication paths. It must not reveal whether an identity
+	// exists, is disabled, or is not a platform member.
+	ErrAuthenticationDenied = serviceerrors.New(serviceerrors.CodeForbidden, "control authentication denied")
+	ErrRoleHierarchy        = serviceerrors.New(serviceerrors.CodeForbidden, "control role hierarchy denied")
+	ErrMethodNotFound       = serviceerrors.New(serviceerrors.CodeNotFound, "control method not found")
+	ErrMethodOwner          = serviceerrors.New(serviceerrors.CodeConflict, "control method belongs to another service")
+	ErrRoleNotFound         = serviceerrors.New(serviceerrors.CodeNotFound, "control role not found")
+	ErrAccountNotFound      = serviceerrors.New(serviceerrors.CodeNotFound, "control account not found")
+	ErrWorkspaceNotFound    = serviceerrors.New(serviceerrors.CodeNotFound, "control workspace not found")
+	ErrNotInitialized       = serviceerrors.New(serviceerrors.CodeNotReady, "control is not initialized")
+	ErrAlreadyInitialized   = serviceerrors.New(
 		serviceerrors.CodeConflict,
 		"control is already initialized",
 	)

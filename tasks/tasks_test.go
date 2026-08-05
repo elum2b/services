@@ -4278,6 +4278,7 @@ func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 func newLuaProviderForScript(t testing.TB, provider string, source string) (user.LuaProvider, func()) {
 	t.Helper()
 	manager := taskruntime.New(context.Background(), taskruntime.Options{
+		AllowPrivateHTTP: true,
 		ScriptLoader: func(context.Context, string) (taskruntime.Script, bool, error) {
 			return taskruntime.Script{Provider: provider, Source: source, Version: "test"}, true, nil
 		},
@@ -4837,7 +4838,8 @@ func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
 
 	service := newTasksTestService(t, Options{
 		Runtime: taskruntime.Options{
-			Timeout: time.Second,
+			Timeout:          time.Second,
+			AllowPrivateHTTP: true,
 		},
 	})
 	identity := user.Identity{
@@ -4930,7 +4932,8 @@ func TestTasksRuntimeGetBonusUnifiedWebhook(t *testing.T) {
 
 	service := newTasksTestService(t, Options{
 		Runtime: taskruntime.Options{
-			Timeout: time.Second,
+			Timeout:          time.Second,
+			AllowPrivateHTTP: true,
 		},
 	})
 	identity := user.Identity{
@@ -4967,7 +4970,7 @@ func TestTasksRuntimeGetBonusUnifiedWebhook(t *testing.T) {
 	completed, err := service.Internal.HandlePartnerWebhook(context.Background(), internalapi.PartnerWebhookParams{
 		WorkspaceID: identity.WorkspaceID,
 		Secret:      "webhook-secret-getbonus",
-		Headers:     map[string]string{"X-Api-Key": "getbonus-inbound-api-key"},
+		Headers:     map[string]string{"X-Api-Key": "webhook-secret-getbonus"},
 		Body: json.RawMessage(`{
 			"event":"step_completed",
 			"external_click_id":"` + generatedClickID + `",
@@ -4995,7 +4998,8 @@ func TestTasksRuntimeTgrassUnifiedWebhookRevoke(t *testing.T) {
 	defer server.Close()
 	service := newTasksTestService(t, Options{
 		Runtime: taskruntime.Options{
-			Timeout: time.Second,
+			Timeout:          time.Second,
+			AllowPrivateHTTP: true,
 		},
 	})
 	identity := user.Identity{
@@ -5046,7 +5050,8 @@ func TestTasksRuntimeSubGramBatchWebhookComplete(t *testing.T) {
 	defer server.Close()
 	service := newTasksTestService(t, Options{
 		Runtime: taskruntime.Options{
-			Timeout: time.Second,
+			Timeout:          time.Second,
+			AllowPrivateHTTP: true,
 		},
 	})
 	identity := user.Identity{
@@ -5099,9 +5104,10 @@ end
 		Version:  "old",
 	}
 	manager := taskruntime.New(context.Background(), taskruntime.Options{
-		Timeout:        5 * time.Second,
-		StatePoolSize:  2,
-		ScriptCacheTTL: time.Hour,
+		Timeout:          5 * time.Second,
+		StatePoolSize:    2,
+		ScriptCacheTTL:   time.Hour,
+		AllowPrivateHTTP: true,
 		ScriptLoader: func(context.Context, string) (taskruntime.Script, bool, error) {
 			scriptMu.RLock()
 			defer scriptMu.RUnlock()
@@ -5381,7 +5387,6 @@ func saveRuntimePartnerConfig(t testing.TB, service *Tasks, workspaceID, provide
 	switch provider {
 	case "getbonus":
 		source = taskruntime.GetBonusScript
-		source = strings.ReplaceAll(source, `local GETBONUS_WEBHOOK_API_KEY = "***"`, `local GETBONUS_WEBHOOK_API_KEY = "getbonus-inbound-api-key"`)
 	case "subgram":
 		source = taskruntime.SubGramScript
 	case "flyer":

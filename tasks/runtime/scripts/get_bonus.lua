@@ -1,5 +1,3 @@
-local GETBONUS_WEBHOOK_API_KEY = "***"
-
 function getbonus_base_url(event)
     event.config.settings = event.config.settings or {}
     return event.config.settings.base_url or "https://stage.gb-platform.online"
@@ -135,7 +133,7 @@ end
 function callback(event)
     local request = event.request or {}
     local api_key = getbonus_header(request.headers, "X-Api-Key")
-    local expected_api_key = GETBONUS_WEBHOOK_API_KEY
+    local expected_api_key = event.config.webhook_secret
     if expected_api_key == nil or expected_api_key == "" or api_key ~= expected_api_key then
         return {
             ok = false,

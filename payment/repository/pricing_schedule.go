@@ -147,7 +147,7 @@ func (r *PaymentRepository) FailAssetRateAutoUpdate(
 ) error {
 	message := "unknown price update error"
 	if updateErr != nil {
-		message = updateErr.Error()
+		message = serviceerrors.PublicMessage(updateErr)
 	}
 	if len(message) > 4000 {
 		message = message[:4000]

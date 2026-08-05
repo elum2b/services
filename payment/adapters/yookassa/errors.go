@@ -25,11 +25,11 @@ type apiError struct {
 func (e *apiError) Error() string { return e.err.Error() }
 func (e *apiError) Unwrap() error { return e.err }
 
-func wrapAPIError(action string, status int, body string) error {
+func wrapAPIError(action string, status int, _ string) error {
 	return &apiError{status: status, err: serviceerrors.Wrap(
 		serviceerrors.CodeUnavailable,
 		fmt.Sprintf("yookassa %s failed with status %d", action, status),
-		errors.New(body),
+		errors.New("provider response omitted"),
 	)}
 }
 

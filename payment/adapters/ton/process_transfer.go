@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	serviceerrors "github.com/elum2b/services/errors"
 	utils "github.com/elum2b/services/internal/utils"
 	"github.com/elum2b/services/payment/repository"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
@@ -77,7 +78,7 @@ func (a *TON) ProcessTransfer(ctx context.Context, transfer IncomingTransfer) (*
 			return nil, err
 		}
 
-		return a.storeTransfer(ctx, transfer, 0, 0, paymentsqlc.PaymentProviderTransactionStatusIgnored, err.Error())
+		return a.storeTransfer(ctx, transfer, 0, 0, paymentsqlc.PaymentProviderTransactionStatusIgnored, serviceerrors.PublicMessage(err))
 	}
 	if attempt.AssetCode != transfer.AssetCode || attempt.AmountMinor != transfer.AmountMinor {
 		if failedTransaction != nil {

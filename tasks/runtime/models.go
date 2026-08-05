@@ -15,6 +15,9 @@ type Options struct {
 	MaxHTTPRequests  int
 	MaxResponseBytes int64
 	HTTPClient       *http.Client
+	// AllowPrivateHTTP is intended only for trusted local/test deployments.
+	// Production keeps it false so partner Lua scripts cannot reach internal networks.
+	AllowPrivateHTTP bool
 	JSONBoundary     bool
 	StatePoolSize    int // 0 uses the default pool, negative disables pooling.
 }

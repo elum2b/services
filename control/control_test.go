@@ -62,7 +62,7 @@ func TestControlInitializationAndInvitationOnlyRegistration(t *testing.T) {
 
 	if _, err := service.Admin.CompleteAuth(ctx, authParams("uninvited")); !errors.Is(
 		err,
-		repository.ErrInviteRequired,
+		repository.ErrAuthenticationDenied,
 	) {
 		t.Fatalf("uninvited registration error = %v", err)
 	}
@@ -809,7 +809,7 @@ func TestControlPlatformRemovalClearsAccessAndRequiresFreshGlobalInvite(t *testi
 	}
 	if _, err := service.Admin.CompleteAuth(ctx, authParams("member")); !errors.Is(
 		err,
-		repository.ErrInviteRequired,
+		repository.ErrAuthenticationDenied,
 	) {
 		t.Fatalf("removed member login error = %v", err)
 	}
@@ -1755,8 +1755,35 @@ func TestControlUnbindIdentitySerializesAuthentication(t *testing.T) {
 	if err := <-unbound; err != nil {
 		t.Fatalf("unbind identity: %v", err)
 	}
-	if !errors.Is(authErr, repository.ErrInviteRequired) {
+	if !errors.Is(authErr, repository.ErrAuthenticationDenied) {
 		t.Fatalf("authentication through revoked identity error = %v", authErr)
+	}
+
+}
+
+func TestControlAuthenticationFailureDoesNotRevealIdentityState(t *testing.T) {
+
+	service := newControlTestService(t)
+	ctx := context.Background()
+	owner := initializeControl(t, service, "owner")
+
+	_, missingErr := service.Admin.CompleteAuth(ctx, authParams("unknown"))
+	if missingErr == nil {
+		t.Fatal("uninvited unknown identity must be rejected")
+	}
+
+	member := inviteAccount(t, service, owner.Account.ID, "removed-member")
+	if _, err := service.Admin.RemovePlatformMember(ctx, owner.Account.ID, member.Account.ID); err != nil {
+		t.Fatalf("remove member: %v", err)
+	}
+	_, removedErr := service.Admin.CompleteAuth(ctx, authParams("removed-member"))
+	if removedErr == nil {
+		t.Fatal("removed member must be rejected")
+	}
+
+	if missingErr.Error() != repository.ErrAuthenticationDenied.Error() ||
+		removedErr.Error() != repository.ErrAuthenticationDenied.Error() {
+		t.Fatalf("authentication failures reveal identity state: missing=%q removed=%q", missingErr, removedErr)
 	}
 
 }

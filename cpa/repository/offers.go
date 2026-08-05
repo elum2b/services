@@ -520,13 +520,19 @@ func (r *Repository) UpsertLocalization(ctx context.Context, value Localization)
 	if err := ValidateLocalization(value); err != nil {
 		return err
 	}
-	if err := r.q.AdminUpsertLocalization(ctx, cpasqlc.AdminUpsertLocalizationParams{
-		WorkspaceID: value.WorkspaceID,
-		CpaID:       value.CPAID,
-		Locale:      value.Locale,
-		Title:       value.Title,
-		Description: value.Description,
-	}); err != nil {
+	err := r.WithTx(ctx, func(txRepo *Repository) error {
+		if err := txRepo.lockWorkspaceMutation(ctx, value.WorkspaceID); err != nil {
+			return err
+		}
+		return txRepo.q.AdminUpsertLocalization(ctx, cpasqlc.AdminUpsertLocalizationParams{
+			WorkspaceID: value.WorkspaceID,
+			CpaID:       value.CPAID,
+			Locale:      value.Locale,
+			Title:       value.Title,
+			Description: value.Description,
+		})
+	})
+	if err != nil {
 		return err
 	}
 	r.invalidateCPACache(value.WorkspaceID, value.CPAID)
@@ -639,18 +645,24 @@ func (r *Repository) UpsertReward(ctx context.Context, value Reward) error {
 	if err != nil {
 		return err
 	}
-	if err := r.q.AdminUpsertReward(ctx, cpasqlc.AdminUpsertRewardParams{
-		WorkspaceID: value.WorkspaceID,
-		CpaID:       value.CPAID,
-		RewardKey:   value.Key,
-		RewardType:  cpasqlc.CpaRewardType(value.Type),
-		Quantity:    value.Quantity,
-		Scale:       int32(value.Scale),
-		DurationUnit: cpasqlc.NullCpaDurationUnit{
-			CpaDurationUnit: cpasqlc.CpaDurationUnit(valueOrEmpty(value.Unit)),
-			Valid:           value.Unit != nil,
-		},
-	}); err != nil {
+	err = r.WithTx(ctx, func(txRepo *Repository) error {
+		if err := txRepo.lockWorkspaceMutation(ctx, value.WorkspaceID); err != nil {
+			return err
+		}
+		return txRepo.q.AdminUpsertReward(ctx, cpasqlc.AdminUpsertRewardParams{
+			WorkspaceID: value.WorkspaceID,
+			CpaID:       value.CPAID,
+			RewardKey:   value.Key,
+			RewardType:  cpasqlc.CpaRewardType(value.Type),
+			Quantity:    value.Quantity,
+			Scale:       int32(value.Scale),
+			DurationUnit: cpasqlc.NullCpaDurationUnit{
+				CpaDurationUnit: cpasqlc.CpaDurationUnit(valueOrEmpty(value.Unit)),
+				Valid:           value.Unit != nil,
+			},
+		})
+	})
+	if err != nil {
 		return err
 	}
 	r.invalidateCPACache(value.WorkspaceID, value.CPAID)

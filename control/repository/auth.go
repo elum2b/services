@@ -212,12 +212,12 @@ func (r *Repository) CompleteAuth(
 				return noRows(err, ErrAccountNotFound)
 			}
 			if accountRow.Status != string(controlmodel.AccountStatusActive) {
-				return ErrForbidden
+				return ErrAuthenticationDenied
 			}
 
 			platformMember, err := q.GetPlatformMember(ctx, principal.ID)
 			if err != nil {
-				return noRows(err, ErrForbidden)
+				return noRows(err, ErrAuthenticationDenied)
 			}
 
 			twoFactorEnabled, err := q.HasActiveTwoFactor(ctx, principal.ID)
@@ -264,7 +264,7 @@ func (r *Repository) CompleteAuth(
 			reactivatePlatformMember := platformMember.Status != string(controlmodel.MembershipStatusActive)
 			if reactivatePlatformMember {
 				if inviteID == "" || inviteKind != InviteKindGlobal {
-					return ErrInviteRequired
+					return ErrAuthenticationDenied
 				}
 			}
 
@@ -340,7 +340,7 @@ func (r *Repository) registerFromInvite(
 ) error {
 
 	if inviteToken == "" {
-		return ErrInviteRequired
+		return ErrAuthenticationDenied
 	}
 
 	invite, err := getInviteByHashForAcceptance(ctx, q, tokenHash(inviteToken))

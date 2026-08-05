@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	serviceerrors "github.com/elum2b/services/errors"
 )
 
 const (
@@ -192,7 +194,7 @@ func (s *Store) handleEvent(ctx context.Context, event storedEvent, workerID str
 		return s.MarkFailed(ctx, FailParams{
 			ID:       uint64(event.ID),
 			WorkerID: workerID,
-			Error:    err.Error(),
+			Error:    serviceerrors.PublicMessage(err),
 			Attempt:  uint32(event.AttemptCount),
 		})
 	}

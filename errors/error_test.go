@@ -63,6 +63,15 @@ func TestCodeAndMessageOf(t *testing.T) {
 	}
 }
 
+func TestPublicMessageDoesNotExposeRawCause(t *testing.T) {
+	if got := PublicMessage(errors.New("postgres password=secret")); got != "internal error" {
+		t.Fatalf("raw error leaked: %q", got)
+	}
+	if got := PublicMessage(Wrap(CodeUnavailable, "provider unavailable", errors.New("raw body"))); got != "provider unavailable" {
+		t.Fatalf("structured public message = %q", got)
+	}
+}
+
 func TestNormalizeKeepsStructuredErrors(t *testing.T) {
 	base := New(CodeForbidden, "forbidden")
 	err := Normalize(base, CodeInternalError, "wrapped")

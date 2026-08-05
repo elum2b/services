@@ -78,9 +78,13 @@ func New(ctx context.Context, options Options) *Manager {
 		cache:     make(map[string]*lua.FunctionProto),
 		providers: make(map[string]providerState),
 		pools:     make(map[string]chan *runtimeState),
-		http:      &httpClient{client: options.HTTPClient, maxResponseBytes: options.MaxResponseBytes},
-		rootCtx:   rootCtx,
-		cancel:    cancel,
+		http: &httpClient{
+			client:           options.HTTPClient,
+			maxResponseBytes: options.MaxResponseBytes,
+			allowPrivate:     options.AllowPrivateHTTP,
+		},
+		rootCtx: rootCtx,
+		cancel:  cancel,
 	}
 }
 

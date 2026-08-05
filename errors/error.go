@@ -64,6 +64,14 @@ func MessageOf(err error) string {
 	return ""
 }
 
+// PublicMessage returns text safe to expose or persist in user-readable state.
+func PublicMessage(err error) string {
+	if message := MessageOf(err); message != "" {
+		return message
+	}
+	return "internal error"
+}
+
 func IsStructured(err error) bool {
 	var coded Coded
 	return errors.As(err, &coded)
@@ -83,13 +91,10 @@ func (e *Error) Error() string {
 	if e == nil {
 		return ""
 	}
-	if e.err == nil {
+	if e.message != "" {
 		return e.message
 	}
-	if e.message == "" {
-		return e.err.Error()
-	}
-	return e.message + ": " + e.err.Error()
+	return "internal error"
 }
 
 func (e *Error) Code() string {

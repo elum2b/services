@@ -87,6 +87,9 @@ func (r *Repository) withWorkspaceMutation(
 	workspaceID string,
 	fn func(*Repository) error,
 ) error {
+	if err := requireWorkspace(workspaceID); err != nil {
+		return err
+	}
 	return r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err

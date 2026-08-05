@@ -248,7 +248,7 @@ func (r *Repository) lockWorkspaceMutation(ctx context.Context, workspaceID stri
 	_, err := r.executor.ExecContext(
 		ctx,
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-		workspaceID,
+		"cpa:"+workspaceID,
 	)
 	return err
 }
@@ -257,7 +257,7 @@ func (r *Repository) lockWorkspaceCatalogRead(ctx context.Context, workspaceID s
 	_, err := r.executor.ExecContext(
 		ctx,
 		"SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 0))",
-		workspaceID,
+		"cpa:"+workspaceID,
 	)
 	return err
 }

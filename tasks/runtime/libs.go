@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,6 +19,7 @@ import (
 type httpClient struct {
 	client           *http.Client
 	maxResponseBytes int64
+	allowPrivate     bool
 }
 
 func registerJSON(L *lua.LState) {
@@ -110,6 +112,9 @@ func (c *httpClient) request(ctx context.Context, value any) (map[string]any, er
 	if err != nil {
 		return nil, err
 	}
+	if err := validatePartnerURL(ctx, parsed, c.allowPrivate); err != nil {
+		return nil, err
+	}
 	if query, ok := params["query"].(map[string]any); ok {
 		q := parsed.Query()
 		for key, value := range query {
@@ -142,10 +147,7 @@ func (c *httpClient) request(ctx context.Context, value any) (map[string]any, er
 	if req.Body != nil && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	client := c.client
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := c.secureClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -179,6 +181,57 @@ func (c *httpClient) request(ctx context.Context, value any) (map[string]any, er
 		"headers": headers,
 		"body":    string(raw),
 	}, nil
+}
+
+func (c *httpClient) secureClient() *http.Client {
+	base := http.DefaultClient
+	if c.client != nil {
+		base = c.client
+	}
+	client := *base
+	previousRedirect := client.CheckRedirect
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := validatePartnerURL(req.Context(), req.URL, c.allowPrivate); err != nil {
+			return err
+		}
+		if previousRedirect != nil {
+			return previousRedirect(req, via)
+		}
+		return nil
+	}
+	baseTransport := client.Transport
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport
+	}
+	if transport, ok := baseTransport.(*http.Transport); ok {
+		transport := transport.Clone()
+		dial := transport.DialContext
+		if dial == nil {
+			var dialer net.Dialer
+			dial = dialer.DialContext
+		}
+		transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(address)
+			if err != nil {
+				return nil, err
+			}
+			addresses, err := resolvePartnerHost(ctx, host, c.allowPrivate)
+			if err != nil {
+				return nil, err
+			}
+			var dialErr error
+			for _, resolved := range addresses {
+				connection, err := dial(ctx, network, net.JoinHostPort(resolved.String(), port))
+				if err == nil {
+					return connection, nil
+				}
+				dialErr = err
+			}
+			return nil, dialErr
+		}
+		client.Transport = transport
+	}
+	return &client
 }
 
 func normalizeJSON(value any) any {
