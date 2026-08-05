@@ -82,6 +82,29 @@ type MCPToken struct {
 	CreatedAt  time.Time
 }
 
+type ApplicationProvider string
+
+const (
+	ApplicationProviderVKMA ApplicationProvider = "vkma"
+	ApplicationProviderTMA  ApplicationProvider = "tma"
+)
+
+type ApplicationPlatform struct {
+	WorkspaceID                 string
+	AppID                       int64
+	PlatformID                  int64
+	Provider                    ApplicationProvider
+	MaxAuthenticationAgeSeconds int32
+	IsEnabled                   bool
+	CreatedAt                   time.Time
+	UpdatedAt                   time.Time
+}
+
+type ApplicationAuthentication struct {
+	ApplicationPlatform
+	Secret string
+}
+
 type Platform struct {
 	OwnerAccountID string
 	InitializedBy  string

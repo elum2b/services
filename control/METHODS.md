@@ -56,6 +56,8 @@
 | `Admin.UpdateWorkspaceRole` / `DeleteWorkspaceRole` | Actor и role | Изменяет или удаляет роль с проверкой иерархии. |
 | `Admin.AssignWorkspaceRole` / `RemoveWorkspaceRole` | Actor, member, role | Назначает или снимает роль только у активного member. |
 | `Admin.ReplaceWorkspaceRolePermissions` | Actor, role, method keys | Атомарно заменяет workspace accesses роли. |
+| `Admin.UpsertApplicationPlatform` | Actor, `WorkspaceID`, `AppID`, `PlatformID`, provider, secret, `MaxAuthenticationAge`, enabled | Создаёт или обновляет конфигурацию запуска приложения. Один AppID может существовать в нескольких workspace; секрет наружу не возвращается. |
+| `Admin.ListApplicationPlatforms` / `DeleteApplicationPlatform` | Actor, workspace и ключ приложения | Возвращает безопасный список конфигураций без секретов либо удаляет одну конфигурацию. |
 | `Admin.RequestEmployeeLimit` | Owner, workspace, новый лимит, причина | Создает запрос на увеличение лимита сотрудников. |
 
 ## Каталог и аудит
@@ -71,4 +73,5 @@
 | `Internal.GetAuthorizedGlobalMethods` | Account | Возвращает разрешенные global methods. |
 | `Internal.GetAuthorizedWorkspaceMethods` | Account и workspace | Возвращает разрешенные workspace methods. |
 | `Internal.ValidateMCPToken` | MCP token | Проверяет хеш, срок, отзыв, active account и platform membership, обновляет `last_used_at` и возвращает account/token principal. Права principal затем получают существующими `GetAuthorizedGlobalMethods` и `GetAuthorizedWorkspaceMethods`. |
+| `Internal.AuthenticateApplicationUser` | `WorkspaceID`, `AppID`, `PlatformID`, signed launch payload | Берёт versioned cached конфигурацию приложения, проверяет VKMA/TMA подпись и допустимый возраст launch payload, возвращает полную `Identity`. |
 | `Internal.AppendAudit` | Typed audit event | Записывает доверенное событие global/workspace scope. |

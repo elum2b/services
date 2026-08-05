@@ -111,6 +111,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createWorkspaceRoleStmt, err = db.PrepareContext(ctx, createWorkspaceRole); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateWorkspaceRole: %w", err)
 	}
+	if q.deleteApplicationPlatformStmt, err = db.PrepareContext(ctx, deleteApplicationPlatform); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteApplicationPlatform: %w", err)
+	}
 	if q.deleteGlobalInviteRoleReferencesStmt, err = db.PrepareContext(ctx, deleteGlobalInviteRoleReferences); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteGlobalInviteRoleReferences: %w", err)
 	}
@@ -140,6 +143,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getAccountStmt, err = db.PrepareContext(ctx, getAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAccount: %w", err)
+	}
+	if q.getApplicationPlatformStmt, err = db.PrepareContext(ctx, getApplicationPlatform); err != nil {
+		return nil, fmt.Errorf("error preparing query GetApplicationPlatform: %w", err)
 	}
 	if q.getGlobalAuthorizationForUpdateStmt, err = db.PrepareContext(ctx, getGlobalAuthorizationForUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query GetGlobalAuthorizationForUpdate: %w", err)
@@ -221,6 +227,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listAccessCatalogStmt, err = db.PrepareContext(ctx, listAccessCatalog); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAccessCatalog: %w", err)
+	}
+	if q.listApplicationPlatformsStmt, err = db.PrepareContext(ctx, listApplicationPlatforms); err != nil {
+		return nil, fmt.Errorf("error preparing query ListApplicationPlatforms: %w", err)
 	}
 	if q.listAuditEventsStmt, err = db.PrepareContext(ctx, listAuditEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAuditEvents: %w", err)
@@ -374,6 +383,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateWorkspaceRoleStmt, err = db.PrepareContext(ctx, updateWorkspaceRole); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateWorkspaceRole: %w", err)
+	}
+	if q.upsertApplicationPlatformStmt, err = db.PrepareContext(ctx, upsertApplicationPlatform); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertApplicationPlatform: %w", err)
 	}
 	if q.upsertIdentityStmt, err = db.PrepareContext(ctx, upsertIdentity); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertIdentity: %w", err)
@@ -543,6 +555,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing createWorkspaceRoleStmt: %w", cerr)
 		}
 	}
+	if q.deleteApplicationPlatformStmt != nil {
+		if cerr := q.deleteApplicationPlatformStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteApplicationPlatformStmt: %w", cerr)
+		}
+	}
 	if q.deleteGlobalInviteRoleReferencesStmt != nil {
 		if cerr := q.deleteGlobalInviteRoleReferencesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteGlobalInviteRoleReferencesStmt: %w", cerr)
@@ -591,6 +608,11 @@ func (q *Queries) Close() error {
 	if q.getAccountStmt != nil {
 		if cerr := q.getAccountStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAccountStmt: %w", cerr)
+		}
+	}
+	if q.getApplicationPlatformStmt != nil {
+		if cerr := q.getApplicationPlatformStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getApplicationPlatformStmt: %w", cerr)
 		}
 	}
 	if q.getGlobalAuthorizationForUpdateStmt != nil {
@@ -726,6 +748,11 @@ func (q *Queries) Close() error {
 	if q.listAccessCatalogStmt != nil {
 		if cerr := q.listAccessCatalogStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAccessCatalogStmt: %w", cerr)
+		}
+	}
+	if q.listApplicationPlatformsStmt != nil {
+		if cerr := q.listApplicationPlatformsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listApplicationPlatformsStmt: %w", cerr)
 		}
 	}
 	if q.listAuditEventsStmt != nil {
@@ -983,6 +1010,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateWorkspaceRoleStmt: %w", cerr)
 		}
 	}
+	if q.upsertApplicationPlatformStmt != nil {
+		if cerr := q.upsertApplicationPlatformStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertApplicationPlatformStmt: %w", cerr)
+		}
+	}
 	if q.upsertIdentityStmt != nil {
 		if cerr := q.upsertIdentityStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertIdentityStmt: %w", cerr)
@@ -1081,6 +1113,7 @@ type Queries struct {
 	createTwoFactorChallengeStmt                 *sql.Stmt
 	createWorkspaceStmt                          *sql.Stmt
 	createWorkspaceRoleStmt                      *sql.Stmt
+	deleteApplicationPlatformStmt                *sql.Stmt
 	deleteGlobalInviteRoleReferencesStmt         *sql.Stmt
 	deleteGlobalRoleStmt                         *sql.Stmt
 	deleteIdentityStmt                           *sql.Stmt
@@ -1091,6 +1124,7 @@ type Queries struct {
 	deleteWorkspaceRoleStmt                      *sql.Stmt
 	findAuthPrincipalByIdentityStmt              *sql.Stmt
 	getAccountStmt                               *sql.Stmt
+	getApplicationPlatformStmt                   *sql.Stmt
 	getGlobalAuthorizationForUpdateStmt          *sql.Stmt
 	getGlobalRoleStmt                            *sql.Stmt
 	getIdentityStmt                              *sql.Stmt
@@ -1118,6 +1152,7 @@ type Queries struct {
 	hasActiveTwoFactorStmt                       *sql.Stmt
 	isActiveWorkspaceMemberStmt                  *sql.Stmt
 	listAccessCatalogStmt                        *sql.Stmt
+	listApplicationPlatformsStmt                 *sql.Stmt
 	listAuditEventsStmt                          *sql.Stmt
 	listAuthorizedGlobalMethodsStmt              *sql.Stmt
 	listAuthorizedWorkspaceMethodsStmt           *sql.Stmt
@@ -1169,6 +1204,7 @@ type Queries struct {
 	updateWorkspaceStmt                          *sql.Stmt
 	updateWorkspaceEmployeeLimitStmt             *sql.Stmt
 	updateWorkspaceRoleStmt                      *sql.Stmt
+	upsertApplicationPlatformStmt                *sql.Stmt
 	upsertIdentityStmt                           *sql.Stmt
 	upsertMethodStmt                             *sql.Stmt
 	upsertMethodGroupStmt                        *sql.Stmt
@@ -1210,6 +1246,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createTwoFactorChallengeStmt:                 q.createTwoFactorChallengeStmt,
 		createWorkspaceStmt:                          q.createWorkspaceStmt,
 		createWorkspaceRoleStmt:                      q.createWorkspaceRoleStmt,
+		deleteApplicationPlatformStmt:                q.deleteApplicationPlatformStmt,
 		deleteGlobalInviteRoleReferencesStmt:         q.deleteGlobalInviteRoleReferencesStmt,
 		deleteGlobalRoleStmt:                         q.deleteGlobalRoleStmt,
 		deleteIdentityStmt:                           q.deleteIdentityStmt,
@@ -1220,6 +1257,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteWorkspaceRoleStmt:                      q.deleteWorkspaceRoleStmt,
 		findAuthPrincipalByIdentityStmt:              q.findAuthPrincipalByIdentityStmt,
 		getAccountStmt:                               q.getAccountStmt,
+		getApplicationPlatformStmt:                   q.getApplicationPlatformStmt,
 		getGlobalAuthorizationForUpdateStmt:          q.getGlobalAuthorizationForUpdateStmt,
 		getGlobalRoleStmt:                            q.getGlobalRoleStmt,
 		getIdentityStmt:                              q.getIdentityStmt,
@@ -1247,6 +1285,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		hasActiveTwoFactorStmt:                       q.hasActiveTwoFactorStmt,
 		isActiveWorkspaceMemberStmt:                  q.isActiveWorkspaceMemberStmt,
 		listAccessCatalogStmt:                        q.listAccessCatalogStmt,
+		listApplicationPlatformsStmt:                 q.listApplicationPlatformsStmt,
 		listAuditEventsStmt:                          q.listAuditEventsStmt,
 		listAuthorizedGlobalMethodsStmt:              q.listAuthorizedGlobalMethodsStmt,
 		listAuthorizedWorkspaceMethodsStmt:           q.listAuthorizedWorkspaceMethodsStmt,
@@ -1298,6 +1337,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateWorkspaceStmt:                          q.updateWorkspaceStmt,
 		updateWorkspaceEmployeeLimitStmt:             q.updateWorkspaceEmployeeLimitStmt,
 		updateWorkspaceRoleStmt:                      q.updateWorkspaceRoleStmt,
+		upsertApplicationPlatformStmt:                q.upsertApplicationPlatformStmt,
 		upsertIdentityStmt:                           q.upsertIdentityStmt,
 		upsertMethodStmt:                             q.upsertMethodStmt,
 		upsertMethodGroupStmt:                        q.upsertMethodGroupStmt,

@@ -208,6 +208,38 @@ WHERE token.token_hash = $1
 RETURNING token.id, token.account_id, token.name, token.token_hash,
           token.expires_at, token.revoked_at, token.last_used_at, token.created_at;
 
+-- name: UpsertApplicationPlatform :one
+INSERT INTO control_application_platform (
+    workspace_id, app_id, platform_id, provider, encrypted_secret,
+    max_authentication_age_seconds, is_enabled
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (workspace_id, app_id, platform_id) DO UPDATE SET
+    provider = EXCLUDED.provider,
+    encrypted_secret = EXCLUDED.encrypted_secret,
+    max_authentication_age_seconds = EXCLUDED.max_authentication_age_seconds,
+    is_enabled = EXCLUDED.is_enabled,
+    updated_at = now()
+RETURNING workspace_id, app_id, platform_id, provider,
+          max_authentication_age_seconds, is_enabled, created_at, updated_at;
+
+-- name: GetApplicationPlatform :one
+SELECT workspace_id, app_id, platform_id, provider, encrypted_secret,
+       max_authentication_age_seconds, is_enabled, created_at, updated_at
+FROM control_application_platform
+WHERE workspace_id = $1 AND app_id = $2 AND platform_id = $3;
+
+-- name: ListApplicationPlatforms :many
+SELECT workspace_id, app_id, platform_id, provider,
+       max_authentication_age_seconds, is_enabled, created_at, updated_at
+FROM control_application_platform
+WHERE workspace_id = $1
+ORDER BY created_at DESC, app_id, platform_id;
+
+-- name: DeleteApplicationPlatform :execrows
+DELETE FROM control_application_platform
+WHERE workspace_id = $1 AND app_id = $2 AND platform_id = $3;
+
 -- name: GetGlobalAuthorizationForUpdate :one
 SELECT
     p.owner_account_id = sqlc.arg(actor_id)::text AS actor_is_owner,

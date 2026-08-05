@@ -4,11 +4,15 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha1"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base32"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -148,6 +152,182 @@ func TestControlMCPTokenLifecycleAndPrincipal(t *testing.T) {
 	}); !errors.Is(err, repository.ErrInvalidArgument) {
 		t.Fatalf("invalid MCP lifetime error = %v", err)
 	}
+}
+
+func TestApplicationAuthenticationScopesSameAppIDAndInvalidatesSecretCache(t *testing.T) {
+
+	service := newControlTestService(t)
+	ctx := context.Background()
+	owner := initializeControl(t, service, "owner")
+	first := createWorkspace(t, service, owner.Account.ID, "first-application")
+	limitRequest, err := service.Admin.RequestWorkspaceLimit(ctx, owner.Account.ID, 2, "application isolation test")
+	if err != nil {
+		t.Fatalf("request workspace limit: %v", err)
+	}
+	if _, err := service.Admin.ResolveLimitRequest(ctx, admin.ResolveLimitRequestParams{
+		ActorID:       owner.Account.ID,
+		RequestID:     limitRequest.ID,
+		Approved:      true,
+		ApprovedLimit: 2,
+	}); err != nil {
+		t.Fatalf("approve workspace limit: %v", err)
+	}
+	second := createWorkspace(t, service, owner.Account.ID, "second-application")
+
+	const (
+		appID      = int64(9001)
+		platformID = int64(1)
+		firstKey   = "first-secret"
+		secondKey  = "second-secret"
+	)
+	for _, value := range []struct {
+		workspaceID string
+		secret      string
+	}{
+		{first.ID, firstKey},
+		{second.ID, secondKey},
+	} {
+		_, err := service.Admin.UpsertApplicationPlatform(ctx, admin.UpsertApplicationPlatformParams{
+			ActorID:              owner.Account.ID,
+			WorkspaceID:          value.workspaceID,
+			AppID:                appID,
+			PlatformID:           platformID,
+			Provider:             admin.ApplicationProviderTMA,
+			Secret:               value.secret,
+			MaxAuthenticationAge: time.Hour,
+			IsEnabled:            true,
+		})
+		if err != nil {
+			t.Fatalf("upsert application %q: %v", value.workspaceID, err)
+		}
+	}
+
+	firstLaunch := signedTMALaunch(t, firstKey, 77, time.Now().UTC())
+	identity, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
+		WorkspaceID: first.ID,
+		AppID:       appID,
+		PlatformID:  platformID,
+		Launch:      firstLaunch,
+	})
+	if err != nil || identity.WorkspaceID != first.ID || identity.PlatformUserID != "77" {
+		t.Fatalf("authenticate first application = %#v, %v", identity, err)
+	}
+
+	if _, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
+		WorkspaceID: second.ID,
+		AppID:       appID,
+		PlatformID:  platformID,
+		Launch:      firstLaunch,
+	}); !errors.Is(err, repository.ErrForbidden) {
+		t.Fatalf("cross-workspace launch error = %v", err)
+	}
+
+	_, err = service.Admin.UpsertApplicationPlatform(ctx, admin.UpsertApplicationPlatformParams{
+		ActorID:              owner.Account.ID,
+		WorkspaceID:          first.ID,
+		AppID:                appID,
+		PlatformID:           platformID,
+		Provider:             admin.ApplicationProviderTMA,
+		Secret:               "rotated-secret",
+		MaxAuthenticationAge: time.Hour,
+		IsEnabled:            true,
+	})
+	if err != nil {
+		t.Fatalf("rotate application secret: %v", err)
+	}
+	if _, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
+		WorkspaceID: first.ID,
+		AppID:       appID,
+		PlatformID:  platformID,
+		Launch:      firstLaunch,
+	}); !errors.Is(err, repository.ErrForbidden) {
+		t.Fatalf("old cached secret remained valid: %v", err)
+	}
+
+	rotatedLaunch := signedTMALaunch(t, "rotated-secret", 77, time.Now().UTC())
+	if _, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
+		WorkspaceID: first.ID,
+		AppID:       appID,
+		PlatformID:  platformID,
+		Launch:      rotatedLaunch,
+	}); err != nil {
+		t.Fatalf("rotated application authentication: %v", err)
+	}
+
+	applications, err := service.Admin.ListApplicationPlatforms(ctx, admin.ListApplicationPlatformsParams{
+		ActorID:     owner.Account.ID,
+		WorkspaceID: first.ID,
+	})
+	if err != nil || len(applications) != 1 || applications[0].AppID != appID {
+		t.Fatalf("list applications = %#v, %v", applications, err)
+	}
+
+}
+
+func TestApplicationAuthenticationRejectsExpiredAndInvalidConfiguration(t *testing.T) {
+
+	service := newControlTestService(t)
+	ctx := context.Background()
+	owner := initializeControl(t, service, "owner")
+	workspace := createWorkspace(t, service, owner.Account.ID, "application-expiry")
+
+	if _, err := service.Admin.UpsertApplicationPlatform(ctx, admin.UpsertApplicationPlatformParams{
+		ActorID:              owner.Account.ID,
+		WorkspaceID:          workspace.ID,
+		AppID:                100,
+		PlatformID:           2,
+		Provider:             admin.ApplicationProviderTMA,
+		Secret:               "expiry-secret",
+		MaxAuthenticationAge: time.Second,
+		IsEnabled:            true,
+	}); err != nil {
+		t.Fatalf("upsert expiring application: %v", err)
+	}
+
+	expired := signedTMALaunch(t, "expiry-secret", 10, time.Now().UTC().Add(-2*time.Second))
+	if _, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
+		WorkspaceID: workspace.ID,
+		AppID:       100,
+		PlatformID:  2,
+		Launch:      expired,
+	}); !errors.Is(err, repository.ErrForbidden) {
+		t.Fatalf("expired launch error = %v", err)
+	}
+
+	if _, err := service.Admin.UpsertApplicationPlatform(ctx, admin.UpsertApplicationPlatformParams{
+		ActorID:              owner.Account.ID,
+		WorkspaceID:          workspace.ID,
+		AppID:                101,
+		PlatformID:           2,
+		Provider:             admin.ApplicationProviderTMA,
+		Secret:               "invalid-age",
+		MaxAuthenticationAge: 1500 * time.Millisecond,
+		IsEnabled:            true,
+	}); !errors.Is(err, repository.ErrInvalidArgument) {
+		t.Fatalf("fractional authentication age error = %v", err)
+	}
+
+	if _, err := service.Admin.UpsertApplicationPlatform(ctx, admin.UpsertApplicationPlatformParams{
+		ActorID:              owner.Account.ID,
+		WorkspaceID:          workspace.ID,
+		AppID:                100,
+		PlatformID:           2,
+		Provider:             admin.ApplicationProviderTMA,
+		Secret:               "expiry-secret",
+		MaxAuthenticationAge: time.Hour,
+		IsEnabled:            false,
+	}); err != nil {
+		t.Fatalf("disable application: %v", err)
+	}
+	if _, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
+		WorkspaceID: workspace.ID,
+		AppID:       100,
+		PlatformID:  2,
+		Launch:      signedTMALaunch(t, "expiry-secret", 10, time.Now().UTC()),
+	}); !errors.Is(err, repository.ErrForbidden) {
+		t.Fatalf("disabled application error = %v", err)
+	}
+
 }
 
 func TestControlWorkspaceLimitCountsOwnershipOnly(t *testing.T) {
@@ -2514,6 +2694,26 @@ func accessCatalogContains(items []admin.AccessGroupModel, methodKey string) boo
 	}
 
 	return false
+
+}
+
+func signedTMALaunch(t testing.TB, secret string, userID int64, issuedAt time.Time) string {
+
+	t.Helper()
+	values := url.Values{
+		"auth_date": {strconv.FormatInt(issuedAt.Unix(), 10)},
+		"user":      {`{"id":` + strconv.FormatInt(userID, 10) + `}`},
+	}
+	pairs := []string{
+		"auth_date=" + values.Get("auth_date"),
+		"user=" + values.Get("user"),
+	}
+	secretKey := hmac.New(sha256.New, []byte("WebAppData"))
+	_, _ = secretKey.Write([]byte(secret))
+	mac := hmac.New(sha256.New, secretKey.Sum(nil))
+	_, _ = mac.Write([]byte(strings.Join(pairs, "\n")))
+	values.Set("hash", hex.EncodeToString(mac.Sum(nil)))
+	return values.Encode()
 
 }
 

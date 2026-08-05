@@ -72,6 +72,47 @@ type MCPTokenModel struct {
 	CreatedAt  time.Time
 }
 
+type ApplicationProvider string
+
+const (
+	ApplicationProviderVKMA ApplicationProvider = "vkma"
+	ApplicationProviderTMA  ApplicationProvider = "tma"
+)
+
+type ApplicationPlatformModel struct {
+	WorkspaceID          string
+	AppID                int64
+	PlatformID           int64
+	Provider             ApplicationProvider
+	MaxAuthenticationAge time.Duration
+	IsEnabled            bool
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
+type UpsertApplicationPlatformParams struct {
+	ActorID              string
+	WorkspaceID          string
+	AppID                int64
+	PlatformID           int64
+	Provider             ApplicationProvider
+	Secret               string
+	MaxAuthenticationAge time.Duration
+	IsEnabled            bool
+}
+
+type ListApplicationPlatformsParams struct {
+	ActorID     string
+	WorkspaceID string
+}
+
+type DeleteApplicationPlatformParams struct {
+	ActorID     string
+	WorkspaceID string
+	AppID       int64
+	PlatformID  int64
+}
+
 type CreateMCPTokenParams struct {
 	AccountID string
 	Name      string

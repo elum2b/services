@@ -206,6 +206,30 @@ CREATE TABLE IF NOT EXISTS control_workspace (
 CREATE INDEX IF NOT EXISTS control_workspace_owner_idx
     ON control_workspace (owner_account_id, status, created_at DESC, id DESC);
 
+CREATE TABLE IF NOT EXISTS control_application_platform (
+    workspace_id VARCHAR(36) NOT NULL,
+    app_id BIGINT NOT NULL,
+    platform_id BIGINT NOT NULL,
+    provider VARCHAR(16) NOT NULL,
+    encrypted_secret TEXT NOT NULL,
+    max_authentication_age_seconds INTEGER NOT NULL,
+    is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (workspace_id, app_id, platform_id),
+    CONSTRAINT control_application_platform_app_id_chk CHECK (app_id > 0),
+    CONSTRAINT control_application_platform_platform_id_chk CHECK (platform_id > 0),
+    CONSTRAINT control_application_platform_provider_chk CHECK (provider IN ('vkma', 'tma')),
+    CONSTRAINT control_application_platform_age_chk CHECK (
+        max_authentication_age_seconds BETWEEN 1 AND 86400
+    ),
+    CONSTRAINT control_application_platform_workspace_fk FOREIGN KEY (workspace_id)
+        REFERENCES control_workspace (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS control_application_platform_workspace_idx
+    ON control_application_platform (workspace_id, created_at DESC, app_id, platform_id);
+
 CREATE TABLE IF NOT EXISTS control_workspace_member (
     workspace_id VARCHAR(36) NOT NULL,
     account_id VARCHAR(64) NOT NULL,

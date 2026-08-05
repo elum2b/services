@@ -743,6 +743,25 @@ func (q *Queries) CreateWorkspaceRole(ctx context.Context, arg CreateWorkspaceRo
 	return i, err
 }
 
+const deleteApplicationPlatform = `-- name: DeleteApplicationPlatform :execrows
+DELETE FROM control_application_platform
+WHERE workspace_id = $1 AND app_id = $2 AND platform_id = $3
+`
+
+type DeleteApplicationPlatformParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	AppID       int64  `json:"app_id"`
+	PlatformID  int64  `json:"platform_id"`
+}
+
+func (q *Queries) DeleteApplicationPlatform(ctx context.Context, arg DeleteApplicationPlatformParams) (int64, error) {
+	result, err := q.exec(ctx, q.deleteApplicationPlatformStmt, deleteApplicationPlatform, arg.WorkspaceID, arg.AppID, arg.PlatformID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteGlobalInviteRoleReferences = `-- name: DeleteGlobalInviteRoleReferences :execrows
 DELETE FROM control_invite_global_role
 WHERE role_id = $1
@@ -926,6 +945,36 @@ func (q *Queries) GetAccount(ctx context.Context, id string) (ControlAccount, er
 		&i.ID,
 		&i.DisplayName,
 		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getApplicationPlatform = `-- name: GetApplicationPlatform :one
+SELECT workspace_id, app_id, platform_id, provider, encrypted_secret,
+       max_authentication_age_seconds, is_enabled, created_at, updated_at
+FROM control_application_platform
+WHERE workspace_id = $1 AND app_id = $2 AND platform_id = $3
+`
+
+type GetApplicationPlatformParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	AppID       int64  `json:"app_id"`
+	PlatformID  int64  `json:"platform_id"`
+}
+
+func (q *Queries) GetApplicationPlatform(ctx context.Context, arg GetApplicationPlatformParams) (ControlApplicationPlatform, error) {
+	row := q.queryRow(ctx, q.getApplicationPlatformStmt, getApplicationPlatform, arg.WorkspaceID, arg.AppID, arg.PlatformID)
+	var i ControlApplicationPlatform
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.AppID,
+		&i.PlatformID,
+		&i.Provider,
+		&i.EncryptedSecret,
+		&i.MaxAuthenticationAgeSeconds,
+		&i.IsEnabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -1801,6 +1850,57 @@ func (q *Queries) ListAccessCatalog(ctx context.Context, arg ListAccessCatalogPa
 			&i.Position,
 			&i.AccessTitle,
 			&i.AccessDescription,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listApplicationPlatforms = `-- name: ListApplicationPlatforms :many
+SELECT workspace_id, app_id, platform_id, provider,
+       max_authentication_age_seconds, is_enabled, created_at, updated_at
+FROM control_application_platform
+WHERE workspace_id = $1
+ORDER BY created_at DESC, app_id, platform_id
+`
+
+type ListApplicationPlatformsRow struct {
+	WorkspaceID                 string    `json:"workspace_id"`
+	AppID                       int64     `json:"app_id"`
+	PlatformID                  int64     `json:"platform_id"`
+	Provider                    string    `json:"provider"`
+	MaxAuthenticationAgeSeconds int32     `json:"max_authentication_age_seconds"`
+	IsEnabled                   bool      `json:"is_enabled"`
+	CreatedAt                   time.Time `json:"created_at"`
+	UpdatedAt                   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) ListApplicationPlatforms(ctx context.Context, workspaceID string) ([]ListApplicationPlatformsRow, error) {
+	rows, err := q.query(ctx, q.listApplicationPlatformsStmt, listApplicationPlatforms, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListApplicationPlatformsRow
+	for rows.Next() {
+		var i ListApplicationPlatformsRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.AppID,
+			&i.PlatformID,
+			&i.Provider,
+			&i.MaxAuthenticationAgeSeconds,
+			&i.IsEnabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -3434,6 +3534,67 @@ func (q *Queries) UpdateWorkspaceRole(ctx context.Context, arg UpdateWorkspaceRo
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const upsertApplicationPlatform = `-- name: UpsertApplicationPlatform :one
+INSERT INTO control_application_platform (
+    workspace_id, app_id, platform_id, provider, encrypted_secret,
+    max_authentication_age_seconds, is_enabled
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (workspace_id, app_id, platform_id) DO UPDATE SET
+    provider = EXCLUDED.provider,
+    encrypted_secret = EXCLUDED.encrypted_secret,
+    max_authentication_age_seconds = EXCLUDED.max_authentication_age_seconds,
+    is_enabled = EXCLUDED.is_enabled,
+    updated_at = now()
+RETURNING workspace_id, app_id, platform_id, provider,
+          max_authentication_age_seconds, is_enabled, created_at, updated_at
+`
+
+type UpsertApplicationPlatformParams struct {
+	WorkspaceID                 string `json:"workspace_id"`
+	AppID                       int64  `json:"app_id"`
+	PlatformID                  int64  `json:"platform_id"`
+	Provider                    string `json:"provider"`
+	EncryptedSecret             string `json:"encrypted_secret"`
+	MaxAuthenticationAgeSeconds int32  `json:"max_authentication_age_seconds"`
+	IsEnabled                   bool   `json:"is_enabled"`
+}
+
+type UpsertApplicationPlatformRow struct {
+	WorkspaceID                 string    `json:"workspace_id"`
+	AppID                       int64     `json:"app_id"`
+	PlatformID                  int64     `json:"platform_id"`
+	Provider                    string    `json:"provider"`
+	MaxAuthenticationAgeSeconds int32     `json:"max_authentication_age_seconds"`
+	IsEnabled                   bool      `json:"is_enabled"`
+	CreatedAt                   time.Time `json:"created_at"`
+	UpdatedAt                   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) UpsertApplicationPlatform(ctx context.Context, arg UpsertApplicationPlatformParams) (UpsertApplicationPlatformRow, error) {
+	row := q.queryRow(ctx, q.upsertApplicationPlatformStmt, upsertApplicationPlatform,
+		arg.WorkspaceID,
+		arg.AppID,
+		arg.PlatformID,
+		arg.Provider,
+		arg.EncryptedSecret,
+		arg.MaxAuthenticationAgeSeconds,
+		arg.IsEnabled,
+	)
+	var i UpsertApplicationPlatformRow
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.AppID,
+		&i.PlatformID,
+		&i.Provider,
+		&i.MaxAuthenticationAgeSeconds,
+		&i.IsEnabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const upsertIdentity = `-- name: UpsertIdentity :exec

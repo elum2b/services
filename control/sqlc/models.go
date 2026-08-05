@@ -27,6 +27,18 @@ type ControlAccount struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type ControlApplicationPlatform struct {
+	WorkspaceID                 string    `json:"workspace_id"`
+	AppID                       int64     `json:"app_id"`
+	PlatformID                  int64     `json:"platform_id"`
+	Provider                    string    `json:"provider"`
+	EncryptedSecret             string    `json:"encrypted_secret"`
+	MaxAuthenticationAgeSeconds int32     `json:"max_authentication_age_seconds"`
+	IsEnabled                   bool      `json:"is_enabled"`
+	CreatedAt                   time.Time `json:"created_at"`
+	UpdatedAt                   time.Time `json:"updated_at"`
+}
+
 type ControlAuditEvent struct {
 	ID          string                `json:"id"`
 	Scope       string                `json:"scope"`
