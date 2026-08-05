@@ -906,10 +906,16 @@ const adminListPartnerScripts = `-- name: AdminListPartnerScripts :many
 SELECT provider, is_enabled, version, source, created_at, updated_at
 FROM task_partner_script
 ORDER BY provider
+LIMIT $1 OFFSET $2
 `
 
-func (q *Queries) AdminListPartnerScripts(ctx context.Context) ([]TaskPartnerScript, error) {
-	rows, err := q.query(ctx, q.adminListPartnerScriptsStmt, adminListPartnerScripts)
+type AdminListPartnerScriptsParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+func (q *Queries) AdminListPartnerScripts(ctx context.Context, arg AdminListPartnerScriptsParams) ([]TaskPartnerScript, error) {
+	rows, err := q.query(ctx, q.adminListPartnerScriptsStmt, adminListPartnerScripts, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -2739,12 +2745,41 @@ func (q *Queries) GetIntegrationCheckTaskByKey(ctx context.Context, arg GetInteg
 	return i, err
 }
 
+const getNextActiveSequenceTaskAfterCurrent = `-- name: GetNextActiveSequenceTaskAfterCurrent :one
+SELECT candidate.id
+FROM task_definition current_task
+JOIN task_definition candidate
+  ON candidate.workspace_id = current_task.workspace_id
+ AND candidate.sequence_key = current_task.sequence_key
+ AND candidate.sequence_position > current_task.sequence_position
+ AND candidate.is_active = true
+ AND candidate.deleted_at IS NULL
+WHERE current_task.workspace_id = $1
+  AND current_task.id = $2
+  AND (current_task.is_active = false OR current_task.deleted_at IS NOT NULL)
+ORDER BY candidate.sequence_position, candidate.id
+LIMIT 1
+`
+
+type GetNextActiveSequenceTaskAfterCurrentParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	ID          int64  `json:"id"`
+}
+
+func (q *Queries) GetNextActiveSequenceTaskAfterCurrent(ctx context.Context, arg GetNextActiveSequenceTaskAfterCurrentParams) (int64, error) {
+	row := q.queryRow(ctx, q.getNextActiveSequenceTaskAfterCurrentStmt, getNextActiveSequenceTaskAfterCurrent, arg.WorkspaceID, arg.ID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getNextSequenceTaskID = `-- name: GetNextSequenceTaskID :one
 SELECT id
 FROM task_definition
 WHERE workspace_id = $1
   AND sequence_key = $2
   AND sequence_position > $3
+	AND is_active = true
   AND deleted_at IS NULL
 ORDER BY sequence_position, id
 LIMIT 1
@@ -3570,6 +3605,28 @@ func (q *Queries) InsertProgressEvent(ctx context.Context, arg InsertProgressEve
 	return result.RowsAffected()
 }
 
+const isSequenceTaskInactive = `-- name: IsSequenceTaskInactive :one
+SELECT EXISTS (
+    SELECT 1
+    FROM task_definition
+    WHERE workspace_id = $1
+      AND id = $2
+      AND (is_active = false OR deleted_at IS NOT NULL)
+)
+`
+
+type IsSequenceTaskInactiveParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	ID          int64  `json:"id"`
+}
+
+func (q *Queries) IsSequenceTaskInactive(ctx context.Context, arg IsSequenceTaskInactiveParams) (bool, error) {
+	row := q.queryRow(ctx, q.isSequenceTaskInactiveStmt, isSequenceTaskInactive, arg.WorkspaceID, arg.ID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listActiveComplexConditions = `-- name: ListActiveComplexConditions :many
 SELECT c.parent_task_id, c.condition_task_id, c.required_status, c.position, c.is_required
 FROM task_complex_condition c
@@ -3724,47 +3781,6 @@ func (q *Queries) ListActiveTaskBundles(ctx context.Context, arg ListActiveTaskB
 			&i.RewardQuantity,
 			&i.RewardScale,
 			&i.DurationUnit,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listAllPartnerConfigs = `-- name: ListAllPartnerConfigs :many
-SELECT workspace_id, provider, group_key, platform, is_enabled, secret, webhook_secret, target, settings, created_at, updated_at
-FROM task_partner_config
-ORDER BY workspace_id, provider, group_key, platform
-`
-
-func (q *Queries) ListAllPartnerConfigs(ctx context.Context) ([]TaskPartnerConfig, error) {
-	rows, err := q.query(ctx, q.listAllPartnerConfigsStmt, listAllPartnerConfigs)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []TaskPartnerConfig
-	for rows.Next() {
-		var i TaskPartnerConfig
-		if err := rows.Scan(
-			&i.WorkspaceID,
-			&i.Provider,
-			&i.GroupKey,
-			&i.Platform,
-			&i.IsEnabled,
-			&i.Secret,
-			&i.WebhookSecret,
-			&i.Target,
-			&i.Settings,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -4078,6 +4094,53 @@ func (q *Queries) ListCurrentProgressForUser(ctx context.Context, arg ListCurren
 			&i.ClaimedAt,
 			&i.OperationID,
 			&i.RewardsSnapshot,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPartnerConfigsPage = `-- name: ListPartnerConfigsPage :many
+SELECT workspace_id, provider, group_key, platform, is_enabled, secret, webhook_secret, target, settings, created_at, updated_at
+FROM task_partner_config
+ORDER BY workspace_id, provider, group_key, platform
+LIMIT $1 OFFSET $2
+`
+
+type ListPartnerConfigsPageParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+func (q *Queries) ListPartnerConfigsPage(ctx context.Context, arg ListPartnerConfigsPageParams) ([]TaskPartnerConfig, error) {
+	rows, err := q.query(ctx, q.listPartnerConfigsPageStmt, listPartnerConfigsPage, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TaskPartnerConfig
+	for rows.Next() {
+		var i TaskPartnerConfig
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.Provider,
+			&i.GroupKey,
+			&i.Platform,
+			&i.IsEnabled,
+			&i.Secret,
+			&i.WebhookSecret,
+			&i.Target,
+			&i.Settings,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

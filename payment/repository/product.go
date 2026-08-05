@@ -512,7 +512,7 @@ func (r *PaymentRepository) ListProductPriceOptions(
 			ContractAddress:     row.ContractAddress,
 			ListAmountMinor:     uint64(row.ListAmountMinor),
 			DiscountAmountMinor: uint64(row.DiscountAmountMinor),
-			PayableAmountMinor:  uint64(row.ListAmountMinor - row.DiscountAmountMinor),
+			PayableAmountMinor:  payableAmountMinor(row.ListAmountMinor, row.DiscountAmountMinor),
 			ProviderCodes:       splitProviderCodes(row.ProviderCodes),
 		})
 	}
@@ -554,7 +554,7 @@ func mapProductCatalogRows(rows []sqlc.ListProductCatalogCacheRowsRow, now time.
 			AssetCode:           selected.AssetCode,
 			ListAmountMinor:     uint64(selected.ListAmountMinor),
 			DiscountAmountMinor: uint64(selected.DiscountAmountMinor),
-			PayableAmountMinor:  uint64(selected.ListAmountMinor - selected.DiscountAmountMinor),
+			PayableAmountMinor:  payableAmountMinor(selected.ListAmountMinor, selected.DiscountAmountMinor),
 		},
 		Limit: ProductLimit{
 			Global: ProductLimitRule{
@@ -641,7 +641,7 @@ func mapProductsCatalogGroup(rows []sqlc.ListProductsCatalogCacheRowsRow, now ti
 			AssetCode:           selected.AssetCode,
 			ListAmountMinor:     uint64(selected.ListAmountMinor),
 			DiscountAmountMinor: uint64(selected.DiscountAmountMinor),
-			PayableAmountMinor:  uint64(selected.ListAmountMinor - selected.DiscountAmountMinor),
+			PayableAmountMinor:  payableAmountMinor(selected.ListAmountMinor, selected.DiscountAmountMinor),
 		},
 		Limit: ProductLimit{
 			Global: ProductLimitRule{
@@ -671,6 +671,14 @@ func mapProductsCatalogGroup(rows []sqlc.ListProductsCatalogCacheRowsRow, now ti
 		})
 	}
 	return product, true
+}
+
+func payableAmountMinor(listAmountMinor, discountAmountMinor int64) uint64 {
+	if listAmountMinor < 0 || discountAmountMinor < 0 || discountAmountMinor > listAmountMinor {
+		return 0
+	}
+
+	return uint64(listAmountMinor - discountAmountMinor)
 }
 
 func filterProductsByTarget(

@@ -180,6 +180,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getIntegrationCheckTaskByKeyStmt, err = db.PrepareContext(ctx, getIntegrationCheckTaskByKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIntegrationCheckTaskByKey: %w", err)
 	}
+	if q.getNextActiveSequenceTaskAfterCurrentStmt, err = db.PrepareContext(ctx, getNextActiveSequenceTaskAfterCurrent); err != nil {
+		return nil, fmt.Errorf("error preparing query GetNextActiveSequenceTaskAfterCurrent: %w", err)
+	}
 	if q.getNextSequenceTaskIDStmt, err = db.PrepareContext(ctx, getNextSequenceTaskID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetNextSequenceTaskID: %w", err)
 	}
@@ -231,14 +234,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertProgressEventStmt, err = db.PrepareContext(ctx, insertProgressEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertProgressEvent: %w", err)
 	}
+	if q.isSequenceTaskInactiveStmt, err = db.PrepareContext(ctx, isSequenceTaskInactive); err != nil {
+		return nil, fmt.Errorf("error preparing query IsSequenceTaskInactive: %w", err)
+	}
 	if q.listActiveComplexConditionsStmt, err = db.PrepareContext(ctx, listActiveComplexConditions); err != nil {
 		return nil, fmt.Errorf("error preparing query ListActiveComplexConditions: %w", err)
 	}
 	if q.listActiveTaskBundlesStmt, err = db.PrepareContext(ctx, listActiveTaskBundles); err != nil {
 		return nil, fmt.Errorf("error preparing query ListActiveTaskBundles: %w", err)
-	}
-	if q.listAllPartnerConfigsStmt, err = db.PrepareContext(ctx, listAllPartnerConfigs); err != nil {
-		return nil, fmt.Errorf("error preparing query ListAllPartnerConfigs: %w", err)
 	}
 	if q.listComplexConditionProgressForParentStmt, err = db.PrepareContext(ctx, listComplexConditionProgressForParent); err != nil {
 		return nil, fmt.Errorf("error preparing query ListComplexConditionProgressForParent: %w", err)
@@ -251,6 +254,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listCurrentProgressForUserStmt, err = db.PrepareContext(ctx, listCurrentProgressForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListCurrentProgressForUser: %w", err)
+	}
+	if q.listPartnerConfigsPageStmt, err = db.PrepareContext(ctx, listPartnerConfigsPage); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPartnerConfigsPage: %w", err)
 	}
 	if q.listPartnerIssuesForUserStmt, err = db.PrepareContext(ctx, listPartnerIssuesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query ListPartnerIssuesForUser: %w", err)
@@ -571,6 +577,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getIntegrationCheckTaskByKeyStmt: %w", cerr)
 		}
 	}
+	if q.getNextActiveSequenceTaskAfterCurrentStmt != nil {
+		if cerr := q.getNextActiveSequenceTaskAfterCurrentStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getNextActiveSequenceTaskAfterCurrentStmt: %w", cerr)
+		}
+	}
 	if q.getNextSequenceTaskIDStmt != nil {
 		if cerr := q.getNextSequenceTaskIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getNextSequenceTaskIDStmt: %w", cerr)
@@ -656,6 +667,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertProgressEventStmt: %w", cerr)
 		}
 	}
+	if q.isSequenceTaskInactiveStmt != nil {
+		if cerr := q.isSequenceTaskInactiveStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing isSequenceTaskInactiveStmt: %w", cerr)
+		}
+	}
 	if q.listActiveComplexConditionsStmt != nil {
 		if cerr := q.listActiveComplexConditionsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listActiveComplexConditionsStmt: %w", cerr)
@@ -664,11 +680,6 @@ func (q *Queries) Close() error {
 	if q.listActiveTaskBundlesStmt != nil {
 		if cerr := q.listActiveTaskBundlesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listActiveTaskBundlesStmt: %w", cerr)
-		}
-	}
-	if q.listAllPartnerConfigsStmt != nil {
-		if cerr := q.listAllPartnerConfigsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listAllPartnerConfigsStmt: %w", cerr)
 		}
 	}
 	if q.listComplexConditionProgressForParentStmt != nil {
@@ -689,6 +700,11 @@ func (q *Queries) Close() error {
 	if q.listCurrentProgressForUserStmt != nil {
 		if cerr := q.listCurrentProgressForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listCurrentProgressForUserStmt: %w", cerr)
+		}
+	}
+	if q.listPartnerConfigsPageStmt != nil {
+		if cerr := q.listPartnerConfigsPageStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPartnerConfigsPageStmt: %w", cerr)
 		}
 	}
 	if q.listPartnerIssuesForUserStmt != nil {
@@ -872,6 +888,7 @@ type Queries struct {
 	getEnabledPartnerScriptStmt               *sql.Stmt
 	getIntegrationCheckTaskByIDStmt           *sql.Stmt
 	getIntegrationCheckTaskByKeyStmt          *sql.Stmt
+	getNextActiveSequenceTaskAfterCurrentStmt *sql.Stmt
 	getNextSequenceTaskIDStmt                 *sql.Stmt
 	getPartnerConfigByWebhookSecretStmt       *sql.Stmt
 	getPartnerIssueByExternalClickIDStmt      *sql.Stmt
@@ -889,13 +906,14 @@ type Queries struct {
 	insertPartnerStatsEventStmt               *sql.Stmt
 	insertPartnerStatsUniqueUserStmt          *sql.Stmt
 	insertProgressEventStmt                   *sql.Stmt
+	isSequenceTaskInactiveStmt                *sql.Stmt
 	listActiveComplexConditionsStmt           *sql.Stmt
 	listActiveTaskBundlesStmt                 *sql.Stmt
-	listAllPartnerConfigsStmt                 *sql.Stmt
 	listComplexConditionProgressForParentStmt *sql.Stmt
 	listComplexParentIDsForConditionTasksStmt *sql.Stmt
 	listCurrentProgressForTasksForUpdateStmt  *sql.Stmt
 	listCurrentProgressForUserStmt            *sql.Stmt
+	listPartnerConfigsPageStmt                *sql.Stmt
 	listPartnerIssuesForUserStmt              *sql.Stmt
 	listPartnerRewardRulesStmt                *sql.Stmt
 	listRecordCatalogStmt                     *sql.Stmt
@@ -972,6 +990,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEnabledPartnerScriptStmt:               q.getEnabledPartnerScriptStmt,
 		getIntegrationCheckTaskByIDStmt:           q.getIntegrationCheckTaskByIDStmt,
 		getIntegrationCheckTaskByKeyStmt:          q.getIntegrationCheckTaskByKeyStmt,
+		getNextActiveSequenceTaskAfterCurrentStmt: q.getNextActiveSequenceTaskAfterCurrentStmt,
 		getNextSequenceTaskIDStmt:                 q.getNextSequenceTaskIDStmt,
 		getPartnerConfigByWebhookSecretStmt:       q.getPartnerConfigByWebhookSecretStmt,
 		getPartnerIssueByExternalClickIDStmt:      q.getPartnerIssueByExternalClickIDStmt,
@@ -989,13 +1008,14 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertPartnerStatsEventStmt:               q.insertPartnerStatsEventStmt,
 		insertPartnerStatsUniqueUserStmt:          q.insertPartnerStatsUniqueUserStmt,
 		insertProgressEventStmt:                   q.insertProgressEventStmt,
+		isSequenceTaskInactiveStmt:                q.isSequenceTaskInactiveStmt,
 		listActiveComplexConditionsStmt:           q.listActiveComplexConditionsStmt,
 		listActiveTaskBundlesStmt:                 q.listActiveTaskBundlesStmt,
-		listAllPartnerConfigsStmt:                 q.listAllPartnerConfigsStmt,
 		listComplexConditionProgressForParentStmt: q.listComplexConditionProgressForParentStmt,
 		listComplexParentIDsForConditionTasksStmt: q.listComplexParentIDsForConditionTasksStmt,
 		listCurrentProgressForTasksForUpdateStmt:  q.listCurrentProgressForTasksForUpdateStmt,
 		listCurrentProgressForUserStmt:            q.listCurrentProgressForUserStmt,
+		listPartnerConfigsPageStmt:                q.listPartnerConfigsPageStmt,
 		listPartnerIssuesForUserStmt:              q.listPartnerIssuesForUserStmt,
 		listPartnerRewardRulesStmt:                q.listPartnerRewardRulesStmt,
 		listRecordCatalogStmt:                     q.listRecordCatalogStmt,

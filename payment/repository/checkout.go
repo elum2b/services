@@ -1297,6 +1297,11 @@ func (r *PaymentRepository) CreateEvent(ctx context.Context, params EventCreateP
 	if err != nil {
 		return 0, err
 	}
+	params.ProviderCode = strings.TrimSpace(params.ProviderCode)
+	params.EventType = strings.TrimSpace(params.EventType)
+	if params.ProviderCode == "" || params.EventType == "" {
+		return 0, ErrAttemptFieldsInvalid
+	}
 
 	id, err := r.q.CreatePaymentEvent(ctx, sqlc.CreatePaymentEventParams{
 		WorkspaceID:  workspaceID,

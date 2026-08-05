@@ -155,6 +155,8 @@ func mapPaymentReportStats(rows []paymentsqlc.AdminGetPaymentReportStatsRow) Pay
 		result.FailedOrders += uint64(row.FailedOrders)
 		result.PurchaseCount += uint64(row.PurchaseCount)
 		result.PurchaseQuantity += uint64(row.PurchaseQuantity)
+		// The query calculates this global distinct count in a scalar subquery,
+		// so it is repeated for every asset row rather than scoped to that asset.
 		result.UniqueBuyers = uint64(row.UniqueBuyers)
 
 		refundAmount := uint64(row.RefundAmountMinor)

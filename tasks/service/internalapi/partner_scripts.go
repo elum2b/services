@@ -40,11 +40,11 @@ func (i *Internal) GetPartnerScript(ctx context.Context, provider string) (Partn
 	return mapPartnerScript(script), true, nil
 }
 
-func (i *Internal) ListPartnerScripts(ctx context.Context) ([]PartnerScriptModel, error) {
+func (i *Internal) ListPartnerScripts(ctx context.Context, limit, offset int32) ([]PartnerScriptModel, error) {
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
-	scripts, err := i.repository.ListPartnerScripts(mergedCtx)
+	scripts, err := i.repository.ListPartnerScripts(mergedCtx, limit, offset)
 	if err != nil {
 		return nil, err
 	}

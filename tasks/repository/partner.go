@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -189,36 +190,60 @@ func (r *Repository) ListPartnerConfigs(ctx context.Context, workspaceID string)
 	})
 }
 
-func (r *Repository) WarmPartnerConfigCache(ctx context.Context) ([]PartnerConfig, error) {
-	rows, err := repositoryValue(ctx, r, func(ctx context.Context) ([]tasksqlc.TaskPartnerConfig, error) {
-		return r.q.ListAllPartnerConfigs(ctx)
-	})
-	if err != nil {
-		if isMissingPartnerConfigTable(err) {
-			return nil, nil
+const partnerConfigWarmPageSize int32 = 100
+
+func (r *Repository) WarmPartnerConfigCache(ctx context.Context) ([]string, error) {
+	providers := make(map[string]struct{})
+	var (
+		workspaceID string
+		configs     []PartnerConfig
+	)
+	storeWorkspaceConfigs := func() error {
+		if workspaceID == "" {
+			return nil
 		}
-		return nil, err
-	}
-	configs, err := r.mapPartnerConfigs(rows)
-	if err != nil {
-		return nil, err
-	}
-	byWorkspace := make(map[string][]PartnerConfig)
-	for _, config := range configs {
-		byWorkspace[config.WorkspaceID] = append(byWorkspace[config.WorkspaceID], config)
-		if _, err := repositoryQuery(ctx, r, sqlwrap.Params{
-			Key:               partnerConfigCacheKey(config.WorkspaceID, config.Provider, config.GroupKey, config.Platform),
+		cacheConfigs := configs
+		_, err := repositoryQuery(ctx, r, sqlwrap.Params{
+			Key:               partnerConfigListCacheKey(workspaceID),
 			CacheL1Delay:      r.cacheL1Delay,
 			CacheL2Delay:      r.cacheL2Delay,
-			CacheVersionScope: partnerConfigCacheScope(config.WorkspaceID),
-		}, func(context.Context) (PartnerConfig, error) {
-			return config, nil
-		}); err != nil {
+			CacheVersionScope: partnerConfigCacheScope(workspaceID),
+		}, func(context.Context) ([]PartnerConfig, error) {
+			return cacheConfigs, nil
+		})
+		return err
+	}
+
+	for offset := int32(0); ; offset += partnerConfigWarmPageSize {
+		rows, err := repositoryValue(ctx, r, func(ctx context.Context) ([]tasksqlc.TaskPartnerConfig, error) {
+			return r.q.ListPartnerConfigsPage(ctx, tasksqlc.ListPartnerConfigsPageParams{
+				Limit: partnerConfigWarmPageSize, Offset: offset,
+			})
+		})
+		if err != nil {
+			if isMissingPartnerConfigTable(err) {
+				return nil, nil
+			}
 			return nil, err
 		}
-		if config.WebhookSecret != nil && strings.TrimSpace(*config.WebhookSecret) != "" {
+		if len(rows) == 0 {
+			break
+		}
+		page, err := r.mapPartnerConfigs(rows)
+		if err != nil {
+			return nil, err
+		}
+		for _, config := range page {
+			if workspaceID != "" && workspaceID != config.WorkspaceID {
+				if err := storeWorkspaceConfigs(); err != nil {
+					return nil, err
+				}
+				configs = configs[:0]
+			}
+			workspaceID = config.WorkspaceID
+			configs = append(configs, config)
 			if _, err := repositoryQuery(ctx, r, sqlwrap.Params{
-				Key:               partnerConfigWebhookCacheKey(config.WorkspaceID, *config.WebhookSecret),
+				Key:               partnerConfigCacheKey(config.WorkspaceID, config.Provider, config.GroupKey, config.Platform),
 				CacheL1Delay:      r.cacheL1Delay,
 				CacheL2Delay:      r.cacheL2Delay,
 				CacheVersionScope: partnerConfigCacheScope(config.WorkspaceID),
@@ -227,22 +252,35 @@ func (r *Repository) WarmPartnerConfigCache(ctx context.Context) ([]PartnerConfi
 			}); err != nil {
 				return nil, err
 			}
+			if config.WebhookSecret != nil && strings.TrimSpace(*config.WebhookSecret) != "" {
+				if _, err := repositoryQuery(ctx, r, sqlwrap.Params{
+					Key:               partnerConfigWebhookCacheKey(config.WorkspaceID, *config.WebhookSecret),
+					CacheL1Delay:      r.cacheL1Delay,
+					CacheL2Delay:      r.cacheL2Delay,
+					CacheVersionScope: partnerConfigCacheScope(config.WorkspaceID),
+				}, func(context.Context) (PartnerConfig, error) {
+					return config, nil
+				}); err != nil {
+					return nil, err
+				}
+			}
+			if config.IsEnabled {
+				providers[config.Provider] = struct{}{}
+			}
+		}
+		if len(rows) < int(partnerConfigWarmPageSize) {
+			break
 		}
 	}
-	for workspaceID, workspaceConfigs := range byWorkspace {
-		configs := workspaceConfigs
-		if _, err := repositoryQuery(ctx, r, sqlwrap.Params{
-			Key:               partnerConfigListCacheKey(workspaceID),
-			CacheL1Delay:      r.cacheL1Delay,
-			CacheL2Delay:      r.cacheL2Delay,
-			CacheVersionScope: partnerConfigCacheScope(workspaceID),
-		}, func(context.Context) ([]PartnerConfig, error) {
-			return configs, nil
-		}); err != nil {
-			return nil, err
-		}
+	if err := storeWorkspaceConfigs(); err != nil {
+		return nil, err
 	}
-	return configs, nil
+	result := make([]string, 0, len(providers))
+	for provider := range providers {
+		result = append(result, provider)
+	}
+	sort.Strings(result)
+	return result, nil
 }
 
 func (r *Repository) SavePartnerScript(ctx context.Context, params SavePartnerScriptParams) error {
@@ -306,14 +344,22 @@ func (r *Repository) GetEnabledPartnerScript(ctx context.Context, provider strin
 	return script, true, nil
 }
 
-func (r *Repository) ListPartnerScripts(ctx context.Context) ([]PartnerScript, error) {
+func (r *Repository) ListPartnerScripts(ctx context.Context, limit, offset int32) ([]PartnerScript, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		return nil, serviceerrors.New(serviceerrors.CodeInvalidFields, "tasks partner script offset is invalid")
+	}
 	return repositoryQuery(ctx, r, sqlwrap.Params{
-		Key:               partnerScriptListCacheKey(),
+		Key:               partnerScriptListCacheKey() + ":" + strconv.FormatInt(int64(limit), 10) + ":" + strconv.FormatInt(int64(offset), 10),
 		CacheL1Delay:      r.cacheL1Delay,
 		CacheL2Delay:      r.cacheL2Delay,
 		CacheVersionScope: partnerScriptCacheScope(),
 	}, func(ctx context.Context) ([]PartnerScript, error) {
-		rows, err := r.q.AdminListPartnerScripts(ctx)
+		rows, err := r.q.AdminListPartnerScripts(ctx, tasksqlc.AdminListPartnerScriptsParams{
+			Limit: limit, Offset: offset,
+		})
 		if err != nil {
 			if isMissingPartnerScriptTable(err) {
 				return nil, nil

@@ -4493,9 +4493,12 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 	if err != nil || !found || loadedScript.Version != script.Version || loadedScript.Source != script.Source {
 		t.Fatalf("get partner script: value=%+v found=%v err=%v", loadedScript, found, err)
 	}
-	scripts, err := service.Internal.ListPartnerScripts(ctx)
+	scripts, err := service.Internal.ListPartnerScripts(ctx, 1, 0)
 	if err != nil || len(scripts) != 1 || scripts[0].Provider != script.Provider {
 		t.Fatalf("list partner scripts: values=%+v err=%v", scripts, err)
+	}
+	if _, err := service.Internal.ListPartnerScripts(ctx, 1, -1); err == nil {
+		t.Fatal("expected negative partner script offset to be rejected")
 	}
 	if _, found, err := service.Internal.GetPartnerScript(ctx, "missing-provider"); err != nil || found {
 		t.Fatalf("missing partner script: found=%v err=%v", found, err)
@@ -6001,6 +6004,73 @@ FOR UPDATE`, workspaceID, sequenceKey, identity.AppID, identity.PlatformID, iden
 	if err := <-startResult; err != nil {
 		t.Fatalf("start task after releasing progress: %v", err)
 	}
+}
+
+func TestTasksSequenceSkipsDeactivatedCurrentTask(t *testing.T) {
+
+	service := newTasksTestService(t)
+	ctx := context.Background()
+	workspaceID := testsupport.WorkspaceID("sequence-skip-deactivated")
+	sequenceKey := "sequence-skip-deactivated"
+	identity := user.Identity{
+		WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "sequence-user",
+	}
+
+	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if err := service.Admin.UpsertSequence(ctx, workspaceID, sequenceKey, 1, true); err != nil {
+		t.Fatalf("create sequence: %v", err)
+	}
+
+	params := make([]admin.SaveTaskParams, 0, 3)
+	for position := uint32(1); position <= 3; position++ {
+		params = append(params, admin.SaveTaskParams{
+			WorkspaceID:      workspaceID,
+			Key:              fmt.Sprintf("sequence-skip-%d", position),
+			GroupKey:         "main",
+			SequenceKey:      &sequenceKey,
+			SequencePosition: &position,
+			ActionKey:        fmt.Sprintf("sequence-skip-action-%d", position),
+			ActionKind:       repository.ActionKindAppAction,
+			ClaimMode:        repository.ClaimModeAuto,
+			StartMode:        repository.StartModeNone,
+			TargetCount:      1,
+			ResetUnit:        repository.ResetNever,
+			ResetEvery:       1,
+			Position:         int32(position),
+			IsVisible:        true,
+			IsActive:         true,
+		})
+		id, err := service.Admin.SaveTask(ctx, params[len(params)-1])
+		if err != nil {
+			t.Fatalf("create sequence task %d: %v", position, err)
+		}
+		params[len(params)-1].ID = id
+	}
+
+	if _, err := service.Internal.Record(ctx, internalapi.RecordParams{
+		Identity: internalapi.Identity(identity), ActionKey: "sequence-skip-action-1", Source: "test",
+	}); err != nil {
+		t.Fatalf("record first sequence task: %v", err)
+	}
+
+	params[1].IsActive = false
+	if _, err := service.Admin.SaveTask(ctx, params[1]); err != nil {
+		t.Fatalf("deactivate second sequence task: %v", err)
+	}
+
+	result, err := service.Internal.Record(ctx, internalapi.RecordParams{
+		Identity: internalapi.Identity(identity), ActionKey: "sequence-skip-action-3", Source: "test",
+	})
+	if err != nil {
+		t.Fatalf("record task after deactivated step: %v", err)
+	}
+	if result.Status != repository.RecordStatusRecorded || len(result.Tasks) != 1 ||
+		result.Tasks[0].Task.ID != params[2].ID {
+		t.Fatalf("deactivated step was not skipped: %+v", result)
+	}
+
 }
 
 func TestTasksRecordDoesNotLockUnrelatedComplexParentProgress(t *testing.T) {

@@ -188,7 +188,7 @@ func mapRecordBundle(rows []calendarsqlc.GetRecordBundleForUpdateRow) (Calendar,
 		)
 	}
 	progress := Progress{
-		CurrentPosition:   uint32(row.CurrentPosition.Int32),
+		CurrentPosition:   nonNegativeUint32(row.CurrentPosition),
 		ClaimCount:        uint64(row.ClaimCount.Int64),
 		LastClaimPosition: sqlNullUint32Ptr(row.LastClaimPosition),
 		LastClaimAt:       sqlNullTimePtr(row.LastClaimAt), NextClaimAt: sqlNullTimePtr(row.NextClaimAt),
@@ -208,7 +208,7 @@ func mapRecordBundle(rows []calendarsqlc.GetRecordBundleForUpdateRow) (Calendar,
 		Granted:        row.OperationGranted.Bool, Status: row.OperationStatus.String,
 		Position: sqlNullUint32Ptr(row.OperationPosition), Rewards: rewards,
 		Progress: Progress{
-			CurrentPosition:   uint32(row.OperationCurrentPosition.Int32),
+			CurrentPosition:   nonNegativeUint32(row.OperationCurrentPosition),
 			ClaimCount:        uint64(row.OperationClaimCount.Int64),
 			LastClaimPosition: sqlNullUint32Ptr(row.OperationLastClaimPosition),
 			LastClaimAt:       sqlNullTimePtr(row.OperationLastClaimAt),
@@ -384,11 +384,19 @@ func nullableUint32(value *uint32) sql.NullInt32 {
 }
 
 func sqlNullUint32Ptr(value sql.NullInt32) *uint32 {
-	if !value.Valid {
+	if !value.Valid || value.Int32 < 0 {
 		return nil
 	}
 	result := uint32(value.Int32)
 	return &result
+}
+
+func nonNegativeUint32(value sql.NullInt32) uint32 {
+	if !value.Valid || value.Int32 < 0 {
+		return 0
+	}
+
+	return uint32(value.Int32)
 }
 
 func sqlNullTimePtr(value sql.NullTime) *time.Time {

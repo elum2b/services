@@ -59,7 +59,7 @@ Lua provider экспортирует не общий `handle`, а конкре�
 | `Admin.ListPartnerConfigs(ctx, workspaceID)` | `workspaceID`. | Возвращает все конфигурации партнеров workspace. |
 | `Admin.SavePartnerScript(ctx, params)` | `PartnerScriptModel{Provider, IsEnabled, Version, Source}`. | Создает или обновляет Lua runtime provider. При изменении bump-ает версию кеша скриптов; runtime после обновления версии закрывает старый pool Lua states и поднимает новый. |
 | `Admin.GetPartnerScript(ctx, provider)` | `provider`. | Возвращает Lua script provider-а. |
-| `Admin.ListPartnerScripts(ctx)` | Только `ctx`. | Возвращает все Lua runtime provider-ы. |
+| `Internal.ListPartnerScripts(ctx, limit, offset)` | `limit` 1–100, `offset` ≥ 0. | Возвращает страницу Lua runtime provider-ов. |
 | `Admin.SavePartnerRewardRule(ctx, params)` | `SavePartnerRewardRuleParams{WorkspaceID, Provider, GroupKey, ExternalType, Reward, Position, IsEnabled}`. | Создает или обновляет правило награды партнера; `ExternalType="*"` используется как дефолт. |
 | `Admin.DeletePartnerRewardRule(ctx, workspaceID, provider, groupKey, externalType, rewardKey)` | Ключи правила награды. | Удаляет правило награды партнера. |
 | `Admin.ListPartnerDailyStats(ctx, workspaceID, provider, groupKey, from, until)` | `workspaceID`, опциональные `provider/groupKey`, период. | Возвращает дневную статистику партнерских заданий по partner/group/type с уже инкрементально подготовленными счетчиками. |

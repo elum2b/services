@@ -312,6 +312,8 @@ FROM cpa_assignment a
 WHERE a.code_id = c.id
   AND a.workspace_id = $1
   AND a.cpa_id = $2
+  AND c.workspace_id = $1
+  AND c.cpa_id = $2
   AND a.status = 'issued'
   AND c.status = 'issued';
 
@@ -322,6 +324,8 @@ FROM cpa_assignment a
 WHERE a.code_id = c.id
   AND a.workspace_id = $1
   AND a.cpa_id = $2
+  AND c.workspace_id = $1
+  AND c.cpa_id = $2
   AND a.status = 'completed'
   AND c.status = 'completed';
 

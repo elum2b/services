@@ -269,18 +269,12 @@ func (t *Tasks) SyncPartners(ctx context.Context) error {
 	defer cancel()
 	repo := repository.NewWithOptions(t.client, repositoryOptions(t.options))
 	defer func() { _ = repo.Close() }()
-	configs, err := repo.WarmPartnerConfigCache(mergedCtx)
+	providers, err := repo.WarmPartnerConfigCache(mergedCtx)
 	if err != nil {
 		return err
 	}
 	if t.runtime == nil {
 		return nil
-	}
-	providers := make([]string, 0, len(configs))
-	for _, config := range configs {
-		if config.IsEnabled {
-			providers = append(providers, config.Provider)
-		}
 	}
 	return t.runtime.WarmProviders(mergedCtx, providers)
 }

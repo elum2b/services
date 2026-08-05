@@ -137,6 +137,9 @@ func (r *Repository) recordInTx(
 			if err != nil {
 				return err
 			}
+			if err := txRepo.skipInactiveSequenceTasks(ctx, params.Identity, sequenceStates); err != nil {
+				return err
+			}
 		}
 		taskIDs := make([]int64, 0, len(catalog))
 		for _, task := range catalog {
@@ -713,6 +716,70 @@ func (r *Repository) advanceSequenceState(ctx context.Context, identity Identity
 			CurrentTaskID: currentTaskID, Status: status,
 		})
 	})
+}
+
+func (r *Repository) skipInactiveSequenceTasks(
+	ctx context.Context,
+	identity Identity,
+	states map[string]uint64,
+) error {
+
+	for sequenceKey, currentTaskID := range states {
+		if currentTaskID == 0 {
+			continue
+		}
+
+		nextTaskID, err := r.q.GetNextActiveSequenceTaskAfterCurrent(
+			ctx,
+			tasksqlc.GetNextActiveSequenceTaskAfterCurrentParams{
+				WorkspaceID: identity.WorkspaceID,
+				ID:          int64(currentTaskID),
+			},
+		)
+		if err == nil {
+			if err := r.q.UpsertSequenceState(ctx, tasksqlc.UpsertSequenceStateParams{
+				WorkspaceID:    identity.WorkspaceID,
+				SequenceKey:    sequenceKey,
+				AppID:          identity.AppID,
+				PlatformID:     identity.PlatformID,
+				PlatformUserID: identity.PlatformUserID,
+				CurrentTaskID:  sql.NullInt64{Int64: nextTaskID, Valid: true},
+				Status:         "active",
+			}); err != nil {
+				return err
+			}
+			states[sequenceKey] = uint64(nextTaskID)
+			continue
+		}
+		if !isNoRows(err) {
+			return err
+		}
+
+		inactive, err := r.q.IsSequenceTaskInactive(ctx, tasksqlc.IsSequenceTaskInactiveParams{
+			WorkspaceID: identity.WorkspaceID,
+			ID:          int64(currentTaskID),
+		})
+		if err != nil {
+			return err
+		}
+		if !inactive {
+			continue
+		}
+		if err := r.q.UpsertSequenceState(ctx, tasksqlc.UpsertSequenceStateParams{
+			WorkspaceID:    identity.WorkspaceID,
+			SequenceKey:    sequenceKey,
+			AppID:          identity.AppID,
+			PlatformID:     identity.PlatformID,
+			PlatformUserID: identity.PlatformUserID,
+			Status:         "completed",
+		}); err != nil {
+			return err
+		}
+		delete(states, sequenceKey)
+	}
+
+	return nil
+
 }
 
 func (r *Repository) rewards(ctx context.Context, workspaceID string, taskID uint64) ([]Reward, error) {

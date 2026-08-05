@@ -346,9 +346,34 @@ FROM task_definition
 WHERE workspace_id = $1
   AND sequence_key = $2
   AND sequence_position > $3
+	AND is_active = true
   AND deleted_at IS NULL
 ORDER BY sequence_position, id
 LIMIT 1;
+
+-- name: GetNextActiveSequenceTaskAfterCurrent :one
+SELECT candidate.id
+FROM task_definition current_task
+JOIN task_definition candidate
+  ON candidate.workspace_id = current_task.workspace_id
+ AND candidate.sequence_key = current_task.sequence_key
+ AND candidate.sequence_position > current_task.sequence_position
+ AND candidate.is_active = true
+ AND candidate.deleted_at IS NULL
+WHERE current_task.workspace_id = $1
+  AND current_task.id = $2
+  AND (current_task.is_active = false OR current_task.deleted_at IS NOT NULL)
+ORDER BY candidate.sequence_position, candidate.id
+LIMIT 1;
+
+-- name: IsSequenceTaskInactive :one
+SELECT EXISTS (
+    SELECT 1
+    FROM task_definition
+    WHERE workspace_id = $1
+      AND id = $2
+      AND (is_active = false OR deleted_at IS NOT NULL)
+);
 
 -- name: ListSequenceStatesForUser :many
 SELECT sequence_key, current_task_id
@@ -998,10 +1023,11 @@ FROM task_partner_config
 WHERE workspace_id = $1
 ORDER BY provider, group_key, platform;
 
--- name: ListAllPartnerConfigs :many
+-- name: ListPartnerConfigsPage :many
 SELECT workspace_id, provider, group_key, platform, is_enabled, secret, webhook_secret, target, settings, created_at, updated_at
 FROM task_partner_config
-ORDER BY workspace_id, provider, group_key, platform;
+ORDER BY workspace_id, provider, group_key, platform
+LIMIT $1 OFFSET $2;
 
 -- name: AdminUpsertPartnerScript :exec
 INSERT INTO task_partner_script (
@@ -1022,7 +1048,8 @@ LIMIT 1;
 -- name: AdminListPartnerScripts :many
 SELECT provider, is_enabled, version, source, created_at, updated_at
 FROM task_partner_script
-ORDER BY provider;
+ORDER BY provider
+LIMIT $1 OFFSET $2;
 
 -- name: GetEnabledPartnerScript :one
 SELECT provider, is_enabled, version, source, created_at, updated_at
