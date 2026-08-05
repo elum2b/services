@@ -180,7 +180,13 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 	if port == 0 {
 		port = 5432
 	}
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, params.User, params.Password, params.Database)
+	dsn, err := sqlwrap.PostgresDSN(sqlwrap.PostgresParams{
+		User: params.User, Password: params.Password, Database: params.Database,
+		Host: host, Port: port, SSLMode: params.SSLMode, SSLRootCert: params.SSLRootCert,
+	})
+	if err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err

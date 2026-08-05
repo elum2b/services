@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -112,7 +113,9 @@ func (p TgrassProvider) CheckPartnerTask(
 	var private struct {
 		OfferID int64 `json:"offer_id"`
 	}
-	_ = json.Unmarshal(params.Issue.PrivatePayload, &private)
+	if err := json.Unmarshal(params.Issue.PrivatePayload, &private); err != nil {
+		return PartnerCheckResult{}, fmt.Errorf("tgrass private payload decode failed: %w", err)
+	}
 	if private.OfferID == 0 {
 		if parsed, err := strconv.ParseInt(params.Issue.ExternalID, 10, 64); err == nil {
 			private.OfferID = parsed

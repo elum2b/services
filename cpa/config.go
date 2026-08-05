@@ -43,12 +43,14 @@ type Options struct {
 }
 
 type DatabaseParams struct {
-	User     string
-	Password string
-	Database string
-	Host     string
-	Port     int
-	Options  Options
+	User        string
+	Password    string
+	Database    string
+	Host        string
+	Port        int
+	SSLMode     string
+	SSLRootCert string
+	Options     Options
 }
 
 func normalizeOptions(options Options) Options {

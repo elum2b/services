@@ -15,6 +15,7 @@ const (
 	defaultTelegramBotAPIBaseURL = "https://api.telegram.org"
 	defaultVKAPIBaseURL          = "https://api.vk.com/method"
 	defaultVKAPIVersion          = "5.199"
+	maxChannelCheckResponse      = 1 << 20
 )
 
 type ChannelSubscriptionCheckerOptions struct {
@@ -167,6 +168,7 @@ func (c *ChannelSubscriptionPlatformChecker) checkTelegram(
 	var response telegramGetChatMemberResponse
 	resp, err := client.R().
 		SetContext(ctx).
+		SetResponseBodyLimit(maxChannelCheckResponse).
 		SetQueryParam("chat_id", chatID).
 		SetQueryParam("user_id", userID).
 		Get(strings.TrimRight(baseURL, "/") + "/bot" + token + "/getChatMember")
@@ -224,6 +226,7 @@ func (c *ChannelSubscriptionPlatformChecker) checkTelegramBoost(
 	var response telegramGetUserChatBoostsResponse
 	resp, err := client.R().
 		SetContext(ctx).
+		SetResponseBodyLimit(maxChannelCheckResponse).
 		SetQueryParam("chat_id", chatID).
 		SetQueryParam("user_id", userID).
 		Get(strings.TrimRight(baseURL, "/") + "/bot" + token + "/getUserChatBoosts")
@@ -279,6 +282,7 @@ func (c *ChannelSubscriptionPlatformChecker) checkVK(
 	var response vkIsMemberResponse
 	resp, err := client.R().
 		SetContext(ctx).
+		SetResponseBodyLimit(maxChannelCheckResponse).
 		SetQueryParams(map[string]string{
 			"group_id":     groupID,
 			"user_id":      userID,

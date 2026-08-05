@@ -231,6 +231,26 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 			return lookupErr
 		}
 
+		subscription, err := txRepo.q.LockPaymentSubscriptionForRenewal(
+			ctx,
+			paymentsqlc.LockPaymentSubscriptionForRenewalParams{
+				WorkspaceID:            order.WorkspaceID,
+				ProviderCode:           params.ProviderCode,
+				ProviderSubscriptionID: params.ProviderSubscriptionID,
+			},
+		)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrPaymentMismatch
+			}
+			return err
+		}
+		if !subscription.OrderID.Valid || subscription.OrderID.Int64 != order.ID ||
+			!subscription.AttemptID.Valid || subscription.AttemptID.Int64 != attempt.ID ||
+			subscription.Status != paymentsqlc.PaymentSubscriptionStatusActive {
+			return ErrPaymentMismatch
+		}
+
 		subscriptionID, err := txRepo.UpsertSubscription(ctx, SubscriptionUpsertParams{
 			WorkspaceID:            order.WorkspaceID,
 			ProviderCode:           params.ProviderCode,

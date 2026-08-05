@@ -922,6 +922,18 @@ func TestCPA_AdminUpsertOfferRejectsInvalidConfiguration(t *testing.T) {
 			},
 		},
 		{
+			name: "generated code needs sufficient entropy",
+			params: admin.UpsertOfferParams{
+				WorkspaceID:       cpaTestWorkspaceID,
+				ID:                "weak_generated_code",
+				Payload:           json.RawMessage(`{}`),
+				CodeMode:          repository.CodeModePersonal,
+				CodeSource:        stringPointer(repository.CodeSourceGenerated),
+				GeneratedLength:   int16Pointer(1),
+				GeneratedAlphabet: stringPointer("ab"),
+			},
+		},
+		{
 			name: "generated code exceeds stored code length",
 			params: admin.UpsertOfferParams{
 				WorkspaceID:       cpaTestWorkspaceID,

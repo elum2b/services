@@ -2726,6 +2726,15 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 	if err != nil || rows != 1 {
 		t.Fatalf("update provider transaction rows=%d err=%v", rows, err)
 	}
+	if _, err := env.api.Admin.UpdateProviderTransactionStatus(
+		env.ctx,
+		testWorkspaceID,
+		transactionID,
+		"unexpected",
+		"",
+	); !errors.Is(err, repository.ErrProviderTransactionStatusInvalid) {
+		t.Fatalf("invalid provider transaction status error = %v", err)
+	}
 	if _, err := env.api.Admin.GetProviderTransaction(
 		env.ctx,
 		testsupport.WorkspaceID("payment-provider-transaction-other"),
@@ -3745,14 +3754,13 @@ WHERE payment_order.id = $1`,
 			originalPriceID,
 		)
 	}
-	if _, err := env.db.ExecContext(env.ctx, "DELETE FROM payment_order WHERE id = $1", order.ID); err != nil {
-		t.Fatalf("delete import update test order: %v", err)
+	if _, err := env.db.ExecContext(env.ctx, "DELETE FROM payment_order WHERE id = $1", order.ID); err == nil {
+		t.Fatal("payment order deletion must be rejected")
 	}
 
 	pkg.Groups[0].Localization = nil
 	pkg.Groups[0].Products[0].Localization = nil
 	pkg.Groups[0].Products[0].Items = nil
-	pkg.Groups[0].Products[0].Prices = nil
 	if _, err := env.api.Admin.Import(env.ctx, targetWorkspace, admin.ImportRequest{
 		Package:          pkg,
 		ConflictStrategy: repository.ImportConflictUpdate,
@@ -3768,7 +3776,7 @@ WHERE payment_order.id = $1`,
 		len(replaced.Groups[0].Products) != 1 ||
 		len(replaced.Groups[0].Products[0].Localization) != 0 ||
 		len(replaced.Groups[0].Products[0].Items) != 0 ||
-		len(replaced.Groups[0].Products[0].Prices) != 0 {
+		len(replaced.Groups[0].Products[0].Prices) != 1 {
 		t.Fatalf("update_existing kept removed payment children: %+v", replaced.Groups)
 	}
 }
@@ -7559,6 +7567,56 @@ WHERE workspace_id = $1
 	}
 	if status != "refunded" {
 		t.Fatalf("subscription status after renewal replay = %q, want refunded", status)
+	}
+
+}
+
+func TestTelegramStarsRenewalCannotReactivateCanceledSubscription(t *testing.T) {
+
+	env := setupPaymentIntegrationTest(t)
+	fixture := createTelegramStarsSubscriptionFixture(t, env, "renewal-canceled")
+	periodEnd := fixture.expiresAt.Add(30 * 24 * time.Hour)
+	if rows, err := env.api.Admin.UpdateSubscriptionStatus(
+		env.ctx,
+		admin.SubscriptionStatusUpdateParams{
+			WorkspaceID:            testWorkspaceID,
+			ProviderCode:           telegramstars.ProviderCode,
+			ProviderSubscriptionID: "initial-charge-renewal-canceled",
+			Status:                 "canceled",
+			EndedAt:                &periodEnd,
+		},
+	); err != nil || rows != 1 {
+		t.Fatalf("cancel subscription: rows=%d err=%v", rows, err)
+	}
+
+	_, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(
+		env.ctx,
+		telegramstars.SuccessfulPayment{
+			WorkspaceID:                testWorkspaceID,
+			Currency:                   telegramstars.AssetCode,
+			TotalAmount:                fixture.payment.AmountMinor,
+			InvoicePayload:             fixture.payment.OrderPublicID,
+			TelegramPaymentChargeID:    "renewal-after-cancel",
+			SubscriptionExpirationDate: periodEnd.Unix(),
+			IsRecurring:                true,
+			IsFirstRecurring:           false,
+		},
+	)
+	if !errors.Is(err, repository.ErrPaymentMismatch) {
+		t.Fatalf("renew canceled subscription error = %v, want ErrPaymentMismatch", err)
+	}
+
+	var status string
+	var renewalCount int
+	if err := env.db.QueryRowContext(env.ctx, `
+SELECT
+    (SELECT status::text FROM payment_subscription WHERE workspace_id = $1 AND attempt_id = $2),
+    (SELECT COUNT(*) FROM payment_subscription_renewal WHERE workspace_id = $1 AND provider_charge_id = $3)
+`, testWorkspaceID, fixture.payment.AttemptID, "renewal-after-cancel").Scan(&status, &renewalCount); err != nil {
+		t.Fatalf("read canceled subscription: %v", err)
+	}
+	if status != "canceled" || renewalCount != 0 {
+		t.Fatalf("canceled subscription state = status %q renewals %d", status, renewalCount)
 	}
 
 }

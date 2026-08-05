@@ -288,7 +288,10 @@ func (r *Repository) exportSnapshot(ctx context.Context, workspaceID string, req
 		if !ok {
 			continue
 		}
-		config := mapPartnerConfig(row)
+		config, err := r.mapPartnerConfig(row)
+		if err != nil {
+			return ExportPackage{}, err
+		}
 		target := nullableRaw(config.Target)
 		if !sections[ExportSectionTarget] {
 			target = nil

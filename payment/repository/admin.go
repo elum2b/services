@@ -26,6 +26,10 @@ var (
 		serviceerrors.CodeInvalidFields,
 		"payment fulfillment status is invalid",
 	)
+	ErrProviderTransactionStatusInvalid = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"payment provider transaction status is invalid",
+	)
 )
 
 func (r *PaymentRepository) AdminGetProvider(ctx context.Context, code string) (AdminProviderModel, error) {

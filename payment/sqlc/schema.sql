@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS payment_product_item (
     product_id VARCHAR(64) NOT NULL,
     item_id VARCHAR(64) NOT NULL,
     reward_type payment_product_item_reward_type NOT NULL DEFAULT 'quantity',
-    quantity BIGINT NOT NULL DEFAULT 0,
+    quantity BIGINT NOT NULL DEFAULT 1,
     scale SMALLINT NOT NULL DEFAULT 0,
     duration_unit payment_product_item_duration_unit NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

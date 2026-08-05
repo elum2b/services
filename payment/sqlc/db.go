@@ -528,6 +528,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.lockPaymentRefundStmt, err = db.PrepareContext(ctx, lockPaymentRefund); err != nil {
 		return nil, fmt.Errorf("error preparing query LockPaymentRefund: %w", err)
 	}
+	if q.lockPaymentSubscriptionForRenewalStmt, err = db.PrepareContext(ctx, lockPaymentSubscriptionForRenewal); err != nil {
+		return nil, fmt.Errorf("error preparing query LockPaymentSubscriptionForRenewal: %w", err)
+	}
 	if q.markFulfillmentRevokedForOrderStmt, err = db.PrepareContext(ctx, markFulfillmentRevokedForOrder); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkFulfillmentRevokedForOrder: %w", err)
 	}
@@ -1496,6 +1499,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing lockPaymentRefundStmt: %w", cerr)
 		}
 	}
+	if q.lockPaymentSubscriptionForRenewalStmt != nil {
+		if cerr := q.lockPaymentSubscriptionForRenewalStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing lockPaymentSubscriptionForRenewalStmt: %w", cerr)
+		}
+	}
 	if q.markFulfillmentRevokedForOrderStmt != nil {
 		if cerr := q.markFulfillmentRevokedForOrderStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing markFulfillmentRevokedForOrderStmt: %w", cerr)
@@ -1908,6 +1916,7 @@ type Queries struct {
 	lockPaymentOrderStmt                                  *sql.Stmt
 	lockPaymentProviderIdempotencyStmt                    *sql.Stmt
 	lockPaymentRefundStmt                                 *sql.Stmt
+	lockPaymentSubscriptionForRenewalStmt                 *sql.Stmt
 	markFulfillmentRevokedForOrderStmt                    *sql.Stmt
 	markOrderChargebackedStmt                             *sql.Stmt
 	markOrderFulfilledStmt                                *sql.Stmt
@@ -2123,6 +2132,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		lockPaymentOrderStmt:                                  q.lockPaymentOrderStmt,
 		lockPaymentProviderIdempotencyStmt:                    q.lockPaymentProviderIdempotencyStmt,
 		lockPaymentRefundStmt:                                 q.lockPaymentRefundStmt,
+		lockPaymentSubscriptionForRenewalStmt:                 q.lockPaymentSubscriptionForRenewalStmt,
 		markFulfillmentRevokedForOrderStmt:                    q.markFulfillmentRevokedForOrderStmt,
 		markOrderChargebackedStmt:                             q.markOrderChargebackedStmt,
 		markOrderFulfilledStmt:                                q.markOrderFulfilledStmt,

@@ -48,7 +48,7 @@ func (a *VKMA) updateSubscriptionStatus(
 		ProviderCode:           ProviderCode,
 		ProviderSubscriptionID: strconv.Itoa(params.SubscriptionID),
 		Status:                 status,
-		CancelReason:           nonEmptyStringPtr(string(params.CancelReason)),
+		CancelReason:           cancelReasonPtr(params.CancelReason),
 		EndedAt:                endedAt,
 	})
 	if err != nil {
@@ -82,4 +82,18 @@ func nonEmptyStringPtr(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func cancelReasonPtr(value vkmashop.CancelReason) *string {
+
+	switch value {
+	case vkmashop.CancelUserDecision,
+		vkmashop.CancelAppDecision,
+		vkmashop.CancelPaymentFail,
+		vkmashop.CancelUnknown:
+		return nonEmptyStringPtr(string(value))
+	default:
+		return nil
+	}
+
 }

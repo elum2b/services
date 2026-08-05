@@ -10,6 +10,14 @@ import (
 	"github.com/elum2b/services/internal/utils/target"
 )
 
+const maxJSONDocumentBytes = 256 << 10
+
+func validJSONDocument(value []byte) bool {
+
+	return len(value) <= maxJSONDocumentBytes && json.Valid(value)
+
+}
+
 func normalizeSaveTaskParams(params SaveTaskParams) SaveTaskParams {
 	params.Key = strings.TrimSpace(params.Key)
 	params.GroupKey = strings.TrimSpace(params.GroupKey)
@@ -90,13 +98,13 @@ func validateSaveTask(params SaveTaskParams) error {
 	if params.StartAt != nil && params.EndAt != nil && !params.StartAt.Before(*params.EndAt) {
 		return fmt.Errorf("tasks start_at must be before end_at")
 	}
-	if !json.Valid(params.Payload) {
+	if !validJSONDocument(params.Payload) {
 		return fmt.Errorf("tasks payload must be valid JSON")
 	}
 	if err := target.Validate(params.Target); err != nil {
 		return fmt.Errorf("tasks target: %w", err)
 	}
-	if !json.Valid(params.IntegrationPayload) {
+	if !validJSONDocument(params.IntegrationPayload) {
 		return fmt.Errorf("tasks integration payload must be valid JSON")
 	}
 	return nil

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	json "github.com/goccy/go-json"
-
 	importexport "github.com/elum2b/services/internal/utils/importexport"
 	"github.com/elum2b/services/internal/utils/target"
 	tasksqlc "github.com/elum2b/services/tasks/sqlc"
@@ -592,6 +590,13 @@ func (r *Repository) importPartnerConfigsBulk(
 				continue
 			}
 			secret := importSecretValue(config.Secret, secrets)
+			if secret.Valid {
+				encrypted, err := r.encryptPartnerSecret(secret.String)
+				if err != nil {
+					return err
+				}
+				secret.String = encrypted
+			}
 			webhookSecret := importSecretValue(config.WebhookSecret, secrets)
 			rows = append(rows, []any{
 				workspaceID, config.Provider, group.Key, config.Platform, config.IsEnabled,
@@ -894,7 +899,7 @@ func validateExportPackage(pkg ExportPackage) error {
 			if err := target.Validate(config.Target); err != nil {
 				return fmt.Errorf("%s.partner_configs[%d].target: %w", groupPath, configIndex, err)
 			}
-			if len(config.Settings) > 0 && !json.Valid(config.Settings) {
+			if len(config.Settings) > 0 && !validJSONDocument(config.Settings) {
 				return fmt.Errorf("%s.partner_configs[%d].settings must be valid JSON", groupPath, configIndex)
 			}
 		}

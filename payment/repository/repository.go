@@ -204,8 +204,12 @@ func isUniqueViolation(err error) bool {
 }
 
 func (r *PaymentRepository) applySchemaUpgrades(ctx context.Context) error {
-	_ = ctx
-	return nil
+
+	_, err := r.db.DB().ExecContext(
+		ctx,
+		"ALTER TABLE payment_product_item ALTER COLUMN quantity SET DEFAULT 1",
+	)
+	return err
 }
 
 func (r *PaymentRepository) applySQL(ctx context.Context, raw, source string) error {

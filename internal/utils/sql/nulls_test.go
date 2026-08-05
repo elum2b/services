@@ -55,6 +55,9 @@ func TestNullHelpers(t *testing.T) {
 	if i64 := NullInt64Ptr(sql.NullInt64{Valid: false}); i64 != nil {
 		t.Fatalf("expected nil int64 pointer, got %v", i64)
 	}
+	if i64 := NullInt64Ptr(sql.NullInt64{Int64: -1, Valid: true}); i64 != nil {
+		t.Fatalf("expected nil int64 pointer for negative value, got %v", i64)
+	}
 
 	i32 := NullInt32Ptr(sql.NullInt32{Int32: 3, Valid: true})
 	if i32 == nil || *i32 != 3 {
@@ -62,6 +65,9 @@ func TestNullHelpers(t *testing.T) {
 	}
 	if i32 := NullInt32Ptr(sql.NullInt32{Valid: false}); i32 != nil {
 		t.Fatalf("expected nil int32 pointer, got %v", i32)
+	}
+	if i32 := NullInt32Ptr(sql.NullInt32{Int32: -1, Valid: true}); i32 != nil {
+		t.Fatalf("expected nil int32 pointer for negative value, got %v", i32)
 	}
 
 	if v := NullBoolToInt(sql.NullBool{Bool: true, Valid: true}); v != 1 {

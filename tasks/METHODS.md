@@ -18,7 +18,7 @@
 | Метод | Что принимаем | Что делает |
 | --- | --- | --- |
 | `Internal.OnPartnerCallback(ctx, params)` | `PartnerCallbackParams{WorkspaceID, Provider, GroupKey, Platform, IssueID, IssueRef, ExternalID, ExternalClickID, PlatformUserID, AppID, PlatformID, Lookup, Status, Payload, Now}`. | Обрабатывает системный callback/postback партнера. При поиске по пользователю канонический ключ — `AppID + PlatformID + PlatformUserID`; callback без application scope принимается только когда результат однозначен. Поддерживает completion по `external_click_id` для click-based партнеров и отмену (`revoked`, `unsubscribed`, `cancelled`): до claim блокирует выдачу награды статусом `revoked`, после claim ставит `revoked_after_claim`, пишет статистику и создает callback `task.partner.revoked` для внешней компенсации. |
-| `Internal.HandlePartnerWebhook(ctx, params)` | `PartnerWebhookParams{WorkspaceID, Secret, Headers, Query, Body, Now}`. | Единая точка для webhook `/webhook/{workspace_id}/{secret}/`: по `Secret` находит partner config внутри workspace, передает request в Lua runtime партнера, нормализует результат и вызывает `OnPartnerCallback`. Позволяет подключать разные webhook/postback форматы без отдельного Go-контроллера на каждого партнера. |
+| `Internal.HandlePartnerWebhook(ctx, params)` | `PartnerWebhookParams{WorkspaceID, Secret, Headers, Query, Body, Now}`. | Единая точка для webhook `/webhook/{workspace_id}/{secret}/`: по `Secret` находит partner config внутри workspace, передает request в Lua runtime партнера, нормализует результат и вызывает `OnPartnerCallback`. Тело ограничено `MaxPartnerWebhookBodyBytes` (256 KiB); Fiber-route обязан установить такой же или меньший `BodyLimit` до чтения request body. |
 
 ## partner lua contract
 

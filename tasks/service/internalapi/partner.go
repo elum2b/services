@@ -19,6 +19,7 @@ import (
 const (
 	PartnerCallbackStatusRevoked   = "revoked"
 	PartnerCallbackStatusAmbiguous = "ambiguous"
+	MaxPartnerWebhookBodyBytes     = 256 << 10
 )
 
 var partnerLookupKeyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -241,6 +242,9 @@ func (i *Internal) HandlePartnerWebhook(
 
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return PartnerCallbackResult{}, err
+	}
+	if len(params.Body) > MaxPartnerWebhookBodyBytes {
+		return PartnerCallbackResult{}, fmt.Errorf("tasks partner webhook body exceeds %d bytes", MaxPartnerWebhookBodyBytes)
 	}
 	if params.Secret == "" {
 		return PartnerCallbackResult{Status: repository.ClaimStatusNotFound}, nil

@@ -30,17 +30,20 @@ type Codec interface {
 }
 
 type Options struct {
-	MaxConnections            int
-	QueryTimeout              time.Duration
-	CacheL1Delay              time.Duration
-	CacheL2Delay              time.Duration
-	Cache                     Storage
-	CacheEnabled              bool
-	CacheSize                 int
-	CacheTTLCheck             time.Duration
-	Codec                     Codec
-	Mutex                     Mutex
-	OnCacheInvalidationError  func(error)
+	MaxConnections           int
+	QueryTimeout             time.Duration
+	CacheL1Delay             time.Duration
+	CacheL2Delay             time.Duration
+	Cache                    Storage
+	CacheEnabled             bool
+	CacheSize                int
+	CacheTTLCheck            time.Duration
+	Codec                    Codec
+	Mutex                    Mutex
+	OnCacheInvalidationError func(error)
+	// SecretEncryptionKey encrypts partner API secrets at rest. It must contain
+	// 32 bytes and should be the same deployment key already used by Control.
+	SecretEncryptionKey       []byte
 	Integration               integration.Options
 	Runtime                   taskruntime.Options
 	PartnerProviders          map[string]user.PartnerProvider
@@ -48,12 +51,14 @@ type Options struct {
 }
 
 type DatabaseParams struct {
-	User     string
-	Password string
-	Database string
-	Host     string
-	Port     int
-	Options  Options
+	User        string
+	Password    string
+	Database    string
+	Host        string
+	Port        int
+	SSLMode     string
+	SSLRootCert string
+	Options     Options
 }
 
 func toSQLWrapOptions(value Options) sqlwrap.Options {

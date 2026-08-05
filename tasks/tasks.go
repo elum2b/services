@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"sync"
 
 	serviceerrors "github.com/elum2b/services/errors"
@@ -135,14 +134,13 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 	if port == 0 {
 		port = 5432
 	}
-	dsn := fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s?sslmode=disable",
-		params.User,
-		params.Password,
-		host,
-		port,
-		params.Database,
-	)
+	dsn, err := sqlwrap.PostgresDSN(sqlwrap.PostgresParams{
+		User: params.User, Password: params.Password, Database: params.Database,
+		Host: host, Port: port, SSLMode: params.SSLMode, SSLRootCert: params.SSLRootCert,
+	})
+	if err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
@@ -224,6 +222,7 @@ func repositoryOptions(options Options) repository.Options {
 		CacheL1Delay:             options.CacheL1Delay,
 		CacheL2Delay:             options.CacheL2Delay,
 		OnCacheInvalidationError: options.OnCacheInvalidationError,
+		SecretEncryptionKey:      options.SecretEncryptionKey,
 	}
 }
 

@@ -684,7 +684,7 @@ func (q *Queries) AdminListOfferIDs(ctx context.Context, workspaceID string) ([]
 
 const adminUpsertLocalization = `-- name: AdminUpsertLocalization :exec
 WITH workspace_lock AS MATERIALIZED (
-    SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
+    SELECT pg_advisory_xact_lock(hashtextextended('cpa:' || $1, 0))
 )
 INSERT INTO cpa_localization (
     workspace_id, cpa_id, locale, title, description
@@ -770,7 +770,7 @@ func (q *Queries) AdminUpsertOffer(ctx context.Context, arg AdminUpsertOfferPara
 
 const adminUpsertReward = `-- name: AdminUpsertReward :exec
 WITH workspace_lock AS MATERIALIZED (
-    SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
+    SELECT pg_advisory_xact_lock(hashtextextended('cpa:' || $1, 0))
 )
 INSERT INTO cpa_reward (
     workspace_id, cpa_id, reward_key, reward_type, quantity, scale, duration_unit

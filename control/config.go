@@ -42,6 +42,7 @@ type Options struct {
 type DatabaseParams struct {
 	User, Password, Database, Host string
 	Port                           int
+	SSLMode, SSLRootCert           string
 	Options                        Options
 }
 

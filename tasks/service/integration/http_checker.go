@@ -3,6 +3,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -15,11 +16,15 @@ import (
 	json "github.com/goccy/go-json"
 )
 
-const maxHTTPCheckResponse = 1 << 20
+const (
+	maxHTTPCheckResponse    = 1 << 20
+	defaultHTTPCheckTimeout = 10 * time.Second
+)
 
 type HTTPChecker struct {
-	Client  *http.Client
-	Timeout time.Duration
+	Client            *http.Client
+	Timeout           time.Duration
+	AllowPrivateHosts bool
 }
 
 type HTTPCheckPayload struct {
@@ -64,32 +69,27 @@ func (h HTTPChecker) check(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	if h.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, h.Timeout)
-		defer cancel()
-	}
 	var config HTTPCheckPayload
 	if err := json.Unmarshal(task.IntegrationPayload, &config); err != nil {
 		return CheckResult{}, err
 	}
 	values := templateValues(identity, task, provider, variables, now)
-	req, err := buildHTTPCheckRequest(ctx, config.Request, values)
+	req, err := buildHTTPCheckRequest(ctx, config.Request, values, h.AllowPrivateHosts)
 	if err != nil {
 		return CheckResult{}, err
 	}
-	client := h.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := secureHTTPCheckClient(h.Client, h.Timeout, h.AllowPrivateHosts)
 	resp, err := client.Do(req)
 	if err != nil {
 		return CheckResult{}, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxHTTPCheckResponse))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxHTTPCheckResponse+1))
 	if err != nil {
 		return CheckResult{}, err
+	}
+	if len(body) > maxHTTPCheckResponse {
+		return CheckResult{}, fmt.Errorf("HTTP check response body exceeds %d bytes", maxHTTPCheckResponse)
 	}
 	completed, reason := matchHTTPCheckSuccess(resp.StatusCode, body, config.Success)
 	payload, _ := json.Marshal(map[string]any{
@@ -105,6 +105,7 @@ func buildHTTPCheckRequest(
 	ctx context.Context,
 	config HTTPCheckRequest,
 	values map[string]string,
+	allowPrivateHosts bool,
 ) (*http.Request, error) {
 	method := strings.TrimSpace(config.Method)
 	if method == "" {
@@ -113,6 +114,9 @@ func buildHTTPCheckRequest(
 	rawURL := renderTemplate(config.URL, values)
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateHTTPCheckURL(ctx, parsed, allowPrivateHosts); err != nil {
 		return nil, err
 	}
 	query := parsed.Query()
@@ -129,7 +133,12 @@ func buildHTTPCheckRequest(
 		return nil, err
 	}
 	for key, value := range config.Headers {
-		req.Header.Set(renderTemplate(key, values), renderTemplate(value, values))
+		key = renderTemplate(key, values)
+		value = renderTemplate(value, values)
+		if strings.ContainsAny(key, "\r\n") || strings.ContainsAny(value, "\r\n") {
+			return nil, fmt.Errorf("HTTP check headers cannot contain line breaks")
+		}
+		req.Header.Set(key, value)
 	}
 	if len(config.Body) > 0 && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")

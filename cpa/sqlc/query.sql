@@ -122,7 +122,7 @@ WHERE workspace_id = $1 AND id = $2;
 
 -- name: AdminUpsertLocalization :exec
 WITH workspace_lock AS MATERIALIZED (
-    SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
+    SELECT pg_advisory_xact_lock(hashtextextended('cpa:' || $1, 0))
 )
 INSERT INTO cpa_localization (
     workspace_id, cpa_id, locale, title, description
@@ -152,7 +152,7 @@ WHERE workspace_id = $1 AND cpa_id = $2 AND locale = $3;
 
 -- name: AdminUpsertReward :exec
 WITH workspace_lock AS MATERIALIZED (
-    SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
+    SELECT pg_advisory_xact_lock(hashtextextended('cpa:' || $1, 0))
 )
 INSERT INTO cpa_reward (
     workspace_id, cpa_id, reward_key, reward_type, quantity, scale, duration_unit

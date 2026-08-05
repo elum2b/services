@@ -36,10 +36,11 @@ type Options struct {
 
 func defaultOptions(opts ...Options) Options {
 	options := Options{
-		CacheEnabled:  false,
-		CacheSize:     1000,
-		CacheTTLCheck: 5 * time.Minute,
-		QueryTimeout:  defaultQueryTimeout,
+		MaxConnections: 20,
+		CacheEnabled:   false,
+		CacheSize:      1000,
+		CacheTTLCheck:  5 * time.Minute,
+		QueryTimeout:   defaultQueryTimeout,
 	}
 
 	if len(opts) > 0 {

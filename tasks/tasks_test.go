@@ -1746,7 +1746,9 @@ func newExportImportRepository(t *testing.T) *repository.Repository {
 	if err != nil {
 		t.Fatalf("sqlwrap: %v", err)
 	}
-	repo := repository.New(client)
+	repo := repository.NewWithOptions(client, repository.Options{
+		SecretEncryptionKey: []byte("0123456789abcdef0123456789abcdef"),
+	})
 	if err := repo.Bootstrap(ctx); err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
@@ -2038,7 +2040,7 @@ func TestTasksIntegrationExternalHTTPCheck(t *testing.T) {
 	service := newTasksTestService(t, Options{
 		Integration: integration.Options{
 			ExternalCheckers: map[string]integration.ExternalTaskChecker{
-				"http": integration.HTTPChecker{Client: server.Client()},
+				"http": integration.HTTPChecker{Client: server.Client(), AllowPrivateHosts: true},
 			},
 		},
 	})
@@ -2101,7 +2103,7 @@ func TestTasksIntegrationExternalHTTPCheckRejectsDifferentJSONType(t *testing.T)
 	service := newTasksTestService(t, Options{
 		Integration: integration.Options{
 			ExternalCheckers: map[string]integration.ExternalTaskChecker{
-				"http": integration.HTTPChecker{Client: server.Client()},
+				"http": integration.HTTPChecker{Client: server.Client(), AllowPrivateHosts: true},
 			},
 		},
 	})
@@ -2415,7 +2417,9 @@ func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
 		_ = db.Close()
 		t.Fatalf("create sql client: %v", err)
 	}
-	repo := repository.New(client)
+	repo := repository.NewWithOptions(client, repository.Options{
+		SecretEncryptionKey: []byte("0123456789abcdef0123456789abcdef"),
+	})
 	t.Cleanup(func() {
 		_ = repo.Close()
 		_ = client.Close()
@@ -4525,7 +4529,7 @@ func TestTasksHTTPCheckerChannelSubscriptionContract(t *testing.T) {
 		t.Fatalf("encode checker payload: %v", err)
 	}
 
-	checker := integration.HTTPChecker{Client: server.Client()}
+	checker := integration.HTTPChecker{Client: server.Client(), AllowPrivateHosts: true}
 	result, err := checker.CheckChannelSubscription(
 		context.Background(),
 		integration.ChannelSubscriptionCheckParams{
@@ -4546,6 +4550,41 @@ func TestTasksHTTPCheckerChannelSubscriptionContract(t *testing.T) {
 	)
 	if err != nil || !result.Completed || result.Reason != "" {
 		t.Fatalf("channel subscription check: result=%+v err=%v", result, err)
+	}
+
+}
+
+func TestTasksChannelCheckerRejectsOversizedResponse(t *testing.T) {
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", 1<<20+1)))
+	}))
+	defer server.Close()
+
+	payload, err := json.Marshal(map[string]any{
+		"platform": "telegram",
+		"token":    "token",
+		"chat_id":  "@channel",
+	})
+	if err != nil {
+		t.Fatalf("encode channel payload: %v", err)
+	}
+
+	checker := integration.NewChannelSubscriptionChecker(integration.ChannelSubscriptionCheckerOptions{
+		TelegramBotAPIBaseURL: server.URL,
+	})
+	_, err = checker.CheckChannelSubscription(context.Background(), integration.ChannelSubscriptionCheckParams{
+		Identity: integration.Identity{
+			WorkspaceID:    testsupport.WorkspaceID("channel-response-limit"),
+			AppID:          1,
+			PlatformID:     1,
+			PlatformUserID: "user",
+		},
+		Task:     integration.TaskContext{IntegrationPayload: payload},
+		Provider: "telegram",
+	})
+	if err == nil {
+		t.Fatal("oversized channel response was accepted")
 	}
 
 }
@@ -6994,6 +7033,9 @@ func newTasksTestService(t testing.TB, options ...Options) *Tasks {
 }
 
 func tasksTestOptions(options Options) Options {
+	if len(options.SecretEncryptionKey) == 0 {
+		options.SecretEncryptionKey = []byte("0123456789abcdef0123456789abcdef")
+	}
 	options.CacheEnabled = true
 	if options.CacheSize == 0 {
 		options.CacheSize = 10000
@@ -7005,6 +7047,53 @@ func tasksTestOptions(options Options) Options {
 		options.CacheL1Delay = time.Minute
 	}
 	return options
+}
+
+func TestTasksPartnerSecretIsEncryptedAtRest(t *testing.T) {
+
+	service := newTasksTestService(t)
+	workspaceID := testsupport.WorkspaceID("partner-secret-encryption")
+	secret := "partner-api-secret"
+	if err := service.Admin.SavePartnerConfig(context.Background(), admin.PartnerConfigModel{
+		WorkspaceID: workspaceID,
+		Provider:    "encrypted",
+		GroupKey:    "daily",
+		Platform:    "telegram",
+		IsEnabled:   true,
+		Secret:      &secret,
+	}); err != nil {
+		t.Fatalf("save partner config: %v", err)
+	}
+
+	var stored string
+	if err := service.client.DB().QueryRowContext(context.Background(), `
+SELECT secret FROM task_partner_config
+WHERE workspace_id = $1 AND provider = $2 AND group_key = $3 AND platform = $4`,
+		workspaceID, "encrypted", "daily", "telegram").Scan(&stored); err != nil {
+		t.Fatalf("read stored secret: %v", err)
+	}
+	if stored == secret || !strings.HasPrefix(stored, "v1:") {
+		t.Fatalf("partner secret stored insecurely: %q", stored)
+	}
+
+	config, found, err := service.Admin.GetPartnerConfig(context.Background(), workspaceID, "encrypted", "daily", "telegram")
+	if err != nil || !found || config.Secret == nil || *config.Secret != secret {
+		t.Fatalf("decrypted partner config = %#v, found=%v, err=%v", config, found, err)
+	}
+
+}
+
+func TestTasksPartnerWebhookRejectsOversizedBody(t *testing.T) {
+
+	service := newPartnerCallbackTestService(t)
+	_, err := service.Internal.HandlePartnerWebhook(context.Background(), internalapi.PartnerWebhookParams{
+		WorkspaceID: testsupport.WorkspaceID("partner-webhook-size"),
+		Body:        make([]byte, internalapi.MaxPartnerWebhookBodyBytes+1),
+	})
+	if err == nil {
+		t.Fatal("oversized partner webhook body was accepted")
+	}
+
 }
 
 func TestPartnerIssueIsScopedByApplication(t *testing.T) {

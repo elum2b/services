@@ -8,6 +8,21 @@ DROP TRIGGER IF EXISTS payment_order_event_update_daily_overview ON payment_stat
 DROP TRIGGER IF EXISTS payment_stats_event_update_daily_overview ON payment_stats_event;
 DROP TRIGGER IF EXISTS payment_stats_event_create_daily_buyer ON payment_stats_event;
 DROP TRIGGER IF EXISTS payment_daily_buyer_update_overview ON payment_stats_daily_buyer;
+DROP TRIGGER IF EXISTS payment_order_prevent_delete ON payment_order;
+
+CREATE OR REPLACE FUNCTION payment_order_prevent_delete_fn()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'payment orders are immutable and cannot be deleted';
+END;
+$$;
+
+CREATE TRIGGER payment_order_prevent_delete
+BEFORE DELETE ON payment_order
+FOR EACH ROW
+EXECUTE FUNCTION payment_order_prevent_delete_fn();
 
 CREATE OR REPLACE FUNCTION payment_order_purchase_stats_fn()
 RETURNS trigger

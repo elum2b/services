@@ -70,8 +70,15 @@ func (r *Repository) SavePartnerConfig(ctx context.Context, params SavePartnerCo
 	if err := target.Validate(params.Target); err != nil {
 		return fmt.Errorf("tasks partner config target: %w", err)
 	}
-	if len(params.Settings) > 0 && !json.Valid(params.Settings) {
+	if len(params.Settings) > 0 && !validJSONDocument(params.Settings) {
 		return fmt.Errorf("tasks partner config settings must be valid JSON")
+	}
+	if params.Secret != nil {
+		encrypted, err := r.encryptPartnerSecret(*params.Secret)
+		if err != nil {
+			return err
+		}
+		params.Secret = &encrypted
 	}
 
 	target := params.Target
@@ -121,7 +128,7 @@ func (r *Repository) GetPartnerConfig(
 		if err != nil {
 			return PartnerConfig{}, err
 		}
-		return mapPartnerConfig(row), nil
+		return r.mapPartnerConfig(row)
 	})
 	if err != nil {
 		if isNoRows(err) {
@@ -152,7 +159,7 @@ func (r *Repository) GetPartnerConfigByWebhookSecret(
 		if err != nil {
 			return PartnerConfig{}, err
 		}
-		return mapPartnerConfig(row), nil
+		return r.mapPartnerConfig(row)
 	})
 	if err != nil {
 		if isNoRows(err) {
@@ -178,7 +185,7 @@ func (r *Repository) ListPartnerConfigs(ctx context.Context, workspaceID string)
 		if err != nil {
 			return nil, err
 		}
-		return mapPartnerConfigs(rows), nil
+		return r.mapPartnerConfigs(rows)
 	})
 }
 
@@ -192,7 +199,10 @@ func (r *Repository) WarmPartnerConfigCache(ctx context.Context) ([]PartnerConfi
 		}
 		return nil, err
 	}
-	configs := mapPartnerConfigs(rows)
+	configs, err := r.mapPartnerConfigs(rows)
+	if err != nil {
+		return nil, err
+	}
 	byWorkspace := make(map[string][]PartnerConfig)
 	for _, config := range configs {
 		byWorkspace[config.WorkspaceID] = append(byWorkspace[config.WorkspaceID], config)
@@ -1366,28 +1376,37 @@ func partnerIssueMustExpireBeforeClaim(issue PartnerIssue, now time.Time) bool {
 	}
 }
 
-func mapPartnerConfig(row tasksqlc.TaskPartnerConfig) PartnerConfig {
+func (r *Repository) mapPartnerConfig(row tasksqlc.TaskPartnerConfig) (PartnerConfig, error) {
+
+	secret, err := r.decryptPartnerSecret(stringPtrFromNull(row.Secret))
+	if err != nil {
+		return PartnerConfig{}, err
+	}
 	return PartnerConfig{
 		WorkspaceID:   row.WorkspaceID,
 		Provider:      row.Provider,
 		GroupKey:      row.GroupKey,
 		Platform:      row.Platform,
 		IsEnabled:     row.IsEnabled,
-		Secret:        stringPtrFromNull(row.Secret),
+		Secret:        secret,
 		WebhookSecret: stringPtrFromNull(row.WebhookSecret),
 		Target:        nullRawMessage(row.Target),
 		Settings:      nullRawMessage(row.Settings),
 		CreatedAt:     row.CreatedAt,
 		UpdatedAt:     row.UpdatedAt,
-	}
+	}, nil
 }
 
-func mapPartnerConfigs(rows []tasksqlc.TaskPartnerConfig) []PartnerConfig {
+func (r *Repository) mapPartnerConfigs(rows []tasksqlc.TaskPartnerConfig) ([]PartnerConfig, error) {
 	result := make([]PartnerConfig, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, mapPartnerConfig(row))
+		config, err := r.mapPartnerConfig(row)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, config)
 	}
-	return result
+	return result, nil
 }
 
 func mapPartnerScript(row tasksqlc.TaskPartnerScript) PartnerScript {

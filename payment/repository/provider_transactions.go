@@ -137,5 +137,23 @@ func (r *PaymentRepository) AdminUpdateProviderTransactionStatus(
 	ctx context.Context,
 	params paymentsqlc.AdminUpdateProviderTransactionStatusParams,
 ) (int64, error) {
+	if !validProviderTransactionStatus(params.Status) {
+		return 0, ErrProviderTransactionStatusInvalid
+	}
+
 	return r.q.AdminUpdateProviderTransactionStatus(ctx, params)
+}
+
+func validProviderTransactionStatus(status paymentsqlc.PaymentProviderTransactionStatus) bool {
+
+	switch status {
+	case paymentsqlc.PaymentProviderTransactionStatusNew,
+		paymentsqlc.PaymentProviderTransactionStatusMatched,
+		paymentsqlc.PaymentProviderTransactionStatusIgnored,
+		paymentsqlc.PaymentProviderTransactionStatusFailed:
+		return true
+	default:
+		return false
+	}
+
 }

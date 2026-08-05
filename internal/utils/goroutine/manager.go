@@ -14,15 +14,18 @@ type Manager struct {
 	mu     sync.Mutex
 	wg     sync.WaitGroup
 	closed atomic.Bool
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func New() *Manager {
-	return &Manager{}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Manager{ctx: ctx, cancel: cancel}
 }
 
 func (m *Manager) Go(name string, fn func()) bool {
 	if m == nil {
-		m = New()
+		return false
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -40,25 +43,37 @@ func (m *Manager) Go(name string, fn func()) bool {
 
 func (m *Manager) GoRestart(ctx context.Context, name string, delay time.Duration, fn func()) bool {
 	if m == nil {
-		m = New()
+		return false
 	}
 	if delay <= 0 {
 		delay = defaultRestartDelay
 	}
-	return m.Go(name, func() {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	restartCtx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(m.ctx, cancel)
+	started := m.Go(name, func() {
+		defer stop()
+		defer cancel()
 		for {
-			if ctx != nil && ctx.Err() != nil {
+			if restartCtx.Err() != nil {
 				return
 			}
 			panicked := runRecovering(name, fn)
 			if !panicked {
 				return
 			}
-			if !waitContext(ctx, delay) {
+			if !waitContext(restartCtx, delay) {
 				return
 			}
 		}
 	})
+	if !started {
+		stop()
+		cancel()
+	}
+	return started
 }
 
 func (m *Manager) Close() {
@@ -67,6 +82,7 @@ func (m *Manager) Close() {
 	}
 	m.mu.Lock()
 	m.closed.Store(true)
+	m.cancel()
 	m.mu.Unlock()
 	m.wg.Wait()
 }

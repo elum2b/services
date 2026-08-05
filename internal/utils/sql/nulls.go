@@ -38,7 +38,7 @@ func NullStringPtr(s sql.NullString) *string {
 }
 
 func NullInt64Ptr(v sql.NullInt64) *uint64 {
-	if v.Valid {
+	if v.Valid && v.Int64 >= 0 {
 		vv := uint64(v.Int64)
 		return &vv
 	}
@@ -46,7 +46,7 @@ func NullInt64Ptr(v sql.NullInt64) *uint64 {
 }
 
 func NullInt32Ptr(v sql.NullInt32) *uint64 {
-	if v.Valid {
+	if v.Valid && v.Int32 >= 0 {
 		vv := uint64(v.Int32)
 		return &vv
 	}

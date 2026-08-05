@@ -2420,6 +2420,31 @@ WHERE workspace_id = $1
   AND provider_charge_id = $3
 LIMIT 1;
 
+-- name: LockPaymentSubscriptionForRenewal :one
+SELECT
+    id,
+    workspace_id,
+    provider_code,
+    provider_subscription_id,
+    app_id,
+    platform_id,
+    platform_user_id,
+    internal_user_id,
+    product_id,
+    order_id,
+    attempt_id,
+    status,
+    cancel_reason,
+    started_at,
+    ended_at,
+    created_at,
+    updated_at
+FROM payment_subscription
+WHERE workspace_id = $1
+  AND provider_code = $2
+  AND provider_subscription_id = $3
+FOR UPDATE;
+
 -- name: UpdatePaymentSubscriptionStatusByProvider :execrows
 UPDATE payment_subscription
 SET status = $1,

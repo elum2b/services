@@ -1,8 +1,7 @@
 package utils
 
-//go:fix inline
 func Ref[T any](value T) *T {
-	return new(value)
+	return &value
 }
 
 func Deref[T any](value *T) T {

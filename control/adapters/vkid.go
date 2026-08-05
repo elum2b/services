@@ -9,7 +9,7 @@ import (
 const ProviderVKID = "vk"
 
 func NewVKID(config OAuth2ProviderConfig) (*OAuth2, error) {
-	config.TokenURL = firstNonEmpty(config.TokenURL, "https://id.vk.com/oauth2/auth")
+	config.TokenURL = firstNonEmpty(config.TokenURL, "https://id.vk.com/oauth2/token")
 	config.UserInfoURL = firstNonEmpty(config.UserInfoURL, "https://id.vk.com/oauth2/user_info")
 	if len(config.Mapping.Subject) == 0 {
 		config.Mapping.Subject = []string{"user.user_id", "user.id", "id"}

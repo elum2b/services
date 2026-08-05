@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -101,7 +102,9 @@ func (p FlyerProvider) CheckPartnerTask(
 	var private struct {
 		Signature string `json:"signature"`
 	}
-	_ = json.Unmarshal(params.Issue.PrivatePayload, &private)
+	if err := json.Unmarshal(params.Issue.PrivatePayload, &private); err != nil {
+		return PartnerCheckResult{}, fmt.Errorf("flyer private payload decode failed: %w", err)
+	}
 	body := map[string]any{"key": partnerSecret(params.Config.Secret), "signature": private.Signature}
 	addPartnerIdentity(body, params.Identity)
 	path := "/check_task"

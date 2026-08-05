@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ const (
 	maxLocaleLength            = 16
 	maxLocalizationTitleLength = 255
 	maxRewardKeyLength         = 128
+	minimumGeneratedCodeBits   = 64
 )
 
 type UpsertOfferParams struct {
@@ -114,6 +116,9 @@ func ValidateOffer(params UpsertOfferParams) error {
 			if uniqueRuneCount(*params.GeneratedAlphabet) < 2 {
 				return invalidOfferField("generated_alphabet", "generated alphabet needs at least two symbols")
 			}
+			if !hasMinimumGeneratedCodeEntropy(*params.GeneratedLength, uniqueRuneCount(*params.GeneratedAlphabet)) {
+				return invalidOfferField("generated_length", "generated code space must contain at least 2^64 values")
+			}
 		default:
 			return invalidOfferField("code_source", "unsupported personal code source")
 		}
@@ -121,6 +126,22 @@ func ValidateOffer(params UpsertOfferParams) error {
 		return invalidOfferField("code_mode", "unsupported code mode")
 	}
 	return nil
+}
+
+func hasMinimumGeneratedCodeEntropy(length int16, alphabetSize int) bool {
+
+	if length <= 0 || alphabetSize < 2 {
+		return false
+	}
+	space := uint64(1)
+	for range length {
+		if space > math.MaxUint64/uint64(alphabetSize) {
+			return true
+		}
+		space *= uint64(alphabetSize)
+	}
+	return false
+
 }
 
 func NormalizeOffer(params *UpsertOfferParams) {

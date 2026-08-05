@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -111,7 +112,9 @@ func (p SubGramProvider) CheckPartnerTask(
 		AdsID string `json:"ads_id"`
 		Link  string `json:"link"`
 	}
-	_ = json.Unmarshal(params.Issue.PrivatePayload, &private)
+	if err := json.Unmarshal(params.Issue.PrivatePayload, &private); err != nil {
+		return PartnerCheckResult{}, fmt.Errorf("subgram private payload decode failed: %w", err)
+	}
 	body := map[string]any{"user_id": partnerInt64String(params.Identity.PlatformUserID)}
 	addPartnerIdentity(body, params.Identity)
 	if private.Link != "" {

@@ -7,8 +7,8 @@ import (
 
 func TestDefaultOptions(t *testing.T) {
 	opt := defaultOptions()
-	if opt.CacheSize != 1000 || opt.CacheTTLCheck != 5*time.Minute {
-		t.Fatalf("unexpected defaults: size=%d ttl=%s", opt.CacheSize, opt.CacheTTLCheck)
+	if opt.MaxConnections != 20 || opt.CacheSize != 1000 || opt.CacheTTLCheck != 5*time.Minute {
+		t.Fatalf("unexpected defaults: connections=%d size=%d ttl=%s", opt.MaxConnections, opt.CacheSize, opt.CacheTTLCheck)
 	}
 }
 

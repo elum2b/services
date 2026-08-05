@@ -22,6 +22,7 @@ type Repository struct {
 	cacheL1Delay             time.Duration
 	cacheL2Delay             time.Duration
 	onCacheInvalidationError func(error)
+	secretEncryptionKey      []byte
 }
 
 const DefaultQueryTimeout = time.Second
@@ -36,6 +37,7 @@ type Options struct {
 	CacheL1Delay             time.Duration
 	CacheL2Delay             time.Duration
 	OnCacheInvalidationError func(error)
+	SecretEncryptionKey      []byte
 }
 
 func New(db *sqlwrap.Client) *Repository {
@@ -60,6 +62,7 @@ func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 		cacheL1Delay:             options.CacheL1Delay,
 		cacheL2Delay:             options.CacheL2Delay,
 		onCacheInvalidationError: options.OnCacheInvalidationError,
+		secretEncryptionKey:      append([]byte(nil), options.SecretEncryptionKey...),
 	}
 }
 
@@ -82,6 +85,7 @@ func NewPreparedWithOptions(_ context.Context, db *sqlwrap.Client, options Optio
 		cacheL1Delay:             options.CacheL1Delay,
 		cacheL2Delay:             options.CacheL2Delay,
 		onCacheInvalidationError: options.OnCacheInvalidationError,
+		secretEncryptionKey:      append([]byte(nil), options.SecretEncryptionKey...),
 	}, nil
 }
 
@@ -114,6 +118,7 @@ func (r *Repository) WithTx(ctx context.Context, fn func(*Repository) error) err
 				cacheL1Delay:             r.cacheL1Delay,
 				cacheL2Delay:             r.cacheL2Delay,
 				onCacheInvalidationError: r.onCacheInvalidationError,
+				secretEncryptionKey:      r.secretEncryptionKey,
 			}
 			return struct{}{}, fn(txRepo)
 		},
@@ -153,6 +158,9 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 		return err
 	}
 	if err := r.applySchemaUpgrades(ctx); err != nil {
+		return err
+	}
+	if err := r.migratePartnerSecrets(ctx); err != nil {
 		return err
 	}
 	if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
