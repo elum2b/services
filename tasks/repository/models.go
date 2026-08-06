@@ -375,6 +375,16 @@ type Localization struct {
 	Description string
 }
 
+type Group struct {
+	WorkspaceID string
+	Key         string
+	Position    int32
+	IsActive    bool
+	DeletedAt   *time.Time
+}
+
+type Sequence = Group
+
 type Reward struct {
 	Key      string  `json:"key"`
 	Type     string  `json:"type"`

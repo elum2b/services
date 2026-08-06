@@ -24,6 +24,28 @@ ON CONFLICT (workspace_id, key) DO UPDATE SET
     deleted_at = NULL,
     updated_at = now();
 
+-- name: AdminGetGroup :one
+SELECT workspace_id, key, position, is_active, deleted_at, created_at, updated_at
+FROM task_group
+WHERE workspace_id = $1 AND key = $2
+LIMIT 1;
+
+-- name: AdminSoftDeleteGroup :execrows
+UPDATE task_group
+SET is_active = false, deleted_at = now(), updated_at = now()
+WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL;
+
+-- name: AdminGetSequence :one
+SELECT workspace_id, key, position, is_active, deleted_at, created_at, updated_at
+FROM task_sequence
+WHERE workspace_id = $1 AND key = $2
+LIMIT 1;
+
+-- name: AdminSoftDeleteSequence :execrows
+UPDATE task_sequence
+SET is_active = false, deleted_at = now(), updated_at = now()
+WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL;
+
 -- name: AdminCreateTask :one
 INSERT INTO task_definition (
     workspace_id, key, group_key, sequence_key, sequence_position, task_kind,
@@ -80,6 +102,22 @@ FROM task_group_localization
 WHERE workspace_id = $1
 ORDER BY group_key, locale;
 
+-- name: AdminGetGroupLocalization :one
+SELECT workspace_id, group_key, locale, title, description, created_at, updated_at
+FROM task_group_localization
+WHERE workspace_id = $1 AND group_key = $2 AND locale = $3
+LIMIT 1;
+
+-- name: AdminListGroupLocalizationsByGroup :many
+SELECT workspace_id, group_key, locale, title, description, created_at, updated_at
+FROM task_group_localization
+WHERE workspace_id = $1 AND group_key = $2
+ORDER BY locale;
+
+-- name: AdminDeleteGroupLocalization :execrows
+DELETE FROM task_group_localization
+WHERE workspace_id = $1 AND group_key = $2 AND locale = $3;
+
 -- name: AdminListSequences :many
 SELECT workspace_id, key, position, is_active, deleted_at, created_at, updated_at
 FROM task_sequence
@@ -92,11 +130,39 @@ FROM task_localization
 WHERE workspace_id = $1
 ORDER BY task_id, locale;
 
+-- name: AdminGetTaskLocalization :one
+SELECT workspace_id, task_id, locale, title, description, created_at, updated_at
+FROM task_localization
+WHERE workspace_id = $1 AND task_id = $2 AND locale = $3
+LIMIT 1;
+
+-- name: AdminListTaskLocalizationsByTask :many
+SELECT workspace_id, task_id, locale, title, description, created_at, updated_at
+FROM task_localization
+WHERE workspace_id = $1 AND task_id = $2
+ORDER BY locale;
+
+-- name: AdminDeleteTaskLocalization :execrows
+DELETE FROM task_localization
+WHERE workspace_id = $1 AND task_id = $2 AND locale = $3;
+
 -- name: AdminListAllRewards :many
 SELECT id, workspace_id, task_id, reward_key, reward_type, quantity, scale, duration_unit, position, created_at, updated_at
 FROM task_reward
 WHERE workspace_id = $1
 ORDER BY task_id, position, id;
+
+-- name: AdminGetReward :one
+SELECT id, workspace_id, task_id, reward_key, reward_type, quantity, scale, duration_unit, position, created_at, updated_at
+FROM task_reward
+WHERE workspace_id = $1 AND task_id = $2 AND reward_key = $3
+LIMIT 1;
+
+-- name: AdminListRewardsByTask :many
+SELECT id, workspace_id, task_id, reward_key, reward_type, quantity, scale, duration_unit, position, created_at, updated_at
+FROM task_reward
+WHERE workspace_id = $1 AND task_id = $2
+ORDER BY position, id;
 
 -- name: AdminListPartnerRewardRules :many
 SELECT workspace_id, provider, group_key, external_type, reward_key,
@@ -184,6 +250,12 @@ SELECT workspace_id, parent_task_id, condition_task_id, required_status, positio
 FROM task_complex_condition
 WHERE workspace_id = $1
 ORDER BY parent_task_id, position, condition_task_id;
+
+-- name: AdminGetComplexCondition :one
+SELECT workspace_id, parent_task_id, condition_task_id, required_status, position, is_required, created_at, updated_at
+FROM task_complex_condition
+WHERE workspace_id = $1 AND parent_task_id = $2 AND condition_task_id = $3
+LIMIT 1;
 
 -- name: ListComplexParentIDsForConditionTasks :many
 SELECT DISTINCT parent_task_id

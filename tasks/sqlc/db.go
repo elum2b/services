@@ -33,6 +33,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.adminDeleteComplexConditionStmt, err = db.PrepareContext(ctx, adminDeleteComplexCondition); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminDeleteComplexCondition: %w", err)
 	}
+	if q.adminDeleteGroupLocalizationStmt, err = db.PrepareContext(ctx, adminDeleteGroupLocalization); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminDeleteGroupLocalization: %w", err)
+	}
 	if q.adminDeletePartnerRewardRuleStmt, err = db.PrepareContext(ctx, adminDeletePartnerRewardRule); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminDeletePartnerRewardRule: %w", err)
 	}
@@ -42,11 +45,29 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.adminDeleteTaskStmt, err = db.PrepareContext(ctx, adminDeleteTask); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminDeleteTask: %w", err)
 	}
+	if q.adminDeleteTaskLocalizationStmt, err = db.PrepareContext(ctx, adminDeleteTaskLocalization); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminDeleteTaskLocalization: %w", err)
+	}
+	if q.adminGetComplexConditionStmt, err = db.PrepareContext(ctx, adminGetComplexCondition); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminGetComplexCondition: %w", err)
+	}
+	if q.adminGetGroupStmt, err = db.PrepareContext(ctx, adminGetGroup); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminGetGroup: %w", err)
+	}
+	if q.adminGetGroupLocalizationStmt, err = db.PrepareContext(ctx, adminGetGroupLocalization); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminGetGroupLocalization: %w", err)
+	}
 	if q.adminGetPartnerConfigStmt, err = db.PrepareContext(ctx, adminGetPartnerConfig); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetPartnerConfig: %w", err)
 	}
 	if q.adminGetPartnerScriptStmt, err = db.PrepareContext(ctx, adminGetPartnerScript); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetPartnerScript: %w", err)
+	}
+	if q.adminGetRewardStmt, err = db.PrepareContext(ctx, adminGetReward); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminGetReward: %w", err)
+	}
+	if q.adminGetSequenceStmt, err = db.PrepareContext(ctx, adminGetSequence); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminGetSequence: %w", err)
 	}
 	if q.adminGetSingleTaskStatsStmt, err = db.PrepareContext(ctx, adminGetSingleTaskStats); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetSingleTaskStats: %w", err)
@@ -56,6 +77,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.adminGetTaskByKeyStmt, err = db.PrepareContext(ctx, adminGetTaskByKey); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetTaskByKey: %w", err)
+	}
+	if q.adminGetTaskLocalizationStmt, err = db.PrepareContext(ctx, adminGetTaskLocalization); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminGetTaskLocalization: %w", err)
 	}
 	if q.adminGetTaskStatsStmt, err = db.PrepareContext(ctx, adminGetTaskStats); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetTaskStats: %w", err)
@@ -68,6 +92,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.adminListGroupLocalizationsStmt, err = db.PrepareContext(ctx, adminListGroupLocalizations); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListGroupLocalizations: %w", err)
+	}
+	if q.adminListGroupLocalizationsByGroupStmt, err = db.PrepareContext(ctx, adminListGroupLocalizationsByGroup); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminListGroupLocalizationsByGroup: %w", err)
 	}
 	if q.adminListGroupsStmt, err = db.PrepareContext(ctx, adminListGroups); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListGroups: %w", err)
@@ -84,6 +111,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.adminListPartnerScriptsStmt, err = db.PrepareContext(ctx, adminListPartnerScripts); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListPartnerScripts: %w", err)
 	}
+	if q.adminListRewardsByTaskStmt, err = db.PrepareContext(ctx, adminListRewardsByTask); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminListRewardsByTask: %w", err)
+	}
 	if q.adminListSequencesStmt, err = db.PrepareContext(ctx, adminListSequences); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListSequences: %w", err)
 	}
@@ -96,11 +126,20 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.adminListTaskLocalizationsStmt, err = db.PrepareContext(ctx, adminListTaskLocalizations); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListTaskLocalizations: %w", err)
 	}
+	if q.adminListTaskLocalizationsByTaskStmt, err = db.PrepareContext(ctx, adminListTaskLocalizationsByTask); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminListTaskLocalizationsByTask: %w", err)
+	}
 	if q.adminListTasksStmt, err = db.PrepareContext(ctx, adminListTasks); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListTasks: %w", err)
 	}
 	if q.adminListTasksByGroupStmt, err = db.PrepareContext(ctx, adminListTasksByGroup); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListTasksByGroup: %w", err)
+	}
+	if q.adminSoftDeleteGroupStmt, err = db.PrepareContext(ctx, adminSoftDeleteGroup); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminSoftDeleteGroup: %w", err)
+	}
+	if q.adminSoftDeleteSequenceStmt, err = db.PrepareContext(ctx, adminSoftDeleteSequence); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminSoftDeleteSequence: %w", err)
 	}
 	if q.adminUpdateTaskStmt, err = db.PrepareContext(ctx, adminUpdateTask); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminUpdateTask: %w", err)
@@ -332,6 +371,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing adminDeleteComplexConditionStmt: %w", cerr)
 		}
 	}
+	if q.adminDeleteGroupLocalizationStmt != nil {
+		if cerr := q.adminDeleteGroupLocalizationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminDeleteGroupLocalizationStmt: %w", cerr)
+		}
+	}
 	if q.adminDeletePartnerRewardRuleStmt != nil {
 		if cerr := q.adminDeletePartnerRewardRuleStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminDeletePartnerRewardRuleStmt: %w", cerr)
@@ -347,6 +391,26 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing adminDeleteTaskStmt: %w", cerr)
 		}
 	}
+	if q.adminDeleteTaskLocalizationStmt != nil {
+		if cerr := q.adminDeleteTaskLocalizationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminDeleteTaskLocalizationStmt: %w", cerr)
+		}
+	}
+	if q.adminGetComplexConditionStmt != nil {
+		if cerr := q.adminGetComplexConditionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminGetComplexConditionStmt: %w", cerr)
+		}
+	}
+	if q.adminGetGroupStmt != nil {
+		if cerr := q.adminGetGroupStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminGetGroupStmt: %w", cerr)
+		}
+	}
+	if q.adminGetGroupLocalizationStmt != nil {
+		if cerr := q.adminGetGroupLocalizationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminGetGroupLocalizationStmt: %w", cerr)
+		}
+	}
 	if q.adminGetPartnerConfigStmt != nil {
 		if cerr := q.adminGetPartnerConfigStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminGetPartnerConfigStmt: %w", cerr)
@@ -355,6 +419,16 @@ func (q *Queries) Close() error {
 	if q.adminGetPartnerScriptStmt != nil {
 		if cerr := q.adminGetPartnerScriptStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminGetPartnerScriptStmt: %w", cerr)
+		}
+	}
+	if q.adminGetRewardStmt != nil {
+		if cerr := q.adminGetRewardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminGetRewardStmt: %w", cerr)
+		}
+	}
+	if q.adminGetSequenceStmt != nil {
+		if cerr := q.adminGetSequenceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminGetSequenceStmt: %w", cerr)
 		}
 	}
 	if q.adminGetSingleTaskStatsStmt != nil {
@@ -370,6 +444,11 @@ func (q *Queries) Close() error {
 	if q.adminGetTaskByKeyStmt != nil {
 		if cerr := q.adminGetTaskByKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminGetTaskByKeyStmt: %w", cerr)
+		}
+	}
+	if q.adminGetTaskLocalizationStmt != nil {
+		if cerr := q.adminGetTaskLocalizationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminGetTaskLocalizationStmt: %w", cerr)
 		}
 	}
 	if q.adminGetTaskStatsStmt != nil {
@@ -390,6 +469,11 @@ func (q *Queries) Close() error {
 	if q.adminListGroupLocalizationsStmt != nil {
 		if cerr := q.adminListGroupLocalizationsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminListGroupLocalizationsStmt: %w", cerr)
+		}
+	}
+	if q.adminListGroupLocalizationsByGroupStmt != nil {
+		if cerr := q.adminListGroupLocalizationsByGroupStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminListGroupLocalizationsByGroupStmt: %w", cerr)
 		}
 	}
 	if q.adminListGroupsStmt != nil {
@@ -417,6 +501,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing adminListPartnerScriptsStmt: %w", cerr)
 		}
 	}
+	if q.adminListRewardsByTaskStmt != nil {
+		if cerr := q.adminListRewardsByTaskStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminListRewardsByTaskStmt: %w", cerr)
+		}
+	}
 	if q.adminListSequencesStmt != nil {
 		if cerr := q.adminListSequencesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminListSequencesStmt: %w", cerr)
@@ -437,6 +526,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing adminListTaskLocalizationsStmt: %w", cerr)
 		}
 	}
+	if q.adminListTaskLocalizationsByTaskStmt != nil {
+		if cerr := q.adminListTaskLocalizationsByTaskStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminListTaskLocalizationsByTaskStmt: %w", cerr)
+		}
+	}
 	if q.adminListTasksStmt != nil {
 		if cerr := q.adminListTasksStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminListTasksStmt: %w", cerr)
@@ -445,6 +539,16 @@ func (q *Queries) Close() error {
 	if q.adminListTasksByGroupStmt != nil {
 		if cerr := q.adminListTasksByGroupStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminListTasksByGroupStmt: %w", cerr)
+		}
+	}
+	if q.adminSoftDeleteGroupStmt != nil {
+		if cerr := q.adminSoftDeleteGroupStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminSoftDeleteGroupStmt: %w", cerr)
+		}
+	}
+	if q.adminSoftDeleteSequenceStmt != nil {
+		if cerr := q.adminSoftDeleteSequenceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminSoftDeleteSequenceStmt: %w", cerr)
 		}
 	}
 	if q.adminUpdateTaskStmt != nil {
@@ -839,29 +943,42 @@ type Queries struct {
 	acquirePartnerIssueStartLeaseStmt         *sql.Stmt
 	adminCreateTaskStmt                       *sql.Stmt
 	adminDeleteComplexConditionStmt           *sql.Stmt
+	adminDeleteGroupLocalizationStmt          *sql.Stmt
 	adminDeletePartnerRewardRuleStmt          *sql.Stmt
 	adminDeleteRewardStmt                     *sql.Stmt
 	adminDeleteTaskStmt                       *sql.Stmt
+	adminDeleteTaskLocalizationStmt           *sql.Stmt
+	adminGetComplexConditionStmt              *sql.Stmt
+	adminGetGroupStmt                         *sql.Stmt
+	adminGetGroupLocalizationStmt             *sql.Stmt
 	adminGetPartnerConfigStmt                 *sql.Stmt
 	adminGetPartnerScriptStmt                 *sql.Stmt
+	adminGetRewardStmt                        *sql.Stmt
+	adminGetSequenceStmt                      *sql.Stmt
 	adminGetSingleTaskStatsStmt               *sql.Stmt
 	adminGetTaskStmt                          *sql.Stmt
 	adminGetTaskByKeyStmt                     *sql.Stmt
+	adminGetTaskLocalizationStmt              *sql.Stmt
 	adminGetTaskStatsStmt                     *sql.Stmt
 	adminListAllRewardsStmt                   *sql.Stmt
 	adminListComplexConditionsStmt            *sql.Stmt
 	adminListGroupLocalizationsStmt           *sql.Stmt
+	adminListGroupLocalizationsByGroupStmt    *sql.Stmt
 	adminListGroupsStmt                       *sql.Stmt
 	adminListPartnerConfigsStmt               *sql.Stmt
 	adminListPartnerDailyStatsStmt            *sql.Stmt
 	adminListPartnerRewardRulesStmt           *sql.Stmt
 	adminListPartnerScriptsStmt               *sql.Stmt
+	adminListRewardsByTaskStmt                *sql.Stmt
 	adminListSequencesStmt                    *sql.Stmt
 	adminListTaskDailyOverviewStmt            *sql.Stmt
 	adminListTaskDailyStatsStmt               *sql.Stmt
 	adminListTaskLocalizationsStmt            *sql.Stmt
+	adminListTaskLocalizationsByTaskStmt      *sql.Stmt
 	adminListTasksStmt                        *sql.Stmt
 	adminListTasksByGroupStmt                 *sql.Stmt
+	adminSoftDeleteGroupStmt                  *sql.Stmt
+	adminSoftDeleteSequenceStmt               *sql.Stmt
 	adminUpdateTaskStmt                       *sql.Stmt
 	adminUpsertComplexConditionStmt           *sql.Stmt
 	adminUpsertGroupStmt                      *sql.Stmt
@@ -941,29 +1058,42 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		acquirePartnerIssueStartLeaseStmt:         q.acquirePartnerIssueStartLeaseStmt,
 		adminCreateTaskStmt:                       q.adminCreateTaskStmt,
 		adminDeleteComplexConditionStmt:           q.adminDeleteComplexConditionStmt,
+		adminDeleteGroupLocalizationStmt:          q.adminDeleteGroupLocalizationStmt,
 		adminDeletePartnerRewardRuleStmt:          q.adminDeletePartnerRewardRuleStmt,
 		adminDeleteRewardStmt:                     q.adminDeleteRewardStmt,
 		adminDeleteTaskStmt:                       q.adminDeleteTaskStmt,
+		adminDeleteTaskLocalizationStmt:           q.adminDeleteTaskLocalizationStmt,
+		adminGetComplexConditionStmt:              q.adminGetComplexConditionStmt,
+		adminGetGroupStmt:                         q.adminGetGroupStmt,
+		adminGetGroupLocalizationStmt:             q.adminGetGroupLocalizationStmt,
 		adminGetPartnerConfigStmt:                 q.adminGetPartnerConfigStmt,
 		adminGetPartnerScriptStmt:                 q.adminGetPartnerScriptStmt,
+		adminGetRewardStmt:                        q.adminGetRewardStmt,
+		adminGetSequenceStmt:                      q.adminGetSequenceStmt,
 		adminGetSingleTaskStatsStmt:               q.adminGetSingleTaskStatsStmt,
 		adminGetTaskStmt:                          q.adminGetTaskStmt,
 		adminGetTaskByKeyStmt:                     q.adminGetTaskByKeyStmt,
+		adminGetTaskLocalizationStmt:              q.adminGetTaskLocalizationStmt,
 		adminGetTaskStatsStmt:                     q.adminGetTaskStatsStmt,
 		adminListAllRewardsStmt:                   q.adminListAllRewardsStmt,
 		adminListComplexConditionsStmt:            q.adminListComplexConditionsStmt,
 		adminListGroupLocalizationsStmt:           q.adminListGroupLocalizationsStmt,
+		adminListGroupLocalizationsByGroupStmt:    q.adminListGroupLocalizationsByGroupStmt,
 		adminListGroupsStmt:                       q.adminListGroupsStmt,
 		adminListPartnerConfigsStmt:               q.adminListPartnerConfigsStmt,
 		adminListPartnerDailyStatsStmt:            q.adminListPartnerDailyStatsStmt,
 		adminListPartnerRewardRulesStmt:           q.adminListPartnerRewardRulesStmt,
 		adminListPartnerScriptsStmt:               q.adminListPartnerScriptsStmt,
+		adminListRewardsByTaskStmt:                q.adminListRewardsByTaskStmt,
 		adminListSequencesStmt:                    q.adminListSequencesStmt,
 		adminListTaskDailyOverviewStmt:            q.adminListTaskDailyOverviewStmt,
 		adminListTaskDailyStatsStmt:               q.adminListTaskDailyStatsStmt,
 		adminListTaskLocalizationsStmt:            q.adminListTaskLocalizationsStmt,
+		adminListTaskLocalizationsByTaskStmt:      q.adminListTaskLocalizationsByTaskStmt,
 		adminListTasksStmt:                        q.adminListTasksStmt,
 		adminListTasksByGroupStmt:                 q.adminListTasksByGroupStmt,
+		adminSoftDeleteGroupStmt:                  q.adminSoftDeleteGroupStmt,
+		adminSoftDeleteSequenceStmt:               q.adminSoftDeleteSequenceStmt,
 		adminUpdateTaskStmt:                       q.adminUpdateTaskStmt,
 		adminUpsertComplexConditionStmt:           q.adminUpsertComplexConditionStmt,
 		adminUpsertGroupStmt:                      q.adminUpsertGroupStmt,

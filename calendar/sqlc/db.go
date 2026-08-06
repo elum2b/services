@@ -45,11 +45,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.adminGetLocalizationStmt, err = db.PrepareContext(ctx, adminGetLocalization); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetLocalization: %w", err)
 	}
+	if q.adminGetOperationStmt, err = db.PrepareContext(ctx, adminGetOperation); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminGetOperation: %w", err)
+	}
 	if q.adminGetRewardStmt, err = db.PrepareContext(ctx, adminGetReward); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetReward: %w", err)
 	}
 	if q.adminGetStatsStmt, err = db.PrepareContext(ctx, adminGetStats); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetStats: %w", err)
+	}
+	if q.adminGetStepStmt, err = db.PrepareContext(ctx, adminGetStep); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminGetStep: %w", err)
 	}
 	if q.adminListCalendarsStmt, err = db.PrepareContext(ctx, adminListCalendars); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListCalendars: %w", err)
@@ -62,6 +68,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.adminListOperationsStmt, err = db.PrepareContext(ctx, adminListOperations); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminListOperations: %w", err)
+	}
+	if q.adminListRewardsStmt, err = db.PrepareContext(ctx, adminListRewards); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminListRewards: %w", err)
+	}
+	if q.adminListStepsStmt, err = db.PrepareContext(ctx, adminListSteps); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminListSteps: %w", err)
 	}
 	if q.adminSetCalendarActiveStmt, err = db.PrepareContext(ctx, adminSetCalendarActive); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminSetCalendarActive: %w", err)
@@ -166,6 +178,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing adminGetLocalizationStmt: %w", cerr)
 		}
 	}
+	if q.adminGetOperationStmt != nil {
+		if cerr := q.adminGetOperationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminGetOperationStmt: %w", cerr)
+		}
+	}
 	if q.adminGetRewardStmt != nil {
 		if cerr := q.adminGetRewardStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminGetRewardStmt: %w", cerr)
@@ -174,6 +191,11 @@ func (q *Queries) Close() error {
 	if q.adminGetStatsStmt != nil {
 		if cerr := q.adminGetStatsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminGetStatsStmt: %w", cerr)
+		}
+	}
+	if q.adminGetStepStmt != nil {
+		if cerr := q.adminGetStepStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminGetStepStmt: %w", cerr)
 		}
 	}
 	if q.adminListCalendarsStmt != nil {
@@ -194,6 +216,16 @@ func (q *Queries) Close() error {
 	if q.adminListOperationsStmt != nil {
 		if cerr := q.adminListOperationsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminListOperationsStmt: %w", cerr)
+		}
+	}
+	if q.adminListRewardsStmt != nil {
+		if cerr := q.adminListRewardsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminListRewardsStmt: %w", cerr)
+		}
+	}
+	if q.adminListStepsStmt != nil {
+		if cerr := q.adminListStepsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminListStepsStmt: %w", cerr)
 		}
 	}
 	if q.adminSetCalendarActiveStmt != nil {
@@ -347,12 +379,16 @@ type Queries struct {
 	adminDeleteStepStmt            *sql.Stmt
 	adminGetCalendarStmt           *sql.Stmt
 	adminGetLocalizationStmt       *sql.Stmt
+	adminGetOperationStmt          *sql.Stmt
 	adminGetRewardStmt             *sql.Stmt
 	adminGetStatsStmt              *sql.Stmt
+	adminGetStepStmt               *sql.Stmt
 	adminListCalendarsStmt         *sql.Stmt
 	adminListDailyStatsStmt        *sql.Stmt
 	adminListLocalizationsStmt     *sql.Stmt
 	adminListOperationsStmt        *sql.Stmt
+	adminListRewardsStmt           *sql.Stmt
+	adminListStepsStmt             *sql.Stmt
 	adminSetCalendarActiveStmt     *sql.Stmt
 	adminSoftDeleteCalendarStmt    *sql.Stmt
 	adminUpdateCalendarStmt        *sql.Stmt
@@ -387,12 +423,16 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		adminDeleteStepStmt:            q.adminDeleteStepStmt,
 		adminGetCalendarStmt:           q.adminGetCalendarStmt,
 		adminGetLocalizationStmt:       q.adminGetLocalizationStmt,
+		adminGetOperationStmt:          q.adminGetOperationStmt,
 		adminGetRewardStmt:             q.adminGetRewardStmt,
 		adminGetStatsStmt:              q.adminGetStatsStmt,
+		adminGetStepStmt:               q.adminGetStepStmt,
 		adminListCalendarsStmt:         q.adminListCalendarsStmt,
 		adminListDailyStatsStmt:        q.adminListDailyStatsStmt,
 		adminListLocalizationsStmt:     q.adminListLocalizationsStmt,
 		adminListOperationsStmt:        q.adminListOperationsStmt,
+		adminListRewardsStmt:           q.adminListRewardsStmt,
+		adminListStepsStmt:             q.adminListStepsStmt,
 		adminSetCalendarActiveStmt:     q.adminSetCalendarActiveStmt,
 		adminSoftDeleteCalendarStmt:    q.adminSoftDeleteCalendarStmt,
 		adminUpdateCalendarStmt:        q.adminUpdateCalendarStmt,

@@ -198,6 +198,47 @@ func (q *Queries) AdminGetLocalization(ctx context.Context, arg AdminGetLocaliza
 	return i, err
 }
 
+const adminGetOperation = `-- name: AdminGetOperation :one
+SELECT id, workspace_id, calendar_id, app_id, platform_id, platform_user_id, operation_id, granted, status, position, rewards_snapshot, current_position, claim_count, last_claim_position, last_claim_at, next_claim_at, is_completed, reset_count, was_reset, occurred_at, created_at FROM calendar_operation
+WHERE workspace_id = $1 AND calendar_id = $2 AND id = $3
+LIMIT 1
+`
+
+type AdminGetOperationParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	CalendarID  string `json:"calendar_id"`
+	ID          int64  `json:"id"`
+}
+
+func (q *Queries) AdminGetOperation(ctx context.Context, arg AdminGetOperationParams) (CalendarOperation, error) {
+	row := q.queryRow(ctx, q.adminGetOperationStmt, adminGetOperation, arg.WorkspaceID, arg.CalendarID, arg.ID)
+	var i CalendarOperation
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.CalendarID,
+		&i.AppID,
+		&i.PlatformID,
+		&i.PlatformUserID,
+		&i.OperationID,
+		&i.Granted,
+		&i.Status,
+		&i.Position,
+		&i.RewardsSnapshot,
+		&i.CurrentPosition,
+		&i.ClaimCount,
+		&i.LastClaimPosition,
+		&i.LastClaimAt,
+		&i.NextClaimAt,
+		&i.IsCompleted,
+		&i.ResetCount,
+		&i.WasReset,
+		&i.OccurredAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const adminGetReward = `-- name: AdminGetReward :one
 SELECT id, workspace_id, calendar_id, step_id, item_key, reward_type, item_count, scale, duration_unit, position, created_at, updated_at
 FROM calendar_reward
@@ -255,6 +296,40 @@ func (q *Queries) AdminGetStats(ctx context.Context, arg AdminGetStatsParams) (A
 	row := q.queryRow(ctx, q.adminGetStatsStmt, adminGetStats, arg.WorkspaceID, arg.CalendarID)
 	var i AdminGetStatsRow
 	err := row.Scan(&i.OperationCount, &i.GrantCount, &i.UniqueUsers)
+	return i, err
+}
+
+const adminGetStep = `-- name: AdminGetStep :one
+SELECT workspace_id, calendar_id, id, position, created_at, updated_at
+FROM calendar_step WHERE workspace_id = $1 AND calendar_id = $2 AND id = $3 LIMIT 1
+`
+
+type AdminGetStepParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	CalendarID  string `json:"calendar_id"`
+	ID          int64  `json:"id"`
+}
+
+type AdminGetStepRow struct {
+	WorkspaceID string    `json:"workspace_id"`
+	CalendarID  string    `json:"calendar_id"`
+	ID          int64     `json:"id"`
+	Position    int32     `json:"position"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) AdminGetStep(ctx context.Context, arg AdminGetStepParams) (AdminGetStepRow, error) {
+	row := q.queryRow(ctx, q.adminGetStepStmt, adminGetStep, arg.WorkspaceID, arg.CalendarID, arg.ID)
+	var i AdminGetStepRow
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.CalendarID,
+		&i.ID,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }
 
@@ -460,6 +535,102 @@ func (q *Queries) AdminListOperations(ctx context.Context, arg AdminListOperatio
 			&i.WasReset,
 			&i.OccurredAt,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminListRewards = `-- name: AdminListRewards :many
+SELECT id, workspace_id, calendar_id, step_id, item_key, reward_type, item_count, scale, duration_unit, position, created_at, updated_at FROM calendar_reward
+WHERE workspace_id = $1 AND calendar_id = $2
+ORDER BY step_id, position, id
+`
+
+type AdminListRewardsParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	CalendarID  string `json:"calendar_id"`
+}
+
+func (q *Queries) AdminListRewards(ctx context.Context, arg AdminListRewardsParams) ([]CalendarReward, error) {
+	rows, err := q.query(ctx, q.adminListRewardsStmt, adminListRewards, arg.WorkspaceID, arg.CalendarID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CalendarReward
+	for rows.Next() {
+		var i CalendarReward
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.CalendarID,
+			&i.StepID,
+			&i.ItemKey,
+			&i.RewardType,
+			&i.ItemCount,
+			&i.Scale,
+			&i.DurationUnit,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminListSteps = `-- name: AdminListSteps :many
+SELECT workspace_id, calendar_id, id, position, created_at, updated_at
+FROM calendar_step WHERE workspace_id = $1 AND calendar_id = $2 ORDER BY position, id
+`
+
+type AdminListStepsParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	CalendarID  string `json:"calendar_id"`
+}
+
+type AdminListStepsRow struct {
+	WorkspaceID string    `json:"workspace_id"`
+	CalendarID  string    `json:"calendar_id"`
+	ID          int64     `json:"id"`
+	Position    int32     `json:"position"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) AdminListSteps(ctx context.Context, arg AdminListStepsParams) ([]AdminListStepsRow, error) {
+	rows, err := q.query(ctx, q.adminListStepsStmt, adminListSteps, arg.WorkspaceID, arg.CalendarID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AdminListStepsRow
+	for rows.Next() {
+		var i AdminListStepsRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.CalendarID,
+			&i.ID,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

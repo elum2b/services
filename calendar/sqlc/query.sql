@@ -119,6 +119,14 @@ WHERE workspace_id = $2 AND calendar_id = $3 AND id = $4;
 DELETE FROM calendar_step
 WHERE workspace_id = $1 AND calendar_id = $2 AND id = $3;
 
+-- name: AdminGetStep :one
+SELECT workspace_id, calendar_id, id, position, created_at, updated_at
+FROM calendar_step WHERE workspace_id = $1 AND calendar_id = $2 AND id = $3 LIMIT 1;
+
+-- name: AdminListSteps :many
+SELECT workspace_id, calendar_id, id, position, created_at, updated_at
+FROM calendar_step WHERE workspace_id = $1 AND calendar_id = $2 ORDER BY position, id;
+
 -- name: AdminUpsertReward :one
 INSERT INTO calendar_reward (
     workspace_id, calendar_id, step_id, item_key,
@@ -154,6 +162,11 @@ WHERE workspace_id = $8 AND calendar_id = $9 AND id = $10;
 -- name: AdminDeleteReward :execrows
 DELETE FROM calendar_reward
 WHERE workspace_id = $1 AND calendar_id = $2 AND id = $3;
+
+-- name: AdminListRewards :many
+SELECT * FROM calendar_reward
+WHERE workspace_id = $1 AND calendar_id = $2
+ORDER BY step_id, position, id;
 
 -- name: GetCalendarBundle :many
 SELECT
@@ -362,6 +375,11 @@ FROM calendar_operation
 WHERE workspace_id = $1 AND calendar_id = $2
 ORDER BY occurred_at DESC, id DESC
 LIMIT $3 OFFSET $4;
+
+-- name: AdminGetOperation :one
+SELECT * FROM calendar_operation
+WHERE workspace_id = $1 AND calendar_id = $2 AND id = $3
+LIMIT 1;
 
 -- name: AdminGetStats :one
 SELECT

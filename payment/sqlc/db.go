@@ -45,6 +45,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.adminGetFulfillmentForWorkspaceStmt, err = db.PrepareContext(ctx, adminGetFulfillmentForWorkspace); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetFulfillmentForWorkspace: %w", err)
 	}
+	if q.adminGetFulfillmentItemStmt, err = db.PrepareContext(ctx, adminGetFulfillmentItem); err != nil {
+		return nil, fmt.Errorf("error preparing query AdminGetFulfillmentItem: %w", err)
+	}
 	if q.adminGetLocalizationStmt, err = db.PrepareContext(ctx, adminGetLocalization); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminGetLocalization: %w", err)
 	}
@@ -692,6 +695,11 @@ func (q *Queries) Close() error {
 	if q.adminGetFulfillmentForWorkspaceStmt != nil {
 		if cerr := q.adminGetFulfillmentForWorkspaceStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing adminGetFulfillmentForWorkspaceStmt: %w", cerr)
+		}
+	}
+	if q.adminGetFulfillmentItemStmt != nil {
+		if cerr := q.adminGetFulfillmentItemStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing adminGetFulfillmentItemStmt: %w", cerr)
 		}
 	}
 	if q.adminGetLocalizationStmt != nil {
@@ -1755,6 +1763,7 @@ type Queries struct {
 	adminGetAssetRateStmt                                 *sql.Stmt
 	adminGetFulfillmentStmt                               *sql.Stmt
 	adminGetFulfillmentForWorkspaceStmt                   *sql.Stmt
+	adminGetFulfillmentItemStmt                           *sql.Stmt
 	adminGetLocalizationStmt                              *sql.Stmt
 	adminGetOrderByPublicIDForWorkspaceStmt               *sql.Stmt
 	adminGetOrderForWorkspaceStmt                         *sql.Stmt
@@ -1971,6 +1980,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		adminGetAssetRateStmt:                                 q.adminGetAssetRateStmt,
 		adminGetFulfillmentStmt:                               q.adminGetFulfillmentStmt,
 		adminGetFulfillmentForWorkspaceStmt:                   q.adminGetFulfillmentForWorkspaceStmt,
+		adminGetFulfillmentItemStmt:                           q.adminGetFulfillmentItemStmt,
 		adminGetLocalizationStmt:                              q.adminGetLocalizationStmt,
 		adminGetOrderByPublicIDForWorkspaceStmt:               q.adminGetOrderByPublicIDForWorkspaceStmt,
 		adminGetOrderForWorkspaceStmt:                         q.adminGetOrderForWorkspaceStmt,

@@ -36,6 +36,14 @@ func (r *Repository) ListOperations(
 	return result, nil
 }
 
+func (r *Repository) GetOperation(ctx context.Context, workspaceID, calendarID string, id uint64) (Operation, error) {
+	row, err := r.q.AdminGetOperation(ctx, calendarsqlc.AdminGetOperationParams{WorkspaceID: workspaceID, CalendarID: calendarID, ID: int64(id)})
+	if err != nil {
+		return Operation{}, err
+	}
+	return Operation{ID: uint64(row.ID), Identity: Identity{WorkspaceID: row.WorkspaceID, AppID: row.AppID, PlatformID: row.PlatformID, PlatformUserID: row.PlatformUserID}, CalendarID: row.CalendarID, OperationID: row.OperationID, Granted: row.Granted, Status: row.Status, Position: sqlNullUint32Ptr(row.Position), Rewards: row.RewardsSnapshot, CurrentPosition: uint32(row.CurrentPosition), ClaimCount: uint64(row.ClaimCount), OccurredAt: row.OccurredAt}, nil
+}
+
 func (r *Repository) GetStats(ctx context.Context, workspaceID, calendarID string) (Stats, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return Stats{}, err

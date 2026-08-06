@@ -5,6 +5,7 @@ import (
 	"math"
 
 	services "github.com/elum2b/services"
+	"github.com/elum2b/services/calendar/repository"
 )
 
 type SaveStepParams struct {
@@ -62,4 +63,16 @@ func (a *Admin) DeleteStep(ctx context.Context, workspaceID, calendarID string, 
 	}
 
 	return a.repository.DeleteStep(mergedCtx, workspaceID, calendarID, id)
+}
+
+func (a *Admin) GetStep(ctx context.Context, workspaceID, calendarID string, id uint64) (repository.Step, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	return a.repository.GetStep(mergedCtx, workspaceID, calendarID, id)
+}
+
+func (a *Admin) ListSteps(ctx context.Context, workspaceID, calendarID string) ([]repository.Step, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	return a.repository.ListSteps(mergedCtx, workspaceID, calendarID)
 }

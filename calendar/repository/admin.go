@@ -351,6 +351,26 @@ func (r *Repository) DeleteStep(ctx context.Context, workspaceID, calendarID str
 	return rows, nil
 }
 
+func (r *Repository) GetStep(ctx context.Context, workspaceID, calendarID string, id uint64) (Step, error) {
+	row, err := r.q.AdminGetStep(ctx, calendarsqlc.AdminGetStepParams{WorkspaceID: workspaceID, CalendarID: calendarID, ID: int64(id)})
+	if err != nil {
+		return Step{}, err
+	}
+	return Step{ID: uint64(row.ID), Position: uint32(row.Position)}, nil
+}
+
+func (r *Repository) ListSteps(ctx context.Context, workspaceID, calendarID string) ([]Step, error) {
+	rows, err := r.q.AdminListSteps(ctx, calendarsqlc.AdminListStepsParams{WorkspaceID: workspaceID, CalendarID: calendarID})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Step, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, Step{ID: uint64(row.ID), Position: uint32(row.Position)})
+	}
+	return result, nil
+}
+
 func (r *Repository) UpsertReward(
 	ctx context.Context,
 	workspaceID, calendarID string,
@@ -443,6 +463,18 @@ func (r *Repository) GetReward(ctx context.Context, workspaceID, calendarID stri
 			Unit:     calendarDurationUnitPtr(row.DurationUnit),
 		}, nil
 	})
+}
+
+func (r *Repository) ListRewards(ctx context.Context, workspaceID, calendarID string) ([]Reward, error) {
+	rows, err := r.q.AdminListRewards(ctx, calendarsqlc.AdminListRewardsParams{WorkspaceID: workspaceID, CalendarID: calendarID})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Reward, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, Reward{Key: row.ItemKey, Type: row.RewardType, Quantity: row.ItemCount, Scale: uint16(row.Scale), Unit: calendarDurationUnitPtr(row.DurationUnit)})
+	}
+	return result, nil
 }
 
 func (r *Repository) DeleteReward(ctx context.Context, workspaceID, calendarID string, id uint64) (int64, error) {

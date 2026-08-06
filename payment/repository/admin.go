@@ -518,6 +518,14 @@ func (r *PaymentRepository) AdminListFulfillmentItems(
 	return mapAdminSlice(rows, mapAdminFulfillmentItem), err
 }
 
+func (r *PaymentRepository) AdminGetFulfillmentItem(
+	ctx context.Context,
+	params paymentsqlc.AdminGetFulfillmentItemParams,
+) (AdminFulfillmentItemModel, error) {
+	row, err := r.q.AdminGetFulfillmentItem(ctx, params)
+	return mapAdminResult(row, err, mapAdminFulfillmentItem)
+}
+
 func (r *PaymentRepository) AdminListRefunds(
 	ctx context.Context,
 	params paymentsqlc.AdminListRefundsParams,

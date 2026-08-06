@@ -12,6 +12,33 @@ func (a *Admin) UpsertGroup(ctx context.Context, workspaceID, key string, positi
 	return a.repository.UpsertGroup(mergedCtx, workspaceID, key, position, active)
 }
 
+func (a *Admin) GetGroup(ctx context.Context, workspaceID, key string) (GroupModel, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	value, err := a.repository.GetGroup(mergedCtx, workspaceID, key)
+	return mapGroup(value), err
+}
+
+func (a *Admin) ListGroups(ctx context.Context, workspaceID string) ([]GroupModel, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	values, err := a.repository.ListGroups(mergedCtx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]GroupModel, 0, len(values))
+	for _, value := range values {
+		result = append(result, mapGroup(value))
+	}
+	return result, nil
+}
+
+func (a *Admin) DeleteGroup(ctx context.Context, workspaceID, key string) (int64, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	return a.repository.DeleteGroup(mergedCtx, workspaceID, key)
+}
+
 func (a *Admin) UpsertGroupLocalization(
 	ctx context.Context,
 	workspaceID, key, locale, title, description string,
@@ -21,10 +48,57 @@ func (a *Admin) UpsertGroupLocalization(
 	return a.repository.UpsertGroupLocalization(mergedCtx, workspaceID, key, locale, title, description)
 }
 
+func (a *Admin) GetGroupLocalization(ctx context.Context, workspaceID, key, locale string) (repository.Localization, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	return a.repository.GetGroupLocalization(mergedCtx, workspaceID, key, locale)
+}
+func (a *Admin) ListGroupLocalizations(ctx context.Context, workspaceID, key string) ([]repository.Localization, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	return a.repository.ListGroupLocalizations(mergedCtx, workspaceID, key)
+}
+func (a *Admin) DeleteGroupLocalization(ctx context.Context, workspaceID, key, locale string) (int64, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	return a.repository.DeleteGroupLocalization(mergedCtx, workspaceID, key, locale)
+}
+
 func (a *Admin) UpsertSequence(ctx context.Context, workspaceID, key string, position int32, active bool) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	return a.repository.UpsertSequence(mergedCtx, workspaceID, key, position, active)
+}
+
+func (a *Admin) GetSequence(ctx context.Context, workspaceID, key string) (SequenceModel, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	value, err := a.repository.GetSequence(mergedCtx, workspaceID, key)
+	return mapGroup(value), err
+}
+
+func (a *Admin) ListSequences(ctx context.Context, workspaceID string) ([]SequenceModel, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	values, err := a.repository.ListSequences(mergedCtx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]SequenceModel, 0, len(values))
+	for _, value := range values {
+		result = append(result, mapGroup(value))
+	}
+	return result, nil
+}
+
+func (a *Admin) DeleteSequence(ctx context.Context, workspaceID, key string) (int64, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	return a.repository.DeleteSequence(mergedCtx, workspaceID, key)
+}
+
+func mapGroup(value repository.Group) GroupModel {
+	return GroupModel{Key: value.Key, Position: value.Position, IsActive: value.IsActive, DeletedAt: value.DeletedAt}
 }
 
 func (a *Admin) SaveTask(ctx context.Context, params SaveTaskParams) (uint64, error) {
@@ -72,6 +146,22 @@ func (a *Admin) UpsertTaskLocalization(
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	return a.repository.UpsertTaskLocalization(mergedCtx, workspaceID, taskID, locale, title, description)
+}
+
+func (a *Admin) GetTaskLocalization(ctx context.Context, workspaceID string, taskID uint64, locale string) (repository.Localization, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	return a.repository.GetTaskLocalization(mergedCtx, workspaceID, taskID, locale)
+}
+func (a *Admin) ListTaskLocalizations(ctx context.Context, workspaceID string, taskID uint64) ([]repository.Localization, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	return a.repository.ListTaskLocalizations(mergedCtx, workspaceID, taskID)
+}
+func (a *Admin) DeleteTaskLocalization(ctx context.Context, workspaceID string, taskID uint64, locale string) (int64, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	return a.repository.DeleteTaskLocalization(mergedCtx, workspaceID, taskID, locale)
 }
 
 func (a *Admin) UpsertReward(
@@ -130,6 +220,26 @@ func (a *Admin) DeleteReward(ctx context.Context, workspaceID string, taskID uin
 	return a.repository.DeleteReward(mergedCtx, workspaceID, taskID, key)
 }
 
+func (a *Admin) GetReward(ctx context.Context, workspaceID string, taskID uint64, key string) (RewardModel, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	value, err := a.repository.GetReward(mergedCtx, workspaceID, taskID, key)
+	return RewardModel{Key: value.Key, Type: value.Type, Quantity: value.Quantity, Scale: value.Scale, Unit: value.Unit}, err
+}
+func (a *Admin) ListRewards(ctx context.Context, workspaceID string, taskID uint64) ([]RewardModel, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	values, err := a.repository.ListRewards(mergedCtx, workspaceID, taskID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]RewardModel, 0, len(values))
+	for _, value := range values {
+		result = append(result, RewardModel{Key: value.Key, Type: value.Type, Quantity: value.Quantity, Scale: value.Scale, Unit: value.Unit})
+	}
+	return result, nil
+}
+
 func (a *Admin) UpsertComplexCondition(ctx context.Context, params SaveComplexConditionParams) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -166,6 +276,13 @@ func (a *Admin) ListComplexConditions(ctx context.Context, workspaceID string) (
 		})
 	}
 	return out, nil
+}
+
+func (a *Admin) GetComplexCondition(ctx context.Context, workspaceID string, parentTaskID, conditionTaskID uint64) (ComplexConditionModel, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	value, err := a.repository.GetComplexCondition(mergedCtx, workspaceID, parentTaskID, conditionTaskID)
+	return ComplexConditionModel{WorkspaceID: value.WorkspaceID, ParentTaskID: value.ParentTaskID, ConditionTaskID: value.ConditionTaskID, RequiredStatus: value.RequiredStatus, Position: value.Position, IsRequired: value.IsRequired}, err
 }
 
 func mapTask(task repository.Task) TaskModel {

@@ -71,6 +71,15 @@ type RewardModel struct {
 	Unit     *string `json:"unit,omitempty"`
 }
 
+type GroupModel struct {
+	Key       string     `json:"key"`
+	Position  int32      `json:"position"`
+	IsActive  bool       `json:"is_active"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+}
+
+type SequenceModel = GroupModel
+
 type ComplexConditionModel struct {
 	WorkspaceID     string `json:"workspace_id,omitempty"`
 	ParentTaskID    uint64 `json:"parent_task_id"`

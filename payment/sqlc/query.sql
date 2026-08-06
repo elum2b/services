@@ -3928,6 +3928,12 @@ WHERE workspace_id = $1
 ORDER BY fulfillment_id, item_id
 LIMIT $4 OFFSET $5;
 
+-- name: AdminGetFulfillmentItem :one
+SELECT id, fulfillment_id, workspace_id, item_id, reward_type, quantity, scale, duration_unit, created_at
+FROM payment_fulfillment_item
+WHERE workspace_id = $1 AND fulfillment_id = $2 AND id = $3
+LIMIT 1;
+
 -- name: AdminCreateRefund :one
 INSERT INTO payment_refund (
     workspace_id,

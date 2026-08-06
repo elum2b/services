@@ -52,6 +52,20 @@ func (a *Admin) ListOperations(
 	return result, nil
 }
 
+func (a *Admin) GetOperation(ctx context.Context, workspaceID, calendarID string, id uint64) (OperationModel, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	value, err := a.repository.GetOperation(mergedCtx, workspaceID, calendarID, id)
+	if err != nil {
+		return OperationModel{}, err
+	}
+	var rewards []user.RewardModel
+	if err := json.Unmarshal(value.Rewards, &rewards); err != nil {
+		return OperationModel{}, err
+	}
+	return OperationModel{ID: value.ID, AppID: value.Identity.AppID, PlatformID: value.Identity.PlatformID, PlatformUserID: value.Identity.PlatformUserID, OperationID: value.OperationID, Granted: value.Granted, Status: value.Status, Position: value.Position, Rewards: rewards, CurrentPosition: value.CurrentPosition, ClaimCount: value.ClaimCount, OccurredAt: value.OccurredAt}, nil
+}
+
 func (a *Admin) GetStats(ctx context.Context, workspaceID, calendarID string) (StatsModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()

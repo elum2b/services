@@ -82,6 +82,88 @@ func (r *Repository) UpsertSequence(ctx context.Context, workspaceID, key string
 	return r.invalidateTaskCache(ctx, workspaceID)
 }
 
+func (r *Repository) GetGroup(ctx context.Context, workspaceID, key string) (Group, error) {
+	if err := requireWorkspaceID(workspaceID); err != nil {
+		return Group{}, err
+	}
+	row, err := r.q.AdminGetGroup(ctx, tasksqlc.AdminGetGroupParams{WorkspaceID: workspaceID, Key: key})
+	if err != nil {
+		return Group{}, err
+	}
+	return mapGroup(row), nil
+}
+
+func (r *Repository) ListGroups(ctx context.Context, workspaceID string) ([]Group, error) {
+	if err := requireWorkspaceID(workspaceID); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.AdminListGroups(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Group, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, mapGroup(row))
+	}
+	return result, nil
+}
+
+func (r *Repository) DeleteGroup(ctx context.Context, workspaceID, key string) (int64, error) {
+	var rows int64
+	err := r.withWorkspaceMutation(ctx, workspaceID, func(tx *Repository) error {
+		var err error
+		rows, err = tx.q.AdminSoftDeleteGroup(ctx, tasksqlc.AdminSoftDeleteGroupParams{WorkspaceID: workspaceID, Key: key})
+		return err
+	})
+	if err != nil || rows == 0 {
+		return rows, err
+	}
+	return rows, r.invalidateTaskCache(ctx, workspaceID)
+}
+
+func (r *Repository) GetSequence(ctx context.Context, workspaceID, key string) (Sequence, error) {
+	if err := requireWorkspaceID(workspaceID); err != nil {
+		return Sequence{}, err
+	}
+	row, err := r.q.AdminGetSequence(ctx, tasksqlc.AdminGetSequenceParams{WorkspaceID: workspaceID, Key: key})
+	if err != nil {
+		return Sequence{}, err
+	}
+	return mapGroup(tasksqlc.TaskGroup(row)), nil
+}
+
+func (r *Repository) ListSequences(ctx context.Context, workspaceID string) ([]Sequence, error) {
+	if err := requireWorkspaceID(workspaceID); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.AdminListSequences(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Sequence, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, mapGroup(tasksqlc.TaskGroup(row)))
+	}
+	return result, nil
+}
+
+func (r *Repository) DeleteSequence(ctx context.Context, workspaceID, key string) (int64, error) {
+	var rows int64
+	err := r.withWorkspaceMutation(ctx, workspaceID, func(tx *Repository) error {
+		var err error
+		rows, err = tx.q.AdminSoftDeleteSequence(ctx, tasksqlc.AdminSoftDeleteSequenceParams{WorkspaceID: workspaceID, Key: key})
+		return err
+	})
+	if err != nil || rows == 0 {
+		return rows, err
+	}
+	return rows, r.invalidateTaskCache(ctx, workspaceID)
+}
+
+func mapGroup(row tasksqlc.TaskGroup) Group {
+	return Group{WorkspaceID: row.WorkspaceID, Key: row.Key, Position: row.Position, IsActive: row.IsActive, DeletedAt: sqlwrap.NullTimePtr(row.DeletedAt)}
+}
+
 func (r *Repository) SaveTask(ctx context.Context, params SaveTaskParams) (uint64, error) {
 	params = normalizeSaveTaskParams(params)
 	if err := validateSaveTask(params); err != nil {
@@ -273,6 +355,95 @@ func (r *Repository) UpsertTaskLocalization(
 	}
 
 	return r.invalidateTaskCache(ctx, workspaceID)
+}
+
+func (r *Repository) GetGroupLocalization(ctx context.Context, workspaceID, key, locale string) (Localization, error) {
+	row, err := r.q.AdminGetGroupLocalization(ctx, tasksqlc.AdminGetGroupLocalizationParams{WorkspaceID: workspaceID, GroupKey: key, Locale: locale})
+	if err != nil {
+		return Localization{}, err
+	}
+	return Localization{Locale: row.Locale, Title: row.Title, Description: row.Description}, nil
+}
+func (r *Repository) ListGroupLocalizations(ctx context.Context, workspaceID, key string) ([]Localization, error) {
+	rows, err := r.q.AdminListGroupLocalizationsByGroup(ctx, tasksqlc.AdminListGroupLocalizationsByGroupParams{WorkspaceID: workspaceID, GroupKey: key})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Localization, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, Localization{Locale: row.Locale, Title: row.Title, Description: row.Description})
+	}
+	return result, nil
+}
+func (r *Repository) DeleteGroupLocalization(ctx context.Context, workspaceID, key, locale string) (int64, error) {
+	var rows int64
+	err := r.withWorkspaceMutation(ctx, workspaceID, func(tx *Repository) error {
+		var err error
+		rows, err = tx.q.AdminDeleteGroupLocalization(ctx, tasksqlc.AdminDeleteGroupLocalizationParams{WorkspaceID: workspaceID, GroupKey: key, Locale: locale})
+		return err
+	})
+	if err != nil || rows == 0 {
+		return rows, err
+	}
+	return rows, r.invalidateTaskCache(ctx, workspaceID)
+}
+func (r *Repository) GetTaskLocalization(ctx context.Context, workspaceID string, taskID uint64, locale string) (Localization, error) {
+	row, err := r.q.AdminGetTaskLocalization(ctx, tasksqlc.AdminGetTaskLocalizationParams{WorkspaceID: workspaceID, TaskID: int64(taskID), Locale: locale})
+	if err != nil {
+		return Localization{}, err
+	}
+	return Localization{Locale: row.Locale, Title: row.Title, Description: row.Description}, nil
+}
+func (r *Repository) ListTaskLocalizations(ctx context.Context, workspaceID string, taskID uint64) ([]Localization, error) {
+	rows, err := r.q.AdminListTaskLocalizationsByTask(ctx, tasksqlc.AdminListTaskLocalizationsByTaskParams{WorkspaceID: workspaceID, TaskID: int64(taskID)})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Localization, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, Localization{Locale: row.Locale, Title: row.Title, Description: row.Description})
+	}
+	return result, nil
+}
+func (r *Repository) DeleteTaskLocalization(ctx context.Context, workspaceID string, taskID uint64, locale string) (int64, error) {
+	var rows int64
+	err := r.withWorkspaceMutation(ctx, workspaceID, func(tx *Repository) error {
+		var err error
+		rows, err = tx.q.AdminDeleteTaskLocalization(ctx, tasksqlc.AdminDeleteTaskLocalizationParams{WorkspaceID: workspaceID, TaskID: int64(taskID), Locale: locale})
+		return err
+	})
+	if err != nil || rows == 0 {
+		return rows, err
+	}
+	return rows, r.invalidateTaskCache(ctx, workspaceID)
+}
+func (r *Repository) GetReward(ctx context.Context, workspaceID string, taskID uint64, key string) (Reward, error) {
+	row, err := r.q.AdminGetReward(ctx, tasksqlc.AdminGetRewardParams{WorkspaceID: workspaceID, TaskID: int64(taskID), RewardKey: key})
+	if err != nil {
+		return Reward{}, err
+	}
+	return mapTaskReward(row), nil
+}
+func (r *Repository) ListRewards(ctx context.Context, workspaceID string, taskID uint64) ([]Reward, error) {
+	rows, err := r.q.AdminListRewardsByTask(ctx, tasksqlc.AdminListRewardsByTaskParams{WorkspaceID: workspaceID, TaskID: int64(taskID)})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Reward, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, mapTaskReward(row))
+	}
+	return result, nil
+}
+func (r *Repository) GetComplexCondition(ctx context.Context, workspaceID string, parentTaskID, conditionTaskID uint64) (ComplexCondition, error) {
+	row, err := r.q.AdminGetComplexCondition(ctx, tasksqlc.AdminGetComplexConditionParams{WorkspaceID: workspaceID, ParentTaskID: int64(parentTaskID), ConditionTaskID: int64(conditionTaskID)})
+	if err != nil {
+		return ComplexCondition{}, err
+	}
+	return ComplexCondition{WorkspaceID: row.WorkspaceID, ParentTaskID: uint64(row.ParentTaskID), ConditionTaskID: uint64(row.ConditionTaskID), RequiredStatus: row.RequiredStatus, Position: row.Position, IsRequired: row.IsRequired}, nil
+}
+func mapTaskReward(row tasksqlc.TaskReward) Reward {
+	return Reward{Key: row.RewardKey, Type: row.RewardType, Quantity: row.Quantity, Scale: uint16(row.Scale), Unit: taskDurationUnitPtr(row.DurationUnit)}
 }
 
 func (r *Repository) UpsertReward(

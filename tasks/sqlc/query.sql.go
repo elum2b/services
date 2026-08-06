@@ -153,6 +153,25 @@ func (q *Queries) AdminDeleteComplexCondition(ctx context.Context, arg AdminDele
 	return result.RowsAffected()
 }
 
+const adminDeleteGroupLocalization = `-- name: AdminDeleteGroupLocalization :execrows
+DELETE FROM task_group_localization
+WHERE workspace_id = $1 AND group_key = $2 AND locale = $3
+`
+
+type AdminDeleteGroupLocalizationParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	GroupKey    string `json:"group_key"`
+	Locale      string `json:"locale"`
+}
+
+func (q *Queries) AdminDeleteGroupLocalization(ctx context.Context, arg AdminDeleteGroupLocalizationParams) (int64, error) {
+	result, err := q.exec(ctx, q.adminDeleteGroupLocalizationStmt, adminDeleteGroupLocalization, arg.WorkspaceID, arg.GroupKey, arg.Locale)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const adminDeletePartnerRewardRule = `-- name: AdminDeletePartnerRewardRule :execrows
 DELETE FROM task_partner_reward_rule
 WHERE workspace_id = $1 AND provider = $2 AND group_key = $3 AND external_type = $4 AND reward_key = $5
@@ -218,6 +237,109 @@ func (q *Queries) AdminDeleteTask(ctx context.Context, arg AdminDeleteTaskParams
 	return result.RowsAffected()
 }
 
+const adminDeleteTaskLocalization = `-- name: AdminDeleteTaskLocalization :execrows
+DELETE FROM task_localization
+WHERE workspace_id = $1 AND task_id = $2 AND locale = $3
+`
+
+type AdminDeleteTaskLocalizationParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	TaskID      int64  `json:"task_id"`
+	Locale      string `json:"locale"`
+}
+
+func (q *Queries) AdminDeleteTaskLocalization(ctx context.Context, arg AdminDeleteTaskLocalizationParams) (int64, error) {
+	result, err := q.exec(ctx, q.adminDeleteTaskLocalizationStmt, adminDeleteTaskLocalization, arg.WorkspaceID, arg.TaskID, arg.Locale)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const adminGetComplexCondition = `-- name: AdminGetComplexCondition :one
+SELECT workspace_id, parent_task_id, condition_task_id, required_status, position, is_required, created_at, updated_at
+FROM task_complex_condition
+WHERE workspace_id = $1 AND parent_task_id = $2 AND condition_task_id = $3
+LIMIT 1
+`
+
+type AdminGetComplexConditionParams struct {
+	WorkspaceID     string `json:"workspace_id"`
+	ParentTaskID    int64  `json:"parent_task_id"`
+	ConditionTaskID int64  `json:"condition_task_id"`
+}
+
+func (q *Queries) AdminGetComplexCondition(ctx context.Context, arg AdminGetComplexConditionParams) (TaskComplexCondition, error) {
+	row := q.queryRow(ctx, q.adminGetComplexConditionStmt, adminGetComplexCondition, arg.WorkspaceID, arg.ParentTaskID, arg.ConditionTaskID)
+	var i TaskComplexCondition
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.ParentTaskID,
+		&i.ConditionTaskID,
+		&i.RequiredStatus,
+		&i.Position,
+		&i.IsRequired,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const adminGetGroup = `-- name: AdminGetGroup :one
+SELECT workspace_id, key, position, is_active, deleted_at, created_at, updated_at
+FROM task_group
+WHERE workspace_id = $1 AND key = $2
+LIMIT 1
+`
+
+type AdminGetGroupParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	Key         string `json:"key"`
+}
+
+func (q *Queries) AdminGetGroup(ctx context.Context, arg AdminGetGroupParams) (TaskGroup, error) {
+	row := q.queryRow(ctx, q.adminGetGroupStmt, adminGetGroup, arg.WorkspaceID, arg.Key)
+	var i TaskGroup
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.Key,
+		&i.Position,
+		&i.IsActive,
+		&i.DeletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const adminGetGroupLocalization = `-- name: AdminGetGroupLocalization :one
+SELECT workspace_id, group_key, locale, title, description, created_at, updated_at
+FROM task_group_localization
+WHERE workspace_id = $1 AND group_key = $2 AND locale = $3
+LIMIT 1
+`
+
+type AdminGetGroupLocalizationParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	GroupKey    string `json:"group_key"`
+	Locale      string `json:"locale"`
+}
+
+func (q *Queries) AdminGetGroupLocalization(ctx context.Context, arg AdminGetGroupLocalizationParams) (TaskGroupLocalization, error) {
+	row := q.queryRow(ctx, q.adminGetGroupLocalizationStmt, adminGetGroupLocalization, arg.WorkspaceID, arg.GroupKey, arg.Locale)
+	var i TaskGroupLocalization
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.GroupKey,
+		&i.Locale,
+		&i.Title,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const adminGetPartnerConfig = `-- name: AdminGetPartnerConfig :one
 SELECT workspace_id, provider, group_key, platform, is_enabled, secret, webhook_secret, target, settings, created_at, updated_at
 FROM task_partner_config
@@ -271,6 +393,65 @@ func (q *Queries) AdminGetPartnerScript(ctx context.Context, provider string) (T
 		&i.IsEnabled,
 		&i.Version,
 		&i.Source,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const adminGetReward = `-- name: AdminGetReward :one
+SELECT id, workspace_id, task_id, reward_key, reward_type, quantity, scale, duration_unit, position, created_at, updated_at
+FROM task_reward
+WHERE workspace_id = $1 AND task_id = $2 AND reward_key = $3
+LIMIT 1
+`
+
+type AdminGetRewardParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	TaskID      int64  `json:"task_id"`
+	RewardKey   string `json:"reward_key"`
+}
+
+func (q *Queries) AdminGetReward(ctx context.Context, arg AdminGetRewardParams) (TaskReward, error) {
+	row := q.queryRow(ctx, q.adminGetRewardStmt, adminGetReward, arg.WorkspaceID, arg.TaskID, arg.RewardKey)
+	var i TaskReward
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.TaskID,
+		&i.RewardKey,
+		&i.RewardType,
+		&i.Quantity,
+		&i.Scale,
+		&i.DurationUnit,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const adminGetSequence = `-- name: AdminGetSequence :one
+SELECT workspace_id, key, position, is_active, deleted_at, created_at, updated_at
+FROM task_sequence
+WHERE workspace_id = $1 AND key = $2
+LIMIT 1
+`
+
+type AdminGetSequenceParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	Key         string `json:"key"`
+}
+
+func (q *Queries) AdminGetSequence(ctx context.Context, arg AdminGetSequenceParams) (TaskSequence, error) {
+	row := q.queryRow(ctx, q.adminGetSequenceStmt, adminGetSequence, arg.WorkspaceID, arg.Key)
+	var i TaskSequence
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.Key,
+		&i.Position,
+		&i.IsActive,
+		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -478,6 +659,34 @@ func (q *Queries) AdminGetTaskByKey(ctx context.Context, arg AdminGetTaskByKeyPa
 	return i, err
 }
 
+const adminGetTaskLocalization = `-- name: AdminGetTaskLocalization :one
+SELECT workspace_id, task_id, locale, title, description, created_at, updated_at
+FROM task_localization
+WHERE workspace_id = $1 AND task_id = $2 AND locale = $3
+LIMIT 1
+`
+
+type AdminGetTaskLocalizationParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	TaskID      int64  `json:"task_id"`
+	Locale      string `json:"locale"`
+}
+
+func (q *Queries) AdminGetTaskLocalization(ctx context.Context, arg AdminGetTaskLocalizationParams) (TaskLocalization, error) {
+	row := q.queryRow(ctx, q.adminGetTaskLocalizationStmt, adminGetTaskLocalization, arg.WorkspaceID, arg.TaskID, arg.Locale)
+	var i TaskLocalization
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.TaskID,
+		&i.Locale,
+		&i.Title,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const adminGetTaskStats = `-- name: AdminGetTaskStats :one
 SELECT
     definitions.tasks_total,
@@ -675,6 +884,49 @@ ORDER BY group_key, locale
 
 func (q *Queries) AdminListGroupLocalizations(ctx context.Context, workspaceID string) ([]TaskGroupLocalization, error) {
 	rows, err := q.query(ctx, q.adminListGroupLocalizationsStmt, adminListGroupLocalizations, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TaskGroupLocalization
+	for rows.Next() {
+		var i TaskGroupLocalization
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.GroupKey,
+			&i.Locale,
+			&i.Title,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminListGroupLocalizationsByGroup = `-- name: AdminListGroupLocalizationsByGroup :many
+SELECT workspace_id, group_key, locale, title, description, created_at, updated_at
+FROM task_group_localization
+WHERE workspace_id = $1 AND group_key = $2
+ORDER BY locale
+`
+
+type AdminListGroupLocalizationsByGroupParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	GroupKey    string `json:"group_key"`
+}
+
+func (q *Queries) AdminListGroupLocalizationsByGroup(ctx context.Context, arg AdminListGroupLocalizationsByGroupParams) ([]TaskGroupLocalization, error) {
+	rows, err := q.query(ctx, q.adminListGroupLocalizationsByGroupStmt, adminListGroupLocalizationsByGroup, arg.WorkspaceID, arg.GroupKey)
 	if err != nil {
 		return nil, err
 	}
@@ -928,6 +1180,53 @@ func (q *Queries) AdminListPartnerScripts(ctx context.Context, arg AdminListPart
 			&i.IsEnabled,
 			&i.Version,
 			&i.Source,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminListRewardsByTask = `-- name: AdminListRewardsByTask :many
+SELECT id, workspace_id, task_id, reward_key, reward_type, quantity, scale, duration_unit, position, created_at, updated_at
+FROM task_reward
+WHERE workspace_id = $1 AND task_id = $2
+ORDER BY position, id
+`
+
+type AdminListRewardsByTaskParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	TaskID      int64  `json:"task_id"`
+}
+
+func (q *Queries) AdminListRewardsByTask(ctx context.Context, arg AdminListRewardsByTaskParams) ([]TaskReward, error) {
+	rows, err := q.query(ctx, q.adminListRewardsByTaskStmt, adminListRewardsByTask, arg.WorkspaceID, arg.TaskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TaskReward
+	for rows.Next() {
+		var i TaskReward
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.TaskID,
+			&i.RewardKey,
+			&i.RewardType,
+			&i.Quantity,
+			&i.Scale,
+			&i.DurationUnit,
+			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -1258,6 +1557,49 @@ func (q *Queries) AdminListTaskLocalizations(ctx context.Context, workspaceID st
 	return items, nil
 }
 
+const adminListTaskLocalizationsByTask = `-- name: AdminListTaskLocalizationsByTask :many
+SELECT workspace_id, task_id, locale, title, description, created_at, updated_at
+FROM task_localization
+WHERE workspace_id = $1 AND task_id = $2
+ORDER BY locale
+`
+
+type AdminListTaskLocalizationsByTaskParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	TaskID      int64  `json:"task_id"`
+}
+
+func (q *Queries) AdminListTaskLocalizationsByTask(ctx context.Context, arg AdminListTaskLocalizationsByTaskParams) ([]TaskLocalization, error) {
+	rows, err := q.query(ctx, q.adminListTaskLocalizationsByTaskStmt, adminListTaskLocalizationsByTask, arg.WorkspaceID, arg.TaskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TaskLocalization
+	for rows.Next() {
+		var i TaskLocalization
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.TaskID,
+			&i.Locale,
+			&i.Title,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const adminListTasks = `-- name: AdminListTasks :many
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
        task_kind, action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
@@ -1404,6 +1746,44 @@ func (q *Queries) AdminListTasksByGroup(ctx context.Context, arg AdminListTasksB
 		return nil, err
 	}
 	return items, nil
+}
+
+const adminSoftDeleteGroup = `-- name: AdminSoftDeleteGroup :execrows
+UPDATE task_group
+SET is_active = false, deleted_at = now(), updated_at = now()
+WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL
+`
+
+type AdminSoftDeleteGroupParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	Key         string `json:"key"`
+}
+
+func (q *Queries) AdminSoftDeleteGroup(ctx context.Context, arg AdminSoftDeleteGroupParams) (int64, error) {
+	result, err := q.exec(ctx, q.adminSoftDeleteGroupStmt, adminSoftDeleteGroup, arg.WorkspaceID, arg.Key)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const adminSoftDeleteSequence = `-- name: AdminSoftDeleteSequence :execrows
+UPDATE task_sequence
+SET is_active = false, deleted_at = now(), updated_at = now()
+WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL
+`
+
+type AdminSoftDeleteSequenceParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	Key         string `json:"key"`
+}
+
+func (q *Queries) AdminSoftDeleteSequence(ctx context.Context, arg AdminSoftDeleteSequenceParams) (int64, error) {
+	result, err := q.exec(ctx, q.adminSoftDeleteSequenceStmt, adminSoftDeleteSequence, arg.WorkspaceID, arg.Key)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const adminUpdateTask = `-- name: AdminUpdateTask :execrows

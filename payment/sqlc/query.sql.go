@@ -262,6 +262,36 @@ func (q *Queries) AdminGetFulfillmentForWorkspace(ctx context.Context, arg Admin
 	return i, err
 }
 
+const adminGetFulfillmentItem = `-- name: AdminGetFulfillmentItem :one
+SELECT id, fulfillment_id, workspace_id, item_id, reward_type, quantity, scale, duration_unit, created_at
+FROM payment_fulfillment_item
+WHERE workspace_id = $1 AND fulfillment_id = $2 AND id = $3
+LIMIT 1
+`
+
+type AdminGetFulfillmentItemParams struct {
+	WorkspaceID   string `json:"workspace_id"`
+	FulfillmentID int64  `json:"fulfillment_id"`
+	ID            int64  `json:"id"`
+}
+
+func (q *Queries) AdminGetFulfillmentItem(ctx context.Context, arg AdminGetFulfillmentItemParams) (PaymentFulfillmentItem, error) {
+	row := q.queryRow(ctx, q.adminGetFulfillmentItemStmt, adminGetFulfillmentItem, arg.WorkspaceID, arg.FulfillmentID, arg.ID)
+	var i PaymentFulfillmentItem
+	err := row.Scan(
+		&i.ID,
+		&i.FulfillmentID,
+		&i.WorkspaceID,
+		&i.ItemID,
+		&i.RewardType,
+		&i.Quantity,
+		&i.Scale,
+		&i.DurationUnit,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const adminGetLocalization = `-- name: AdminGetLocalization :one
 SELECT
     id,

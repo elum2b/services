@@ -71,6 +71,20 @@ func (a *Admin) GetReward(ctx context.Context, workspaceID, calendarID string, i
 	}, nil
 }
 
+func (a *Admin) ListRewards(ctx context.Context, workspaceID, calendarID string) ([]user.RewardModel, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+	values, err := a.repository.ListRewards(mergedCtx, workspaceID, calendarID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]user.RewardModel, 0, len(values))
+	for _, value := range values {
+		result = append(result, user.RewardModel{Key: value.Key, Type: value.Type, Quantity: value.Quantity, Scale: value.Scale, Unit: value.Unit})
+	}
+	return result, nil
+}
+
 func (a *Admin) DeleteReward(ctx context.Context, workspaceID, calendarID string, id uint64) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()

@@ -365,6 +365,13 @@ func (a *Admin) ListFulfillmentItems(
 	})
 }
 
+func (a *Admin) GetFulfillmentItem(ctx context.Context, workspaceID string, fulfillmentID, id uint64) (FulfillmentItemModel, error) {
+	mergedCtx, cancel := a.withContext(ctx)
+	defer cancel()
+
+	return a.repository.AdminGetFulfillmentItem(mergedCtx, paymentsqlc.AdminGetFulfillmentItemParams{WorkspaceID: workspaceID, FulfillmentID: int64(fulfillmentID), ID: int64(id)})
+}
+
 func (a *Admin) CreateRefund(ctx context.Context, params RefundCreateParams) (uint64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
