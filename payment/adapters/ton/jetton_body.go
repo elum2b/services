@@ -3,8 +3,9 @@ package ton
 import (
 	"encoding/base64"
 
-	serviceerrors "github.com/elum2b/services/errors"
 	"github.com/xssnick/tonutils-go/tlb"
+
+	serviceerrors "github.com/elum2b/services/errors"
 )
 
 type RootJetton struct {
@@ -31,14 +32,21 @@ type Jetton struct {
 	TxHash  string `json:"tx_hash"`
 }
 
-func (s *Sub) JettonBody(ti *tlb.InternalMessage, txHash []byte) (*RootJetton, error) {
+func (s *Sub) JettonBody(
+	ti *tlb.InternalMessage,
+	txHash []byte,
+) (*RootJetton, error) {
 	if ti == nil {
 		return nil, ErrInternalMessageRequired
 	}
 
 	slice, err := ti.Body.BeginParse()
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, ErrBodyParseFailed.Message(), err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			ErrBodyParseFailed.Message(),
+			err,
+		)
 	}
 
 	opCode, err := slice.LoadUInt(32)
@@ -48,22 +56,38 @@ func (s *Sub) JettonBody(ti *tlb.InternalMessage, txHash []byte) (*RootJetton, e
 
 	queryID, err := slice.LoadUInt(64)
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, ErrQueryIDReadFailed.Message(), err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			ErrQueryIDReadFailed.Message(),
+			err,
+		)
 	}
 
 	amount, err := slice.LoadBigCoins()
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, ErrAmountReadFailed.Message(), err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			ErrAmountReadFailed.Message(),
+			err,
+		)
 	}
 
 	sender, err := slice.LoadAddr()
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, ErrSenderAddressReadFailed.Message(), err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			ErrSenderAddressReadFailed.Message(),
+			err,
+		)
 	}
 
 	payload, err := slice.LoadMaybeRef()
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, ErrPayloadReferenceReadFailed.Message(), err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			ErrPayloadReferenceReadFailed.Message(),
+			err,
+		)
 	}
 
 	text := ""
@@ -72,11 +96,19 @@ func (s *Sub) JettonBody(ti *tlb.InternalMessage, txHash []byte) (*RootJetton, e
 		if err == nil && sumType == 0x00000000 {
 			value, err := payload.LoadStringSnake()
 			if err != nil {
-				return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, ErrTextCommentReadFailed.Message(), err)
+				return nil, serviceerrors.Wrap(
+					serviceerrors.CodeInternalError,
+					ErrTextCommentReadFailed.Message(),
+					err,
+				)
 			}
 			text = value
 		} else if err != nil {
-			return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, ErrSumTypeReadFailed.Message(), err)
+			return nil, serviceerrors.Wrap(
+				serviceerrors.CodeInternalError,
+				ErrSumTypeReadFailed.Message(),
+				err,
+			)
 		}
 	}
 

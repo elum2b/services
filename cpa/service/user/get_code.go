@@ -13,7 +13,10 @@ type GetCodeResult struct {
 	AlreadyIssued bool            `json:"already_issued"`
 }
 
-func (u *User) GetCode(ctx context.Context, params GetCodeParams) (GetCodeResult, error) {
+func (u *User) GetCode(
+	ctx context.Context,
+	params GetCodeParams,
+) (GetCodeResult, error) {
 
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
@@ -22,7 +25,10 @@ func (u *User) GetCode(ctx context.Context, params GetCodeParams) (GetCodeResult
 		return GetCodeResult{}, err
 	}
 
-	result, err := u.repository.Issue(mergedCtx, scope(params.Identity, params.CPAID))
+	result, err := u.repository.Issue(
+		mergedCtx,
+		scope(params.Identity, params.CPAID),
+	)
 	if err != nil {
 		return GetCodeResult{}, err
 	}

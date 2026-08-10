@@ -84,7 +84,10 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 	}
 
 	return r.WithTx(ctx, func(txRepo *PaymentRepository) error {
-		attempt, err := txRepo.q.LockPaymentAttempt(ctx, int64(params.AttemptID))
+		attempt, err := txRepo.q.LockPaymentAttempt(
+			ctx,
+			int64(params.AttemptID),
+		)
 		if err != nil {
 			return err
 		}
@@ -93,8 +96,10 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 		if err != nil {
 			return err
 		}
-		if attempt.WorkspaceID != workspaceID || order.WorkspaceID != workspaceID ||
-			attempt.ProviderCode != params.ProviderCode || !attempt.ProviderPaymentID.Valid ||
+		if attempt.WorkspaceID != workspaceID ||
+			order.WorkspaceID != workspaceID ||
+			attempt.ProviderCode != params.ProviderCode ||
+			!attempt.ProviderPaymentID.Valid ||
 			attempt.ProviderPaymentID.String != params.ProviderPaymentID {
 			return ErrPaymentMismatch
 		}
@@ -111,7 +116,10 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 			return err
 		}
 		if order.PurchaseKeyID.Valid {
-			rows, err := txRepo.q.ReleasePurchaseKeyReservation(ctx, order.PurchaseKeyID.Int64)
+			rows, err := txRepo.q.ReleasePurchaseKeyReservation(
+				ctx,
+				order.PurchaseKeyID.Int64,
+			)
 			if err != nil {
 				return err
 			}
@@ -120,21 +128,27 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 			}
 		}
 
-		if err := txRepo.q.UpdatePaymentAttemptStatus(ctx, sqlc.UpdatePaymentAttemptStatusParams{
-			Status: attemptStatus,
-			ID:     attempt.ID,
-		}); err != nil {
+		if err := txRepo.q.UpdatePaymentAttemptStatus(
+			ctx,
+			sqlc.UpdatePaymentAttemptStatusParams{
+				Status: attemptStatus,
+				ID:     attempt.ID,
+			},
+		); err != nil {
 			return err
 		}
 
-		rows, err := txRepo.q.AdminUpdateOrderStatus(ctx, sqlc.AdminUpdateOrderStatusParams{
-			Status:      orderStatus,
-			Column2:     string(orderStatus),
-			Column3:     string(orderStatus),
-			Column4:     string(orderStatus),
-			WorkspaceID: workspaceID,
-			ID:          order.ID,
-		})
+		rows, err := txRepo.q.AdminUpdateOrderStatus(
+			ctx,
+			sqlc.AdminUpdateOrderStatusParams{
+				Status:      orderStatus,
+				Column2:     string(orderStatus),
+				Column3:     string(orderStatus),
+				Column4:     string(orderStatus),
+				WorkspaceID: workspaceID,
+				ID:          order.ID,
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -157,8 +171,10 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 	params.ProviderCode = strings.TrimSpace(params.ProviderCode)
 	params.ProviderPaymentID = strings.TrimSpace(params.ProviderPaymentID)
 	params.AssetCode = strings.TrimSpace(params.AssetCode)
-	if params.ProviderCode == "" || params.ProviderPaymentID == "" || params.AssetCode == "" ||
-		params.AmountMinor == 0 || params.AmountMinor > math.MaxInt64 {
+	if params.ProviderCode == "" || params.ProviderPaymentID == "" ||
+		params.AssetCode == "" ||
+		params.AmountMinor == 0 ||
+		params.AmountMinor > math.MaxInt64 {
 		return ProviderChargebackResult{}, ErrAttemptFieldsInvalid
 	}
 
@@ -186,7 +202,8 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 		if order.WorkspaceID != workspaceID {
 			return ErrPaymentMismatch
 		}
-		if uint64(attempt.AmountMinor) != params.AmountMinor || attempt.AssetCode != params.AssetCode {
+		if uint64(attempt.AmountMinor) != params.AmountMinor ||
+			attempt.AssetCode != params.AssetCode {
 			return ErrPaymentMismatch
 		}
 
@@ -216,23 +233,35 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 		}
 		result.FulfillmentID = uint64(fulfillment.ID)
 
-		if err := txRepo.q.UpdatePaymentAttemptStatus(ctx, sqlc.UpdatePaymentAttemptStatusParams{
-			Status: sqlc.PaymentAttemptStatusChargebacked,
-			ID:     attempt.ID,
-		}); err != nil {
+		if err := txRepo.q.UpdatePaymentAttemptStatus(
+			ctx,
+			sqlc.UpdatePaymentAttemptStatusParams{
+				Status: sqlc.PaymentAttemptStatusChargebacked,
+				ID:     attempt.ID,
+			},
+		); err != nil {
 			return err
 		}
-		if rows, err := txRepo.q.MarkOrderChargebacked(ctx, order.ID); err != nil {
+		if rows, err := txRepo.q.MarkOrderChargebacked(
+			ctx,
+			order.ID,
+		); err != nil {
 			return err
 		} else if rows != 1 {
 			return ErrOrderStateInvalid
 		}
-		if rows, err := txRepo.q.MarkFulfillmentRevokedForOrder(ctx, order.ID); err != nil {
+		if rows, err := txRepo.q.MarkFulfillmentRevokedForOrder(
+			ctx,
+			order.ID,
+		); err != nil {
 			return err
 		} else if rows != 1 {
 			return ErrOrderStateInvalid
 		}
-		if _, err := txRepo.q.DecrementProductLimitCountersForRefund(ctx, order.ID); err != nil {
+		if _, err := txRepo.q.DecrementProductLimitCountersForRefund(
+			ctx,
+			order.ID,
+		); err != nil {
 			return err
 		}
 

@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/google/uuid"
+
 	controlmodel "github.com/elum2b/services/control/model"
 	controlsqlc "github.com/elum2b/services/control/sqlc"
-	"github.com/google/uuid"
 )
 
 func (r *Repository) ListPlatformMembers(
@@ -14,12 +15,14 @@ func (r *Repository) ListPlatformMembers(
 	cursor Cursor,
 	limit int32,
 ) ([]PlatformMember, error) {
-
-	rows, err := r.q.ListPlatformMembers(ctx, controlsqlc.ListPlatformMembersParams{
-		CursorAt:  nullableCursorTime(cursor),
-		CursorID:  cursor.ID,
-		PageLimit: pageLimit(limit),
-	})
+	rows, err := r.q.ListPlatformMembers(
+		ctx,
+		controlsqlc.ListPlatformMembersParams{
+			CursorAt:  nullableCursorTime(cursor),
+			CursorID:  cursor.ID,
+			PageLimit: pageLimit(limit),
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +42,6 @@ func (r *Repository) ListPlatformMembers(
 	}
 
 	return result, nil
-
 }
 
 func (r *Repository) RemovePlatformMember(
@@ -47,8 +49,8 @@ func (r *Repository) RemovePlatformMember(
 	actorID string,
 	accountID string,
 ) (int64, error) {
-
 	var affected int64
+
 	err := r.withAuditDBTx(ctx, func(tx *sql.Tx, q *controlsqlc.Queries) error {
 		if err := lockAccountAuthentication(ctx, tx, accountID); err != nil {
 			return err
@@ -64,48 +66,82 @@ func (r *Repository) RemovePlatformMember(
 		if err != nil {
 			return err
 		}
+
 		if !bundle.TargetIsActive || bundle.TargetPosition == 0 {
 			return ErrForbidden
 		}
-		capacity, err := q.GetWorkspaceOwnershipCapacityForUpdate(ctx, accountID)
+
+		capacity, err := q.GetWorkspaceOwnershipCapacityForUpdate(
+			ctx,
+			accountID,
+		)
 		if err != nil {
 			return noRows(err, ErrForbidden)
 		}
+
 		if capacity.OwnedWorkspaceCount > 0 {
 			return ErrForbidden
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		targetPosition, err := position(bundle.TargetPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, targetPosition); err != nil {
 			return err
 		}
-		if _, err := q.RemoveAllGlobalRoleMemberships(ctx, accountID); err != nil {
+
+		if _, err := q.RemoveAllGlobalRoleMemberships(
+			ctx,
+			accountID,
+		); err != nil {
 			return err
 		}
-		if _, err := q.RemoveAllWorkspaceRoleMemberships(ctx, accountID); err != nil {
+
+		if _, err := q.RemoveAllWorkspaceRoleMemberships(
+			ctx,
+			accountID,
+		); err != nil {
 			return err
 		}
-		if _, err := q.RemoveAllWorkspaceMemberships(ctx, accountID); err != nil {
+
+		if _, err := q.RemoveAllWorkspaceMemberships(
+			ctx,
+			accountID,
+		); err != nil {
 			return err
 		}
-		if _, err := q.RevokePendingInvitesByCreator(ctx, accountID); err != nil {
+
+		if _, err := q.RevokePendingInvitesByCreator(
+			ctx,
+			accountID,
+		); err != nil {
 			return err
 		}
-		if _, err := q.RevokeAllSessions(ctx, controlsqlc.RevokeAllSessionsParams{
-			AccountID: accountID,
-			Column2:   "",
-		}); err != nil {
+
+		if _, err := q.RevokeAllSessions(
+			ctx,
+			controlsqlc.RevokeAllSessionsParams{
+				AccountID: accountID,
+				Column2:   "",
+			},
+		); err != nil {
 			return err
 		}
-		if _, err := q.DeleteTwoFactorChallengesForAccount(ctx, accountID); err != nil {
+
+		if _, err := q.DeleteTwoFactorChallengesForAccount(
+			ctx,
+			accountID,
+		); err != nil {
 			return err
 		}
+
 		if _, err := q.CancelPendingAccountLimitRequests(
 			ctx,
 			nullableString(accountID),
@@ -119,7 +155,6 @@ func (r *Repository) RemovePlatformMember(
 	})
 
 	return affected, err
-
 }
 
 func (r *Repository) TransferGlobalOwnership(
@@ -127,7 +162,6 @@ func (r *Repository) TransferGlobalOwnership(
 	actorID string,
 	targetAccountID string,
 ) error {
-
 	return r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		bundle, err := globalAuthorization(
 			ctx,
@@ -139,7 +173,9 @@ func (r *Repository) TransferGlobalOwnership(
 		if err != nil {
 			return err
 		}
-		if !bundle.ActorIsOwner || !bundle.TargetIsActive || actorID == targetAccountID {
+
+		if !bundle.ActorIsOwner || !bundle.TargetIsActive ||
+			actorID == targetAccountID {
 			return ErrOwnershipTransfer
 		}
 
@@ -153,13 +189,13 @@ func (r *Repository) TransferGlobalOwnership(
 		if err != nil {
 			return err
 		}
+
 		if rows != 1 {
 			return ErrOwnershipTransfer
 		}
 
 		return nil
 	})
-
 }
 
 func (r *Repository) CreateGlobalRole(
@@ -167,10 +203,10 @@ func (r *Repository) CreateGlobalRole(
 	actorID string,
 	role Role,
 ) (Role, error) {
-
 	if role.ID == "" {
 		role.ID = uuid.NewString()
 	}
+
 	if err := required(actorID, role.ID, role.Code, role.Title); err != nil {
 		return Role{}, err
 	}
@@ -186,21 +222,26 @@ func (r *Repository) CreateGlobalRole(
 		if err != nil {
 			return err
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, role.Position); err != nil {
 			return err
 		}
 
-		created, err := q.CreateGlobalRole(ctx, controlsqlc.CreateGlobalRoleParams{
-			ID:          role.ID,
-			Code:        role.Code,
-			Title:       role.Title,
-			Description: role.Description,
-			Position:    role.Position,
-		})
+		created, err := q.CreateGlobalRole(
+			ctx,
+			controlsqlc.CreateGlobalRoleParams{
+				ID:          role.ID,
+				Code:        role.Code,
+				Title:       role.Title,
+				Description: role.Description,
+				Position:    role.Position,
+			},
+		)
 		if err != nil {
 			return writeConflict(err)
 		}
@@ -219,11 +260,9 @@ func (r *Repository) CreateGlobalRole(
 	})
 
 	return role, err
-
 }
 
 func (r *Repository) ListGlobalRoles(ctx context.Context) ([]Role, error) {
-
 	rows, err := r.q.ListGlobalRoles(ctx)
 	if err != nil {
 		return nil, err
@@ -244,11 +283,12 @@ func (r *Repository) ListGlobalRoles(ctx context.Context) ([]Role, error) {
 	}
 
 	return result, nil
-
 }
 
-func (r *Repository) GetGlobalRole(ctx context.Context, roleID string) (Role, error) {
-
+func (r *Repository) GetGlobalRole(
+	ctx context.Context,
+	roleID string,
+) (Role, error) {
 	row, err := r.q.GetGlobalRole(ctx, roleID)
 	if err != nil {
 		return Role{}, noRows(err, ErrRoleNotFound)
@@ -263,7 +303,6 @@ func (r *Repository) GetGlobalRole(ctx context.Context, roleID string) (Role, er
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}, nil
-
 }
 
 func (r *Repository) UpdateGlobalRole(
@@ -271,12 +310,12 @@ func (r *Repository) UpdateGlobalRole(
 	actorID string,
 	role Role,
 ) (int64, error) {
-
 	if err := required(actorID, role.ID, role.Title); err != nil {
 		return 0, err
 	}
 
 	var affected int64
+
 	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		bundle, err := globalAuthorization(
 			ctx,
@@ -288,33 +327,39 @@ func (r *Repository) UpdateGlobalRole(
 		if err != nil {
 			return err
 		}
+
 		current, err := q.GetGlobalRole(ctx, role.ID)
 		if err != nil {
 			return noRows(err, ErrRoleNotFound)
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, current.Position); err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, role.Position); err != nil {
 			return err
 		}
 
-		affected, err = q.UpdateGlobalRole(ctx, controlsqlc.UpdateGlobalRoleParams{
-			Title:       role.Title,
-			Description: role.Description,
-			Position:    role.Position,
-			ID:          role.ID,
-		})
+		affected, err = q.UpdateGlobalRole(
+			ctx,
+			controlsqlc.UpdateGlobalRoleParams{
+				Title:       role.Title,
+				Description: role.Description,
+				Position:    role.Position,
+				ID:          role.ID,
+			},
+		)
 
 		return err
 	})
 
 	return affected, err
-
 }
 
 func (r *Repository) DeleteGlobalRole(
@@ -322,8 +367,8 @@ func (r *Repository) DeleteGlobalRole(
 	actorID string,
 	roleID string,
 ) (int64, error) {
-
 	var affected int64
+
 	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		bundle, err := globalAuthorization(
 			ctx,
@@ -335,18 +380,25 @@ func (r *Repository) DeleteGlobalRole(
 		if err != nil {
 			return err
 		}
+
 		role, err := q.GetGlobalRole(ctx, roleID)
 		if err != nil {
 			return noRows(err, ErrRoleNotFound)
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, role.Position); err != nil {
 			return err
 		}
-		if _, err := q.DeleteGlobalInviteRoleReferences(ctx, roleID); err != nil {
+
+		if _, err := q.DeleteGlobalInviteRoleReferences(
+			ctx,
+			roleID,
+		); err != nil {
 			return err
 		}
 
@@ -356,7 +408,6 @@ func (r *Repository) DeleteGlobalRole(
 	})
 
 	return affected, err
-
 }
 
 func (r *Repository) AssignGlobalRole(
@@ -365,9 +416,7 @@ func (r *Repository) AssignGlobalRole(
 	accountID string,
 	roleID string,
 ) error {
-
 	return r.changeGlobalRoleMember(ctx, actorID, accountID, roleID, true)
-
 }
 
 func (r *Repository) RemoveGlobalRole(
@@ -376,9 +425,7 @@ func (r *Repository) RemoveGlobalRole(
 	accountID string,
 	roleID string,
 ) error {
-
 	return r.changeGlobalRoleMember(ctx, actorID, accountID, roleID, false)
-
 }
 
 func (r *Repository) changeGlobalRoleMember(
@@ -388,44 +435,58 @@ func (r *Repository) changeGlobalRoleMember(
 	roleID string,
 	assign bool,
 ) error {
-
 	methodKey := "control.global.role.member.remove"
 	if assign {
 		methodKey = "control.global.role.member.assign"
 	}
 
 	return r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
-		bundle, err := globalAuthorization(ctx, q, actorID, accountID, methodKey)
+		bundle, err := globalAuthorization(
+			ctx,
+			q,
+			actorID,
+			accountID,
+			methodKey,
+		)
 		if err != nil {
 			return err
 		}
+
 		if !bundle.TargetIsActive || bundle.TargetPosition == 0 {
 			return ErrForbidden
 		}
+
 		role, err := q.GetGlobalRole(ctx, roleID)
 		if err != nil {
 			return noRows(err, ErrRoleNotFound)
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		targetPosition, err := position(bundle.TargetPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, targetPosition); err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, role.Position); err != nil {
 			return err
 		}
 
 		if assign {
-			_, err = q.AddGlobalRoleMember(ctx, controlsqlc.AddGlobalRoleMemberParams{
-				RoleID:    roleID,
-				AccountID: accountID,
-			})
+			_, err = q.AddGlobalRoleMember(
+				ctx,
+				controlsqlc.AddGlobalRoleMemberParams{
+					RoleID:    roleID,
+					AccountID: accountID,
+				},
+			)
 
 			return err
 		}
@@ -440,7 +501,6 @@ func (r *Repository) changeGlobalRoleMember(
 
 		return err
 	})
-
 }
 
 func (r *Repository) ReplaceGlobalRolePermissions(
@@ -449,7 +509,6 @@ func (r *Repository) ReplaceGlobalRolePermissions(
 	roleID string,
 	methodKeys []string,
 ) error {
-
 	methodKeys = uniqueStrings(methodKeys)
 
 	return r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
@@ -463,32 +522,42 @@ func (r *Repository) ReplaceGlobalRolePermissions(
 		if err != nil {
 			return err
 		}
+
 		role, err := q.GetGlobalRole(ctx, roleID)
 		if err != nil {
 			return noRows(err, ErrRoleNotFound)
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, role.Position); err != nil {
 			return err
 		}
-		count, err := q.CountMethodsByScope(ctx, controlsqlc.CountMethodsByScopeParams{
-			Scope:      string(ScopeGlobal),
-			MethodKeys: methodKeys,
-		})
+
+		count, err := q.CountMethodsByScope(
+			ctx,
+			controlsqlc.CountMethodsByScopeParams{
+				Scope:      string(ScopeGlobal),
+				MethodKeys: methodKeys,
+			},
+		)
 		if err != nil {
 			return err
 		}
+
 		if count != int64(len(methodKeys)) {
 			return ErrMethodNotFound
 		}
+
 		if !bundle.ActorIsOwner {
 			methods, err := q.ListAuthorizedGlobalMethods(ctx, actorID)
 			if err != nil {
 				return err
 			}
+
 			if !methodSubset(methodKeys, authorizedGlobalKeys(methods)) {
 				return ErrForbidden
 			}
@@ -502,16 +571,13 @@ func (r *Repository) ReplaceGlobalRolePermissions(
 			},
 		)
 	})
-
 }
 
 func (r *Repository) ListGlobalRolePermissions(
 	ctx context.Context,
 	roleID string,
 ) ([]string, error) {
-
 	return r.q.ListGlobalRolePermissions(ctx, roleID)
-
 }
 
 func globalAuthorization(
@@ -521,7 +587,6 @@ func globalAuthorization(
 	targetAccountID string,
 	methodKey string,
 ) (controlsqlc.GetGlobalAuthorizationForUpdateRow, error) {
-
 	bundle, err := q.GetGlobalAuthorizationForUpdate(
 		ctx,
 		controlsqlc.GetGlobalAuthorizationForUpdateParams{
@@ -531,29 +596,31 @@ func globalAuthorization(
 		},
 	)
 	if err != nil {
-		return controlsqlc.GetGlobalAuthorizationForUpdateRow{}, noRows(err, ErrForbidden)
+		return controlsqlc.GetGlobalAuthorizationForUpdateRow{}, noRows(
+			err,
+			ErrForbidden,
+		)
 	}
+
 	if !bundle.ActorIsActive || !allowed(bundle.Allowed) {
 		return controlsqlc.GetGlobalAuthorizationForUpdateRow{}, ErrForbidden
 	}
 
 	return bundle, nil
-
 }
 
-func authorizedGlobalKeys(rows []controlsqlc.ListAuthorizedGlobalMethodsRow) map[string]struct{} {
-
+func authorizedGlobalKeys(
+	rows []controlsqlc.ListAuthorizedGlobalMethodsRow,
+) map[string]struct{} {
 	result := make(map[string]struct{}, len(rows))
 	for _, row := range rows {
 		result[row.MethodKey] = struct{}{}
 	}
 
 	return result
-
 }
 
 func methodSubset(values []string, allowedValues map[string]struct{}) bool {
-
 	for _, value := range values {
 		if _, ok := allowedValues[value]; !ok {
 			return false
@@ -561,21 +628,20 @@ func methodSubset(values []string, allowedValues map[string]struct{}) bool {
 	}
 
 	return true
-
 }
 
 func uniqueStrings(values []string) []string {
-
 	seen := make(map[string]struct{}, len(values))
 	result := make([]string, 0, len(values))
+
 	for _, value := range values {
 		if _, ok := seen[value]; ok {
 			continue
 		}
+
 		seen[value] = struct{}{}
 		result = append(result, value)
 	}
 
 	return result
-
 }

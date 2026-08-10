@@ -7,9 +7,10 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
-	json "github.com/goccy/go-json"
 	"strings"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/internal/utils/target"
@@ -151,7 +152,10 @@ type ProductItem struct {
 	DurationUnit *string
 }
 
-func (r *PaymentRepository) GetProduct(ctx context.Context, params ProductGetParams) (Product, error) {
+func (r *PaymentRepository) GetProduct(
+	ctx context.Context,
+	params ProductGetParams,
+) (Product, error) {
 	workspaceID, err := requireWorkspaceID(params.WorkspaceID)
 	if err != nil {
 		return Product{}, err
@@ -166,7 +170,14 @@ func (r *PaymentRepository) GetProduct(ctx context.Context, params ProductGetPar
 		return Product{}, err
 	}
 
-	product, err := r.getProductCatalog(ctx, workspaceID, params.ProductID, params.AssetCode, locale, now)
+	product, err := r.getProductCatalog(
+		ctx,
+		workspaceID,
+		params.ProductID,
+		params.AssetCode,
+		locale,
+		now,
+	)
 	if err != nil {
 		return Product{}, err
 	}
@@ -195,7 +206,10 @@ func (r *PaymentRepository) GetProduct(ctx context.Context, params ProductGetPar
 	return product, nil
 }
 
-func (r *PaymentRepository) ListProducts(ctx context.Context, params ProductListParams) ([]Product, error) {
+func (r *PaymentRepository) ListProducts(
+	ctx context.Context,
+	params ProductListParams,
+) ([]Product, error) {
 	workspaceID, err := requireWorkspaceID(params.WorkspaceID)
 	if err != nil {
 		return nil, err
@@ -206,20 +220,32 @@ func (r *PaymentRepository) ListProducts(ctx context.Context, params ProductList
 		return nil, err
 	}
 
-	key := paymentCacheKey("products_catalog", workspaceID, params.AssetCode, locale, params.GroupCode)
+	key := paymentCacheKey(
+		"products_catalog",
+		workspaceID,
+		params.AssetCode,
+		locale,
+		params.GroupCode,
+	)
 	rows, err := queryPaymentCache(
 		ctx,
 		r,
 		workspaceID,
 		key,
 		func(ctx context.Context) ([]sqlc.ListProductsCatalogCacheRowsRow, error) {
-			return r.q.ListProductsCatalogCacheRows(ctx, sqlc.ListProductsCatalogCacheRowsParams{
-				WorkspaceID: workspaceID,
-				AssetCode:   params.AssetCode,
-				Locale:      locale,
-				Column4:     params.GroupCode,
-				GroupCode:   sql.NullString{String: params.GroupCode, Valid: params.GroupCode != ""},
-			})
+			return r.q.ListProductsCatalogCacheRows(
+				ctx,
+				sqlc.ListProductsCatalogCacheRowsParams{
+					WorkspaceID: workspaceID,
+					AssetCode:   params.AssetCode,
+					Locale:      locale,
+					Column4:     params.GroupCode,
+					GroupCode: sql.NullString{
+						String: params.GroupCode,
+						Valid:  params.GroupCode != "",
+					},
+				},
+			)
 		},
 	)
 	if err != nil {
@@ -261,19 +287,28 @@ func (r *PaymentRepository) getProductCatalog(
 	locale string,
 	now time.Time,
 ) (Product, error) {
-	key := paymentCacheKey("product_catalog", workspaceID, productID, assetCode, locale)
+	key := paymentCacheKey(
+		"product_catalog",
+		workspaceID,
+		productID,
+		assetCode,
+		locale,
+	)
 	rows, err := queryPaymentCache(
 		ctx,
 		r,
 		workspaceID,
 		key,
 		func(ctx context.Context) ([]sqlc.ListProductCatalogCacheRowsRow, error) {
-			return r.q.ListProductCatalogCacheRows(ctx, sqlc.ListProductCatalogCacheRowsParams{
-				ProductID:   productID,
-				WorkspaceID: workspaceID,
-				AssetCode:   assetCode,
-				Locale:      locale,
-			})
+			return r.q.ListProductCatalogCacheRows(
+				ctx,
+				sqlc.ListProductCatalogCacheRowsParams{
+					ProductID:   productID,
+					WorkspaceID: workspaceID,
+					AssetCode:   assetCode,
+					Locale:      locale,
+				},
+			)
 		},
 	)
 	if err != nil {
@@ -290,37 +325,46 @@ func (r *PaymentRepository) attachProductLimitLocks(
 	platformUserID string,
 ) error {
 	var err error
-	product.Limit.Global.LockUntil, err = r.getProductLimitLock(ctx, productLimitQuery{
-		workspaceID:    product.WorkspaceID,
-		appID:          0,
-		platformID:     platformID,
-		platformUserID: "",
-		productID:      product.ID,
-		limit:          product.Limit.Global.Limit,
-		interval:       product.Limit.Global.Interval,
-		intervalCount:  product.Limit.Global.IntervalCount,
-	})
+	product.Limit.Global.LockUntil, err = r.getProductLimitLock(
+		ctx,
+		productLimitQuery{
+			workspaceID:    product.WorkspaceID,
+			appID:          0,
+			platformID:     platformID,
+			platformUserID: "",
+			productID:      product.ID,
+			limit:          product.Limit.Global.Limit,
+			interval:       product.Limit.Global.Interval,
+			intervalCount:  product.Limit.Global.IntervalCount,
+		},
+	)
 	if err != nil {
 		return err
 	}
 
-	product.Limit.User.LockUntil, err = r.getProductLimitLock(ctx, productLimitQuery{
-		workspaceID:    product.WorkspaceID,
-		appID:          appID,
-		platformID:     platformID,
-		platformUserID: platformUserID,
-		productID:      product.ID,
-		limit:          product.Limit.User.Limit,
-		interval:       product.Limit.User.Interval,
-		intervalCount:  product.Limit.User.IntervalCount,
-	})
+	product.Limit.User.LockUntil, err = r.getProductLimitLock(
+		ctx,
+		productLimitQuery{
+			workspaceID:    product.WorkspaceID,
+			appID:          appID,
+			platformID:     platformID,
+			platformUserID: platformUserID,
+			productID:      product.ID,
+			limit:          product.Limit.User.Limit,
+			interval:       product.Limit.User.Interval,
+			intervalCount:  product.Limit.User.IntervalCount,
+		},
+	)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *PaymentRepository) getCheckoutProduct(ctx context.Context, params ProductGetParams) (Product, error) {
+func (r *PaymentRepository) getCheckoutProduct(
+	ctx context.Context,
+	params ProductGetParams,
+) (Product, error) {
 	workspaceID, err := requireWorkspaceID(params.WorkspaceID)
 	if err != nil {
 		return Product{}, err
@@ -331,7 +375,14 @@ func (r *PaymentRepository) getCheckoutProduct(ctx context.Context, params Produ
 	if err != nil {
 		return Product{}, err
 	}
-	product, err := r.getProductCatalog(ctx, workspaceID, params.ProductID, params.AssetCode, locale, now)
+	product, err := r.getProductCatalog(
+		ctx,
+		workspaceID,
+		params.ProductID,
+		params.AssetCode,
+		locale,
+		now,
+	)
 	if err != nil {
 		return Product{}, err
 	}
@@ -359,7 +410,10 @@ func (r *PaymentRepository) getCheckoutProduct(ctx context.Context, params Produ
 	return product, nil
 }
 
-func (r *PaymentRepository) GetProductByKey(ctx context.Context, params ProductGetByKeyParams) (Product, error) {
+func (r *PaymentRepository) GetProductByKey(
+	ctx context.Context,
+	params ProductGetByKeyParams,
+) (Product, error) {
 	now := params.Now
 	if now.IsZero() {
 		now = time.Now()
@@ -413,18 +467,26 @@ func (r *PaymentRepository) GetProductPreview(
 		return ProductPreview{}, err
 	}
 
-	key := paymentCacheKey("product_preview_catalog", workspaceID, params.ProductID, locale)
+	key := paymentCacheKey(
+		"product_preview_catalog",
+		workspaceID,
+		params.ProductID,
+		locale,
+	)
 	rows, err := queryPaymentCache(
 		ctx,
 		r,
 		workspaceID,
 		key,
 		func(ctx context.Context) ([]sqlc.ListProductPreviewCatalogCacheRowsRow, error) {
-			return r.q.ListProductPreviewCatalogCacheRows(ctx, sqlc.ListProductPreviewCatalogCacheRowsParams{
-				ProductID:   params.ProductID,
-				WorkspaceID: workspaceID,
-				Locale:      locale,
-			})
+			return r.q.ListProductPreviewCatalogCacheRows(
+				ctx,
+				sqlc.ListProductPreviewCatalogCacheRowsParams{
+					ProductID:   params.ProductID,
+					WorkspaceID: workspaceID,
+					Locale:      locale,
+				},
+			)
 		},
 	)
 	if err != nil {
@@ -435,30 +497,36 @@ func (r *PaymentRepository) GetProductPreview(
 		return ProductPreview{}, err
 	}
 
-	product.Limit.Global.LockUntil, err = r.getProductLimitLock(ctx, productLimitQuery{
-		workspaceID:    product.WorkspaceID,
-		appID:          0,
-		platformID:     params.PlatformID,
-		platformUserID: "",
-		productID:      product.ID,
-		limit:          product.Limit.Global.Limit,
-		interval:       product.Limit.Global.Interval,
-		intervalCount:  product.Limit.Global.IntervalCount,
-	})
+	product.Limit.Global.LockUntil, err = r.getProductLimitLock(
+		ctx,
+		productLimitQuery{
+			workspaceID:    product.WorkspaceID,
+			appID:          0,
+			platformID:     params.PlatformID,
+			platformUserID: "",
+			productID:      product.ID,
+			limit:          product.Limit.Global.Limit,
+			interval:       product.Limit.Global.Interval,
+			intervalCount:  product.Limit.Global.IntervalCount,
+		},
+	)
 	if err != nil {
 		return ProductPreview{}, err
 	}
 
-	product.Limit.User.LockUntil, err = r.getProductLimitLock(ctx, productLimitQuery{
-		workspaceID:    product.WorkspaceID,
-		appID:          params.AppID,
-		platformID:     params.PlatformID,
-		platformUserID: params.PlatformUserID,
-		productID:      product.ID,
-		limit:          product.Limit.User.Limit,
-		interval:       product.Limit.User.Interval,
-		intervalCount:  product.Limit.User.IntervalCount,
-	})
+	product.Limit.User.LockUntil, err = r.getProductLimitLock(
+		ctx,
+		productLimitQuery{
+			workspaceID:    product.WorkspaceID,
+			appID:          params.AppID,
+			platformID:     params.PlatformID,
+			platformUserID: params.PlatformUserID,
+			productID:      product.ID,
+			limit:          product.Limit.User.Limit,
+			interval:       product.Limit.User.Interval,
+			intervalCount:  product.Limit.User.IntervalCount,
+		},
+	)
 	if err != nil {
 		return ProductPreview{}, err
 	}
@@ -486,10 +554,13 @@ func (r *PaymentRepository) ListProductPriceOptions(
 		workspaceID,
 		key,
 		func(ctx context.Context) ([]sqlc.ListProductPriceOptionCatalogRowsRow, error) {
-			return r.q.ListProductPriceOptionCatalogRows(ctx, sqlc.ListProductPriceOptionCatalogRowsParams{
-				WorkspaceID: workspaceID,
-				ProductID:   productID,
-			})
+			return r.q.ListProductPriceOptionCatalogRows(
+				ctx,
+				sqlc.ListProductPriceOptionCatalogRowsParams{
+					WorkspaceID: workspaceID,
+					ProductID:   productID,
+				},
+			)
 		},
 	)
 	if err != nil {
@@ -512,21 +583,30 @@ func (r *PaymentRepository) ListProductPriceOptions(
 			ContractAddress:     row.ContractAddress,
 			ListAmountMinor:     uint64(row.ListAmountMinor),
 			DiscountAmountMinor: uint64(row.DiscountAmountMinor),
-			PayableAmountMinor:  payableAmountMinor(row.ListAmountMinor, row.DiscountAmountMinor),
-			ProviderCodes:       splitProviderCodes(row.ProviderCodes),
+			PayableAmountMinor: payableAmountMinor(
+				row.ListAmountMinor,
+				row.DiscountAmountMinor,
+			),
+			ProviderCodes: splitProviderCodes(row.ProviderCodes),
 		})
 	}
 	return options, nil
 }
 
-func (r *PaymentRepository) catalogNow(ctx context.Context, value time.Time) (time.Time, error) {
+func (r *PaymentRepository) catalogNow(
+	ctx context.Context,
+	value time.Time,
+) (time.Time, error) {
 	if !value.IsZero() {
 		return value, nil
 	}
 	return r.databaseNow(ctx)
 }
 
-func mapProductCatalogRows(rows []sqlc.ListProductCatalogCacheRowsRow, now time.Time) (Product, error) {
+func mapProductCatalogRows(
+	rows []sqlc.ListProductCatalogCacheRowsRow,
+	now time.Time,
+) (Product, error) {
 	if len(rows) == 0 {
 		return Product{}, sql.ErrNoRows
 	}
@@ -554,7 +634,10 @@ func mapProductCatalogRows(rows []sqlc.ListProductCatalogCacheRowsRow, now time.
 			AssetCode:           selected.AssetCode,
 			ListAmountMinor:     uint64(selected.ListAmountMinor),
 			DiscountAmountMinor: uint64(selected.DiscountAmountMinor),
-			PayableAmountMinor:  payableAmountMinor(selected.ListAmountMinor, selected.DiscountAmountMinor),
+			PayableAmountMinor: payableAmountMinor(
+				selected.ListAmountMinor,
+				selected.DiscountAmountMinor,
+			),
 		},
 		Limit: ProductLimit{
 			Global: ProductLimitRule{
@@ -587,7 +670,10 @@ func mapProductCatalogRows(rows []sqlc.ListProductCatalogCacheRowsRow, now time.
 	return product, nil
 }
 
-func mapProductsCatalogRows(rows []sqlc.ListProductsCatalogCacheRowsRow, now time.Time) []Product {
+func mapProductsCatalogRows(
+	rows []sqlc.ListProductsCatalogCacheRowsRow,
+	now time.Time,
+) []Product {
 	products := make([]Product, 0)
 	for start := 0; start < len(rows); {
 		end := start + 1
@@ -602,7 +688,10 @@ func mapProductsCatalogRows(rows []sqlc.ListProductsCatalogCacheRowsRow, now tim
 	return products
 }
 
-func mapProductsCatalogGroup(rows []sqlc.ListProductsCatalogCacheRowsRow, now time.Time) (Product, bool) {
+func mapProductsCatalogGroup(
+	rows []sqlc.ListProductsCatalogCacheRowsRow,
+	now time.Time,
+) (Product, bool) {
 	var selected sqlc.ListProductsCatalogCacheRowsRow
 	found := false
 	for _, row := range rows {
@@ -641,7 +730,10 @@ func mapProductsCatalogGroup(rows []sqlc.ListProductsCatalogCacheRowsRow, now ti
 			AssetCode:           selected.AssetCode,
 			ListAmountMinor:     uint64(selected.ListAmountMinor),
 			DiscountAmountMinor: uint64(selected.DiscountAmountMinor),
-			PayableAmountMinor:  payableAmountMinor(selected.ListAmountMinor, selected.DiscountAmountMinor),
+			PayableAmountMinor: payableAmountMinor(
+				selected.ListAmountMinor,
+				selected.DiscountAmountMinor,
+			),
 		},
 		Limit: ProductLimit{
 			Global: ProductLimitRule{
@@ -674,7 +766,8 @@ func mapProductsCatalogGroup(rows []sqlc.ListProductsCatalogCacheRowsRow, now ti
 }
 
 func payableAmountMinor(listAmountMinor, discountAmountMinor int64) uint64 {
-	if listAmountMinor < 0 || discountAmountMinor < 0 || discountAmountMinor > listAmountMinor {
+	if listAmountMinor < 0 || discountAmountMinor < 0 ||
+		discountAmountMinor > listAmountMinor {
 		return 0
 	}
 
@@ -689,7 +782,15 @@ func filterProductsByTarget(
 ) []Product {
 	filtered := products[:0]
 	for _, product := range products {
-		if productTargetMatches(product.Target, isPremium, sex, country, locale, platform, platformID) {
+		if productTargetMatches(
+			product.Target,
+			isPremium,
+			sex,
+			country,
+			locale,
+			platform,
+			platformID,
+		) {
 			product.Target = nil
 			filtered = append(filtered, product)
 		}
@@ -713,7 +814,9 @@ func productTargetMatches(
 	})
 }
 
-func listProductsDurationUnitPtr(value sqlc.NullPaymentProductCacheDurationUnit) *string {
+func listProductsDurationUnitPtr(
+	value sqlc.NullPaymentProductCacheDurationUnit,
+) *string {
 	if !value.Valid {
 		return nil
 	}
@@ -730,14 +833,17 @@ func (r *PaymentRepository) attachProductsLimitLocks(
 	platformUserID string,
 	now time.Time,
 ) error {
-	rows, err := r.q.ListActiveProductLimitCounters(ctx, sqlc.ListActiveProductLimitCountersParams{
-		WorkspaceID:    workspaceID,
-		AppID:          appID,
-		PlatformID:     platformID,
-		PlatformUserID: platformUserID,
-		WindowStart:    now,
-		WindowEnd:      now,
-	})
+	rows, err := r.q.ListActiveProductLimitCounters(
+		ctx,
+		sqlc.ListActiveProductLimitCountersParams{
+			WorkspaceID:    workspaceID,
+			AppID:          appID,
+			PlatformID:     platformID,
+			PlatformUserID: platformUserID,
+			WindowStart:    now,
+			WindowEnd:      now,
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -750,8 +856,22 @@ func (r *PaymentRepository) attachProductsLimitLocks(
 	}
 
 	for index := range products {
-		attachProductListLimitLock(&products[index].Limit.Global, products[index].ID, "global", "", now, counts)
-		attachProductListLimitLock(&products[index].Limit.User, products[index].ID, "user", platformUserID, now, counts)
+		attachProductListLimitLock(
+			&products[index].Limit.Global,
+			products[index].ID,
+			"global",
+			"",
+			now,
+			counts,
+		)
+		attachProductListLimitLock(
+			&products[index].Limit.User,
+			products[index].ID,
+			"user",
+			platformUserID,
+			now,
+			counts,
+		)
 	}
 	return nil
 }
@@ -771,7 +891,9 @@ func attachProductListLimitLock(
 	if !ok {
 		return
 	}
-	if counts[productLimitCounterKey(productID, scope, platformUserID, start, end)] >= uint64(rule.Limit) {
+	if counts[productLimitCounterKey(productID, scope, platformUserID, start, end)] >= uint64(
+		rule.Limit,
+	) {
 		rule.LockUntil = sql.NullTime{Time: end, Valid: true}
 	}
 }
@@ -866,7 +988,9 @@ func mapProductPreviewCatalogRows(
 	return product, nil
 }
 
-func paymentCacheDurationUnitPtr(value sqlc.NullPaymentProductCacheDurationUnit) *string {
+func paymentCacheDurationUnitPtr(
+	value sqlc.NullPaymentProductCacheDurationUnit,
+) *string {
 	if !value.Valid {
 		return nil
 	}
@@ -935,9 +1059,12 @@ func (r *PaymentRepository) CreateProductPurchaseKey(
 		AppID:          params.AppID,
 		PlatformID:     params.PlatformID,
 		PlatformUserID: params.PlatformUserID,
-		InternalUserID: sqlwrap.NullFromPtr(params.InternalUserID, func(v int64) sql.NullInt64 {
-			return sql.NullInt64{Int64: v, Valid: true}
-		}),
+		InternalUserID: sqlwrap.NullFromPtr(
+			params.InternalUserID,
+			func(v int64) sql.NullInt64 {
+				return sql.NullInt64{Int64: v, Valid: true}
+			},
+		),
 		ProductID: params.ProductID,
 		MaxUses:   maxUses,
 		ExpiresAt: sqlwrap.NullTimeFromPtr(params.ExpiresAt),
@@ -991,7 +1118,10 @@ type productLimitQuery struct {
 	amount         uint64
 }
 
-func (r *PaymentRepository) getProductLimitLock(ctx context.Context, query productLimitQuery) (sql.NullTime, error) {
+func (r *PaymentRepository) getProductLimitLock(
+	ctx context.Context,
+	query productLimitQuery,
+) (sql.NullTime, error) {
 	if query.limit <= 0 || query.interval == "UNLIMITED" {
 		return sql.NullTime{}, nil
 	}
@@ -1015,16 +1145,19 @@ func (r *PaymentRepository) getProductLimitLock(ctx context.Context, query produ
 		platformUserID = query.platformUserID
 	}
 
-	total, err := r.q.GetProductLimitCounterCount(ctx, sqlc.GetProductLimitCounterCountParams{
-		WorkspaceID:    query.workspaceID,
-		AppID:          query.appID,
-		PlatformID:     limitCounterPlatformID(scope, query.platformID),
-		ProductID:      query.productID,
-		CounterScope:   scope,
-		PlatformUserID: platformUserID,
-		WindowStart:    start,
-		WindowEnd:      end,
-	})
+	total, err := r.q.GetProductLimitCounterCount(
+		ctx,
+		sqlc.GetProductLimitCounterCountParams{
+			WorkspaceID:    query.workspaceID,
+			AppID:          query.appID,
+			PlatformID:     limitCounterPlatformID(scope, query.platformID),
+			ProductID:      query.productID,
+			CounterScope:   scope,
+			PlatformUserID: platformUserID,
+			WindowStart:    start,
+			WindowEnd:      end,
+		},
+	)
 	if err == sql.ErrNoRows {
 		return sql.NullTime{}, nil
 	}
@@ -1058,13 +1191,24 @@ func limitCounterPlatformID(
 	return platformID
 }
 
-func (r *PaymentRepository) databaseNow(ctx context.Context) (time.Time, error) {
-	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{Timeout: r.timeout}, func(ctx context.Context) (time.Time, error) {
-		return r.q.DatabaseNow(ctx)
-	})
+func (r *PaymentRepository) databaseNow(
+	ctx context.Context,
+) (time.Time, error) {
+	return sqlwrap.Query(
+		ctx,
+		r.db,
+		sqlwrap.Params{Timeout: r.timeout},
+		func(ctx context.Context) (time.Time, error) {
+			return r.q.DatabaseNow(ctx)
+		},
+	)
 }
 
-func limitWindow(interval string, intervalCount int32, now time.Time) (time.Time, time.Time, bool) {
+func limitWindow(
+	interval string,
+	intervalCount int32,
+	now time.Time,
+) (time.Time, time.Time, bool) {
 	count := int(intervalCount)
 	if count <= 0 {
 		count = 1
@@ -1081,7 +1225,11 @@ func limitWindow(interval string, intervalCount int32, now time.Time) (time.Time
 	case "DAY":
 		return fixedLimitWindow(anchor, now, time.Duration(count)*24*time.Hour)
 	case "WEEK":
-		return fixedLimitWindow(anchor, now, time.Duration(count)*7*24*time.Hour)
+		return fixedLimitWindow(
+			anchor,
+			now,
+			time.Duration(count)*7*24*time.Hour,
+		)
 	case "MONTH":
 		start := monthLimitWindow(anchor, now, count)
 		return start, start.AddDate(0, count, 0), true
@@ -1093,7 +1241,11 @@ func limitWindow(interval string, intervalCount int32, now time.Time) (time.Time
 	}
 }
 
-func fixedLimitWindow(anchor time.Time, now time.Time, duration time.Duration) (time.Time, time.Time, bool) {
+func fixedLimitWindow(
+	anchor time.Time,
+	now time.Time,
+	duration time.Duration,
+) (time.Time, time.Time, bool) {
 	if duration <= 0 {
 		return time.Time{}, time.Time{}, false
 	}
@@ -1109,7 +1261,11 @@ func monthLimitWindow(anchor time.Time, now time.Time, count int) time.Time {
 	if now.Before(anchor) {
 		return anchor
 	}
-	months := (now.Year()-anchor.Year())*12 + int(now.Month()) - int(anchor.Month())
+	months := (now.Year()-anchor.Year())*12 + int(
+		now.Month(),
+	) - int(
+		anchor.Month(),
+	)
 	bucket := months / count * count
 	return anchor.AddDate(0, bucket, 0)
 }

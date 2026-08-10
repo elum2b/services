@@ -42,14 +42,22 @@ func (c *Client) ExportTransactions(
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusMultipleChoices {
-		return nil, wrapAPIError("export transactions", resp.StatusCode(), string(raw))
+	if resp.StatusCode() < http.StatusOK ||
+		resp.StatusCode() >= http.StatusMultipleChoices {
+		return nil, wrapAPIError(
+			"export transactions",
+			resp.StatusCode(),
+			string(raw),
+		)
 	}
 
 	return c.decodeExportResponse(ctx, raw)
 }
 
-func (c *Client) decodeExportResponse(ctx context.Context, raw []byte) ([]exportedTransaction, error) {
+func (c *Client) decodeExportResponse(
+	ctx context.Context,
+	raw []byte,
+) ([]exportedTransaction, error) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 {
 		return nil, ErrExportResponseInvalid
@@ -66,7 +74,12 @@ func (c *Client) decodeExportResponse(ctx context.Context, raw []byte) ([]export
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		downloadURL,
+		nil,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +88,13 @@ func (c *Client) decodeExportResponse(ctx context.Context, raw []byte) ([]export
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, wrapAPIError("download transaction export", resp.StatusCode, resp.Status)
+	if resp.StatusCode < http.StatusOK ||
+		resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, wrapAPIError(
+			"download transaction export",
+			resp.StatusCode,
+			resp.Status,
+		)
 	}
 
 	downloaded, err := readLimitedExportBody(resp.Body)
@@ -94,7 +112,10 @@ func (c *Client) exportDownloadClient() *http.Client {
 		if len(via) >= 10 {
 			return ErrExportURLUnsafe
 		}
-		if err := c.validateExportDownloadURL(request.Context(), request.URL.String()); err != nil {
+		if err := c.validateExportDownloadURL(
+			request.Context(),
+			request.URL.String(),
+		); err != nil {
 			return err
 		}
 		if previousCheckRedirect != nil {
@@ -148,13 +169,17 @@ func exportDownloadURL(raw []byte) (string, error) {
 	return "", ErrExportResponseInvalid
 }
 
-func (c *Client) validateExportDownloadURL(ctx context.Context, value string) error {
+func (c *Client) validateExportDownloadURL(
+	ctx context.Context,
+	value string,
+) error {
 	target, err := url.Parse(value)
 	if err != nil || target.Hostname() == "" || target.User != nil {
 		return ErrExportURLUnsafe
 	}
 	base, baseErr := url.Parse(c.apiBaseURL)
-	allowTestHTTP := baseErr == nil && base.Scheme == "http" && target.Host == base.Host
+	allowTestHTTP := baseErr == nil && base.Scheme == "http" &&
+		target.Host == base.Host
 	if target.Scheme != "https" && !allowTestHTTP {
 		return ErrExportURLUnsafe
 	}
@@ -167,8 +192,10 @@ func (c *Client) validateExportDownloadURL(ctx context.Context, value string) er
 		return err
 	}
 	for _, address := range addresses {
-		if address.IP.IsLoopback() || address.IP.IsPrivate() || address.IP.IsLinkLocalUnicast() ||
-			address.IP.IsLinkLocalMulticast() || address.IP.IsUnspecified() {
+		if address.IP.IsLoopback() || address.IP.IsPrivate() ||
+			address.IP.IsLinkLocalUnicast() ||
+			address.IP.IsLinkLocalMulticast() ||
+			address.IP.IsUnspecified() {
 			if !allowTestHTTP {
 				return ErrExportURLUnsafe
 			}

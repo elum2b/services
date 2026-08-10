@@ -5,11 +5,12 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	json "github.com/goccy/go-json"
 	"strconv"
 	"strings"
 
 	"github.com/elum-utils/sign/vkmashop"
+	json "github.com/goccy/go-json"
+
 	utils "github.com/elum2b/services/internal/utils"
 )
 
@@ -40,7 +41,13 @@ func nullStringFromPositiveInt(value int) *string {
 }
 
 func eventID(params vkmashop.Params) *string {
-	value := fmt.Sprintf("%s:%s:%d:%d", params.NotificationType, params.Status, params.OrderID, params.SubscriptionID)
+	value := fmt.Sprintf(
+		"%s:%s:%d:%d",
+		params.NotificationType,
+		params.Status,
+		params.OrderID,
+		params.SubscriptionID,
+	)
 	return utils.Ref(value)
 }
 

@@ -12,16 +12,22 @@ type GetByKeyParams struct {
 	Locale    string
 }
 
-func (a *Product) GetByKey(ctx context.Context, params GetByKeyParams) (*ProductModel, error) {
+func (a *Product) GetByKey(
+	ctx context.Context,
+	params GetByKeyParams,
+) (*ProductModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 
-	product, err := a.repository.GetProductByKey(ctx, repository.ProductGetByKeyParams{
-		Key:       params.Key,
-		AssetCode: params.AssetCode,
-		Locale:    params.Locale,
-	})
+	product, err := a.repository.GetProductByKey(
+		ctx,
+		repository.ProductGetByKeyParams{
+			Key:       params.Key,
+			AssetCode: params.AssetCode,
+			Locale:    params.Locale,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}

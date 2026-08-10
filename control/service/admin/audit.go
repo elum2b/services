@@ -10,9 +10,7 @@ func (a *Admin) ListGlobalAudit(
 	ctx context.Context,
 	page Page,
 ) ([]AuditEventModel, error) {
-
 	return a.listAudit(ctx, ScopeGlobal, "", page)
-
 }
 
 func (a *Admin) ListWorkspaceAudit(
@@ -20,9 +18,7 @@ func (a *Admin) ListWorkspaceAudit(
 	workspaceID string,
 	page Page,
 ) ([]AuditEventModel, error) {
-
 	return a.listAudit(ctx, ScopeWorkspace, workspaceID, page)
-
 }
 
 func (a *Admin) listAudit(
@@ -31,7 +27,6 @@ func (a *Admin) listAudit(
 	workspaceID string,
 	page Page,
 ) ([]AuditEventModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -65,5 +60,4 @@ func (a *Admin) listAudit(
 	}
 
 	return result, nil
-
 }

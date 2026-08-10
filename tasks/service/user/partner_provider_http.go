@@ -73,7 +73,11 @@ func (c partnerHTTPClient) postJSON(
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("partner http status %d: %s", resp.StatusCode, string(raw))
+		return fmt.Errorf(
+			"partner http status %d: %s",
+			resp.StatusCode,
+			string(raw),
+		)
 	}
 	if response == nil {
 		return nil
@@ -133,7 +137,11 @@ func partnerMarshal(value any) json.RawMessage {
 	return raw
 }
 
-func partnerConfigSetting(settings json.RawMessage, key string, fallback string) string {
+func partnerConfigSetting(
+	settings json.RawMessage,
+	key string,
+	fallback string,
+) string {
 	if len(settings) == 0 || string(settings) == "null" {
 		return fallback
 	}

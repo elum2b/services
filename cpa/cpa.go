@@ -36,11 +36,19 @@ type CPA struct {
 
 func New() *CPA { return newCPA(context.Background(), sqlwrap.NewUnavailable(), true, Options{}) }
 
-func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*CPA, error) {
+func NewWithDatabase(
+	ctx context.Context,
+	db *sql.DB,
+	options Options,
+) (*CPA, error) {
 	options = normalizeOptions(options)
 	client, err := sqlwrap.New(db, toSQLWrapOptions(options))
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "cpa sql client initialization failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"cpa sql client initialization failed",
+			err,
+		)
 	}
 	return newCPA(ctx, client, false, options), nil
 }
@@ -98,12 +106,20 @@ func open(ctx context.Context, params DatabaseParams) (*CPA, error) {
 	options := normalizeOptions(params.Options)
 	db, err := openPostgres(ctx, params)
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeUnavailable, "cpa database connection failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeUnavailable,
+			"cpa database connection failed",
+			err,
+		)
 	}
 	client, err := sqlwrap.New(db, toSQLWrapOptions(params.Options))
 	if err != nil {
 		_ = db.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "cpa sql client initialization failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"cpa sql client initialization failed",
+			err,
+		)
 	}
 	bootstrap := repository.NewWithOptions(client, repository.Options{
 		QueryTimeout:             options.QueryTimeout,
@@ -114,11 +130,19 @@ func open(ctx context.Context, params DatabaseParams) (*CPA, error) {
 	if err := bootstrap.Bootstrap(ctx); err != nil {
 		_ = bootstrap.Close()
 		_ = client.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "cpa bootstrap failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"cpa bootstrap failed",
+			err,
+		)
 	}
 	if err := bootstrap.Close(); err != nil {
 		_ = client.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "cpa bootstrap shutdown failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"cpa bootstrap shutdown failed",
+			err,
+		)
 	}
 	return newCPA(ctx, client, true, options), nil
 }
@@ -133,8 +157,13 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 		port = 5432
 	}
 	dsn, err := sqlwrap.PostgresDSN(sqlwrap.PostgresParams{
-		User: params.User, Password: params.Password, Database: params.Database,
-		Host: host, Port: port, SSLMode: params.SSLMode, SSLRootCert: params.SSLRootCert,
+		User:        params.User,
+		Password:    params.Password,
+		Database:    params.Database,
+		Host:        host,
+		Port:        port,
+		SSLMode:     params.SSLMode,
+		SSLRootCert: params.SSLRootCert,
 	})
 	if err != nil {
 		return nil, err
@@ -159,7 +188,12 @@ func (c *CPA) adopt(running *CPA) {
 	c.goroutines = running.goroutines
 }
 
-func newCPA(ctx context.Context, db *sqlwrap.Client, ownsClient bool, options Options) *CPA {
+func newCPA(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	ownsClient bool,
+	options Options,
+) *CPA {
 	options = normalizeOptions(options)
 	rootCtx, rootCancel := context.WithCancel(contextutil.Normalize(ctx))
 	repositoryOptions := repository.Options{
@@ -169,8 +203,16 @@ func newCPA(ctx context.Context, db *sqlwrap.Client, ownsClient bool, options Op
 		OnCacheInvalidationError: options.OnCacheInvalidationError,
 	}
 	return &CPA{
-		Admin:      admin.NewWithRepositoryOptions(rootCtx, db, repositoryOptions),
-		User:       user.NewWithRepositoryOptions(rootCtx, db, repositoryOptions),
+		Admin: admin.NewWithRepositoryOptions(
+			rootCtx,
+			db,
+			repositoryOptions,
+		),
+		User: user.NewWithRepositoryOptions(
+			rootCtx,
+			db,
+			repositoryOptions,
+		),
 		callbacks:  callbackutil.NewWithTable(db.DB(), callbackutil.CPATable),
 		client:     db,
 		ownsClient: ownsClient,
@@ -213,10 +255,15 @@ func (c *CPA) IsReady() bool {
 	}
 	c.lifecycleMu.Lock()
 	defer c.lifecycleMu.Unlock()
-	return c.rootCtx != nil && c.rootCtx.Err() == nil && !c.client.IsUnavailable() && c.Admin != nil && c.User != nil
+	return c.rootCtx != nil && c.rootCtx.Err() == nil &&
+		!c.client.IsUnavailable() &&
+		c.Admin != nil &&
+		c.User != nil
 }
 
-func (c *CPA) bindContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (c *CPA) bindContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	if c == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}

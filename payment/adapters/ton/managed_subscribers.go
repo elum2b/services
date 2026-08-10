@@ -17,7 +17,10 @@ type managedSubscriber struct {
 	sub    *Sub
 }
 
-func (a *TON) StartManagedSubscribers(ctx context.Context, interval time.Duration) <-chan struct{} {
+func (a *TON) StartManagedSubscribers(
+	ctx context.Context,
+	interval time.Duration,
+) <-chan struct{} {
 	if a == nil {
 		done := make(chan struct{})
 		close(done)
@@ -48,7 +51,10 @@ func (a *TON) StartManagedSubscribers(ctx context.Context, interval time.Duratio
 	return done
 }
 
-func (a *TON) managedSubscriberLoop(ctx context.Context, interval time.Duration) {
+func (a *TON) managedSubscriberLoop(
+	ctx context.Context,
+	interval time.Duration,
+) {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 
@@ -67,7 +73,10 @@ func (a *TON) managedSubscriberLoop(ctx context.Context, interval time.Duration)
 func (a *TON) syncManagedSubscribersSafely(ctx context.Context) {
 	defer func() {
 		if recovered := recover(); recovered != nil && ctx.Err() == nil {
-			log.Printf("payment ton wallet sync recovered from panic: %v", recovered)
+			log.Printf(
+				"payment ton wallet sync recovered from panic: %v",
+				recovered,
+			)
 		}
 	}()
 	if err := a.SyncManagedSubscribers(ctx); err != nil && ctx.Err() == nil {
@@ -105,10 +114,13 @@ func (a *TON) SyncManagedSubscribers(ctx context.Context) error {
 
 	for key, managed := range current {
 		want, ok := desired[key]
-		if !ok || !sameSubscriberParams(managed.params, want) || managed.sub == nil || managed.sub.Err() != nil {
+		if !ok || !sameSubscriberParams(managed.params, want) ||
+			managed.sub == nil ||
+			managed.sub.Err() != nil {
 			_ = managed.sub.Close()
 			a.mu.Lock()
-			if existing, exists := a.managed[key]; exists && existing.sub == managed.sub {
+			if existing, exists := a.managed[key]; exists &&
+				existing.sub == managed.sub {
 				delete(a.managed, key)
 			}
 			a.mu.Unlock()
@@ -119,7 +131,9 @@ func (a *TON) SyncManagedSubscribers(ctx context.Context) error {
 		a.mu.Lock()
 		managed, exists := a.managed[key]
 		a.mu.Unlock()
-		if exists && sameSubscriberParams(managed.params, params) && managed.sub != nil && managed.sub.Err() == nil {
+		if exists && sameSubscriberParams(managed.params, params) &&
+			managed.sub != nil &&
+			managed.sub.Err() == nil {
 			continue
 		}
 		sub, err := a.StartSubscriber(ctx, params)
@@ -149,7 +163,9 @@ func (a *TON) closeManagedSubscribers() {
 	}
 }
 
-func subscriberParamsFromWallet(row paymentsqlc.PaymentTonWallet) (SubscriberParams, bool, error) {
+func subscriberParamsFromWallet(
+	row paymentsqlc.PaymentTonWallet,
+) (SubscriberParams, bool, error) {
 	if !row.IsEnabled {
 		return SubscriberParams{}, false, nil
 	}
@@ -193,6 +209,14 @@ func managedSubscriberKey(params SubscriberParams) string {
 func sameSubscriberParams(left, right SubscriberParams) bool {
 	return left.WorkspaceID == right.WorkspaceID &&
 		normalizeNetwork(left.Network) == normalizeNetwork(right.Network) &&
-		strings.TrimSpace(left.WalletAddress) == strings.TrimSpace(right.WalletAddress) &&
-		strings.TrimSpace(left.NetworkConfigURL) == strings.TrimSpace(right.NetworkConfigURL)
+		strings.TrimSpace(
+			left.WalletAddress,
+		) == strings.TrimSpace(
+			right.WalletAddress,
+		) &&
+		strings.TrimSpace(
+			left.NetworkConfigURL,
+		) == strings.TrimSpace(
+			right.NetworkConfigURL,
+		)
 }

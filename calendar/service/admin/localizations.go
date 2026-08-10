@@ -15,7 +15,10 @@ type SaveLocalizationParams struct {
 	Description string
 }
 
-func (a *Admin) UpsertLocalization(ctx context.Context, params SaveLocalizationParams) error {
+func (a *Admin) UpsertLocalization(
+	ctx context.Context,
+	params SaveLocalizationParams,
+) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
@@ -24,7 +27,10 @@ func (a *Admin) UpsertLocalization(ctx context.Context, params SaveLocalizationP
 	if params.CalendarID == "" || params.Locale == "" || params.Title == "" {
 		return ErrLocalizationRequired
 	}
-	return a.repository.UpsertLocalization(mergedCtx, repository.Localization(params))
+	return a.repository.UpsertLocalization(
+		mergedCtx,
+		repository.Localization(params),
+	)
 }
 
 func (a *Admin) GetLocalization(
@@ -37,39 +43,65 @@ func (a *Admin) GetLocalization(
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
-	value, err := a.repository.GetLocalization(mergedCtx, workspaceID, calendarID, locale)
+	value, err := a.repository.GetLocalization(
+		mergedCtx,
+		workspaceID,
+		calendarID,
+		locale,
+	)
 	if err != nil {
 		return LocalizationModel{}, err
 	}
-	return LocalizationModel{Locale: value.Locale, Title: value.Title, Description: value.Description}, nil
+	return LocalizationModel{
+		Locale:      value.Locale,
+		Title:       value.Title,
+		Description: value.Description,
+	}, nil
 }
 
-func (a *Admin) ListLocalizations(ctx context.Context, workspaceID, calendarID string) ([]LocalizationModel, error) {
+func (a *Admin) ListLocalizations(
+	ctx context.Context,
+	workspaceID, calendarID string,
+) ([]LocalizationModel, error) {
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return nil, err
 	}
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
-	values, err := a.repository.ListLocalizations(mergedCtx, workspaceID, calendarID)
+	values, err := a.repository.ListLocalizations(
+		mergedCtx,
+		workspaceID,
+		calendarID,
+	)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]LocalizationModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, LocalizationModel{
-			Locale: value.Locale, Title: value.Title, Description: value.Description,
+			Locale:      value.Locale,
+			Title:       value.Title,
+			Description: value.Description,
 		})
 	}
 	return result, nil
 }
 
-func (a *Admin) DeleteLocalization(ctx context.Context, workspaceID, calendarID, locale string) (int64, error) {
+func (a *Admin) DeleteLocalization(
+	ctx context.Context,
+	workspaceID, calendarID, locale string,
+) (int64, error) {
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return 0, err
 	}
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
-	return a.repository.DeleteLocalization(mergedCtx, workspaceID, calendarID, locale)
+	return a.repository.DeleteLocalization(
+		mergedCtx,
+		workspaceID,
+		calendarID,
+		locale,
+	)
 }

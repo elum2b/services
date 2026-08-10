@@ -16,7 +16,10 @@ func (r *Repository) MarkIntegrationTaskReady(
 		now = time.Now().UTC()
 	}
 	task := params.Task
-	result := MarkIntegrationTaskReadyResult{Status: RecordStatusNoTasks, Task: task}
+	result := MarkIntegrationTaskReadyResult{
+		Status: RecordStatusNoTasks,
+		Task:   task,
+	}
 	if !taskVisibleAt(task, now) {
 		return result, nil
 	}
@@ -26,7 +29,11 @@ func (r *Repository) MarkIntegrationTaskReady(
 				return err
 			}
 
-			allowed, err := txRepo.integrationTaskSequenceReady(ctx, params.Identity, task)
+			allowed, err := txRepo.integrationTaskSequenceReady(
+				ctx,
+				params.Identity,
+				task,
+			)
 			if err != nil {
 				return err
 			}
@@ -34,11 +41,17 @@ func (r *Repository) MarkIntegrationTaskReady(
 				result.Status = RecordStatusNoTasks
 				return nil
 			}
-			progress, exists, err := txRepo.integrationTaskProgressForUpdate(ctx, params.Identity, task.ID, now)
+			progress, exists, err := txRepo.integrationTaskProgressForUpdate(
+				ctx,
+				params.Identity,
+				task.ID,
+				now,
+			)
 			if err != nil {
 				return err
 			}
-			if progress.Status == StatusClaimed || progress.Status == StatusReady {
+			if progress.Status == StatusClaimed ||
+				progress.Status == StatusReady {
 				task.Progress = &progress
 				result.Task = task
 				result.Status = RecordStatusDuplicate
@@ -60,7 +73,11 @@ func (r *Repository) MarkIntegrationTaskReady(
 			}
 			periodStart, periodEnd := periodFor(task, now)
 			if !exists {
-				task.Rewards, err = txRepo.rewards(ctx, task.WorkspaceID, task.ID)
+				task.Rewards, err = txRepo.rewards(
+					ctx,
+					task.WorkspaceID,
+					task.ID,
+				)
 				if err != nil {
 					return err
 				}
@@ -92,7 +109,12 @@ func (r *Repository) MarkIntegrationTaskReady(
 			task.Progress = &progress
 			result.Task = task
 			result.Status = RecordStatusRecorded
-			if err := txRepo.refreshComplexParentsForChangedTasks(ctx, params.Identity, []uint64{task.ID}, now); err != nil {
+			if err := txRepo.refreshComplexParentsForChangedTasks(
+				ctx,
+				params.Identity,
+				[]uint64{task.ID},
+				now,
+			); err != nil {
 				return err
 			}
 			return nil
@@ -105,7 +127,11 @@ func (r *Repository) MarkIntegrationTaskReady(
 	return result, nil
 }
 
-func (r *Repository) integrationTaskSequenceReady(ctx context.Context, identity Identity, task Task) (bool, error) {
+func (r *Repository) integrationTaskSequenceReady(
+	ctx context.Context,
+	identity Identity,
+	task Task,
+) (bool, error) {
 	if task.SequenceKey == nil {
 		return true, nil
 	}
@@ -118,14 +144,19 @@ func (r *Repository) integrationTaskSequenceReady(ctx context.Context, identity 
 	})
 	if err != nil {
 		if isNoRows(err) {
-			return task.SequencePosition != nil && *task.SequencePosition == 1, nil
+			return task.SequencePosition != nil &&
+				*task.SequencePosition == 1, nil
 		}
 		return false, err
 	}
-	return string(row.Status) == "active" && row.CurrentTaskID.Valid && uint64(row.CurrentTaskID.Int64) == task.ID, nil
+	return string(row.Status) == "active" && row.CurrentTaskID.Valid &&
+		uint64(row.CurrentTaskID.Int64) == task.ID, nil
 }
 
-func (r *Repository) lockTaskUser(ctx context.Context, identity Identity) error {
+func (r *Repository) lockTaskUser(
+	ctx context.Context,
+	identity Identity,
+) error {
 	return r.q.LockTaskUser(ctx, tasksqlc.LockTaskUserParams{
 		WorkspaceID:    identity.WorkspaceID,
 		AppID:          identity.AppID,
@@ -150,24 +181,34 @@ func (r *Repository) integrationTaskProgressForUpdate(
 	return progress, true, nil
 }
 
-func (r *Repository) insertProgressEvent(ctx context.Context, params MarkIntegrationTaskReadyParams) (bool, error) {
+func (r *Repository) insertProgressEvent(
+	ctx context.Context,
+	params MarkIntegrationTaskReadyParams,
+) (bool, error) {
 	eventPayload := params.Payload
 	if len(eventPayload) == 0 {
 		eventPayload = []byte("{}")
 	}
-	affected, err := repositoryValue[int64](ctx, r, func(ctx context.Context) (int64, error) {
-		return r.q.InsertProgressEvent(ctx, tasksqlc.InsertProgressEventParams{
-			WorkspaceID:      params.Identity.WorkspaceID,
-			AppID:            params.Identity.AppID,
-			PlatformID:       params.Identity.PlatformID,
-			PlatformUserID:   params.Identity.PlatformUserID,
-			Source:           params.Source,
-			ExternalEventKey: params.ExternalEventKey,
-			ActionKey:        params.Task.ActionKey,
-			Amount:           int64(params.Task.TargetCount),
-			Payload:          rawMessageParam(eventPayload),
-		})
-	})
+	affected, err := repositoryValue[int64](
+		ctx,
+		r,
+		func(ctx context.Context) (int64, error) {
+			return r.q.InsertProgressEvent(
+				ctx,
+				tasksqlc.InsertProgressEventParams{
+					WorkspaceID:      params.Identity.WorkspaceID,
+					AppID:            params.Identity.AppID,
+					PlatformID:       params.Identity.PlatformID,
+					PlatformUserID:   params.Identity.PlatformUserID,
+					Source:           params.Source,
+					ExternalEventKey: params.ExternalEventKey,
+					ActionKey:        params.Task.ActionKey,
+					Amount:           int64(params.Task.TargetCount),
+					Payload:          rawMessageParam(eventPayload),
+				},
+			)
+		},
+	)
 	if err != nil {
 		return false, err
 	}

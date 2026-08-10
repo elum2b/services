@@ -31,5 +31,10 @@ func repositoryExec(
 	r *Repository,
 	loader func(ctx context.Context) error,
 ) error {
-	return sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: r.queryTimeout}, loader)
+	return sqlwrap.Exec(
+		ctx,
+		r.db,
+		sqlwrap.Params{Timeout: r.queryTimeout},
+		loader,
+	)
 }

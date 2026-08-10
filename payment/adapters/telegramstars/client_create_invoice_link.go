@@ -5,7 +5,10 @@ import (
 	"net/http"
 )
 
-func (c *Client) CreateInvoiceLink(ctx context.Context, payload createInvoiceLinkRequest) (string, error) {
+func (c *Client) CreateInvoiceLink(
+	ctx context.Context,
+	payload createInvoiceLinkRequest,
+) (string, error) {
 	if err := c.requireCredentials(); err != nil {
 		return "", err
 	}
@@ -20,8 +23,16 @@ func (c *Client) CreateInvoiceLink(ctx context.Context, payload createInvoiceLin
 	if err != nil {
 		return "", err
 	}
-	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusMultipleChoices || !result.OK {
-		return "", wrapAPIError("createInvoiceLink", resp.StatusCode(), result.ErrorCode, result.Description, resp.String())
+	if resp.StatusCode() < http.StatusOK ||
+		resp.StatusCode() >= http.StatusMultipleChoices ||
+		!result.OK {
+		return "", wrapAPIError(
+			"createInvoiceLink",
+			resp.StatusCode(),
+			result.ErrorCode,
+			result.Description,
+			resp.String(),
+		)
 	}
 	return result.Result, nil
 }

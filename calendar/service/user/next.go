@@ -12,7 +12,10 @@ type NextParams struct {
 	Now         time.Time
 }
 
-func (u *User) Next(ctx context.Context, params NextParams) (RecordResult, error) {
+func (u *User) Next(
+	ctx context.Context,
+	params NextParams,
+) (RecordResult, error) {
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 
@@ -21,7 +24,11 @@ func (u *User) Next(ctx context.Context, params NextParams) (RecordResult, error
 	}
 
 	value, err := u.repository.Next(
-		mergedCtx, repositoryIdentity(params.Identity), params.CalendarRef, params.Locale, params.Now,
+		mergedCtx,
+		repositoryIdentity(params.Identity),
+		params.CalendarRef,
+		params.Locale,
+		params.Now,
 	)
 	if err != nil {
 		return RecordResult{}, err

@@ -27,6 +27,17 @@ type ControlAccount struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type ControlApplicationDelivery struct {
+	WorkspaceID     string    `json:"workspace_id"`
+	AppID           int64     `json:"app_id"`
+	PlatformID      int64     `json:"platform_id"`
+	Url             string    `json:"url"`
+	EncryptedSecret string    `json:"encrypted_secret"`
+	IsEnabled       bool      `json:"is_enabled"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
 type ControlApplicationPlatform struct {
 	WorkspaceID                 string    `json:"workspace_id"`
 	AppID                       int64     `json:"app_id"`

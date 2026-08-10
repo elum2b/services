@@ -14,8 +14,14 @@ import (
 )
 
 var (
-	ErrWorkspaceRequired = serviceerrors.New(serviceerrors.CodeInvalidFields, "reference workspace is required")
-	ErrItemNotFound      = serviceerrors.New(serviceerrors.CodeNotFound, "reference item not found")
+	ErrWorkspaceRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"reference workspace is required",
+	)
+	ErrItemNotFound = serviceerrors.New(
+		serviceerrors.CodeNotFound,
+		"reference item not found",
+	)
 )
 
 const bootstrapQueryTimeout = 30 * time.Second
@@ -61,7 +67,11 @@ func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 	}
 }
 
-func NewPreparedWithOptions(ctx context.Context, db *sqlwrap.Client, options Options) (*Repository, error) {
+func NewPreparedWithOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options Options,
+) (*Repository, error) {
 	repository := NewWithOptions(db, options)
 	q, err := refsqlc.Prepare(ctx, db.WithQueryTimeout(repository.timeout))
 	if err != nil {
@@ -79,7 +89,10 @@ func (r *Repository) Close() error {
 	return r.q.Close()
 }
 
-func (r *Repository) WithTx(ctx context.Context, fn func(*Repository) error) error {
+func (r *Repository) WithTx(
+	ctx context.Context,
+	fn func(*Repository) error,
+) error {
 	_, err := sqlwrap.Transaction(
 		ctx,
 		r.db,
@@ -106,11 +119,20 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 		return fmt.Errorf("reference schema SQL parse failed: %w", err)
 	}
 	for _, statement := range statements {
-		if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
-			_, err := r.db.DB().ExecContext(ctx, statement)
-			return err
-		}); err != nil {
-			return fmt.Errorf("reference schema statement failed: %w\n%s", err, statement)
+		if err := sqlwrap.Exec(
+			ctx,
+			r.db,
+			sqlwrap.Params{Timeout: bootstrapQueryTimeout},
+			func(ctx context.Context) error {
+				_, err := r.db.DB().ExecContext(ctx, statement)
+				return err
+			},
+		); err != nil {
+			return fmt.Errorf(
+				"reference schema statement failed: %w\n%s",
+				err,
+				statement,
+			)
 		}
 	}
 	statements, err = sqlwrap.SplitStatements(refsqlc.TriggerSQL)
@@ -118,11 +140,20 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 		return fmt.Errorf("reference trigger SQL parse failed: %w", err)
 	}
 	for _, statement := range statements {
-		if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
-			_, err := r.db.DB().ExecContext(ctx, statement)
-			return err
-		}); err != nil {
-			return fmt.Errorf("reference trigger statement failed: %w\n%s", err, statement)
+		if err := sqlwrap.Exec(
+			ctx,
+			r.db,
+			sqlwrap.Params{Timeout: bootstrapQueryTimeout},
+			func(ctx context.Context) error {
+				_, err := r.db.DB().ExecContext(ctx, statement)
+				return err
+			},
+		); err != nil {
+			return fmt.Errorf(
+				"reference trigger statement failed: %w\n%s",
+				err,
+				statement,
+			)
 		}
 	}
 	return nil

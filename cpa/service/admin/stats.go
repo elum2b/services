@@ -5,7 +5,10 @@ import (
 	"time"
 )
 
-func (a *Admin) GetStats(ctx context.Context, workspaceID, cpaID string) (StatsModel, error) {
+func (a *Admin) GetStats(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) (StatsModel, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -19,12 +22,22 @@ func (a *Admin) GetStats(ctx context.Context, workspaceID, cpaID string) (StatsM
 
 }
 
-func (a *Admin) ListDailyStats(ctx context.Context, workspaceID, cpaID string, from, until time.Time) ([]DailyStatsModel, error) {
+func (a *Admin) ListDailyStats(
+	ctx context.Context,
+	workspaceID, cpaID string,
+	from, until time.Time,
+) ([]DailyStatsModel, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	values, err := a.repository.ListDailyStats(mergedCtx, workspaceID, cpaID, from, until)
+	values, err := a.repository.ListDailyStats(
+		mergedCtx,
+		workspaceID,
+		cpaID,
+		from,
+		until,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +51,11 @@ func (a *Admin) ListDailyStats(ctx context.Context, workspaceID, cpaID string, f
 
 }
 
-func (a *Admin) RefreshDailyStats(ctx context.Context, workspaceID string, from, until time.Time) error {
+func (a *Admin) RefreshDailyStats(
+	ctx context.Context,
+	workspaceID string,
+	from, until time.Time,
+) error {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()

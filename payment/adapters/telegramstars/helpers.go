@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/elum2b/services/internal/utils"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	utils "github.com/elum2b/services/internal/utils"
 )
 
 const telegramStarsSubscriptionPeriod = 30 * 24 * 60 * 60
@@ -65,9 +66,17 @@ func nullInt64FromPtr(value *int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: *value, Valid: true}
 }
 
-func int64Null(value int64) sql.NullInt64 { return sql.NullInt64{Int64: value, Valid: true} }
+func int64Null(
+	value int64,
+) sql.NullInt64 {
+	return sql.NullInt64{Int64: value, Valid: true}
+}
 
-func timeNull(value time.Time) sql.NullTime { return sql.NullTime{Time: value, Valid: true} }
+func timeNull(
+	value time.Time,
+) sql.NullTime {
+	return sql.NullTime{Time: value, Valid: true}
+}
 
 func uint64Ptr(value *int64) *uint64 {
 	if value == nil {

@@ -14,37 +14,80 @@ func (r *Repository) ListOperations(
 	limit, offset int32,
 ) ([]Operation, error) {
 	limit, offset = normalizePage(limit, offset)
-	rows, err := r.q.AdminListOperations(ctx, calendarsqlc.AdminListOperationsParams{
-		WorkspaceID: workspaceID, CalendarID: calendarID, Limit: limit, Offset: offset,
-	})
+	rows, err := r.q.AdminListOperations(
+		ctx,
+		calendarsqlc.AdminListOperationsParams{
+			WorkspaceID: workspaceID,
+			CalendarID:  calendarID,
+			Limit:       limit,
+			Offset:      offset,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]Operation, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, Operation{
-			ID: uint64(row.ID), Identity: Identity{
+			ID: uint64(row.ID),
+			Identity: Identity{
 				WorkspaceID: row.WorkspaceID, AppID: row.AppID,
 				PlatformID: row.PlatformID, PlatformUserID: row.PlatformUserID,
 			},
-			CalendarID: row.CalendarID, OperationID: row.OperationID,
-			Granted: row.Granted, Status: row.Status, Position: sqlNullUint32Ptr(row.Position),
-			Rewards: row.RewardsSnapshot, CurrentPosition: uint32(row.CurrentPosition),
-			ClaimCount: uint64(row.ClaimCount), OccurredAt: row.OccurredAt,
+			CalendarID:      row.CalendarID,
+			OperationID:     row.OperationID,
+			Granted:         row.Granted,
+			Status:          row.Status,
+			Position:        sqlNullUint32Ptr(row.Position),
+			Rewards:         row.RewardsSnapshot,
+			CurrentPosition: uint32(row.CurrentPosition),
+			ClaimCount:      uint64(row.ClaimCount),
+			OccurredAt:      row.OccurredAt,
 		})
 	}
 	return result, nil
 }
 
-func (r *Repository) GetOperation(ctx context.Context, workspaceID, calendarID string, id uint64) (Operation, error) {
-	row, err := r.q.AdminGetOperation(ctx, calendarsqlc.AdminGetOperationParams{WorkspaceID: workspaceID, CalendarID: calendarID, ID: int64(id)})
+func (r *Repository) GetOperation(
+	ctx context.Context,
+	workspaceID, calendarID string,
+	id uint64,
+) (Operation, error) {
+	row, err := r.q.AdminGetOperation(
+		ctx,
+		calendarsqlc.AdminGetOperationParams{
+			WorkspaceID: workspaceID,
+			CalendarID:  calendarID,
+			ID:          int64(id),
+		},
+	)
 	if err != nil {
 		return Operation{}, err
 	}
-	return Operation{ID: uint64(row.ID), Identity: Identity{WorkspaceID: row.WorkspaceID, AppID: row.AppID, PlatformID: row.PlatformID, PlatformUserID: row.PlatformUserID}, CalendarID: row.CalendarID, OperationID: row.OperationID, Granted: row.Granted, Status: row.Status, Position: sqlNullUint32Ptr(row.Position), Rewards: row.RewardsSnapshot, CurrentPosition: uint32(row.CurrentPosition), ClaimCount: uint64(row.ClaimCount), OccurredAt: row.OccurredAt}, nil
+	return Operation{
+		ID: uint64(row.ID),
+		Identity: Identity{
+			WorkspaceID:    row.WorkspaceID,
+			AppID:          row.AppID,
+			PlatformID:     row.PlatformID,
+			PlatformUserID: row.PlatformUserID,
+		},
+		CalendarID:      row.CalendarID,
+		OperationID:     row.OperationID,
+		Granted:         row.Granted,
+		Status:          row.Status,
+		Position:        sqlNullUint32Ptr(row.Position),
+		Rewards:         row.RewardsSnapshot,
+		CurrentPosition: uint32(row.CurrentPosition),
+		ClaimCount:      uint64(row.ClaimCount),
+		OccurredAt:      row.OccurredAt,
+	}, nil
 }
 
-func (r *Repository) GetStats(ctx context.Context, workspaceID, calendarID string) (Stats, error) {
+func (r *Repository) GetStats(
+	ctx context.Context,
+	workspaceID, calendarID string,
+) (Stats, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return Stats{}, err
 	}
@@ -56,7 +99,10 @@ func (r *Repository) GetStats(ctx context.Context, workspaceID, calendarID strin
 		return Stats{}, err
 	}
 	return Stats{
-		OperationCount: uint64(row.OperationCount), GrantCount: uint64(row.GrantCount),
+		OperationCount: uint64(
+			row.OperationCount,
+		),
+		GrantCount:  uint64(row.GrantCount),
 		UniqueUsers: uint64(row.UniqueUsers),
 	}, nil
 }
@@ -66,23 +112,37 @@ func (r *Repository) ListDailyStats(
 	workspaceID, calendarID string,
 	from, until time.Time,
 ) ([]DailyStats, error) {
-	rows, err := r.q.AdminListDailyStats(ctx, calendarsqlc.AdminListDailyStatsParams{
-		WorkspaceID: workspaceID, CalendarID: calendarID, StatsDate: from, StatsDate_2: until,
-	})
+	rows, err := r.q.AdminListDailyStats(
+		ctx,
+		calendarsqlc.AdminListDailyStatsParams{
+			WorkspaceID: workspaceID,
+			CalendarID:  calendarID,
+			StatsDate:   from,
+			StatsDate_2: until,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]DailyStats, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, DailyStats{
-			Date: row.StatsDate, OperationCount: uint64(row.OperationCount),
-			GrantCount: uint64(row.GrantCount), UniqueUsers: uint64(row.UniqueUsers),
+			Date:           row.StatsDate,
+			OperationCount: uint64(row.OperationCount),
+			GrantCount: uint64(
+				row.GrantCount,
+			),
+			UniqueUsers: uint64(row.UniqueUsers),
 		})
 	}
 	return result, nil
 }
 
-func (r *Repository) RefreshDailyStats(ctx context.Context, workspaceID string, from, until time.Time) error {
+func (r *Repository) RefreshDailyStats(
+	ctx context.Context,
+	workspaceID string,
+	from, until time.Time,
+) error {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}

@@ -10,7 +10,10 @@ import (
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
 )
 
-func (a *Admin) SaveTONWallet(ctx context.Context, params TONWalletUpsertParams) error {
+func (a *Admin) SaveTONWallet(
+	ctx context.Context,
+	params TONWalletUpsertParams,
+) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
@@ -20,36 +23,55 @@ func (a *Admin) SaveTONWallet(ctx context.Context, params TONWalletUpsertParams)
 	if err != nil {
 		return err
 	}
-	walletAddress, err := paymentton.NormalizeWalletAddress(params.WalletAddress, network)
+	walletAddress, err := paymentton.NormalizeWalletAddress(
+		params.WalletAddress,
+		network,
+	)
 	if err != nil {
 		return err
 	}
 	if err := params.Manifest.Validate(); err != nil {
 		return err
 	}
-	return a.repository.UpsertTONWallet(mergedCtx, paymentsqlc.UpsertTONWalletParams{
-		WorkspaceID:   params.WorkspaceID,
-		Network:       network,
-		WalletAddress: walletAddress,
-		NetworkConfigUrl: sqlwrap.NullFromPtr(params.NetworkConfigURL, func(v string) sql.NullString {
-			return sql.NullString{String: v, Valid: true}
-		}),
-		ManifestAppUrl:           params.Manifest.URL,
-		ManifestName:             params.Manifest.Name,
-		ManifestIconUrl:          params.Manifest.IconURL,
-		ManifestTermsOfUseUrl:    optionalManifestURL(params.Manifest.TermsOfUseURL),
-		ManifestPrivacyPolicyUrl: optionalManifestURL(params.Manifest.PrivacyPolicyURL),
-		IsEnabled:                params.IsEnabled,
-	})
+	return a.repository.UpsertTONWallet(
+		mergedCtx,
+		paymentsqlc.UpsertTONWalletParams{
+			WorkspaceID:   params.WorkspaceID,
+			Network:       network,
+			WalletAddress: walletAddress,
+			NetworkConfigUrl: sqlwrap.NullFromPtr(
+				params.NetworkConfigURL,
+				func(v string) sql.NullString {
+					return sql.NullString{String: v, Valid: true}
+				},
+			),
+			ManifestAppUrl:  params.Manifest.URL,
+			ManifestName:    params.Manifest.Name,
+			ManifestIconUrl: params.Manifest.IconURL,
+			ManifestTermsOfUseUrl: optionalManifestURL(
+				params.Manifest.TermsOfUseURL,
+			),
+			ManifestPrivacyPolicyUrl: optionalManifestURL(
+				params.Manifest.PrivacyPolicyURL,
+			),
+			IsEnabled: params.IsEnabled,
+		},
+	)
 }
 
-func (a *Admin) DeleteTONWallet(ctx context.Context, workspaceID string) (int64, error) {
+func (a *Admin) DeleteTONWallet(
+	ctx context.Context,
+	workspaceID string,
+) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	return a.repository.DeleteTONWallet(mergedCtx, workspaceID)
 }
 
-func (a *Admin) GetTONWallet(ctx context.Context, workspaceID string) (TONWalletModel, error) {
+func (a *Admin) GetTONWallet(
+	ctx context.Context,
+	workspaceID string,
+) (TONWalletModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	return a.repository.AdminGetTONWallet(mergedCtx, workspaceID)

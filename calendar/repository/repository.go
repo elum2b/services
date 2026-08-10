@@ -49,9 +49,12 @@ func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 	executor := db.WithQueryTimeout(timeout)
 	q := calendarsqlc.New(executor)
 	return &Repository{
-		db:                       db,
-		q:                        q,
-		callbacks:                callbackutil.NewWithTable(db.DB(), callbackutil.CalendarTable),
+		db: db,
+		q:  q,
+		callbacks: callbackutil.NewWithTable(
+			db.DB(),
+			callbackutil.CalendarTable,
+		),
 		executor:                 executor,
 		timeout:                  timeout,
 		cacheL1:                  options.CacheL1Delay,
@@ -64,7 +67,11 @@ func NewPrepared(ctx context.Context, db *sqlwrap.Client) (*Repository, error) {
 	return NewPreparedWithOptions(ctx, db, Options{})
 }
 
-func NewPreparedWithOptions(_ context.Context, db *sqlwrap.Client, options Options) (*Repository, error) {
+func NewPreparedWithOptions(
+	_ context.Context,
+	db *sqlwrap.Client,
+	options Options,
+) (*Repository, error) {
 	return NewWithOptions(db, options), nil
 }
 
@@ -82,7 +89,10 @@ func (r *Repository) Close() error {
 	return err
 }
 
-func (r *Repository) WithTx(ctx context.Context, fn func(*Repository) error) error {
+func (r *Repository) WithTx(
+	ctx context.Context,
+	fn func(*Repository) error,
+) error {
 	_, err := sqlwrap.Transaction(
 		ctx,
 		r.db,
@@ -108,9 +118,18 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 	if err := r.applySQL(ctx, calendarsqlc.SchemaSQL, "schema"); err != nil {
 		return err
 	}
-	if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
-		return callbackutil.BootstrapTable(ctx, r.db.DB(), callbackutil.CalendarTable)
-	}); err != nil {
+	if err := sqlwrap.Exec(
+		ctx,
+		r.db,
+		sqlwrap.Params{Timeout: bootstrapQueryTimeout},
+		func(ctx context.Context) error {
+			return callbackutil.BootstrapTable(
+				ctx,
+				r.db.DB(),
+				callbackutil.CalendarTable,
+			)
+		},
+	); err != nil {
 		return err
 	}
 	return nil
@@ -123,11 +142,21 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 	}
 
 	for _, statement := range statements {
-		if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
-			_, err := r.db.DB().ExecContext(ctx, statement)
-			return err
-		}); err != nil {
-			return fmt.Errorf("calendar %s SQL statement failed: %w\n%s", source, err, statement)
+		if err := sqlwrap.Exec(
+			ctx,
+			r.db,
+			sqlwrap.Params{Timeout: bootstrapQueryTimeout},
+			func(ctx context.Context) error {
+				_, err := r.db.DB().ExecContext(ctx, statement)
+				return err
+			},
+		); err != nil {
+			return fmt.Errorf(
+				"calendar %s SQL statement failed: %w\n%s",
+				source,
+				err,
+				statement,
+			)
 		}
 	}
 	return nil

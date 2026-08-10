@@ -4,14 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	json "github.com/goccy/go-json"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	calendarsqlc "github.com/elum2b/services/calendar/sqlc"
 	callbackutil "github.com/elum2b/services/internal/utils/callback"
 )
 
-func (r *Repository) Record(ctx context.Context, params RecordParams) (RecordResult, error) {
+func (r *Repository) Record(
+	ctx context.Context,
+	params RecordParams,
+) (RecordResult, error) {
 	if err := params.Identity.Validate(); err != nil {
 		return RecordResult{}, err
 	}
@@ -23,52 +27,71 @@ func (r *Repository) Record(ctx context.Context, params RecordParams) (RecordRes
 	var result RecordResult
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		refID, calendarType := calendarReference(params.CalendarRef)
-		rows, err := txRepo.q.GetRecordBundleForUpdate(ctx, calendarsqlc.GetRecordBundleForUpdateParams{
-			AppID: params.Identity.AppID, PlatformID: params.Identity.PlatformID,
-			PlatformUserID: params.Identity.PlatformUserID,
-			AppID_2:        params.Identity.AppID, PlatformID_2: params.Identity.PlatformID,
-			PlatformUserID_2: params.Identity.PlatformUserID, OperationID: params.OperationID,
-			WorkspaceID: params.Identity.WorkspaceID, ID: refID, Type: calendarType,
-		})
+		rows, err := txRepo.q.GetRecordBundleForUpdate(
+			ctx,
+			calendarsqlc.GetRecordBundleForUpdateParams{
+				AppID:            params.Identity.AppID,
+				PlatformID:       params.Identity.PlatformID,
+				PlatformUserID:   params.Identity.PlatformUserID,
+				AppID_2:          params.Identity.AppID,
+				PlatformID_2:     params.Identity.PlatformID,
+				PlatformUserID_2: params.Identity.PlatformUserID,
+				OperationID:      params.OperationID,
+				WorkspaceID:      params.Identity.WorkspaceID,
+				ID:               refID,
+				Type:             calendarType,
+			},
+		)
 		if err != nil {
 			return err
 		}
 		if len(rows) == 0 {
 			result = RecordResult{
-				OperationID: params.OperationID, Status: StatusNotFound, OccurredAt: now,
+				OperationID: params.OperationID,
+				Status:      StatusNotFound,
+				OccurredAt:  now,
 			}
 			return nil
 		}
-		if err := txRepo.q.EnsureProgressForUpdate(ctx, calendarsqlc.EnsureProgressForUpdateParams{
-			WorkspaceID:    params.Identity.WorkspaceID,
-			CalendarID:     rows[0].ID,
-			AppID:          params.Identity.AppID,
-			PlatformID:     params.Identity.PlatformID,
-			PlatformUserID: params.Identity.PlatformUserID,
-		}); err != nil {
+		if err := txRepo.q.EnsureProgressForUpdate(
+			ctx,
+			calendarsqlc.EnsureProgressForUpdateParams{
+				WorkspaceID:    params.Identity.WorkspaceID,
+				CalendarID:     rows[0].ID,
+				AppID:          params.Identity.AppID,
+				PlatformID:     params.Identity.PlatformID,
+				PlatformUserID: params.Identity.PlatformUserID,
+			},
+		); err != nil {
 			return err
 		}
-		if _, err := txRepo.q.LockProgressForUpdate(ctx, calendarsqlc.LockProgressForUpdateParams{
-			WorkspaceID:    params.Identity.WorkspaceID,
-			CalendarID:     rows[0].ID,
-			AppID:          params.Identity.AppID,
-			PlatformID:     params.Identity.PlatformID,
-			PlatformUserID: params.Identity.PlatformUserID,
-		}); err != nil {
+		if _, err := txRepo.q.LockProgressForUpdate(
+			ctx,
+			calendarsqlc.LockProgressForUpdateParams{
+				WorkspaceID:    params.Identity.WorkspaceID,
+				CalendarID:     rows[0].ID,
+				AppID:          params.Identity.AppID,
+				PlatformID:     params.Identity.PlatformID,
+				PlatformUserID: params.Identity.PlatformUserID,
+			},
+		); err != nil {
 			return err
 		}
-		rows, err = txRepo.q.GetRecordBundleForUpdate(ctx, calendarsqlc.GetRecordBundleForUpdateParams{
-			AppID:            params.Identity.AppID,
-			PlatformID:       params.Identity.PlatformID,
-			PlatformUserID:   params.Identity.PlatformUserID,
-			AppID_2:          params.Identity.AppID,
-			PlatformID_2:     params.Identity.PlatformID,
-			PlatformUserID_2: params.Identity.PlatformUserID,
-			OperationID:      params.OperationID,
-			WorkspaceID:      params.Identity.WorkspaceID,
-			ID:               refID,
-			Type:             calendarType,
-		})
+		rows, err = txRepo.q.GetRecordBundleForUpdate(
+			ctx,
+			calendarsqlc.GetRecordBundleForUpdateParams{
+				AppID:            params.Identity.AppID,
+				PlatformID:       params.Identity.PlatformID,
+				PlatformUserID:   params.Identity.PlatformUserID,
+				AppID_2:          params.Identity.AppID,
+				PlatformID_2:     params.Identity.PlatformID,
+				PlatformUserID_2: params.Identity.PlatformUserID,
+				OperationID:      params.OperationID,
+				WorkspaceID:      params.Identity.WorkspaceID,
+				ID:               refID,
+				Type:             calendarType,
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -81,7 +104,12 @@ func (r *Repository) Record(ctx context.Context, params RecordParams) (RecordRes
 			result.Calendar = calendar
 			return nil
 		}
-		result, err = calculateRecord(calendar, progress, params.OperationID, now)
+		result, err = calculateRecord(
+			calendar,
+			progress,
+			params.OperationID,
+			now,
+		)
 		if err != nil {
 			return err
 		}
@@ -89,39 +117,61 @@ func (r *Repository) Record(ctx context.Context, params RecordParams) (RecordRes
 		if err != nil {
 			return err
 		}
-		id, err := txRepo.q.CreateOperation(ctx, calendarsqlc.CreateOperationParams{
-			WorkspaceID: params.Identity.WorkspaceID, CalendarID: calendar.ID,
-			AppID: params.Identity.AppID, PlatformID: params.Identity.PlatformID,
-			PlatformUserID: params.Identity.PlatformUserID, OperationID: params.OperationID,
-			Granted: result.Granted, Status: result.Status,
-			Position: nullableUint32(result.Position), RewardsSnapshot: rawRewards,
-			CurrentPosition: int32(result.Progress.CurrentPosition), ClaimCount: int64(result.Progress.ClaimCount),
-			LastClaimPosition: nullableUint32(result.Progress.LastClaimPosition),
-			LastClaimAt:       nullableTime(result.Progress.LastClaimAt),
-			NextClaimAt:       nullableTime(result.Progress.NextClaimAt),
-			IsCompleted:       result.Progress.IsCompleted, ResetCount: int64(result.Progress.ResetCount),
-			WasReset: result.Progress.LastWasReset, OccurredAt: now,
-		})
+		id, err := txRepo.q.CreateOperation(
+			ctx,
+			calendarsqlc.CreateOperationParams{
+				WorkspaceID:    params.Identity.WorkspaceID,
+				CalendarID:     calendar.ID,
+				AppID:          params.Identity.AppID,
+				PlatformID:     params.Identity.PlatformID,
+				PlatformUserID: params.Identity.PlatformUserID,
+				OperationID:    params.OperationID,
+				Granted:        result.Granted,
+				Status:         result.Status,
+				Position: nullableUint32(
+					result.Position,
+				),
+				RewardsSnapshot: rawRewards,
+				CurrentPosition: int32(
+					result.Progress.CurrentPosition,
+				),
+				ClaimCount: int64(result.Progress.ClaimCount),
+				LastClaimPosition: nullableUint32(
+					result.Progress.LastClaimPosition,
+				),
+				LastClaimAt: nullableTime(result.Progress.LastClaimAt),
+				NextClaimAt: nullableTime(result.Progress.NextClaimAt),
+				IsCompleted: result.Progress.IsCompleted,
+				ResetCount:  int64(result.Progress.ResetCount),
+				WasReset:    result.Progress.LastWasReset,
+				OccurredAt:  now,
+			},
+		)
 		if err != nil {
 			return err
 		}
 		result.OperationRowID = uint64(id)
 		if result.Granted {
-			if err := txRepo.q.UpsertProgress(ctx, calendarsqlc.UpsertProgressParams{
-				WorkspaceID:       params.Identity.WorkspaceID,
-				CalendarID:        calendar.ID,
-				AppID:             params.Identity.AppID,
-				PlatformID:        params.Identity.PlatformID,
-				PlatformUserID:    params.Identity.PlatformUserID,
-				CurrentPosition:   int32(result.Progress.CurrentPosition),
-				ClaimCount:        int64(result.Progress.ClaimCount),
-				LastClaimPosition: nullableUint32(result.Progress.LastClaimPosition),
-				LastClaimAt:       nullableTime(result.Progress.LastClaimAt),
-				NextClaimAt:       nullableTime(result.Progress.NextClaimAt),
-				IsCompleted:       result.Progress.IsCompleted,
-				ResetCount:        int64(result.Progress.ResetCount),
-				LastWasReset:      result.Progress.LastWasReset,
-			}); err != nil {
+			if err := txRepo.q.UpsertProgress(
+				ctx,
+				calendarsqlc.UpsertProgressParams{
+					WorkspaceID:     params.Identity.WorkspaceID,
+					CalendarID:      calendar.ID,
+					AppID:           params.Identity.AppID,
+					PlatformID:      params.Identity.PlatformID,
+					PlatformUserID:  params.Identity.PlatformUserID,
+					CurrentPosition: int32(result.Progress.CurrentPosition),
+					ClaimCount:      int64(result.Progress.ClaimCount),
+					LastClaimPosition: nullableUint32(
+						result.Progress.LastClaimPosition,
+					),
+					LastClaimAt:  nullableTime(result.Progress.LastClaimAt),
+					NextClaimAt:  nullableTime(result.Progress.NextClaimAt),
+					IsCompleted:  result.Progress.IsCompleted,
+					ResetCount:   int64(result.Progress.ResetCount),
+					LastWasReset: result.Progress.LastWasReset,
+				},
+			); err != nil {
 				return err
 			}
 			payload, err := json.Marshal(rewardGrantedCallbackPayload{
@@ -139,17 +189,23 @@ func (r *Repository) Record(ctx context.Context, params RecordParams) (RecordRes
 			if err != nil {
 				return err
 			}
-			eventKey := fmt.Sprintf("calendar.reward_granted:%d", result.OperationRowID)
-			if _, err := txRepo.callbacks.CreateEvent(ctx, callbackutil.CreateParams{
-				WorkspaceID:        params.Identity.WorkspaceID,
-				SourceService:      "calendar",
-				EventType:          "calendar.reward_granted",
-				EventKey:           eventKey,
-				IdempotencyKey:     eventKey,
-				Payload:            payload,
-				PayloadContentType: callbackutil.JSONContentType,
-				NextAttemptAt:      now,
-			}); err != nil {
+			eventKey := fmt.Sprintf(
+				"calendar.reward_granted:%d",
+				result.OperationRowID,
+			)
+			if _, err := txRepo.callbacks.CreateEvent(
+				ctx,
+				callbackutil.CreateParams{
+					WorkspaceID:        params.Identity.WorkspaceID,
+					SourceService:      "calendar",
+					EventType:          "calendar.reward_granted",
+					EventKey:           eventKey,
+					IdempotencyKey:     eventKey,
+					Payload:            payload,
+					PayloadContentType: callbackutil.JSONContentType,
+					NextAttemptAt:      now,
+				},
+			); err != nil {
 				return err
 			}
 		}
@@ -158,21 +214,31 @@ func (r *Repository) Record(ctx context.Context, params RecordParams) (RecordRes
 	return result, err
 }
 
-func mapRecordBundle(rows []calendarsqlc.GetRecordBundleForUpdateRow) (Calendar, Progress, *RecordResult, error) {
+func mapRecordBundle(
+	rows []calendarsqlc.GetRecordBundleForUpdateRow,
+) (Calendar, Progress, *RecordResult, error) {
 	row := rows[0]
 	calendar := Calendar{
-		ID: row.ID, WorkspaceID: row.WorkspaceID, Type: row.Type,
+		ID:                  row.ID,
+		WorkspaceID:         row.WorkspaceID,
+		Type:                row.Type,
 		Mode:                row.Mode,
 		IntervalType:        row.IntervalType,
 		IntervalUnit:        row.IntervalUnit,
 		IntervalCount:       uint32(row.IntervalCount),
 		ResetAfterIntervals: uint32(row.ResetAfterIntervals),
 		EndBehavior:         row.EndBehavior,
-		Timezone:            row.Timezone, HideFutureRewards: row.HideFutureRewards,
-		IsActive: row.IsActive, StartAt: sqlNullTimePtr(row.StartAt),
-		EndAt: sqlNullTimePtr(row.EndAt), DeletedAt: sqlNullTimePtr(row.DeletedAt),
-		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
-		Steps: make([]Step, 0),
+		Timezone:            row.Timezone,
+		HideFutureRewards:   row.HideFutureRewards,
+		IsActive:            row.IsActive,
+		StartAt:             sqlNullTimePtr(row.StartAt),
+		EndAt: sqlNullTimePtr(
+			row.EndAt,
+		),
+		DeletedAt: sqlNullTimePtr(row.DeletedAt),
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
+		Steps:     make([]Step, 0),
 	}
 	for _, item := range rows {
 		calendar.Steps = appendStep(
@@ -191,8 +257,12 @@ func mapRecordBundle(rows []calendarsqlc.GetRecordBundleForUpdateRow) (Calendar,
 		CurrentPosition:   nonNegativeUint32(row.CurrentPosition),
 		ClaimCount:        uint64(row.ClaimCount.Int64),
 		LastClaimPosition: sqlNullUint32Ptr(row.LastClaimPosition),
-		LastClaimAt:       sqlNullTimePtr(row.LastClaimAt), NextClaimAt: sqlNullTimePtr(row.NextClaimAt),
-		IsCompleted: row.IsCompleted.Bool, ResetCount: uint64(row.ResetCount.Int64),
+		LastClaimAt: sqlNullTimePtr(
+			row.LastClaimAt,
+		),
+		NextClaimAt:  sqlNullTimePtr(row.NextClaimAt),
+		IsCompleted:  row.IsCompleted.Bool,
+		ResetCount:   uint64(row.ResetCount.Int64),
 		LastWasReset: row.LastWasReset.Bool,
 	}
 	if !row.OperationRowID.Valid {
@@ -205,8 +275,10 @@ func mapRecordBundle(rows []calendarsqlc.GetRecordBundleForUpdateRow) (Calendar,
 	repeated := &RecordResult{
 		OperationRowID: uint64(row.OperationRowID.Int64),
 		OperationID:    row.ExistingOperationID.String,
-		Granted:        row.OperationGranted.Bool, Status: row.OperationStatus.String,
-		Position: sqlNullUint32Ptr(row.OperationPosition), Rewards: rewards,
+		Granted:        row.OperationGranted.Bool,
+		Status:         row.OperationStatus.String,
+		Position:       sqlNullUint32Ptr(row.OperationPosition),
+		Rewards:        rewards,
 		Progress: Progress{
 			CurrentPosition:   nonNegativeUint32(row.OperationCurrentPosition),
 			ClaimCount:        uint64(row.OperationClaimCount.Int64),
@@ -242,10 +314,19 @@ func uint32Value(value *uint32) uint32 {
 	return *value
 }
 
-func calculateRecord(calendar Calendar, progress Progress, operationID string, now time.Time) (RecordResult, error) {
+func calculateRecord(
+	calendar Calendar,
+	progress Progress,
+	operationID string,
+	now time.Time,
+) (RecordResult, error) {
 	result := RecordResult{
-		OperationID: operationID, Calendar: calendar, Status: StatusNotAvailable,
-		Progress: progress, OccurredAt: now, Rewards: make([]Reward, 0),
+		OperationID: operationID,
+		Calendar:    calendar,
+		Status:      StatusNotAvailable,
+		Progress:    progress,
+		OccurredAt:  now,
+		Rewards:     make([]Reward, 0),
 	}
 	switch {
 	case calendar.DeletedAt != nil:
@@ -266,7 +347,11 @@ func calculateRecord(calendar Calendar, progress Progress, operationID string, n
 		return result, nil
 	}
 
-	position, nextAt, reset, status, err := calculatePosition(calendar, progress, now)
+	position, nextAt, reset, status, err := calculatePosition(
+		calendar,
+		progress,
+		now,
+	)
 	if err != nil {
 		return RecordResult{}, err
 	}
@@ -294,13 +379,18 @@ func calculateRecord(calendar Calendar, progress Progress, operationID string, n
 	if reset {
 		result.Progress.ResetCount++
 	}
-	if position == calendar.Steps[len(calendar.Steps)-1].Position && calendar.EndBehavior == EndStop {
+	if position == calendar.Steps[len(calendar.Steps)-1].Position &&
+		calendar.EndBehavior == EndStop {
 		result.Progress.IsCompleted = true
 	}
 	return result, nil
 }
 
-func calculatePosition(calendar Calendar, progress Progress, now time.Time) (uint32, *time.Time, bool, string, error) {
+func calculatePosition(
+	calendar Calendar,
+	progress Progress,
+	now time.Time,
+) (uint32, *time.Time, bool, string, error) {
 	if calendar.Mode == ModeInterval {
 		if progress.NextClaimAt != nil && now.Before(*progress.NextClaimAt) {
 			return 0, progress.NextClaimAt, false, StatusNotAvailable, nil
@@ -328,7 +418,11 @@ func calculatePosition(calendar Calendar, progress Progress, now time.Time) (uin
 		if calendar.Mode == ModeSequentialReset {
 			resetAt := next
 			for range calendar.ResetAfterIntervals {
-				resetAt = addInterval(resetAt, calendar.IntervalUnit, calendar.IntervalCount)
+				resetAt = addInterval(
+					resetAt,
+					calendar.IntervalUnit,
+					calendar.IntervalCount,
+				)
 			}
 			if !now.Before(resetAt) {
 				position, status = positionAtOrdinal(1, calendar)

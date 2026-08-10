@@ -28,21 +28,37 @@ func addInterval(value time.Time, unit string, count uint32) time.Time {
 	}
 }
 
-func nextAvailableAt(calendar Calendar, lastClaim time.Time) (time.Time, error) {
+func nextAvailableAt(
+	calendar Calendar,
+	lastClaim time.Time,
+) (time.Time, error) {
 	if calendar.IntervalType == IntervalFloating {
-		return addInterval(lastClaim, calendar.IntervalUnit, calendar.IntervalCount), nil
+		return addInterval(
+			lastClaim,
+			calendar.IntervalUnit,
+			calendar.IntervalCount,
+		), nil
 	}
 	boundary, err := calendarBoundary(calendar, lastClaim)
 	if err != nil {
 		return time.Time{}, err
 	}
-	return addInterval(boundary, calendar.IntervalUnit, calendar.IntervalCount).UTC(), nil
+	return addInterval(
+			boundary,
+			calendar.IntervalUnit,
+			calendar.IntervalCount,
+		).UTC(),
+		nil
 }
 
 func calendarBoundary(calendar Calendar, value time.Time) (time.Time, error) {
 	location, err := time.LoadLocation(calendar.Timezone)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("calendar: invalid timezone %q: %w", calendar.Timezone, err)
+		return time.Time{}, fmt.Errorf(
+			"calendar: invalid timezone %q: %w",
+			calendar.Timezone,
+			err,
+		)
 	}
 	local := value.In(location)
 	var boundary time.Time
@@ -59,24 +75,75 @@ func calendarBoundary(calendar Calendar, value time.Time) (time.Time, error) {
 			location,
 		)
 	case "minute":
-		boundary = time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), local.Minute(), 0, 0, location)
+		boundary = time.Date(
+			local.Year(),
+			local.Month(),
+			local.Day(),
+			local.Hour(),
+			local.Minute(),
+			0,
+			0,
+			location,
+		)
 	case "hour":
-		boundary = time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), 0, 0, 0, location)
+		boundary = time.Date(
+			local.Year(),
+			local.Month(),
+			local.Day(),
+			local.Hour(),
+			0,
+			0,
+			0,
+			location,
+		)
 	case "day":
-		boundary = time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
+		boundary = time.Date(
+			local.Year(),
+			local.Month(),
+			local.Day(),
+			0,
+			0,
+			0,
+			0,
+			location,
+		)
 	case "week":
 		dayOffset := (int(local.Weekday()) + 6) % 7
 		start := local.AddDate(0, 0, -dayOffset)
-		boundary = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, location)
+		boundary = time.Date(
+			start.Year(),
+			start.Month(),
+			start.Day(),
+			0,
+			0,
+			0,
+			0,
+			location,
+		)
 	case "month":
-		boundary = time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, location)
+		boundary = time.Date(
+			local.Year(),
+			local.Month(),
+			1,
+			0,
+			0,
+			0,
+			0,
+			location,
+		)
 	default:
-		return time.Time{}, fmt.Errorf("calendar: unsupported interval unit %q", calendar.IntervalUnit)
+		return time.Time{}, fmt.Errorf(
+			"calendar: unsupported interval unit %q",
+			calendar.IntervalUnit,
+		)
 	}
 	return boundary.UTC(), nil
 }
 
-func intervalIndex(calendar Calendar, now time.Time) (uint64, time.Time, error) {
+func intervalIndex(
+	calendar Calendar,
+	now time.Time,
+) (uint64, time.Time, error) {
 	anchor := calendar.CreatedAt
 	if calendar.StartAt != nil {
 		anchor = *calendar.StartAt
@@ -92,7 +159,11 @@ func intervalIndex(calendar Calendar, now time.Time) (uint64, time.Time, error) 
 		}
 	}
 	if calendar.IntervalUnit != "month" {
-		next := addInterval(anchor, calendar.IntervalUnit, calendar.IntervalCount)
+		next := addInterval(
+			anchor,
+			calendar.IntervalUnit,
+			calendar.IntervalCount,
+		)
 		duration := next.Sub(anchor)
 		if duration > 0 {
 			index := uint64(now.Sub(anchor)/duration) + 1

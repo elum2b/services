@@ -7,7 +7,11 @@ import (
 	calendarsqlc "github.com/elum2b/services/calendar/sqlc"
 )
 
-func (r *Repository) GetProgress(ctx context.Context, identity Identity, calendarID string) (*Progress, error) {
+func (r *Repository) GetProgress(
+	ctx context.Context,
+	identity Identity,
+	calendarID string,
+) (*Progress, error) {
 	if err := identity.Validate(); err != nil {
 		return nil, err
 	}
@@ -24,10 +28,17 @@ func (r *Repository) GetProgress(ctx context.Context, identity Identity, calenda
 		return nil, err
 	}
 	return &Progress{
-		CurrentPosition: uint32(row.CurrentPosition), ClaimCount: uint64(row.ClaimCount),
+		CurrentPosition: uint32(
+			row.CurrentPosition,
+		),
+		ClaimCount:        uint64(row.ClaimCount),
 		LastClaimPosition: sqlNullUint32Ptr(row.LastClaimPosition),
-		LastClaimAt:       sqlNullTimePtr(row.LastClaimAt), NextClaimAt: sqlNullTimePtr(row.NextClaimAt),
-		IsCompleted: row.IsCompleted, ResetCount: uint64(row.ResetCount),
+		LastClaimAt: sqlNullTimePtr(
+			row.LastClaimAt,
+		),
+		NextClaimAt:  sqlNullTimePtr(row.NextClaimAt),
+		IsCompleted:  row.IsCompleted,
+		ResetCount:   uint64(row.ResetCount),
 		LastWasReset: row.LastWasReset,
 	}, nil
 }

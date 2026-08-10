@@ -7,9 +7,10 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/xssnick/tonutils-go/address"
+
 	"github.com/elum2b/services/payment/repository"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
-	"github.com/xssnick/tonutils-go/address"
 )
 
 type JettonAsset struct {
@@ -18,7 +19,11 @@ type JettonAsset struct {
 	ContractAddress string
 }
 
-func (a *TON) ResolveJettonAsset(ctx context.Context, network string, masterAddress string) (JettonAsset, error) {
+func (a *TON) ResolveJettonAsset(
+	ctx context.Context,
+	network string,
+	masterAddress string,
+) (JettonAsset, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
@@ -33,15 +38,22 @@ func (a *TON) ResolveJettonAsset(ctx context.Context, network string, masterAddr
 
 	candidates := []string{masterAddress}
 	if parsed, err := parseTONAddress(masterAddress); err == nil {
-		candidates = appendUnique(candidates, parsed.String(), parsed.StringRaw())
+		candidates = appendUnique(
+			candidates,
+			parsed.String(),
+			parsed.StringRaw(),
+		)
 	}
 
 	for _, candidate := range candidates {
-		asset, err := a.repository.GetAssetByChainContract(ctx, paymentsqlc.GetAssetByChainContractParams{
-			Chain:           sql.NullString{String: "ton", Valid: true},
-			Network:         sql.NullString{String: network, Valid: true},
-			ContractAddress: sql.NullString{String: candidate, Valid: true},
-		})
+		asset, err := a.repository.GetAssetByChainContract(
+			ctx,
+			paymentsqlc.GetAssetByChainContractParams{
+				Chain:           sql.NullString{String: "ton", Valid: true},
+				Network:         sql.NullString{String: network, Valid: true},
+				ContractAddress: sql.NullString{String: candidate, Valid: true},
+			},
+		)
 		if err == nil {
 			return jettonAssetFromRow(asset), nil
 		}
@@ -60,9 +72,13 @@ func (a *TON) ResolveJettonAsset(ctx context.Context, network string, masterAddr
 		}
 		masterRaw := master.StringRaw()
 		for _, asset := range assets {
-			if asset.AssetKind != string(paymentsqlc.PaymentAssetAssetKindCryptoJetton) ||
-				!asset.Chain.Valid || !strings.EqualFold(asset.Chain.String, "ton") ||
-				!asset.Network.Valid || normalizeNetwork(asset.Network.String) != network ||
+			if asset.AssetKind != string(
+				paymentsqlc.PaymentAssetAssetKindCryptoJetton,
+			) ||
+				!asset.Chain.Valid ||
+				!strings.EqualFold(asset.Chain.String, "ton") ||
+				!asset.Network.Valid ||
+				normalizeNetwork(asset.Network.String) != network ||
 				!asset.ContractAddress.Valid {
 				continue
 			}

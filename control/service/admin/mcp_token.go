@@ -5,12 +5,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elum2b/services/control/repository"
 	"github.com/google/uuid"
+
+	"github.com/elum2b/services/control/repository"
 )
 
-func (a *Admin) CreateMCPToken(ctx context.Context, params CreateMCPTokenParams) (CreateMCPTokenResult, error) {
-
+func (a *Admin) CreateMCPToken(
+	ctx context.Context,
+	params CreateMCPTokenParams,
+) (CreateMCPTokenResult, error) {
 	tokenID := uuid.NewString()
 	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
 		Scope:      repository.ScopeGlobal,
@@ -19,12 +22,14 @@ func (a *Admin) CreateMCPToken(ctx context.Context, params CreateMCPTokenParams)
 		TargetType: "mcp_token",
 		TargetID:   tokenID,
 	})
+
 	defer cancel()
 
 	expiresAt, err := mcpTokenExpiresAt(params.Duration, time.Now().UTC())
 	if err != nil {
 		return CreateMCPTokenResult{}, err
 	}
+
 	token, rawToken, err := a.repository.CreateMCPToken(
 		mergedCtx,
 		strings.TrimSpace(params.AccountID),
@@ -44,24 +49,33 @@ func (a *Admin) CreateMCPToken(ctx context.Context, params CreateMCPTokenParams)
 	}, nil
 }
 
-func (a *Admin) ListMCPTokens(ctx context.Context, params ListMCPTokensParams) ([]MCPTokenModel, error) {
-
+func (a *Admin) ListMCPTokens(
+	ctx context.Context,
+	params ListMCPTokensParams,
+) ([]MCPTokenModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	values, err := a.repository.ListMCPTokens(mergedCtx, strings.TrimSpace(params.AccountID))
+	values, err := a.repository.ListMCPTokens(
+		mergedCtx,
+		strings.TrimSpace(params.AccountID),
+	)
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]MCPTokenModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, mapMCPToken(value))
 	}
+
 	return result, nil
 }
 
-func (a *Admin) RevokeMCPToken(ctx context.Context, params RevokeMCPTokenParams) (int64, error) {
-
+func (a *Admin) RevokeMCPToken(
+	ctx context.Context,
+	params RevokeMCPTokenParams,
+) (int64, error) {
 	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
 		Scope:      repository.ScopeGlobal,
 		ActorID:    strings.TrimSpace(params.AccountID),
@@ -78,14 +92,19 @@ func (a *Admin) RevokeMCPToken(ctx context.Context, params RevokeMCPTokenParams)
 	)
 }
 
-func mcpTokenExpiresAt(duration time.Duration, now time.Time) (*time.Time, error) {
-
+func mcpTokenExpiresAt(
+	duration time.Duration,
+	now time.Time,
+) (*time.Time, error) {
 	if duration == 0 {
 		return nil, nil
 	}
+
 	if duration < 0 {
 		return nil, repository.ErrInvalidArgument
 	}
+
 	expiresAt := now.Add(duration)
+
 	return &expiresAt, nil
 }

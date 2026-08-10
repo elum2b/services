@@ -21,14 +21,28 @@ type Options struct {
 }
 
 func New(ctx context.Context, db *sqlwrap.Client) *Internal {
-	return &Internal{rootCtx: contextutil.Normalize(ctx), repository: repository.New(db)}
+	return &Internal{
+		rootCtx:    contextutil.Normalize(ctx),
+		repository: repository.New(db),
+	}
 }
 
-func NewWithOptions(ctx context.Context, db *sqlwrap.Client, options repository.Options) *Internal {
-	return &Internal{rootCtx: contextutil.Normalize(ctx), repository: repository.NewWithOptions(db, options)}
+func NewWithOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options repository.Options,
+) *Internal {
+	return &Internal{
+		rootCtx:    contextutil.Normalize(ctx),
+		repository: repository.NewWithOptions(db, options),
+	}
 }
 
-func NewWithServiceOptions(ctx context.Context, db *sqlwrap.Client, options Options) *Internal {
+func NewWithServiceOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options Options,
+) *Internal {
 	return &Internal{
 		rootCtx:    contextutil.Normalize(ctx),
 		repository: repository.NewWithOptions(db, options.RepositoryOptions),
@@ -43,7 +57,9 @@ func (i *Internal) Close() error {
 	return i.repository.Close()
 }
 
-func (i *Internal) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (i *Internal) withContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	if i == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}

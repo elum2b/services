@@ -7,12 +7,30 @@ import (
 )
 
 var (
-	ErrServiceNil                  = serviceerrors.New(serviceerrors.CodeNotReady, "tasks service is nil")
-	ErrServiceRunning              = serviceerrors.New(serviceerrors.CodeConflict, "tasks service is already running")
-	ErrDatabaseConfigRequired      = serviceerrors.New(serviceerrors.CodeInvalidFields, "tasks database user and name are required")
-	ErrCallbackHandlerNil          = serviceerrors.New(serviceerrors.CodeInvalidFields, "tasks callback handler is nil")
-	ErrCallbacksRegistrationClosed = serviceerrors.New(serviceerrors.CodeFailedPrecondition, "tasks callbacks must be registered before Run")
-	ErrCallbacksNotConfigured      = serviceerrors.New(serviceerrors.CodeNotReady, "tasks callback store is not configured")
+	ErrServiceNil = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"tasks service is nil",
+	)
+	ErrServiceRunning = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"tasks service is already running",
+	)
+	ErrDatabaseConfigRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"tasks database user and name are required",
+	)
+	ErrCallbackHandlerNil = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"tasks callback handler is nil",
+	)
+	ErrCallbacksRegistrationClosed = serviceerrors.New(
+		serviceerrors.CodeFailedPrecondition,
+		"tasks callbacks must be registered before Run",
+	)
+	ErrCallbacksNotConfigured = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"tasks callback store is not configured",
+	)
 )
 
 func wrapLifecycleError(err error) error {
@@ -28,5 +46,9 @@ func wrapLifecycleError(err error) error {
 		serviceerrors.IsStructured(err) {
 		return err
 	}
-	return serviceerrors.Wrap(serviceerrors.CodeInternalError, "tasks operation failed", err)
+	return serviceerrors.Wrap(
+		serviceerrors.CodeInternalError,
+		"tasks operation failed",
+		err,
+	)
 }

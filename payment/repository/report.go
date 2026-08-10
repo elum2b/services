@@ -38,54 +38,62 @@ func (r *PaymentRepository) GetPaymentReport(
 	}()
 
 	q := r.q.WithTx(tx)
-	identityAppID, identityPlatformID, identityPlatformUserID := reportIdentity(params)
+	identityAppID, identityPlatformID, identityPlatformUserID := reportIdentity(
+		params,
+	)
 	createdFrom := sqlwrap.NullTimeFromPtr(params.CreatedFrom)
 	createdUntil := sqlwrap.NullTimeFromPtr(params.CreatedUntil)
 
-	rows, err := q.AdminListPaymentReport(queryCtx, paymentsqlc.AdminListPaymentReportParams{
-		SortField:              params.Sort,
-		SortDirection:          params.Direction,
-		PageOffset:             params.Offset,
-		PageLimit:              params.Limit,
-		WorkspaceID:            params.WorkspaceID,
-		AppID:                  params.AppID,
-		PlatformID:             params.PlatformID,
-		PlatformUserID:         params.PlatformUserID,
-		Status:                 params.Status,
-		ProductID:              params.ProductID,
-		ProviderCode:           params.ProviderCode,
-		AssetCode:              params.AssetCode,
-		CreatedFrom:            createdFrom,
-		CreatedUntil:           createdUntil,
-		MinAmountMinor:         int64(params.MinAmountMinor),
-		MaxAmountMinor:         int64(params.MaxAmountMinor),
-		IdentityAppID:          identityAppID,
-		IdentityRole:           params.IdentityRole,
-		IdentityPlatformID:     identityPlatformID,
-		IdentityPlatformUserID: identityPlatformUserID,
-	})
+	rows, err := q.AdminListPaymentReport(
+		queryCtx,
+		paymentsqlc.AdminListPaymentReportParams{
+			SortField:              params.Sort,
+			SortDirection:          params.Direction,
+			PageOffset:             params.Offset,
+			PageLimit:              params.Limit,
+			WorkspaceID:            params.WorkspaceID,
+			AppID:                  params.AppID,
+			PlatformID:             params.PlatformID,
+			PlatformUserID:         params.PlatformUserID,
+			Status:                 params.Status,
+			ProductID:              params.ProductID,
+			ProviderCode:           params.ProviderCode,
+			AssetCode:              params.AssetCode,
+			CreatedFrom:            createdFrom,
+			CreatedUntil:           createdUntil,
+			MinAmountMinor:         int64(params.MinAmountMinor),
+			MaxAmountMinor:         int64(params.MaxAmountMinor),
+			IdentityAppID:          identityAppID,
+			IdentityRole:           params.IdentityRole,
+			IdentityPlatformID:     identityPlatformID,
+			IdentityPlatformUserID: identityPlatformUserID,
+		},
+	)
 	if err != nil {
 		return nil, PaymentReportStatsModel{}, err
 	}
 
-	statRows, err := q.AdminGetPaymentReportStats(queryCtx, paymentsqlc.AdminGetPaymentReportStatsParams{
-		WorkspaceID:            params.WorkspaceID,
-		AppID:                  params.AppID,
-		PlatformID:             params.PlatformID,
-		PlatformUserID:         params.PlatformUserID,
-		Status:                 params.Status,
-		ProductID:              params.ProductID,
-		ProviderCode:           params.ProviderCode,
-		AssetCode:              params.AssetCode,
-		CreatedFrom:            createdFrom,
-		CreatedUntil:           createdUntil,
-		MinAmountMinor:         int64(params.MinAmountMinor),
-		MaxAmountMinor:         int64(params.MaxAmountMinor),
-		IdentityAppID:          identityAppID,
-		IdentityRole:           params.IdentityRole,
-		IdentityPlatformID:     identityPlatformID,
-		IdentityPlatformUserID: identityPlatformUserID,
-	})
+	statRows, err := q.AdminGetPaymentReportStats(
+		queryCtx,
+		paymentsqlc.AdminGetPaymentReportStatsParams{
+			WorkspaceID:            params.WorkspaceID,
+			AppID:                  params.AppID,
+			PlatformID:             params.PlatformID,
+			PlatformUserID:         params.PlatformUserID,
+			Status:                 params.Status,
+			ProductID:              params.ProductID,
+			ProviderCode:           params.ProviderCode,
+			AssetCode:              params.AssetCode,
+			CreatedFrom:            createdFrom,
+			CreatedUntil:           createdUntil,
+			MinAmountMinor:         int64(params.MinAmountMinor),
+			MaxAmountMinor:         int64(params.MaxAmountMinor),
+			IdentityAppID:          identityAppID,
+			IdentityRole:           params.IdentityRole,
+			IdentityPlatformID:     identityPlatformID,
+			IdentityPlatformUserID: identityPlatformUserID,
+		},
+	)
 	if err != nil {
 		return nil, PaymentReportStatsModel{}, err
 	}
@@ -105,7 +113,9 @@ func reportIdentity(params PaymentReportParams) (int64, int64, string) {
 	return params.Identity.AppID, params.Identity.PlatformID, params.Identity.PlatformUserID
 }
 
-func mapPaymentReportRows(rows []paymentsqlc.AdminListPaymentReportRow) []PaymentReportModel {
+func mapPaymentReportRows(
+	rows []paymentsqlc.AdminListPaymentReportRow,
+) []PaymentReportModel {
 	result := make([]PaymentReportModel, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, PaymentReportModel{
@@ -137,7 +147,9 @@ func mapPaymentReportRows(rows []paymentsqlc.AdminListPaymentReportRow) []Paymen
 	return result
 }
 
-func mapPaymentReportStats(rows []paymentsqlc.AdminGetPaymentReportStatsRow) PaymentReportStatsModel {
+func mapPaymentReportStats(
+	rows []paymentsqlc.AdminGetPaymentReportStatsRow,
+) PaymentReportStatsModel {
 	result := PaymentReportStatsModel{
 		Assets: make([]PaymentReportAssetStatsModel, 0, len(rows)),
 	}

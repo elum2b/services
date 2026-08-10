@@ -24,7 +24,11 @@ func New(ctx context.Context, db *sqlwrap.Client) *Admin {
 	return NewWithOptions(ctx, db, repository.Options{})
 }
 
-func NewWithOptions(ctx context.Context, db *sqlwrap.Client, options repository.Options) *Admin {
+func NewWithOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options repository.Options,
+) *Admin {
 	return NewWithServices(ctx, db, options, nil, nil)
 }
 
@@ -37,10 +41,13 @@ func NewWithServices(
 ) *Admin {
 	return &Admin{
 		repository: repository.NewPaymentRepositoryWithOptions(db, options),
-		callbacks:  callbackutil.NewWithTable(db.DB(), callbackutil.PaymentTable),
-		products:   products,
-		refunds:    refunds,
-		rootCtx:    contextutil.Normalize(ctx),
+		callbacks: callbackutil.NewWithTable(
+			db.DB(),
+			callbackutil.PaymentTable,
+		),
+		products: products,
+		refunds:  refunds,
+		rootCtx:  contextutil.Normalize(ctx),
 	}
 }
 
@@ -58,6 +65,8 @@ func (a *Admin) Close() error {
 	return err
 }
 
-func (a *Admin) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (a *Admin) withContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	return contextutil.Merge(a.rootCtx, ctx)
 }

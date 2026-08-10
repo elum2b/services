@@ -6,7 +6,18 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
 	"github.com/elum-utils/sign/vkmashop"
+	"github.com/sqlc-dev/pqtype"
+
 	services "github.com/elum2b/services"
 	utils "github.com/elum2b/services/internal/utils"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
@@ -17,15 +28,6 @@ import (
 	"github.com/elum2b/services/payment/service/product"
 	"github.com/elum2b/services/payment/service/subscription"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
-	"github.com/sqlc-dev/pqtype"
-	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"testing"
-	"time"
 )
 
 const (
@@ -85,12 +87,20 @@ func BenchmarkPaymentServiceMethods(b *testing.B) {
 		for _, asset := range benchAssets {
 			b.Run("Product.Get/"+locale+"/"+asset, func(b *testing.B) {
 				for i := 0; i < b.N; i++ {
-					_, err := env.api.User.GetProduct(env.ctx, product.GetParams{
-						Identity:  paymentTestIdentity(benchWorkspaceID, 7001, 1, "bench_user_"+strconv.Itoa(i%100_000)),
-						ProductID: env.products[i%len(env.products)].id,
-						AssetCode: asset,
-						Locale:    locale,
-					})
+					_, err := env.api.User.GetProduct(
+						env.ctx,
+						product.GetParams{
+							Identity: paymentTestIdentity(
+								benchWorkspaceID,
+								7001,
+								1,
+								"bench_user_"+strconv.Itoa(i%100_000),
+							),
+							ProductID: env.products[i%len(env.products)].id,
+							AssetCode: asset,
+							Locale:    locale,
+						},
+					)
 					benchNoError(b, err)
 				}
 			})
@@ -101,11 +111,14 @@ func BenchmarkPaymentServiceMethods(b *testing.B) {
 		for _, asset := range benchAssets {
 			b.Run("Product.GetByKey/"+locale+"/"+asset, func(b *testing.B) {
 				for i := 0; i < b.N; i++ {
-					_, err := env.api.User.GetProductByKey(env.ctx, product.GetByKeyParams{
-						Key:       env.keys[i%len(env.keys)],
-						AssetCode: asset,
-						Locale:    locale,
-					})
+					_, err := env.api.User.GetProductByKey(
+						env.ctx,
+						product.GetByKeyParams{
+							Key:       env.keys[i%len(env.keys)],
+							AssetCode: asset,
+							Locale:    locale,
+						},
+					)
 					benchNoError(b, err)
 				}
 			})
@@ -114,14 +127,17 @@ func BenchmarkPaymentServiceMethods(b *testing.B) {
 
 	b.Run("Product.CreateKey", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := env.api.Admin.CreateProductKey(env.ctx, product.CreateKeyParams{
-				WorkspaceID:    benchWorkspaceID,
-				AppID:          7001,
-				PlatformID:     1,
-				PlatformUserID: "bench_key_target_" + strconv.Itoa(i),
-				ProductID:      env.products[i%len(env.products)].id,
-				MaxUses:        1_000_000,
-			})
+			_, err := env.api.Admin.CreateProductKey(
+				env.ctx,
+				product.CreateKeyParams{
+					WorkspaceID:    benchWorkspaceID,
+					AppID:          7001,
+					PlatformID:     1,
+					PlatformUserID: "bench_key_target_" + strconv.Itoa(i),
+					ProductID:      env.products[i%len(env.products)].id,
+					MaxUses:        1_000_000,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -130,12 +146,20 @@ func BenchmarkPaymentServiceMethods(b *testing.B) {
 		for _, asset := range benchAssets {
 			b.Run("Checkout.CreateOrder/"+locale+"/"+asset, func(b *testing.B) {
 				for i := 0; i < b.N; i++ {
-					_, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-						Identity:  paymentTestIdentity(benchWorkspaceID, 7001, 1, "bench_checkout_"+strconv.Itoa(i)),
-						ProductID: env.products[i%len(env.products)].id,
-						AssetCode: asset,
-						Locale:    locale,
-					})
+					_, err := env.api.User.CreateOrder(
+						env.ctx,
+						checkout.CreateOrderParams{
+							Identity: paymentTestIdentity(
+								benchWorkspaceID,
+								7001,
+								1,
+								"bench_checkout_"+strconv.Itoa(i),
+							),
+							ProductID: env.products[i%len(env.products)].id,
+							AssetCode: asset,
+							Locale:    locale,
+						},
+					)
 					benchNoError(b, err)
 				}
 			})
@@ -146,15 +170,18 @@ func BenchmarkPaymentServiceMethods(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			payerID := int64(1)
 			payerUserID := "bench_payer_" + strconv.Itoa(i)
-			_, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
-				Key: key,
-				Payer: &services.Actor{
-					PlatformID:     payerID,
-					PlatformUserID: payerUserID,
+			_, err := env.api.User.CreateOrderByKey(
+				env.ctx,
+				checkout.CreateOrderByKeyParams{
+					Key: key,
+					Payer: &services.Actor{
+						PlatformID:     payerID,
+						PlatformUserID: payerUserID,
+					},
+					AssetCode: "RUB",
+					Locale:    "ru",
 				},
-				AssetCode: "RUB",
-				Locale:    "ru",
-			})
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -164,19 +191,28 @@ func BenchmarkPaymentServiceMethods(b *testing.B) {
 		b.StopTimer()
 		for i := 0; i < b.N; i++ {
 			seq := benchNextSeq()
-			orders[i] = createBenchmarkOrder(b, env, productA.id, "RUB", benchRunValue("bench_attempt_order", seq))
+			orders[i] = createBenchmarkOrder(
+				b,
+				env,
+				productA.id,
+				"RUB",
+				benchRunValue("bench_attempt_order", seq),
+			)
 		}
 		b.StartTimer()
 		for i := 0; i < b.N; i++ {
 			seq := benchNextSeq()
 			order := orders[i]
 			paymentID := benchRunValue("bench_method_attempt", seq)
-			_, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-				Identity:          paymentAttemptIdentity(order),
-				OrderID:           order.ID,
-				ProviderCode:      "yookassa",
-				ProviderPaymentID: &paymentID,
-			})
+			_, err := env.api.User.CreateAttempt(
+				env.ctx,
+				checkout.CreateAttemptParams{
+					Identity:          paymentAttemptIdentity(order),
+					OrderID:           order.ID,
+					ProviderCode:      "yookassa",
+					ProviderPaymentID: &paymentID,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -186,43 +222,57 @@ func BenchmarkPaymentServiceMethods(b *testing.B) {
 			seq := benchNextSeq()
 			eventID := benchRunValue("bench_method_event", seq)
 			paymentID := benchRunValue("bench_method_event_pay", seq)
-			_, err := env.api.Operational.CreateEvent(env.ctx, checkout.CreateEventParams{
-				WorkspaceID:       benchWorkspaceID,
-				ProviderCode:      "yookassa",
-				AttemptID:         utils.Ref(int64(fulfilledAttemptID)),
-				OrderID:           utils.Ref(int64(env.orders[0])),
-				ProviderEventID:   &eventID,
-				ProviderPaymentID: &paymentID,
-				EventType:         "succeeded",
-				EventStatus:       utils.Ref("succeeded"),
-				PayloadHash:       benchHash(eventID),
-				SignatureValid:    utils.Ref(true),
-			})
+			_, err := env.api.Operational.CreateEvent(
+				env.ctx,
+				checkout.CreateEventParams{
+					WorkspaceID:       benchWorkspaceID,
+					ProviderCode:      "yookassa",
+					AttemptID:         utils.Ref(int64(fulfilledAttemptID)),
+					OrderID:           utils.Ref(int64(env.orders[0])),
+					ProviderEventID:   &eventID,
+					ProviderPaymentID: &paymentID,
+					EventType:         "succeeded",
+					EventStatus:       utils.Ref("succeeded"),
+					PayloadHash:       benchHash(eventID),
+					SignatureValid:    utils.Ref(true),
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("Checkout.CompleteAttempt/idempotent", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-				WorkspaceID:       benchWorkspaceID,
-				AttemptID:         fulfilledAttemptID,
-				ProviderCode:      "yookassa",
-				ProviderPaymentID: &providerPaymentID,
-				AmountMinor:       1000,
-				AssetCode:         "RUB",
-			})
+			_, err := env.api.Operational.CompleteAttempt(
+				env.ctx,
+				checkout.CompleteAttemptParams{
+					WorkspaceID:       benchWorkspaceID,
+					AttemptID:         fulfilledAttemptID,
+					ProviderCode:      "yookassa",
+					ProviderPaymentID: &providerPaymentID,
+					AmountMinor:       1000,
+					AssetCode:         "RUB",
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("Subscription.IsActive", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			active, err := env.api.User.IsSubscriptionActive(env.ctx, subscription.IsActiveParams{
-				Identity:     paymentTestIdentity(benchWorkspaceID, 7001, 1, "bench_user_"+strconv.Itoa(i%100_000)),
-				ProductID:    env.products[i%len(env.products)].id,
-				ProviderCode: "vkma",
-			})
+			active, err := env.api.User.IsSubscriptionActive(
+				env.ctx,
+				subscription.IsActiveParams{
+					Identity: paymentTestIdentity(
+						benchWorkspaceID,
+						7001,
+						1,
+						"bench_user_"+strconv.Itoa(i%100_000),
+					),
+					ProductID:    env.products[i%len(env.products)].id,
+					ProviderCode: "vkma",
+				},
+			)
 			benchNoError(b, err)
 			_ = active
 		}
@@ -230,28 +280,36 @@ func BenchmarkPaymentServiceMethods(b *testing.B) {
 
 	b.Run("VKMA.GetItemForWorkspace", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := env.api.Adapters.VKMA.GetItemForWorkspace(env.ctx, benchWorkspaceID, vkmashop.Params{
-				NotificationType: vkmashop.GetItem,
-				AppID:            7001,
-				UserID:           9000 + i%100_000,
-				Item:             productB.id,
-				Lang:             "ru",
-			})
+			_, err := env.api.Adapters.VKMA.GetItemForWorkspace(
+				env.ctx,
+				benchWorkspaceID,
+				vkmashop.Params{
+					NotificationType: vkmashop.GetItem,
+					AppID:            7001,
+					UserID:           9000 + i%100_000,
+					Item:             productB.id,
+					Lang:             "ru",
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("VKMA.ChargeableForWorkspace/idempotent", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := env.api.Adapters.VKMA.ChargeableForWorkspace(env.ctx, benchWorkspaceID, vkmashop.Params{
-				NotificationType: vkmashop.OrderStatusChange,
-				Status:           vkmashop.Chargeable,
-				AppID:            7001,
-				UserID:           9000,
-				Item:             productB.id,
-				OrderID:          1,
-				Lang:             "ru",
-			})
+			_, err := env.api.Adapters.VKMA.ChargeableForWorkspace(
+				env.ctx,
+				benchWorkspaceID,
+				vkmashop.Params{
+					NotificationType: vkmashop.OrderStatusChange,
+					Status:           vkmashop.Chargeable,
+					AppID:            7001,
+					UserID:           9000,
+					Item:             productB.id,
+					OrderID:          1,
+					Lang:             "ru",
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -260,7 +318,9 @@ func BenchmarkPaymentServiceMethods(b *testing.B) {
 		subscriptionIDs := make([]int, b.N)
 		b.StopTimer()
 		for i := 0; i < b.N; i++ {
-			subscriptionIDs[i] = int((paymentBenchRunNumber % 1_000_000_000) + benchNextSeq())
+			subscriptionIDs[i] = int(
+				(paymentBenchRunNumber % 1_000_000_000) + benchNextSeq(),
+			)
 			attempt, err := env.q.AdminGetPaymentAttempt(
 				env.ctx,
 				int64(env.attempts[i%len(env.attempts)]),
@@ -268,23 +328,30 @@ func BenchmarkPaymentServiceMethods(b *testing.B) {
 			benchNoError(b, err)
 			order, err := env.q.GetPaymentOrder(env.ctx, attempt.OrderID)
 			benchNoError(b, err)
-			_, err = env.q.UpsertPaymentSubscription(env.ctx, benchmarkUpsertSubscriptionParams(
-				order.ProductID,
-				uint64(order.ID),
-				uint64(attempt.ID),
-				strconv.Itoa(subscriptionIDs[i]),
-			))
+			_, err = env.q.UpsertPaymentSubscription(
+				env.ctx,
+				benchmarkUpsertSubscriptionParams(
+					order.ProductID,
+					uint64(order.ID),
+					uint64(attempt.ID),
+					strconv.Itoa(subscriptionIDs[i]),
+				),
+			)
 			benchNoError(b, err)
 		}
 		b.StartTimer()
 		for i := 0; i < b.N; i++ {
-			_, err := env.api.Adapters.VKMA.Canceled(env.ctx, benchWorkspaceID, vkmashop.Params{
-				NotificationType: vkmashop.SubscriptionStatusChange,
-				Status:           vkmashop.Canceled,
-				AppID:            7001,
-				UserID:           9000,
-				SubscriptionID:   subscriptionIDs[i],
-			})
+			_, err := env.api.Adapters.VKMA.Canceled(
+				env.ctx,
+				benchWorkspaceID,
+				vkmashop.Params{
+					NotificationType: vkmashop.SubscriptionStatusChange,
+					Status:           vkmashop.Canceled,
+					AppID:            7001,
+					UserID:           9000,
+					SubscriptionID:   subscriptionIDs[i],
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -301,15 +368,32 @@ func BenchmarkPaymentImportExport(b *testing.B) {
 	now := time.Now()
 	from := now.Add(-time.Hour)
 	until := now.Add(time.Hour)
-	benchNoError(b, env.api.Admin.SaveProductGroup(env.ctx, product.UpsertGroupParams{
-		WorkspaceID: workspaceID, Code: groupCode, TitleKey: utils.Ref(groupCode + ".title"),
-		DescriptionKey: utils.Ref(groupCode + ".description"), Position: 1, IsActive: true,
-	}))
+	benchNoError(
+		b,
+		env.api.Admin.SaveProductGroup(env.ctx, product.UpsertGroupParams{
+			WorkspaceID: workspaceID,
+			Code:        groupCode,
+			TitleKey:    utils.Ref(groupCode + ".title"),
+			DescriptionKey: utils.Ref(
+				groupCode + ".description",
+			),
+			Position: 1,
+			IsActive: true,
+		}),
+	)
 	benchNoError(b, env.api.Admin.SaveProduct(env.ctx, product.UpsertParams{
-		WorkspaceID: workspaceID, ID: productID, GroupCode: utils.Ref(groupCode),
-		TitleKey: productID + ".title", DescriptionKey: utils.Ref(productID + ".description"),
-		QuantityMode: "fixed", Position: 1, GlobalInterval: "UNLIMITED", UserInterval: "UNLIMITED",
-		AvailableFrom: &from, AvailableUntil: &until, IsVisible: true,
+		WorkspaceID:    workspaceID,
+		ID:             productID,
+		GroupCode:      utils.Ref(groupCode),
+		TitleKey:       productID + ".title",
+		DescriptionKey: utils.Ref(productID + ".description"),
+		QuantityMode:   "fixed",
+		Position:       1,
+		GlobalInterval: "UNLIMITED",
+		UserInterval:   "UNLIMITED",
+		AvailableFrom:  &from,
+		AvailableUntil: &until,
+		IsVisible:      true,
 	}))
 	for _, localization := range []product.UpsertLocalizationParams{
 		{WorkspaceID: workspaceID, Locale: "ru", LocalizationKey: groupCode + ".title", Value: "Group"},
@@ -321,28 +405,56 @@ func BenchmarkPaymentImportExport(b *testing.B) {
 	} {
 		benchNoError(b, env.api.Admin.SaveLocalization(env.ctx, localization))
 	}
-	benchNoError(b, env.api.Admin.AttachProductItem(env.ctx, product.AddItemParams{
-		WorkspaceID: workspaceID, ProductID: productID, ItemID: itemID, Quantity: 25, Scale: 2,
-	}))
-	_, err := env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
-		WorkspaceID: workspaceID, ProductID: productID, AssetCode: "RUB",
-		ListAmountMinor: 1000, DiscountAmountMinor: 100, StartsAt: &from, EndsAt: &until,
-	})
+	benchNoError(
+		b,
+		env.api.Admin.AttachProductItem(env.ctx, product.AddItemParams{
+			WorkspaceID: workspaceID,
+			ProductID:   productID,
+			ItemID:      itemID,
+			Quantity:    25,
+			Scale:       2,
+		}),
+	)
+	_, err := env.api.Admin.CreateCatalogPrice(
+		env.ctx,
+		product.CreatePriceParams{
+			WorkspaceID:         workspaceID,
+			ProductID:           productID,
+			AssetCode:           "RUB",
+			ListAmountMinor:     1000,
+			DiscountAmountMinor: 100,
+			StartsAt:            &from,
+			EndsAt:              &until,
+		},
+	)
 	benchNoError(b, err)
-	pkg, err := env.api.Admin.Export(env.ctx, workspaceID, repository.ExportRequest{})
+	pkg, err := env.api.Admin.Export(
+		env.ctx,
+		workspaceID,
+		repository.ExportRequest{},
+	)
 	benchNoError(b, err)
 	b.ReportAllocs()
 	b.Run("Export", func(b *testing.B) {
 		for range b.N {
-			_, err := env.api.Admin.Export(env.ctx, workspaceID, repository.ExportRequest{})
+			_, err := env.api.Admin.Export(
+				env.ctx,
+				workspaceID,
+				repository.ExportRequest{},
+			)
 			benchNoError(b, err)
 		}
 	})
 	b.Run("Import/update", func(b *testing.B) {
 		for range b.N {
-			_, err := env.api.Admin.Import(env.ctx, workspaceID, repository.ImportRequest{
-				Package: pkg, ConflictStrategy: repository.ImportConflictUpdate,
-			})
+			_, err := env.api.Admin.Import(
+				env.ctx,
+				workspaceID,
+				repository.ImportRequest{
+					Package:          pkg,
+					ConflictStrategy: repository.ImportConflictUpdate,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -374,19 +486,31 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 
 	b.Run("GetProviderAsset", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.GetProviderAsset(env.ctx, paymentsqlc.GetProviderAssetParams{ProviderCode: "yookassa", AssetCode: "RUB"})
+			_, err := q.GetProviderAsset(
+				env.ctx,
+				paymentsqlc.GetProviderAssetParams{
+					ProviderCode: "yookassa",
+					AssetCode:    "RUB",
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("UpsertProductGroup", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			err := q.UpsertProductGroup(env.ctx, paymentsqlc.UpsertProductGroupParams{
-				WorkspaceID: benchWorkspaceID,
-				Code:        "bench_group_write_" + strconv.Itoa(i),
-				TitleKey:    sql.NullString{String: "bench.group.title", Valid: true},
-				IsActive:    true,
-			})
+			err := q.UpsertProductGroup(
+				env.ctx,
+				paymentsqlc.UpsertProductGroupParams{
+					WorkspaceID: benchWorkspaceID,
+					Code:        "bench_group_write_" + strconv.Itoa(i),
+					TitleKey: sql.NullString{
+						String: "bench.group.title",
+						Valid:  true,
+					},
+					IsActive: true,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -394,20 +518,41 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 	b.Run("DeleteProductGroup", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			code := "bench_group_delete_" + strconv.Itoa(i)
-			benchNoError(b, q.UpsertProductGroup(env.ctx, paymentsqlc.UpsertProductGroupParams{WorkspaceID: benchWorkspaceID, Code: code, IsActive: true}))
-			_, err := q.DeleteProductGroup(env.ctx, paymentsqlc.DeleteProductGroupParams{WorkspaceID: benchWorkspaceID, Code: code})
+			benchNoError(
+				b,
+				q.UpsertProductGroup(
+					env.ctx,
+					paymentsqlc.UpsertProductGroupParams{
+						WorkspaceID: benchWorkspaceID,
+						Code:        code,
+						IsActive:    true,
+					},
+				),
+			)
+			_, err := q.DeleteProductGroup(
+				env.ctx,
+				paymentsqlc.DeleteProductGroupParams{
+					WorkspaceID: benchWorkspaceID,
+					Code:        code,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("UpsertLocalization", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			err := q.UpsertLocalization(env.ctx, paymentsqlc.UpsertLocalizationParams{
-				WorkspaceID:     benchWorkspaceID,
-				Locale:          benchLocales[i%len(benchLocales)],
-				LocalizationKey: "bench.write.localization." + strconv.Itoa(i),
-				Value:           "Benchmark value",
-			})
+			err := q.UpsertLocalization(
+				env.ctx,
+				paymentsqlc.UpsertLocalizationParams{
+					WorkspaceID: benchWorkspaceID,
+					Locale:      benchLocales[i%len(benchLocales)],
+					LocalizationKey: "bench.write.localization." + strconv.Itoa(
+						i,
+					),
+					Value: "Benchmark value",
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -415,15 +560,39 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 	b.Run("DeleteLocalization", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			key := "bench.delete.localization." + strconv.Itoa(i)
-			benchNoError(b, q.UpsertLocalization(env.ctx, paymentsqlc.UpsertLocalizationParams{WorkspaceID: benchWorkspaceID, Locale: "ru", LocalizationKey: key, Value: "delete"}))
-			_, err := q.DeleteLocalization(env.ctx, paymentsqlc.DeleteLocalizationParams{WorkspaceID: benchWorkspaceID, Locale: "ru", LocalizationKey: key})
+			benchNoError(
+				b,
+				q.UpsertLocalization(
+					env.ctx,
+					paymentsqlc.UpsertLocalizationParams{
+						WorkspaceID:     benchWorkspaceID,
+						Locale:          "ru",
+						LocalizationKey: key,
+						Value:           "delete",
+					},
+				),
+			)
+			_, err := q.DeleteLocalization(
+				env.ctx,
+				paymentsqlc.DeleteLocalizationParams{
+					WorkspaceID:     benchWorkspaceID,
+					Locale:          "ru",
+					LocalizationKey: key,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("UpsertProduct", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			err := q.UpsertProduct(env.ctx, benchmarkUpsertProductParams("bench_write_product_"+strconv.Itoa(i), "bench_group_0"))
+			err := q.UpsertProduct(
+				env.ctx,
+				benchmarkUpsertProductParams(
+					"bench_write_product_"+strconv.Itoa(i),
+					"bench_group_0",
+				),
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -431,21 +600,36 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 	b.Run("DeleteProduct", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			id := "bench_delete_product_" + strconv.Itoa(i)
-			benchNoError(b, q.UpsertProduct(env.ctx, benchmarkUpsertProductParams(id, "bench_group_0")))
-			_, err := q.DeleteProduct(env.ctx, paymentsqlc.DeleteProductParams{WorkspaceID: benchWorkspaceID, ID: id})
+			benchNoError(
+				b,
+				q.UpsertProduct(
+					env.ctx,
+					benchmarkUpsertProductParams(id, "bench_group_0"),
+				),
+			)
+			_, err := q.DeleteProduct(
+				env.ctx,
+				paymentsqlc.DeleteProductParams{
+					WorkspaceID: benchWorkspaceID,
+					ID:          id,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("UpsertProductItem", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			err := q.UpsertProductItem(env.ctx, paymentsqlc.UpsertProductItemParams{
-				WorkspaceID: benchWorkspaceID,
-				ProductID:   env.products[i%len(env.products)].id,
-				ItemID:      env.products[(i+1)%len(env.products)].itemID,
-				RewardType:  paymentsqlc.PaymentProductItemRewardTypeQuantity,
-				Quantity:    1,
-			})
+			err := q.UpsertProductItem(
+				env.ctx,
+				paymentsqlc.UpsertProductItemParams{
+					WorkspaceID: benchWorkspaceID,
+					ProductID:   env.products[i%len(env.products)].id,
+					ItemID:      env.products[(i+1)%len(env.products)].itemID,
+					RewardType:  paymentsqlc.PaymentProductItemRewardTypeQuantity,
+					Quantity:    1,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -454,14 +638,27 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			p := env.products[i%len(env.products)]
 			itemID := env.products[(i+2)%len(env.products)].itemID
-			benchNoError(b, q.UpsertProductItem(env.ctx, paymentsqlc.UpsertProductItemParams{
-				WorkspaceID: benchWorkspaceID,
-				ProductID:   p.id,
-				ItemID:      itemID,
-				RewardType:  paymentsqlc.PaymentProductItemRewardTypeQuantity,
-				Quantity:    1,
-			}))
-			_, err := q.DeleteProductItem(env.ctx, paymentsqlc.DeleteProductItemParams{WorkspaceID: benchWorkspaceID, ProductID: p.id, ItemID: itemID})
+			benchNoError(
+				b,
+				q.UpsertProductItem(
+					env.ctx,
+					paymentsqlc.UpsertProductItemParams{
+						WorkspaceID: benchWorkspaceID,
+						ProductID:   p.id,
+						ItemID:      itemID,
+						RewardType:  paymentsqlc.PaymentProductItemRewardTypeQuantity,
+						Quantity:    1,
+					},
+				),
+			)
+			_, err := q.DeleteProductItem(
+				env.ctx,
+				paymentsqlc.DeleteProductItemParams{
+					WorkspaceID: benchWorkspaceID,
+					ProductID:   p.id,
+					ItemID:      itemID,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -469,22 +666,28 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 	b.Run("CreateProductPrice", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			seq := benchNextSeq()
-			_, err := q.CreateProductPrice(env.ctx, benchmarkCreatePriceParams(productA.id, benchPriceStart(seq)))
+			_, err := q.CreateProductPrice(
+				env.ctx,
+				benchmarkCreatePriceParams(productA.id, benchPriceStart(seq)),
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("UpdateProductPrice", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.UpdateProductPrice(env.ctx, paymentsqlc.UpdateProductPriceParams{
-				ID:                  int64(priceID),
-				WorkspaceID:         benchWorkspaceID,
-				AssetCode:           "RUB",
-				ListAmountMinor:     int64(1000 + i%100),
-				DiscountAmountMinor: 0,
-				StartsAt:            time.Now().Add(-24 * time.Hour),
-				EndsAt:              time.Now().Add(24 * time.Hour),
-			})
+			_, err := q.UpdateProductPrice(
+				env.ctx,
+				paymentsqlc.UpdateProductPriceParams{
+					ID:                  int64(priceID),
+					WorkspaceID:         benchWorkspaceID,
+					AssetCode:           "RUB",
+					ListAmountMinor:     int64(1000 + i%100),
+					DiscountAmountMinor: 0,
+					StartsAt:            time.Now().Add(-24 * time.Hour),
+					EndsAt:              time.Now().Add(24 * time.Hour),
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -492,21 +695,33 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 	b.Run("DeleteProductPrice", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			seq := benchNextSeq()
-			id, err := q.CreateProductPrice(env.ctx, benchmarkCreatePriceParams(productA.id, benchPriceStart(seq)))
+			id, err := q.CreateProductPrice(
+				env.ctx,
+				benchmarkCreatePriceParams(productA.id, benchPriceStart(seq)),
+			)
 			benchNoError(b, err)
-			_, err = q.DeleteProductPrice(env.ctx, paymentsqlc.DeleteProductPriceParams{WorkspaceID: benchWorkspaceID, ID: id})
+			_, err = q.DeleteProductPrice(
+				env.ctx,
+				paymentsqlc.DeleteProductPriceParams{
+					WorkspaceID: benchWorkspaceID,
+					ID:          id,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("GetCurrentProductPrice", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.GetCurrentProductPrice(env.ctx, paymentsqlc.GetCurrentProductPriceParams{
-				WorkspaceID:   benchWorkspaceID,
-				WorkspaceID_2: benchWorkspaceID,
-				ProductID:     env.products[i%len(env.products)].id,
-				AssetCode:     benchAssets[i%len(benchAssets)],
-			})
+			_, err := q.GetCurrentProductPrice(
+				env.ctx,
+				paymentsqlc.GetCurrentProductPriceParams{
+					WorkspaceID:   benchWorkspaceID,
+					WorkspaceID_2: benchWorkspaceID,
+					ProductID:     env.products[i%len(env.products)].id,
+					AssetCode:     benchAssets[i%len(benchAssets)],
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -514,12 +729,15 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 	b.Run("GetProductRows", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			locale := benchLocales[i%len(benchLocales)]
-			_, err := q.GetProductRows(env.ctx, paymentsqlc.GetProductRowsParams{
-				ProductID:   env.products[i%len(env.products)].id,
-				WorkspaceID: benchWorkspaceID,
-				AssetCode:   benchAssets[i%len(benchAssets)],
-				Locale:      locale,
-			})
+			_, err := q.GetProductRows(
+				env.ctx,
+				paymentsqlc.GetProductRowsParams{
+					ProductID:   env.products[i%len(env.products)].id,
+					WorkspaceID: benchWorkspaceID,
+					AssetCode:   benchAssets[i%len(benchAssets)],
+					Locale:      locale,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -527,25 +745,40 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 	b.Run("GetProductPreviewRows", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			locale := benchLocales[i%len(benchLocales)]
-			_, err := q.GetProductPreviewRows(env.ctx, paymentsqlc.GetProductPreviewRowsParams{
-				ProductID:   env.products[i%len(env.products)].id,
-				WorkspaceID: benchWorkspaceID,
-				Locale:      locale,
-			})
+			_, err := q.GetProductPreviewRows(
+				env.ctx,
+				paymentsqlc.GetProductPreviewRowsParams{
+					ProductID:   env.products[i%len(env.products)].id,
+					WorkspaceID: benchWorkspaceID,
+					Locale:      locale,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("ListProductPriceOptions", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.ListProductPriceOptions(env.ctx, paymentsqlc.ListProductPriceOptionsParams{WorkspaceID: benchWorkspaceID, ProductID: env.products[i%len(env.products)].id})
+			_, err := q.ListProductPriceOptions(
+				env.ctx,
+				paymentsqlc.ListProductPriceOptionsParams{
+					WorkspaceID: benchWorkspaceID,
+					ProductID:   env.products[i%len(env.products)].id,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("ListProductLocales", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.ListProductLocales(env.ctx, paymentsqlc.ListProductLocalesParams{WorkspaceID: benchWorkspaceID, ProductID: env.products[i%len(env.products)].id})
+			_, err := q.ListProductLocales(
+				env.ctx,
+				paymentsqlc.ListProductLocalesParams{
+					WorkspaceID: benchWorkspaceID,
+					ProductID:   env.products[i%len(env.products)].id,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -553,18 +786,9 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 	b.Run("GetProductLimitCounterCount", func(b *testing.B) {
 		start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		end := start.Add(24 * time.Hour)
-		_, err := q.EnsureProductLimitCounter(env.ctx, paymentsqlc.EnsureProductLimitCounterParams{
-			WorkspaceID:    benchWorkspaceID,
-			PlatformID:     1,
-			ProductID:      productA.id,
-			CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
-			PlatformUserID: "",
-			WindowStart:    start,
-			WindowEnd:      end,
-		})
-		benchNoError(b, err)
-		for i := 0; i < b.N; i++ {
-			_, err := q.GetProductLimitCounterCount(env.ctx, paymentsqlc.GetProductLimitCounterCountParams{
+		_, err := q.EnsureProductLimitCounter(
+			env.ctx,
+			paymentsqlc.EnsureProductLimitCounterParams{
 				WorkspaceID:    benchWorkspaceID,
 				PlatformID:     1,
 				ProductID:      productA.id,
@@ -572,14 +796,32 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 				PlatformUserID: "",
 				WindowStart:    start,
 				WindowEnd:      end,
-			})
+			},
+		)
+		benchNoError(b, err)
+		for i := 0; i < b.N; i++ {
+			_, err := q.GetProductLimitCounterCount(
+				env.ctx,
+				paymentsqlc.GetProductLimitCounterCountParams{
+					WorkspaceID:    benchWorkspaceID,
+					PlatformID:     1,
+					ProductID:      productA.id,
+					CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
+					PlatformUserID: "",
+					WindowStart:    start,
+					WindowEnd:      end,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("GetPurchaseKeyByHash", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.GetPurchaseKeyByHash(env.ctx, env.keyHashes[i%len(env.keyHashes)])
+			_, err := q.GetPurchaseKeyByHash(
+				env.ctx,
+				env.keyHashes[i%len(env.keyHashes)],
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -587,15 +829,20 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 	b.Run("CreatePurchaseKey", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			seq := benchNextSeq()
-			_, err := q.CreatePurchaseKey(env.ctx, paymentsqlc.CreatePurchaseKeyParams{
-				WorkspaceID:    benchWorkspaceID,
-				KeyHash:        benchHash(benchRunValue("sqlc_create_key", seq)),
-				AppID:          7001,
-				PlatformID:     1,
-				PlatformUserID: benchRunValue("bench_sqlc_key_user", seq),
-				ProductID:      productA.id,
-				MaxUses:        1_000_000,
-			})
+			_, err := q.CreatePurchaseKey(
+				env.ctx,
+				paymentsqlc.CreatePurchaseKeyParams{
+					WorkspaceID: benchWorkspaceID,
+					KeyHash: benchHash(
+						benchRunValue("sqlc_create_key", seq),
+					),
+					AppID:          7001,
+					PlatformID:     1,
+					PlatformUserID: benchRunValue("bench_sqlc_key_user", seq),
+					ProductID:      productA.id,
+					MaxUses:        1_000_000,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -611,28 +858,45 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 	b.Run("CreatePaymentOrder", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			seq := benchNextSeq()
-			_, err := q.CreatePaymentOrder(env.ctx, benchmarkCreateOrderParams(productA, "RUB", priceID, benchRunValue("sqlc_create_order", seq)))
+			_, err := q.CreatePaymentOrder(
+				env.ctx,
+				benchmarkCreateOrderParams(
+					productA,
+					"RUB",
+					priceID,
+					benchRunValue("sqlc_create_order", seq),
+				),
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("GetPaymentOrder", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.GetPaymentOrder(env.ctx, int64(env.orders[i%len(env.orders)]))
+			_, err := q.GetPaymentOrder(
+				env.ctx,
+				int64(env.orders[i%len(env.orders)]),
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("GetPaymentOrderByPublicID", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.GetPaymentOrderByPublicID(env.ctx, "bench-public-"+strconv.Itoa((i%len(env.orders))+1))
+			_, err := q.GetPaymentOrderByPublicID(
+				env.ctx,
+				"bench-public-"+strconv.Itoa((i%len(env.orders))+1),
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("LockPaymentOrder", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.LockPaymentOrder(env.ctx, int64(env.orders[i%len(env.orders)]))
+			_, err := q.LockPaymentOrder(
+				env.ctx,
+				int64(env.orders[i%len(env.orders)]),
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -642,13 +906,25 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 		b.StopTimer()
 		for i := 0; i < b.N; i++ {
 			seq := benchNextSeq()
-			order := createBenchmarkOrder(b, env, productA.id, "RUB", benchRunValue("sqlc_attempt_order", seq))
+			order := createBenchmarkOrder(
+				b,
+				env,
+				productA.id,
+				"RUB",
+				benchRunValue("sqlc_attempt_order", seq),
+			)
 			orderIDs[i] = order.ID
 		}
 		b.StartTimer()
 		for i := 0; i < b.N; i++ {
 			seq := benchNextSeq()
-			_, err := q.CreatePaymentAttempt(env.ctx, benchmarkCreateAttemptParams(orderIDs[i], benchRunValue("sqlc_attempt", seq)))
+			_, err := q.CreatePaymentAttempt(
+				env.ctx,
+				benchmarkCreateAttemptParams(
+					orderIDs[i],
+					benchRunValue("sqlc_attempt", seq),
+				),
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -660,27 +936,39 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 		}
 		for i := 0; i < b.N; i++ {
 			paymentNumber := 1 + (i%yookassaAttemptCount)*len(benchAssets)
-			_, err := q.GetPaymentAttemptByProviderPaymentID(env.ctx, paymentsqlc.GetPaymentAttemptByProviderPaymentIDParams{
-				ProviderCode:      "yookassa",
-				ProviderPaymentID: sql.NullString{String: "bench_pay_" + strconv.Itoa(paymentNumber), Valid: true},
-			})
+			_, err := q.GetPaymentAttemptByProviderPaymentID(
+				env.ctx,
+				paymentsqlc.GetPaymentAttemptByProviderPaymentIDParams{
+					ProviderCode: "yookassa",
+					ProviderPaymentID: sql.NullString{
+						String: "bench_pay_" + strconv.Itoa(paymentNumber),
+						Valid:  true,
+					},
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("LockPaymentAttempt", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.LockPaymentAttempt(env.ctx, int64(env.attempts[i%len(env.attempts)]))
+			_, err := q.LockPaymentAttempt(
+				env.ctx,
+				int64(env.attempts[i%len(env.attempts)]),
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("UpdatePaymentAttemptStatus", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			err := q.UpdatePaymentAttemptStatus(env.ctx, paymentsqlc.UpdatePaymentAttemptStatusParams{
-				Status: paymentsqlc.PaymentAttemptStatusSucceeded,
-				ID:     int64(attemptID),
-			})
+			err := q.UpdatePaymentAttemptStatus(
+				env.ctx,
+				paymentsqlc.UpdatePaymentAttemptStatusParams{
+					Status: paymentsqlc.PaymentAttemptStatusSucceeded,
+					ID:     int64(attemptID),
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -709,59 +997,88 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 	b.Run("CreatePaymentEvent", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			seq := benchNextSeq()
-			_, err := q.CreatePaymentEvent(env.ctx, benchmarkCreateEventParams(orderID, attemptID, benchRunValue("sqlc_event", seq)))
+			_, err := q.CreatePaymentEvent(
+				env.ctx,
+				benchmarkCreateEventParams(
+					orderID,
+					attemptID,
+					benchRunValue("sqlc_event", seq),
+				),
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("MarkPaymentEventProcessed", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			err := q.MarkPaymentEventProcessed(env.ctx, paymentsqlc.MarkPaymentEventProcessedParams{
-				ProcessingStatus: paymentsqlc.PaymentEventProcessingStatusProcessed,
-				ProcessingError:  sql.NullString{},
-				ID:               int64(1),
-			})
+			err := q.MarkPaymentEventProcessed(
+				env.ctx,
+				paymentsqlc.MarkPaymentEventProcessedParams{
+					ProcessingStatus: paymentsqlc.PaymentEventProcessingStatusProcessed,
+					ProcessingError:  sql.NullString{},
+					ID:               int64(1),
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("UpsertPaymentSubscription", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.UpsertPaymentSubscription(env.ctx, benchmarkUpsertSubscriptionParams(productA.id, orderID, attemptID, benchRunValue("sqlc_sub", uint64(i+1))))
+			_, err := q.UpsertPaymentSubscription(
+				env.ctx,
+				benchmarkUpsertSubscriptionParams(
+					productA.id,
+					orderID,
+					attemptID,
+					benchRunValue("sqlc_sub", uint64(i+1)),
+				),
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("UpdatePaymentSubscriptionStatus", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.UpdatePaymentSubscriptionStatusByProvider(env.ctx, paymentsqlc.UpdatePaymentSubscriptionStatusByProviderParams{
-				ProviderCode:           "vkma",
-				ProviderSubscriptionID: "bench_sub_1",
-				Status:                 paymentsqlc.PaymentSubscriptionStatusActive,
-			})
+			_, err := q.UpdatePaymentSubscriptionStatusByProvider(
+				env.ctx,
+				paymentsqlc.UpdatePaymentSubscriptionStatusByProviderParams{
+					ProviderCode:           "vkma",
+					ProviderSubscriptionID: "bench_sub_1",
+					Status:                 paymentsqlc.PaymentSubscriptionStatusActive,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("GetPaymentSubscriptionByProviderID", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.GetPaymentSubscriptionByProviderID(env.ctx, paymentsqlc.GetPaymentSubscriptionByProviderIDParams{
-				ProviderCode:           "vkma",
-				ProviderSubscriptionID: "bench_sub_" + strconv.Itoa((i%1000)+1),
-			})
+			_, err := q.GetPaymentSubscriptionByProviderID(
+				env.ctx,
+				paymentsqlc.GetPaymentSubscriptionByProviderIDParams{
+					ProviderCode: "vkma",
+					ProviderSubscriptionID: "bench_sub_" + strconv.Itoa(
+						(i%1000)+1,
+					),
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("CountActivePaymentSubscriptions", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.CountActivePaymentSubscriptionsForProvider(env.ctx, paymentsqlc.CountActivePaymentSubscriptionsForProviderParams{
-				PlatformID:     1,
-				PlatformUserID: "bench_user_" + strconv.Itoa(i%100_000),
-				WorkspaceID:    benchWorkspaceID,
-				EndedAt:        sql.NullTime{Time: time.Now(), Valid: true},
-				ProviderCode:   "vkma",
-			})
+			_, err := q.CountActivePaymentSubscriptionsForProvider(
+				env.ctx,
+				paymentsqlc.CountActivePaymentSubscriptionsForProviderParams{
+					PlatformID:     1,
+					PlatformUserID: "bench_user_" + strconv.Itoa(i%100_000),
+					WorkspaceID:    benchWorkspaceID,
+					EndedAt:        sql.NullTime{Time: time.Now(), Valid: true},
+					ProviderCode:   "vkma",
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -772,19 +1089,34 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 		b.StopTimer()
 		for i := 0; i < b.N; i++ {
 			seq := benchNextSeq()
-			order := createBenchmarkOrder(b, env, productA.id, "RUB", benchRunValue("sqlc_fulfillment_order", seq))
-			attemptID, err := q.CreatePaymentAttempt(env.ctx, benchmarkCreateAttemptParams(order.ID, benchRunValue("sqlc_fulfillment_attempt", seq)))
+			order := createBenchmarkOrder(
+				b,
+				env,
+				productA.id,
+				"RUB",
+				benchRunValue("sqlc_fulfillment_order", seq),
+			)
+			attemptID, err := q.CreatePaymentAttempt(
+				env.ctx,
+				benchmarkCreateAttemptParams(
+					order.ID,
+					benchRunValue("sqlc_fulfillment_attempt", seq),
+				),
+			)
 			benchNoError(b, err)
 			orderIDs[i] = order.ID
 			attemptIDs[i] = uint64(attemptID)
 		}
 		b.StartTimer()
 		for i := 0; i < b.N; i++ {
-			_, err := q.CreateFulfillment(env.ctx, paymentsqlc.CreateFulfillmentParams{
-				OrderID:   int64(orderIDs[i]),
-				AttemptID: int64(attemptIDs[i]),
-				Status:    paymentsqlc.PaymentFulfillmentStatusSucceeded,
-			})
+			_, err := q.CreateFulfillment(
+				env.ctx,
+				paymentsqlc.CreateFulfillmentParams{
+					OrderID:   int64(orderIDs[i]),
+					AttemptID: int64(attemptIDs[i]),
+					Status:    paymentsqlc.PaymentFulfillmentStatusSucceeded,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -798,23 +1130,29 @@ func BenchmarkPaymentSQLCQueries(b *testing.B) {
 		b.StartTimer()
 		for i := 0; i < b.N; i++ {
 			item := env.products[(i+10)%len(env.products)].itemID
-			err := q.CreateFulfillmentItem(env.ctx, paymentsqlc.CreateFulfillmentItemParams{
-				FulfillmentID: int64(fulfillmentIDs[i]),
-				WorkspaceID:   benchWorkspaceID,
-				ItemID:        item,
-				RewardType:    paymentsqlc.PaymentFulfillmentItemRewardTypeQuantity,
-				Quantity:      1,
-			})
+			err := q.CreateFulfillmentItem(
+				env.ctx,
+				paymentsqlc.CreateFulfillmentItemParams{
+					FulfillmentID: int64(fulfillmentIDs[i]),
+					WorkspaceID:   benchWorkspaceID,
+					ItemID:        item,
+					RewardType:    paymentsqlc.PaymentFulfillmentItemRewardTypeQuantity,
+					Quantity:      1,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 
 	b.Run("GetFulfillmentItemsForProduct", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := q.GetFulfillmentItemsForProduct(env.ctx, paymentsqlc.GetFulfillmentItemsForProductParams{
-				WorkspaceID: benchWorkspaceID,
-				ProductID:   env.products[i%len(env.products)].id,
-			})
+			_, err := q.GetFulfillmentItemsForProduct(
+				env.ctx,
+				paymentsqlc.GetFulfillmentItemsForProductParams{
+					WorkspaceID: benchWorkspaceID,
+					ProductID:   env.products[i%len(env.products)].id,
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -832,7 +1170,11 @@ func setupPaymentBenchmark(b *testing.B) paymentBenchmarkEnv {
 	return paymentBenchEnv
 }
 
-func paymentBenchmarkDatabaseExists(ctx context.Context, db *sql.DB, dbName string) (bool, error) {
+func paymentBenchmarkDatabaseExists(
+	ctx context.Context,
+	db *sql.DB,
+	dbName string,
+) (bool, error) {
 	var count int
 	err := db.QueryRowContext(ctx, `
 SELECT COUNT(*)
@@ -863,7 +1205,11 @@ func buildPaymentBenchmarkEnv(b *testing.B) (paymentBenchmarkEnv, error) {
 
 	shouldSeedDatabase := benchSeedDatabase
 	if benchSeedDatabase {
-		if err := recreatePaymentTestDatabase(ctx, adminDB, dbName); err != nil {
+		if err := recreatePaymentTestDatabase(
+			ctx,
+			adminDB,
+			dbName,
+		); err != nil {
 			return paymentBenchmarkEnv{}, err
 		}
 	} else {
@@ -872,11 +1218,18 @@ func buildPaymentBenchmarkEnv(b *testing.B) (paymentBenchmarkEnv, error) {
 			return paymentBenchmarkEnv{}, err
 		}
 		if !exists {
-			if err := recreatePaymentTestDatabase(ctx, adminDB, dbName); err != nil {
+			if err := recreatePaymentTestDatabase(
+				ctx,
+				adminDB,
+				dbName,
+			); err != nil {
 				return paymentBenchmarkEnv{}, err
 			}
 			shouldSeedDatabase = true
-			b.Logf("created benchmark database %s because it did not exist", dbName)
+			b.Logf(
+				"created benchmark database %s because it did not exist",
+				dbName,
+			)
 		}
 	}
 
@@ -895,7 +1248,11 @@ func buildPaymentBenchmarkEnv(b *testing.B) (paymentBenchmarkEnv, error) {
 		}
 		if needsReset {
 			appDB.Close()
-			if err := recreatePaymentTestDatabase(ctx, adminDB, dbName); err != nil {
+			if err := recreatePaymentTestDatabase(
+				ctx,
+				adminDB,
+				dbName,
+			); err != nil {
 				return paymentBenchmarkEnv{}, err
 			}
 			appDB, err = openMySQL(dsn, dbName)
@@ -905,7 +1262,10 @@ func buildPaymentBenchmarkEnv(b *testing.B) (paymentBenchmarkEnv, error) {
 			appDB.SetMaxOpenConns(32)
 			appDB.SetMaxIdleConns(32)
 			shouldSeedDatabase = true
-			b.Logf("recreated benchmark database %s because schema is outdated", dbName)
+			b.Logf(
+				"recreated benchmark database %s because schema is outdated",
+				dbName,
+			)
 		}
 	}
 
@@ -926,7 +1286,10 @@ func buildPaymentBenchmarkEnv(b *testing.B) (paymentBenchmarkEnv, error) {
 
 	repo := repository.NewPaymentRepository(client)
 	if shouldSeedDatabase {
-		if err := repo.Bootstrap(ctx, filepath.Join("sqlc", "schema.sql")); err != nil {
+		if err := repo.Bootstrap(
+			ctx,
+			filepath.Join("sqlc", "schema.sql"),
+		); err != nil {
 			appDB.Close()
 			return paymentBenchmarkEnv{}, err
 		}
@@ -953,9 +1316,19 @@ func buildPaymentBenchmarkEnv(b *testing.B) (paymentBenchmarkEnv, error) {
 		return env, nil
 	}
 
-	b.Logf("seeding benchmark database %s: products=%d transactions=%d batch=%d", dbName, productCount, transactionCount, batchSize)
+	b.Logf(
+		"seeding benchmark database %s: products=%d transactions=%d batch=%d",
+		dbName,
+		productCount,
+		transactionCount,
+		batchSize,
+	)
 
-	products, keys, keyHashes, err := seedBenchmarkCatalog(ctx, env.q, productCount)
+	products, keys, keyHashes, err := seedBenchmarkCatalog(
+		ctx,
+		env.q,
+		productCount,
+	)
 	if err != nil {
 		appDB.Close()
 		return paymentBenchmarkEnv{}, err
@@ -968,7 +1341,13 @@ func buildPaymentBenchmarkEnv(b *testing.B) (paymentBenchmarkEnv, error) {
 	env.keys = keys
 	env.keyHashes = keyHashes
 
-	orders, attempts, err := seedBenchmarkTransactions(ctx, appDB, products, transactionCount, batchSize)
+	orders, attempts, err := seedBenchmarkTransactions(
+		ctx,
+		appDB,
+		products,
+		transactionCount,
+		batchSize,
+	)
 	if err != nil {
 		appDB.Close()
 		return paymentBenchmarkEnv{}, err
@@ -984,7 +1363,11 @@ func buildPaymentBenchmarkEnv(b *testing.B) (paymentBenchmarkEnv, error) {
 	return env, nil
 }
 
-func seedBenchmarkCatalog(ctx context.Context, q *paymentsqlc.Queries, count int) ([]benchProduct, []string, []string, error) {
+func seedBenchmarkCatalog(
+	ctx context.Context,
+	q *paymentsqlc.Queries,
+	count int,
+) ([]benchProduct, []string, []string, error) {
 	now := time.Now()
 	availableFrom := now.Add(-24 * time.Hour)
 	availableUntil := now.Add(365 * 24 * time.Hour)
@@ -1000,12 +1383,15 @@ func seedBenchmarkCatalog(ctx context.Context, q *paymentsqlc.Queries, count int
 		return nil, nil, nil, err
 	}
 	for _, locale := range benchLocales {
-		if err := q.UpsertLocalization(ctx, paymentsqlc.UpsertLocalizationParams{
-			WorkspaceID:     benchWorkspaceID,
-			Locale:          locale,
-			LocalizationKey: "bench.group.title",
-			Value:           "Benchmark group " + locale,
-		}); err != nil {
+		if err := q.UpsertLocalization(
+			ctx,
+			paymentsqlc.UpsertLocalizationParams{
+				WorkspaceID:     benchWorkspaceID,
+				Locale:          locale,
+				LocalizationKey: "bench.group.title",
+				Value:           "Benchmark group " + locale,
+			},
+		); err != nil {
 			return nil, nil, nil, err
 		}
 	}
@@ -1022,13 +1408,25 @@ func seedBenchmarkCatalog(ctx context.Context, q *paymentsqlc.Queries, count int
 		itemDescriptionKey := itemID + ".description"
 
 		if err := q.UpsertProduct(ctx, paymentsqlc.UpsertProductParams{
-			WorkspaceID:    benchWorkspaceID,
-			ID:             productID,
-			GroupCode:      sql.NullString{String: "bench_group_0", Valid: true},
-			TitleKey:       productTitleKey,
-			DescriptionKey: sql.NullString{String: productDescriptionKey, Valid: true},
-			Target:         pqtype.NullRawMessage{RawMessage: []byte("{}"), Valid: true},
-			ImageUrl:       sql.NullString{String: "https://example.com/bench.png", Valid: true},
+			WorkspaceID: benchWorkspaceID,
+			ID:          productID,
+			GroupCode: sql.NullString{
+				String: "bench_group_0",
+				Valid:  true,
+			},
+			TitleKey: productTitleKey,
+			DescriptionKey: sql.NullString{
+				String: productDescriptionKey,
+				Valid:  true,
+			},
+			Target: pqtype.NullRawMessage{
+				RawMessage: []byte("{}"),
+				Valid:      true,
+			},
+			ImageUrl: sql.NullString{
+				String: "https://example.com/bench.png",
+				Valid:  true,
+			},
 			Position:       int32(i),
 			QuantityMode:   paymentsqlc.PaymentProductQuantityModeFixed,
 			GlobalInterval: paymentsqlc.PaymentProductGlobalIntervalUNLIMITED,
@@ -1059,12 +1457,15 @@ func seedBenchmarkCatalog(ctx context.Context, q *paymentsqlc.Queries, count int
 				{itemTitleKey, fmt.Sprintf("Item %04d %s", i, locale)},
 				{itemDescriptionKey, fmt.Sprintf("Item %04d description %s", i, locale)},
 			} {
-				if err := q.UpsertLocalization(ctx, paymentsqlc.UpsertLocalizationParams{
-					WorkspaceID:     benchWorkspaceID,
-					Locale:          locale,
-					LocalizationKey: entry.key,
-					Value:           entry.value,
-				}); err != nil {
+				if err := q.UpsertLocalization(
+					ctx,
+					paymentsqlc.UpsertLocalizationParams{
+						WorkspaceID:     benchWorkspaceID,
+						Locale:          locale,
+						LocalizationKey: entry.key,
+						Value:           entry.value,
+					},
+				); err != nil {
 					return nil, nil, nil, err
 				}
 			}
@@ -1072,30 +1473,36 @@ func seedBenchmarkCatalog(ctx context.Context, q *paymentsqlc.Queries, count int
 
 		priceIDs := make(map[string]uint64, len(benchAssets))
 		for assetIndex, asset := range benchAssets {
-			id, err := q.CreateProductPrice(ctx, paymentsqlc.CreateProductPriceParams{
-				WorkspaceID:         benchWorkspaceID,
-				ProductID:           productID,
-				AssetCode:           asset,
-				ListAmountMinor:     int64(1000 + i + assetIndex*100),
-				DiscountAmountMinor: int64(assetIndex % 3),
-				StartsAt:            priceStarts,
-				EndsAt:              priceEnds,
-			})
+			id, err := q.CreateProductPrice(
+				ctx,
+				paymentsqlc.CreateProductPriceParams{
+					WorkspaceID:         benchWorkspaceID,
+					ProductID:           productID,
+					AssetCode:           asset,
+					ListAmountMinor:     int64(1000 + i + assetIndex*100),
+					DiscountAmountMinor: int64(assetIndex % 3),
+					StartsAt:            priceStarts,
+					EndsAt:              priceEnds,
+				},
+			)
 			if err != nil {
 				return nil, nil, nil, err
 			}
 			priceIDs[asset] = uint64(id)
 		}
 		if i == 1 && priceIDs["VOTE"] == 0 {
-			id, err := q.CreateProductPrice(ctx, paymentsqlc.CreateProductPriceParams{
-				WorkspaceID:         benchWorkspaceID,
-				ProductID:           productID,
-				AssetCode:           "VOTE",
-				ListAmountMinor:     int64(1000 + i + len(benchAssets)*100),
-				DiscountAmountMinor: 0,
-				StartsAt:            priceStarts,
-				EndsAt:              priceEnds,
-			})
+			id, err := q.CreateProductPrice(
+				ctx,
+				paymentsqlc.CreateProductPriceParams{
+					WorkspaceID:         benchWorkspaceID,
+					ProductID:           productID,
+					AssetCode:           "VOTE",
+					ListAmountMinor:     int64(1000 + i + len(benchAssets)*100),
+					DiscountAmountMinor: 0,
+					StartsAt:            priceStarts,
+					EndsAt:              priceEnds,
+				},
+			)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -1104,19 +1511,25 @@ func seedBenchmarkCatalog(ctx context.Context, q *paymentsqlc.Queries, count int
 
 		key := "bench_key_" + strconv.Itoa(i)
 		keyHash := benchHash(key)
-		if _, err := q.CreatePurchaseKey(ctx, paymentsqlc.CreatePurchaseKeyParams{
-			WorkspaceID:    benchWorkspaceID,
-			KeyHash:        keyHash,
-			AppID:          7001,
-			PlatformID:     1,
-			PlatformUserID: "bench_recipient_" + strconv.Itoa(i),
-			ProductID:      productID,
-			MaxUses:        1_000_000_000,
-		}); err != nil {
+		if _, err := q.CreatePurchaseKey(
+			ctx,
+			paymentsqlc.CreatePurchaseKeyParams{
+				WorkspaceID:    benchWorkspaceID,
+				KeyHash:        keyHash,
+				AppID:          7001,
+				PlatformID:     1,
+				PlatformUserID: "bench_recipient_" + strconv.Itoa(i),
+				ProductID:      productID,
+				MaxUses:        1_000_000_000,
+			},
+		); err != nil {
 			return nil, nil, nil, err
 		}
 
-		products = append(products, benchProduct{id: productID, itemID: itemID, priceIDs: priceIDs})
+		products = append(
+			products,
+			benchProduct{id: productID, itemID: itemID, priceIDs: priceIDs},
+		)
 		keys = append(keys, key)
 		keyHashes = append(keyHashes, keyHash)
 	}
@@ -1124,13 +1537,21 @@ func seedBenchmarkCatalog(ctx context.Context, q *paymentsqlc.Queries, count int
 	return products, keys, keyHashes, nil
 }
 
-func loadBenchmarkDataset(ctx context.Context, q *paymentsqlc.Queries, env *paymentBenchmarkEnv) error {
+func loadBenchmarkDataset(
+	ctx context.Context,
+	q *paymentsqlc.Queries,
+	env *paymentBenchmarkEnv,
+) error {
 	products, err := loadBenchmarkProducts(ctx, env.db)
 	if err != nil {
 		return err
 	}
 	if len(products) == 0 {
-		return fmt.Errorf("benchmark database %s has no products for workspace %s; set benchSeedDatabase=true first", benchDBName, benchWorkspaceID)
+		return fmt.Errorf(
+			"benchmark database %s has no products for workspace %s; set benchSeedDatabase=true first",
+			benchDBName,
+			benchWorkspaceID,
+		)
 	}
 
 	keys := make([]string, 0, len(products))
@@ -1141,22 +1562,42 @@ func loadBenchmarkDataset(ctx context.Context, q *paymentsqlc.Queries, env *paym
 		keyHashes = append(keyHashes, benchHash(key))
 	}
 	if _, err := q.GetPurchaseKeyByHash(ctx, keyHashes[0]); err != nil {
-		return fmt.Errorf("benchmark database %s has no expected purchase keys; set benchSeedDatabase=true first: %w", benchDBName, err)
+		return fmt.Errorf(
+			"benchmark database %s has no expected purchase keys; set benchSeedDatabase=true first: %w",
+			benchDBName,
+			err,
+		)
 	}
 	if err := ensureBenchmarkProductCache(ctx, q); err != nil {
 		return err
 	}
 
-	orders, err := loadBenchmarkIDs(ctx, env.db, "payment_order", "id", "workspace_id = ?", benchWorkspaceID)
+	orders, err := loadBenchmarkIDs(
+		ctx,
+		env.db,
+		"payment_order",
+		"id",
+		"workspace_id = ?",
+		benchWorkspaceID,
+	)
 	if err != nil {
 		return err
 	}
-	attempts, err := loadBenchmarkIDs(ctx, env.db, "payment_attempt", "id", "id < 1000000000")
+	attempts, err := loadBenchmarkIDs(
+		ctx,
+		env.db,
+		"payment_attempt",
+		"id",
+		"id < 1000000000",
+	)
 	if err != nil {
 		return err
 	}
 	if len(orders) == 0 || len(attempts) == 0 {
-		return fmt.Errorf("benchmark database %s has no seeded orders or attempts; set benchSeedDatabase=true first", benchDBName)
+		return fmt.Errorf(
+			"benchmark database %s has no seeded orders or attempts; set benchSeedDatabase=true first",
+			benchDBName,
+		)
 	}
 
 	env.products = products
@@ -1167,7 +1608,10 @@ func loadBenchmarkDataset(ctx context.Context, q *paymentsqlc.Queries, env *paym
 	return nil
 }
 
-func ensureBenchmarkProductCache(ctx context.Context, q *paymentsqlc.Queries) error {
+func ensureBenchmarkProductCache(
+	ctx context.Context,
+	q *paymentsqlc.Queries,
+) error {
 	rows, err := q.GetProductRows(ctx, paymentsqlc.GetProductRowsParams{
 		ProductID:   "bench_product_0000",
 		WorkspaceID: benchWorkspaceID,
@@ -1180,7 +1624,11 @@ func ensureBenchmarkProductCache(ctx context.Context, q *paymentsqlc.Queries) er
 	return rebuildBenchmarkProductCache(ctx, q)
 }
 
-func benchmarkSchemaNeedsReset(ctx context.Context, db *sql.DB, dbName string) (bool, error) {
+func benchmarkSchemaNeedsReset(
+	ctx context.Context,
+	db *sql.DB,
+	dbName string,
+) (bool, error) {
 	var count int
 	err := db.QueryRowContext(ctx, `
 SELECT COUNT(*)
@@ -1298,17 +1746,29 @@ LIMIT 1`, benchWorkspaceID).Scan(&count)
 	return count > 0, nil
 }
 
-func rebuildBenchmarkProductCache(ctx context.Context, q *paymentsqlc.Queries) error {
-	if _, err := q.DeleteWorkspaceProductCache(ctx, benchWorkspaceID); err != nil {
+func rebuildBenchmarkProductCache(
+	ctx context.Context,
+	q *paymentsqlc.Queries,
+) error {
+	if _, err := q.DeleteWorkspaceProductCache(
+		ctx,
+		benchWorkspaceID,
+	); err != nil {
 		return err
 	}
-	return q.RebuildWorkspaceProductCache(ctx, paymentsqlc.RebuildWorkspaceProductCacheParams{
-		WorkspaceID:   benchWorkspaceID,
-		WorkspaceID_2: benchWorkspaceID,
-	})
+	return q.RebuildWorkspaceProductCache(
+		ctx,
+		paymentsqlc.RebuildWorkspaceProductCacheParams{
+			WorkspaceID:   benchWorkspaceID,
+			WorkspaceID_2: benchWorkspaceID,
+		},
+	)
 }
 
-func loadBenchmarkProducts(ctx context.Context, db *sql.DB) ([]benchProduct, error) {
+func loadBenchmarkProducts(
+	ctx context.Context,
+	db *sql.DB,
+) ([]benchProduct, error) {
 	rows, err := db.QueryContext(ctx, `
 SELECT
     p.id,
@@ -1337,9 +1797,20 @@ LIMIT ?`, benchWorkspaceID, benchProductCount)
 
 	products := make([]benchProduct, 0, benchProductCount)
 	for rows.Next() {
-		product := benchProduct{priceIDs: make(map[string]uint64, len(benchAssets))}
+		product := benchProduct{
+			priceIDs: make(map[string]uint64, len(benchAssets)),
+		}
 		var rubID, voteID, tonID, usdtID, memcoinID, xtrID uint64
-		if err := rows.Scan(&product.id, &product.itemID, &rubID, &voteID, &tonID, &usdtID, &memcoinID, &xtrID); err != nil {
+		if err := rows.Scan(
+			&product.id,
+			&product.itemID,
+			&rubID,
+			&voteID,
+			&tonID,
+			&usdtID,
+			&memcoinID,
+			&xtrID,
+		); err != nil {
 			return nil, err
 		}
 		product.priceIDs["RUB"] = rubID
@@ -1350,7 +1821,11 @@ LIMIT ?`, benchWorkspaceID, benchProductCount)
 		product.priceIDs["XTR"] = xtrID
 		for _, asset := range benchAssets {
 			if product.priceIDs[asset] == 0 {
-				return nil, fmt.Errorf("benchmark product %s has no %s price; set benchSeedDatabase=true first", product.id, asset)
+				return nil, fmt.Errorf(
+					"benchmark product %s has no %s price; set benchSeedDatabase=true first",
+					product.id,
+					asset,
+				)
 			}
 		}
 		products = append(products, product)
@@ -1361,8 +1836,21 @@ LIMIT ?`, benchWorkspaceID, benchProductCount)
 	return products, nil
 }
 
-func loadBenchmarkIDs(ctx context.Context, db *sql.DB, table string, column string, where string, args ...any) ([]uint64, error) {
-	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s ORDER BY %s LIMIT 10000", column, table, where, column)
+func loadBenchmarkIDs(
+	ctx context.Context,
+	db *sql.DB,
+	table string,
+	column string,
+	where string,
+	args ...any,
+) ([]uint64, error) {
+	query := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE %s ORDER BY %s LIMIT 10000",
+		column,
+		table,
+		where,
+		column,
+	)
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -1383,21 +1871,44 @@ func loadBenchmarkIDs(ctx context.Context, db *sql.DB, table string, column stri
 	return ids, nil
 }
 
-func seedBenchmarkTransactions(ctx context.Context, db *sql.DB, products []benchProduct, count int, batchSize int) ([]uint64, []uint64, error) {
+func seedBenchmarkTransactions(
+	ctx context.Context,
+	db *sql.DB,
+	products []benchProduct,
+	count int,
+	batchSize int,
+) ([]uint64, []uint64, error) {
 	orders := make([]uint64, minInt(count, 10_000))
 	attempts := make([]uint64, minInt(count, 10_000))
 
-	if err := bulkInsertBenchmarkOrders(ctx, db, products, count, batchSize); err != nil {
+	if err := bulkInsertBenchmarkOrders(
+		ctx,
+		db,
+		products,
+		count,
+		batchSize,
+	); err != nil {
 		return nil, nil, err
 	}
 	for i := range orders {
 		orders[i] = uint64(i + 1)
 	}
-	if err := bulkInsertBenchmarkOrderItems(ctx, db, products, count, batchSize); err != nil {
+	if err := bulkInsertBenchmarkOrderItems(
+		ctx,
+		db,
+		products,
+		count,
+		batchSize,
+	); err != nil {
 		return nil, nil, err
 	}
 
-	if err := bulkInsertBenchmarkAttempts(ctx, db, count, batchSize); err != nil {
+	if err := bulkInsertBenchmarkAttempts(
+		ctx,
+		db,
+		count,
+		batchSize,
+	); err != nil {
 		return nil, nil, err
 	}
 	for i := range attempts {
@@ -1405,14 +1916,25 @@ func seedBenchmarkTransactions(ctx context.Context, db *sql.DB, products []bench
 	}
 
 	eventCount := minInt(count, 10_000)
-	if err := bulkInsertBenchmarkEvents(ctx, db, eventCount, batchSize); err != nil {
+	if err := bulkInsertBenchmarkEvents(
+		ctx,
+		db,
+		eventCount,
+		batchSize,
+	); err != nil {
 		return nil, nil, err
 	}
 	subscriptionCount := maxInt(1000, count/20)
 	if subscriptionCount > count {
 		subscriptionCount = count
 	}
-	if err := bulkInsertBenchmarkSubscriptions(ctx, db, products, subscriptionCount, batchSize); err != nil {
+	if err := bulkInsertBenchmarkSubscriptions(
+		ctx,
+		db,
+		products,
+		subscriptionCount,
+		batchSize,
+	); err != nil {
 		return nil, nil, err
 	}
 	if err := seedBenchmarkFulfilledAttempt(ctx, db, products[1]); err != nil {
@@ -1422,70 +1944,165 @@ func seedBenchmarkTransactions(ctx context.Context, db *sql.DB, products []bench
 	return orders, attempts, nil
 }
 
-func bulkInsertBenchmarkOrders(ctx context.Context, db *sql.DB, products []benchProduct, count int, batchSize int) error {
+func bulkInsertBenchmarkOrders(
+	ctx context.Context,
+	db *sql.DB,
+	products []benchProduct,
+	count int,
+	batchSize int,
+) error {
 	columns := `(public_id, workspace_id, app_id, platform_id, platform_user_id, internal_user_id, payer_platform_id, payer_platform_user_id, payer_internal_user_id, purchase_key_id, product_id, price_id, asset_code, locale, list_amount_minor, discount_amount_minor, payable_amount_minor, status, reserved_until, paid_at, fulfilled_at, canceled_at, expires_at)`
-	return bulkInsert(ctx, db, "payment_order", columns, count, batchSize, func(i int) string {
-		product := products[(i-1)%len(products)]
-		asset := benchAssets[(i-1)%len(benchAssets)]
-		priceID := product.priceIDs[asset]
-		status := "paid"
-		fulfilledAt := "NULL"
-		if i%3 == 0 {
-			status = "fulfilled"
-			fulfilledAt = "now()"
-		}
-		return fmt.Sprintf(
-			"('bench-public-%d','%s',7001,1,'bench_user_%d',NULL,NULL,NULL,NULL,NULL,'%s',%d,'%s','%s',1000,0,1000,'%s',NULL,now(),%s,NULL,NULL)",
-			i, benchWorkspaceID, i%100_000, product.id, priceID, asset, benchLocales[i%len(benchLocales)], status, fulfilledAt,
-		)
-	})
+	return bulkInsert(
+		ctx,
+		db,
+		"payment_order",
+		columns,
+		count,
+		batchSize,
+		func(i int) string {
+			product := products[(i-1)%len(products)]
+			asset := benchAssets[(i-1)%len(benchAssets)]
+			priceID := product.priceIDs[asset]
+			status := "paid"
+			fulfilledAt := "NULL"
+			if i%3 == 0 {
+				status = "fulfilled"
+				fulfilledAt = "now()"
+			}
+			return fmt.Sprintf(
+				"('bench-public-%d','%s',7001,1,'bench_user_%d',NULL,NULL,NULL,NULL,NULL,'%s',%d,'%s','%s',1000,0,1000,'%s',NULL,now(),%s,NULL,NULL)",
+				i,
+				benchWorkspaceID,
+				i%100_000,
+				product.id,
+				priceID,
+				asset,
+				benchLocales[i%len(benchLocales)],
+				status,
+				fulfilledAt,
+			)
+		},
+	)
 }
 
-func bulkInsertBenchmarkOrderItems(ctx context.Context, db *sql.DB, products []benchProduct, count int, batchSize int) error {
+func bulkInsertBenchmarkOrderItems(
+	ctx context.Context,
+	db *sql.DB,
+	products []benchProduct,
+	count int,
+	batchSize int,
+) error {
 	columns := `(order_id, workspace_id, item_id, quantity)`
-	return bulkInsert(ctx, db, "payment_order_item", columns, count, batchSize, func(i int) string {
-		product := products[(i-1)%len(products)]
-		return fmt.Sprintf(
-			"(%d,'%s','%s',1)",
-			i, benchWorkspaceID, product.itemID,
-		)
-	})
+	return bulkInsert(
+		ctx,
+		db,
+		"payment_order_item",
+		columns,
+		count,
+		batchSize,
+		func(i int) string {
+			product := products[(i-1)%len(products)]
+			return fmt.Sprintf(
+				"(%d,'%s','%s',1)",
+				i, benchWorkspaceID, product.itemID,
+			)
+		},
+	)
 }
 
-func bulkInsertBenchmarkAttempts(ctx context.Context, db *sql.DB, count int, batchSize int) error {
+func bulkInsertBenchmarkAttempts(
+	ctx context.Context,
+	db *sql.DB,
+	count int,
+	batchSize int,
+) error {
 	columns := `(order_id, workspace_id, provider_code, asset_code, amount_minor, status, provider_payment_id, provider_invoice_id, provider_charge_id, provider_subscription_id, idempotency_key, confirmation_url, return_url, expires_at)`
-	return bulkInsert(ctx, db, "payment_attempt", columns, count, batchSize, func(i int) string {
-		asset := benchAssets[(i-1)%len(benchAssets)]
-		provider := providerForAsset(asset)
-		return fmt.Sprintf(
-			"(%d,'%s','%s','%s',1000,'succeeded','bench_pay_%d',NULL,NULL,NULL,'bench_idem_%d',NULL,NULL,NULL)",
-			i, benchWorkspaceID, provider, asset, i, i,
-		)
-	})
+	return bulkInsert(
+		ctx,
+		db,
+		"payment_attempt",
+		columns,
+		count,
+		batchSize,
+		func(i int) string {
+			asset := benchAssets[(i-1)%len(benchAssets)]
+			provider := providerForAsset(asset)
+			return fmt.Sprintf(
+				"(%d,'%s','%s','%s',1000,'succeeded','bench_pay_%d',NULL,NULL,NULL,'bench_idem_%d',NULL,NULL,NULL)",
+				i,
+				benchWorkspaceID,
+				provider,
+				asset,
+				i,
+				i,
+			)
+		},
+	)
 }
 
-func bulkInsertBenchmarkEvents(ctx context.Context, db *sql.DB, count int, batchSize int) error {
+func bulkInsertBenchmarkEvents(
+	ctx context.Context,
+	db *sql.DB,
+	count int,
+	batchSize int,
+) error {
 	columns := `(workspace_id, provider_code, attempt_id, order_id, provider_event_id, provider_payment_id, event_type, event_status, payload_hash, signature_valid, processing_status, processed_at)`
-	return bulkInsert(ctx, db, "payment_event", columns, count, batchSize, func(i int) string {
-		return fmt.Sprintf(
-			"('%s','yookassa',%d,%d,'bench_event_%d','bench_pay_%d','succeeded','succeeded','%064x',true,'processed',now())",
-			benchWorkspaceID, i, i, i, i, i,
-		)
-	})
+	return bulkInsert(
+		ctx,
+		db,
+		"payment_event",
+		columns,
+		count,
+		batchSize,
+		func(i int) string {
+			return fmt.Sprintf(
+				"('%s','yookassa',%d,%d,'bench_event_%d','bench_pay_%d','succeeded','succeeded','%064x',true,'processed',now())",
+				benchWorkspaceID,
+				i,
+				i,
+				i,
+				i,
+				i,
+			)
+		},
+	)
 }
 
-func bulkInsertBenchmarkSubscriptions(ctx context.Context, db *sql.DB, products []benchProduct, count int, batchSize int) error {
+func bulkInsertBenchmarkSubscriptions(
+	ctx context.Context,
+	db *sql.DB,
+	products []benchProduct,
+	count int,
+	batchSize int,
+) error {
 	columns := `(workspace_id, provider_code, provider_subscription_id, app_id, platform_id, platform_user_id, internal_user_id, product_id, order_id, attempt_id, status, cancel_reason, started_at, ended_at)`
-	return bulkInsert(ctx, db, "payment_subscription", columns, count, batchSize, func(i int) string {
-		product := products[(i-1)%len(products)]
-		return fmt.Sprintf(
-			"('%s','vkma','bench_sub_%d',7001,1,'bench_user_%d',NULL,'%s',%d,%d,'active',NULL,now(),NULL)",
-			benchWorkspaceID, i, i%100_000, product.id, i, i,
-		)
-	})
+	return bulkInsert(
+		ctx,
+		db,
+		"payment_subscription",
+		columns,
+		count,
+		batchSize,
+		func(i int) string {
+			product := products[(i-1)%len(products)]
+			return fmt.Sprintf(
+				"('%s','vkma','bench_sub_%d',7001,1,'bench_user_%d',NULL,'%s',%d,%d,'active',NULL,now(),NULL)",
+				benchWorkspaceID,
+				i,
+				i%100_000,
+				product.id,
+				i,
+				i,
+			)
+		},
+	)
 }
 
-func seedBenchmarkFulfilledAttempt(ctx context.Context, db *sql.DB, product benchProduct) error {
+func seedBenchmarkFulfilledAttempt(
+	ctx context.Context,
+	db *sql.DB,
+	product benchProduct,
+) error {
 	votePriceID := product.priceIDs["VOTE"]
 	if votePriceID == 0 {
 		var id uint64
@@ -1526,7 +2143,15 @@ VALUES ($1, 'vkma', '1', 7001, 1, '9000', $2, 1000000001, 1000000001, 'active', 
 	return nil
 }
 
-func bulkInsert(ctx context.Context, db *sql.DB, table string, columns string, count int, batchSize int, value func(int) string) error {
+func bulkInsert(
+	ctx context.Context,
+	db *sql.DB,
+	table string,
+	columns string,
+	count int,
+	batchSize int,
+	value func(int) string,
+) error {
 	for start := 1; start <= count; start += batchSize {
 		end := start + batchSize - 1
 		if end > count {
@@ -1536,15 +2161,32 @@ func bulkInsert(ctx context.Context, db *sql.DB, table string, columns string, c
 		for i := start; i <= end; i++ {
 			values = append(values, value(i))
 		}
-		query := fmt.Sprintf("INSERT INTO %s %s VALUES %s", table, columns, strings.Join(values, ","))
+		query := fmt.Sprintf(
+			"INSERT INTO %s %s VALUES %s",
+			table,
+			columns,
+			strings.Join(values, ","),
+		)
 		if _, err := db.ExecContext(ctx, query); err != nil {
-			return fmt.Errorf("bulk insert %s rows %d-%d: %w", table, start, end, err)
+			return fmt.Errorf(
+				"bulk insert %s rows %d-%d: %w",
+				table,
+				start,
+				end,
+				err,
+			)
 		}
 	}
 	return nil
 }
 
-func createBenchmarkOrder(b *testing.B, env paymentBenchmarkEnv, productID string, assetCode string, userID string) *checkout.Order {
+func createBenchmarkOrder(
+	b *testing.B,
+	env paymentBenchmarkEnv,
+	productID string,
+	assetCode string,
+	userID string,
+) *checkout.Order {
 	b.Helper()
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
 		Identity:  paymentTestIdentity(benchWorkspaceID, 7001, 1, userID),
@@ -1556,29 +2198,57 @@ func createBenchmarkOrder(b *testing.B, env paymentBenchmarkEnv, productID strin
 	return order
 }
 
-func createBenchmarkFulfillment(b *testing.B, env paymentBenchmarkEnv, productID string) uint64 {
+func createBenchmarkFulfillment(
+	b *testing.B,
+	env paymentBenchmarkEnv,
+	productID string,
+) uint64 {
 	b.Helper()
 	seq := benchNextSeq()
-	order := createBenchmarkOrder(b, env, productID, "RUB", benchRunValue("bench_fulfillment_user", seq))
-	attemptID, err := env.q.CreatePaymentAttempt(env.ctx, benchmarkCreateAttemptParams(order.ID, benchRunValue("bench_fulfillment_seed", seq)))
+	order := createBenchmarkOrder(
+		b,
+		env,
+		productID,
+		"RUB",
+		benchRunValue("bench_fulfillment_user", seq),
+	)
+	attemptID, err := env.q.CreatePaymentAttempt(
+		env.ctx,
+		benchmarkCreateAttemptParams(
+			order.ID,
+			benchRunValue("bench_fulfillment_seed", seq),
+		),
+	)
 	benchNoError(b, err)
-	fulfillmentID, err := env.q.CreateFulfillment(env.ctx, paymentsqlc.CreateFulfillmentParams{
-		OrderID:   int64(order.ID),
-		AttemptID: attemptID,
-		Status:    paymentsqlc.PaymentFulfillmentStatusSucceeded,
-	})
+	fulfillmentID, err := env.q.CreateFulfillment(
+		env.ctx,
+		paymentsqlc.CreateFulfillmentParams{
+			OrderID:   int64(order.ID),
+			AttemptID: attemptID,
+			Status:    paymentsqlc.PaymentFulfillmentStatusSucceeded,
+		},
+	)
 	benchNoError(b, err)
 	return uint64(fulfillmentID)
 }
 
-func benchmarkUpsertProductParams(id string, groupCode string) paymentsqlc.UpsertProductParams {
+func benchmarkUpsertProductParams(
+	id string,
+	groupCode string,
+) paymentsqlc.UpsertProductParams {
 	return paymentsqlc.UpsertProductParams{
-		WorkspaceID:    benchWorkspaceID,
-		ID:             id,
-		GroupCode:      sql.NullString{String: groupCode, Valid: true},
-		TitleKey:       id + ".title",
-		DescriptionKey: sql.NullString{String: id + ".description", Valid: true},
-		Target:         pqtype.NullRawMessage{RawMessage: []byte("{}"), Valid: true},
+		WorkspaceID: benchWorkspaceID,
+		ID:          id,
+		GroupCode:   sql.NullString{String: groupCode, Valid: true},
+		TitleKey:    id + ".title",
+		DescriptionKey: sql.NullString{
+			String: id + ".description",
+			Valid:  true,
+		},
+		Target: pqtype.NullRawMessage{
+			RawMessage: []byte("{}"),
+			Valid:      true,
+		},
 		Position:       1,
 		QuantityMode:   paymentsqlc.PaymentProductQuantityModeFixed,
 		GlobalInterval: paymentsqlc.PaymentProductGlobalIntervalUNLIMITED,
@@ -1589,7 +2259,10 @@ func benchmarkUpsertProductParams(id string, groupCode string) paymentsqlc.Upser
 	}
 }
 
-func benchmarkCreatePriceParams(productID string, startsAt time.Time) paymentsqlc.CreateProductPriceParams {
+func benchmarkCreatePriceParams(
+	productID string,
+	startsAt time.Time,
+) paymentsqlc.CreateProductPriceParams {
 	return paymentsqlc.CreateProductPriceParams{
 		WorkspaceID:         benchWorkspaceID,
 		ProductID:           productID,
@@ -1602,11 +2275,17 @@ func benchmarkCreatePriceParams(productID string, startsAt time.Time) paymentsql
 }
 
 func benchPriceStart(seq uint64) time.Time {
-	base := time.Unix(int64(1_800_000_000+(paymentBenchRunNumber%10_000_000)), 0).UTC()
+	base := time.Unix(int64(1_800_000_000+(paymentBenchRunNumber%10_000_000)), 0).
+		UTC()
 	return base.Add(time.Duration(seq) * time.Second)
 }
 
-func benchmarkCreateOrderParams(product benchProduct, assetCode string, priceID uint64, publicID string) paymentsqlc.CreatePaymentOrderParams {
+func benchmarkCreateOrderParams(
+	product benchProduct,
+	assetCode string,
+	priceID uint64,
+	publicID string,
+) paymentsqlc.CreatePaymentOrderParams {
 	return paymentsqlc.CreatePaymentOrderParams{
 		PublicID:           publicID,
 		WorkspaceID:        benchWorkspaceID,
@@ -1624,34 +2303,55 @@ func benchmarkCreateOrderParams(product benchProduct, assetCode string, priceID 
 	}
 }
 
-func benchmarkCreateAttemptParams(orderID uint64, providerPaymentID string) paymentsqlc.CreatePaymentAttemptParams {
+func benchmarkCreateAttemptParams(
+	orderID uint64,
+	providerPaymentID string,
+) paymentsqlc.CreatePaymentAttemptParams {
 	return paymentsqlc.CreatePaymentAttemptParams{
-		OrderID:           int64(orderID),
-		ProviderCode:      "yookassa",
-		AssetCode:         "RUB",
-		AmountMinor:       int64(1000),
-		Status:            paymentsqlc.PaymentAttemptStatusPending,
-		ProviderPaymentID: sql.NullString{String: providerPaymentID, Valid: true},
-		IdempotencyKey:    sql.NullString{String: providerPaymentID + ":idem", Valid: true},
+		OrderID:      int64(orderID),
+		ProviderCode: "yookassa",
+		AssetCode:    "RUB",
+		AmountMinor:  int64(1000),
+		Status:       paymentsqlc.PaymentAttemptStatusPending,
+		ProviderPaymentID: sql.NullString{
+			String: providerPaymentID,
+			Valid:  true,
+		},
+		IdempotencyKey: sql.NullString{
+			String: providerPaymentID + ":idem",
+			Valid:  true,
+		},
 	}
 }
 
-func benchmarkCreateEventParams(orderID uint64, attemptID uint64, eventID string) paymentsqlc.CreatePaymentEventParams {
+func benchmarkCreateEventParams(
+	orderID uint64,
+	attemptID uint64,
+	eventID string,
+) paymentsqlc.CreatePaymentEventParams {
 	return paymentsqlc.CreatePaymentEventParams{
-		WorkspaceID:       benchWorkspaceID,
-		ProviderCode:      "yookassa",
-		AttemptID:         sql.NullInt64{Int64: int64(attemptID), Valid: true},
-		OrderID:           sql.NullInt64{Int64: int64(orderID), Valid: true},
-		ProviderEventID:   sql.NullString{String: eventID, Valid: true},
-		ProviderPaymentID: sql.NullString{String: eventID + "_payment", Valid: true},
-		EventType:         "succeeded",
-		EventStatus:       sql.NullString{String: "succeeded", Valid: true},
-		PayloadHash:       benchHash(eventID),
-		SignatureValid:    sql.NullBool{Bool: true, Valid: true},
+		WorkspaceID:     benchWorkspaceID,
+		ProviderCode:    "yookassa",
+		AttemptID:       sql.NullInt64{Int64: int64(attemptID), Valid: true},
+		OrderID:         sql.NullInt64{Int64: int64(orderID), Valid: true},
+		ProviderEventID: sql.NullString{String: eventID, Valid: true},
+		ProviderPaymentID: sql.NullString{
+			String: eventID + "_payment",
+			Valid:  true,
+		},
+		EventType:      "succeeded",
+		EventStatus:    sql.NullString{String: "succeeded", Valid: true},
+		PayloadHash:    benchHash(eventID),
+		SignatureValid: sql.NullBool{Bool: true, Valid: true},
 	}
 }
 
-func benchmarkUpsertSubscriptionParams(productID string, orderID uint64, attemptID uint64, providerSubscriptionID string) paymentsqlc.UpsertPaymentSubscriptionParams {
+func benchmarkUpsertSubscriptionParams(
+	productID string,
+	orderID uint64,
+	attemptID uint64,
+	providerSubscriptionID string,
+) paymentsqlc.UpsertPaymentSubscriptionParams {
 	return paymentsqlc.UpsertPaymentSubscriptionParams{
 		WorkspaceID:            benchWorkspaceID,
 		ProviderCode:           "vkma",
@@ -1660,10 +2360,16 @@ func benchmarkUpsertSubscriptionParams(productID string, orderID uint64, attempt
 		PlatformID:             1,
 		PlatformUserID:         "bench_subscription_user",
 		ProductID:              productID,
-		OrderID:                sql.NullInt64{Int64: int64(orderID), Valid: true},
-		AttemptID:              sql.NullInt64{Int64: int64(attemptID), Valid: true},
-		Status:                 paymentsqlc.PaymentSubscriptionStatusActive,
-		StartedAt:              time.Now(),
+		OrderID: sql.NullInt64{
+			Int64: int64(orderID),
+			Valid: true,
+		},
+		AttemptID: sql.NullInt64{
+			Int64: int64(attemptID),
+			Valid: true,
+		},
+		Status:    paymentsqlc.PaymentSubscriptionStatusActive,
+		StartedAt: time.Now(),
 	}
 }
 
@@ -1744,7 +2450,12 @@ type completeAttemptBreakdownTotals struct {
 	rollback               time.Duration
 }
 
-func benchmarkCompleteAttemptBreakdown(b *testing.B, env paymentBenchmarkEnv, productID string, withLimits bool) {
+func benchmarkCompleteAttemptBreakdown(
+	b *testing.B,
+	env paymentBenchmarkEnv,
+	productID string,
+	withLimits bool,
+) {
 	b.Helper()
 
 	var totals completeAttemptBreakdownTotals
@@ -1752,9 +2463,18 @@ func benchmarkCompleteAttemptBreakdown(b *testing.B, env paymentBenchmarkEnv, pr
 
 	b.StopTimer()
 	seq := benchNextSeq()
-	order := createBenchmarkOrder(b, env, productID, "RUB", benchRunValue("breakdown_user", seq))
+	order := createBenchmarkOrder(
+		b,
+		env,
+		productID,
+		"RUB",
+		benchRunValue("breakdown_user", seq),
+	)
 	providerPaymentID := benchRunValue("breakdown_pay", seq)
-	attemptID, err := env.q.CreatePaymentAttempt(env.ctx, benchmarkCreateAttemptParams(order.ID, providerPaymentID))
+	attemptID, err := env.q.CreatePaymentAttempt(
+		env.ctx,
+		benchmarkCreateAttemptParams(order.ID, providerPaymentID),
+	)
 	benchNoError(b, err)
 	b.StartTimer()
 
@@ -1777,10 +2497,13 @@ func benchmarkCompleteAttemptBreakdown(b *testing.B, env paymentBenchmarkEnv, pr
 		benchNoError(b, err)
 
 		start = time.Now()
-		err = qtx.UpdatePaymentAttemptStatus(env.ctx, paymentsqlc.UpdatePaymentAttemptStatusParams{
-			Status: paymentsqlc.PaymentAttemptStatusSucceeded,
-			ID:     attempt.ID,
-		})
+		err = qtx.UpdatePaymentAttemptStatus(
+			env.ctx,
+			paymentsqlc.UpdatePaymentAttemptStatusParams{
+				Status: paymentsqlc.PaymentAttemptStatusSucceeded,
+				ID:     attempt.ID,
+			},
+		)
 		totals.updateAttempt += time.Since(start)
 		benchNoError(b, err)
 
@@ -1795,15 +2518,21 @@ func benchmarkCompleteAttemptBreakdown(b *testing.B, env paymentBenchmarkEnv, pr
 		benchNoError(b, err)
 
 		start = time.Now()
-		config, err := qtx.GetProductLimitConfig(env.ctx, paymentsqlc.GetProductLimitConfigParams{
-			WorkspaceID: lockedOrder.WorkspaceID,
-			ID:          lockedOrder.ProductID,
-		})
+		config, err := qtx.GetProductLimitConfig(
+			env.ctx,
+			paymentsqlc.GetProductLimitConfigParams{
+				WorkspaceID: lockedOrder.WorkspaceID,
+				ID:          lockedOrder.ProductID,
+			},
+		)
 		totals.getLimitConfig += time.Since(start)
 		benchNoError(b, err)
 
 		if withLimits {
-			globalStart, globalEnd := benchmarkLimitWindow(string(config.GlobalInterval), config.GlobalIntervalCount)
+			globalStart, globalEnd := benchmarkLimitWindow(
+				string(config.GlobalInterval),
+				config.GlobalIntervalCount,
+			)
 
 			start = time.Now()
 			now, err := benchmarkDatabaseNowTx(env.ctx, tx)
@@ -1812,35 +2541,44 @@ func benchmarkCompleteAttemptBreakdown(b *testing.B, env paymentBenchmarkEnv, pr
 			_ = now
 
 			start = time.Now()
-			_, err = qtx.EnsureProductLimitCounter(env.ctx, paymentsqlc.EnsureProductLimitCounterParams{
-				WorkspaceID:    lockedOrder.WorkspaceID,
-				AppID:          0,
-				PlatformID:     0,
-				ProductID:      lockedOrder.ProductID,
-				CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
-				PlatformUserID: "",
-				WindowStart:    globalStart,
-				WindowEnd:      globalEnd,
-			})
+			_, err = qtx.EnsureProductLimitCounter(
+				env.ctx,
+				paymentsqlc.EnsureProductLimitCounterParams{
+					WorkspaceID:    lockedOrder.WorkspaceID,
+					AppID:          0,
+					PlatformID:     0,
+					ProductID:      lockedOrder.ProductID,
+					CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
+					PlatformUserID: "",
+					WindowStart:    globalStart,
+					WindowEnd:      globalEnd,
+				},
+			)
 			totals.globalEnsureCounter += time.Since(start)
 			benchNoError(b, err)
 
 			start = time.Now()
-			_, err = qtx.IncrementProductLimitCounter(env.ctx, paymentsqlc.IncrementProductLimitCounterParams{
-				WorkspaceID:    lockedOrder.WorkspaceID,
-				AppID:          0,
-				PlatformID:     0,
-				ProductID:      lockedOrder.ProductID,
-				CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
-				PlatformUserID: "",
-				WindowStart:    globalStart,
-				WindowEnd:      globalEnd,
-				PaidCount:      int64(config.GlobalLimit),
-			})
+			_, err = qtx.IncrementProductLimitCounter(
+				env.ctx,
+				paymentsqlc.IncrementProductLimitCounterParams{
+					WorkspaceID:    lockedOrder.WorkspaceID,
+					AppID:          0,
+					PlatformID:     0,
+					ProductID:      lockedOrder.ProductID,
+					CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
+					PlatformUserID: "",
+					WindowStart:    globalStart,
+					WindowEnd:      globalEnd,
+					PaidCount:      int64(config.GlobalLimit),
+				},
+			)
 			totals.globalIncrementCounter += time.Since(start)
 			benchNoError(b, err)
 
-			userStart, userEnd := benchmarkLimitWindow(string(config.UserInterval), config.UserIntervalCount)
+			userStart, userEnd := benchmarkLimitWindow(
+				string(config.UserInterval),
+				config.UserIntervalCount,
+			)
 
 			start = time.Now()
 			now, err = benchmarkDatabaseNowTx(env.ctx, tx)
@@ -1849,62 +2587,77 @@ func benchmarkCompleteAttemptBreakdown(b *testing.B, env paymentBenchmarkEnv, pr
 			_ = now
 
 			start = time.Now()
-			_, err = qtx.EnsureProductLimitCounter(env.ctx, paymentsqlc.EnsureProductLimitCounterParams{
-				WorkspaceID:    lockedOrder.WorkspaceID,
-				AppID:          lockedOrder.AppID,
-				PlatformID:     lockedOrder.PlatformID,
-				ProductID:      lockedOrder.ProductID,
-				CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeUser,
-				PlatformUserID: lockedOrder.PlatformUserID,
-				WindowStart:    userStart,
-				WindowEnd:      userEnd,
-			})
+			_, err = qtx.EnsureProductLimitCounter(
+				env.ctx,
+				paymentsqlc.EnsureProductLimitCounterParams{
+					WorkspaceID:    lockedOrder.WorkspaceID,
+					AppID:          lockedOrder.AppID,
+					PlatformID:     lockedOrder.PlatformID,
+					ProductID:      lockedOrder.ProductID,
+					CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeUser,
+					PlatformUserID: lockedOrder.PlatformUserID,
+					WindowStart:    userStart,
+					WindowEnd:      userEnd,
+				},
+			)
 			totals.userEnsureCounter += time.Since(start)
 			benchNoError(b, err)
 
 			start = time.Now()
-			_, err = qtx.IncrementProductLimitCounter(env.ctx, paymentsqlc.IncrementProductLimitCounterParams{
-				WorkspaceID:    lockedOrder.WorkspaceID,
-				AppID:          lockedOrder.AppID,
-				PlatformID:     lockedOrder.PlatformID,
-				ProductID:      lockedOrder.ProductID,
-				CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeUser,
-				PlatformUserID: lockedOrder.PlatformUserID,
-				WindowStart:    userStart,
-				WindowEnd:      userEnd,
-				PaidCount:      int64(config.UserLimit),
-			})
+			_, err = qtx.IncrementProductLimitCounter(
+				env.ctx,
+				paymentsqlc.IncrementProductLimitCounterParams{
+					WorkspaceID:    lockedOrder.WorkspaceID,
+					AppID:          lockedOrder.AppID,
+					PlatformID:     lockedOrder.PlatformID,
+					ProductID:      lockedOrder.ProductID,
+					CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeUser,
+					PlatformUserID: lockedOrder.PlatformUserID,
+					WindowStart:    userStart,
+					WindowEnd:      userEnd,
+					PaidCount:      int64(config.UserLimit),
+				},
+			)
 			totals.userIncrementCounter += time.Since(start)
 			benchNoError(b, err)
 		}
 
 		start = time.Now()
-		fulfillmentID, err := qtx.CreateFulfillment(env.ctx, paymentsqlc.CreateFulfillmentParams{
-			OrderID:        lockedOrder.ID,
-			AttemptID:      attempt.ID,
-			InternalUserID: lockedOrder.InternalUserID,
-			Status:         paymentsqlc.PaymentFulfillmentStatusSucceeded,
-		})
+		fulfillmentID, err := qtx.CreateFulfillment(
+			env.ctx,
+			paymentsqlc.CreateFulfillmentParams{
+				OrderID:        lockedOrder.ID,
+				AttemptID:      attempt.ID,
+				InternalUserID: lockedOrder.InternalUserID,
+				Status:         paymentsqlc.PaymentFulfillmentStatusSucceeded,
+			},
+		)
 		totals.createFulfillment += time.Since(start)
 		benchNoError(b, err)
 
 		start = time.Now()
-		items, err := qtx.GetFulfillmentItemsForProduct(env.ctx, paymentsqlc.GetFulfillmentItemsForProductParams{
-			WorkspaceID: lockedOrder.WorkspaceID,
-			ProductID:   lockedOrder.ProductID,
-		})
+		items, err := qtx.GetFulfillmentItemsForProduct(
+			env.ctx,
+			paymentsqlc.GetFulfillmentItemsForProductParams{
+				WorkspaceID: lockedOrder.WorkspaceID,
+				ProductID:   lockedOrder.ProductID,
+			},
+		)
 		totals.getFulfillmentItems += time.Since(start)
 		benchNoError(b, err)
 
 		for _, item := range items {
 			start = time.Now()
-			err = qtx.CreateFulfillmentItem(env.ctx, paymentsqlc.CreateFulfillmentItemParams{
-				FulfillmentID: fulfillmentID,
-				WorkspaceID:   lockedOrder.WorkspaceID,
-				ItemID:        item.ItemID,
-				RewardType:    paymentsqlc.PaymentFulfillmentItemRewardTypeQuantity,
-				Quantity:      item.Quantity,
-			})
+			err = qtx.CreateFulfillmentItem(
+				env.ctx,
+				paymentsqlc.CreateFulfillmentItemParams{
+					FulfillmentID: fulfillmentID,
+					WorkspaceID:   lockedOrder.WorkspaceID,
+					ItemID:        item.ItemID,
+					RewardType:    paymentsqlc.PaymentFulfillmentItemRewardTypeQuantity,
+					Quantity:      item.Quantity,
+				},
+			)
 			totals.createFulfillmentItems += time.Since(start)
 			benchNoError(b, err)
 		}
@@ -1926,27 +2679,100 @@ func benchmarkCompleteAttemptBreakdown(b *testing.B, env paymentBenchmarkEnv, pr
 	}
 
 	reportCompleteAttemptBreakdownMetric(b, "begin-tx", totals.beginTx, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "lock-attempt", totals.lockAttempt, b.N)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"lock-attempt",
+		totals.lockAttempt,
+		b.N,
+	)
 	reportCompleteAttemptBreakdownMetric(b, "lock-order", totals.lockOrder, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "update-attempt", totals.updateAttempt, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "mark-order-paid", totals.markOrderPaid, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "insert-paid-index", totals.insertPaidOrderIndex, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "get-limit-config", totals.getLimitConfig, b.N)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"update-attempt",
+		totals.updateAttempt,
+		b.N,
+	)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"mark-order-paid",
+		totals.markOrderPaid,
+		b.N,
+	)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"insert-paid-index",
+		totals.insertPaidOrderIndex,
+		b.N,
+	)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"get-limit-config",
+		totals.getLimitConfig,
+		b.N,
+	)
 	reportCompleteAttemptBreakdownMetric(b, "global-now", totals.globalNow, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "global-ensure-counter", totals.globalEnsureCounter, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "global-increment-counter", totals.globalIncrementCounter, b.N)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"global-ensure-counter",
+		totals.globalEnsureCounter,
+		b.N,
+	)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"global-increment-counter",
+		totals.globalIncrementCounter,
+		b.N,
+	)
 	reportCompleteAttemptBreakdownMetric(b, "user-now", totals.userNow, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "user-ensure-counter", totals.userEnsureCounter, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "user-increment-counter", totals.userIncrementCounter, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "create-fulfillment", totals.createFulfillment, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "get-fulfillment-items", totals.getFulfillmentItems, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "create-fulfillment-items", totals.createFulfillmentItems, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "mark-order-fulfilled", totals.markOrderFulfilled, b.N)
-	reportCompleteAttemptBreakdownMetric(b, "mark-paid-index-fulfilled", totals.markPaidIndexFulfilled, b.N)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"user-ensure-counter",
+		totals.userEnsureCounter,
+		b.N,
+	)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"user-increment-counter",
+		totals.userIncrementCounter,
+		b.N,
+	)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"create-fulfillment",
+		totals.createFulfillment,
+		b.N,
+	)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"get-fulfillment-items",
+		totals.getFulfillmentItems,
+		b.N,
+	)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"create-fulfillment-items",
+		totals.createFulfillmentItems,
+		b.N,
+	)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"mark-order-fulfilled",
+		totals.markOrderFulfilled,
+		b.N,
+	)
+	reportCompleteAttemptBreakdownMetric(
+		b,
+		"mark-paid-index-fulfilled",
+		totals.markPaidIndexFulfilled,
+		b.N,
+	)
 	reportCompleteAttemptBreakdownMetric(b, "rollback", totals.rollback, b.N)
 }
 
-func benchmarkDatabaseNowTx(ctx context.Context, tx *sql.Tx) (time.Time, error) {
+func benchmarkDatabaseNowTx(
+	ctx context.Context,
+	tx *sql.Tx,
+) (time.Time, error) {
 	var now time.Time
 	if err := tx.QueryRowContext(ctx, "SELECT NOW()").Scan(&now); err != nil {
 		return time.Time{}, err
@@ -1954,7 +2780,10 @@ func benchmarkDatabaseNowTx(ctx context.Context, tx *sql.Tx) (time.Time, error) 
 	return now, nil
 }
 
-func benchmarkLimitWindow(interval string, intervalCount int32) (time.Time, time.Time) {
+func benchmarkLimitWindow(
+	interval string,
+	intervalCount int32,
+) (time.Time, time.Time) {
 	now := time.Now()
 	count := int(intervalCount)
 	if count <= 0 {
@@ -1964,19 +2793,43 @@ func benchmarkLimitWindow(interval string, intervalCount int32) (time.Time, time
 
 	switch interval {
 	case "DAY":
-		return benchmarkFixedLimitWindow(anchor, now, time.Duration(count)*24*time.Hour)
+		return benchmarkFixedLimitWindow(
+			anchor,
+			now,
+			time.Duration(count)*24*time.Hour,
+		)
 	case "HOUR":
-		return benchmarkFixedLimitWindow(anchor, now, time.Duration(count)*time.Hour)
+		return benchmarkFixedLimitWindow(
+			anchor,
+			now,
+			time.Duration(count)*time.Hour,
+		)
 	case "MINUTE":
-		return benchmarkFixedLimitWindow(anchor, now, time.Duration(count)*time.Minute)
+		return benchmarkFixedLimitWindow(
+			anchor,
+			now,
+			time.Duration(count)*time.Minute,
+		)
 	case "SECOND":
-		return benchmarkFixedLimitWindow(anchor, now, time.Duration(count)*time.Second)
+		return benchmarkFixedLimitWindow(
+			anchor,
+			now,
+			time.Duration(count)*time.Second,
+		)
 	default:
-		return benchmarkFixedLimitWindow(anchor, now, time.Duration(count)*24*time.Hour)
+		return benchmarkFixedLimitWindow(
+			anchor,
+			now,
+			time.Duration(count)*24*time.Hour,
+		)
 	}
 }
 
-func benchmarkFixedLimitWindow(anchor time.Time, now time.Time, span time.Duration) (time.Time, time.Time) {
+func benchmarkFixedLimitWindow(
+	anchor time.Time,
+	now time.Time,
+	span time.Duration,
+) (time.Time, time.Time) {
 	if span <= 0 {
 		span = 24 * time.Hour
 	}
@@ -1986,12 +2839,20 @@ func benchmarkFixedLimitWindow(anchor time.Time, now time.Time, span time.Durati
 	return start, start.Add(span)
 }
 
-func reportCompleteAttemptBreakdownMetric(b *testing.B, name string, total time.Duration, iterations int) {
+func reportCompleteAttemptBreakdownMetric(
+	b *testing.B,
+	name string,
+	total time.Duration,
+	iterations int,
+) {
 	b.Helper()
 	if total == 0 || iterations == 0 {
 		return
 	}
-	b.ReportMetric(float64(total.Nanoseconds())/float64(iterations), name+"-ns/op")
+	b.ReportMetric(
+		float64(total.Nanoseconds())/float64(iterations),
+		name+"-ns/op",
+	)
 }
 
 const paymentConstraintBenchDB = "payment_fk_lab"
@@ -2007,9 +2868,12 @@ func BenchmarkPaymentConstraintImpact(b *testing.B) {
 		benchmarkPaymentAttemptInsertVariant(b, env, "payment_attempt_no_fk")
 	})
 
-	b.Run("CreatePaymentAttempt/no_fk_no_secondary_indexes", func(b *testing.B) {
-		benchmarkPaymentAttemptInsertVariant(b, env, "payment_attempt_heap")
-	})
+	b.Run(
+		"CreatePaymentAttempt/no_fk_no_secondary_indexes",
+		func(b *testing.B) {
+			benchmarkPaymentAttemptInsertVariant(b, env, "payment_attempt_heap")
+		},
+	)
 
 	b.Run("CreateFulfillment/full", func(b *testing.B) {
 		benchmarkFulfillmentInsertVariant(b, env, "payment_fulfillment_full")
@@ -2049,7 +2913,11 @@ func setupPaymentConstraintBenchmark(b *testing.B) paymentConstraintBenchEnv {
 	}
 	defer adminDB.Close()
 
-	if err := recreatePaymentTestDatabase(ctx, adminDB, paymentConstraintBenchDB); err != nil {
+	if err := recreatePaymentTestDatabase(
+		ctx,
+		adminDB,
+		paymentConstraintBenchDB,
+	); err != nil {
 		b.Fatalf("recreate constraint benchmark database: %v", err)
 	}
 
@@ -2069,7 +2937,10 @@ func setupPaymentConstraintBenchmark(b *testing.B) paymentConstraintBenchEnv {
 	return env
 }
 
-func preparePaymentConstraintBenchmarkSchema(b *testing.B, env paymentConstraintBenchEnv) {
+func preparePaymentConstraintBenchmarkSchema(
+	b *testing.B,
+	env paymentConstraintBenchEnv,
+) {
 	b.Helper()
 
 	statements := []string{
@@ -2264,19 +3135,32 @@ func preparePaymentConstraintBenchmarkSchema(b *testing.B, env paymentConstraint
 		}
 	}
 
-	if _, err := env.db.ExecContext(env.ctx, `INSERT INTO payment_provider_parent (code) VALUES ('yookassa')`); err != nil {
+	if _, err := env.db.ExecContext(
+		env.ctx,
+		`INSERT INTO payment_provider_parent (code) VALUES ('yookassa')`,
+	); err != nil {
 		b.Fatalf("seed provider parent: %v", err)
 	}
-	if _, err := env.db.ExecContext(env.ctx, `INSERT INTO payment_asset_parent (code) VALUES ('RUB')`); err != nil {
+	if _, err := env.db.ExecContext(
+		env.ctx,
+		`INSERT INTO payment_asset_parent (code) VALUES ('RUB')`,
+	); err != nil {
 		b.Fatalf("seed asset parent: %v", err)
 	}
 }
 
-func benchmarkPaymentAttemptInsertVariant(b *testing.B, env paymentConstraintBenchEnv, table string) {
+func benchmarkPaymentAttemptInsertVariant(
+	b *testing.B,
+	env paymentConstraintBenchEnv,
+	table string,
+) {
 	b.Helper()
 	idBase := int64(benchNextSeq()) * 1_000_000
 
-	insertOrder, err := env.db.PrepareContext(env.ctx, `INSERT INTO payment_order_parent (id) VALUES ($1)`)
+	insertOrder, err := env.db.PrepareContext(
+		env.ctx,
+		`INSERT INTO payment_order_parent (id) VALUES ($1)`,
+	)
 	if err != nil {
 		b.Fatalf("prepare order parent insert: %v", err)
 	}
@@ -2312,23 +3196,38 @@ func benchmarkPaymentAttemptInsertVariant(b *testing.B, env paymentConstraintBen
 
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if _, err := insertAttempt.ExecContext(env.ctx, orderIDs[i], paymentIDs[i], idempotencyKeys[i]); err != nil {
+		if _, err := insertAttempt.ExecContext(
+			env.ctx,
+			orderIDs[i],
+			paymentIDs[i],
+			idempotencyKeys[i],
+		); err != nil {
 			b.Fatalf("insert payment attempt: %v", err)
 		}
 	}
 }
 
-func benchmarkFulfillmentInsertVariant(b *testing.B, env paymentConstraintBenchEnv, table string) {
+func benchmarkFulfillmentInsertVariant(
+	b *testing.B,
+	env paymentConstraintBenchEnv,
+	table string,
+) {
 	b.Helper()
 	idBase := int64(benchNextSeq()) * 1_000_000
 
-	parentInsertOrder, err := env.db.PrepareContext(env.ctx, `INSERT INTO payment_order_parent (id) VALUES ($1)`)
+	parentInsertOrder, err := env.db.PrepareContext(
+		env.ctx,
+		`INSERT INTO payment_order_parent (id) VALUES ($1)`,
+	)
 	if err != nil {
 		b.Fatalf("prepare order parent insert: %v", err)
 	}
 	defer parentInsertOrder.Close()
 
-	parentInsertAttempt, err := env.db.PrepareContext(env.ctx, `INSERT INTO payment_attempt_parent (id, order_id) VALUES ($1, $2)`)
+	parentInsertAttempt, err := env.db.PrepareContext(
+		env.ctx,
+		`INSERT INTO payment_attempt_parent (id, order_id) VALUES ($1, $2)`,
+	)
 	if err != nil {
 		b.Fatalf("prepare attempt parent insert: %v", err)
 	}
@@ -2351,10 +3250,17 @@ func benchmarkFulfillmentInsertVariant(b *testing.B, env paymentConstraintBenchE
 		attemptID := uint64(idBase + int64(i) + 1)
 		orderIDs[i] = orderID
 		attemptIDs[i] = attemptID
-		if _, err := parentInsertOrder.ExecContext(env.ctx, orderID); err != nil {
+		if _, err := parentInsertOrder.ExecContext(
+			env.ctx,
+			orderID,
+		); err != nil {
 			b.Fatalf("insert order parent: %v", err)
 		}
-		if _, err := parentInsertAttempt.ExecContext(env.ctx, attemptID, orderID); err != nil {
+		if _, err := parentInsertAttempt.ExecContext(
+			env.ctx,
+			attemptID,
+			orderID,
+		); err != nil {
 			b.Fatalf("insert attempt parent: %v", err)
 		}
 	}
@@ -2363,13 +3269,22 @@ func benchmarkFulfillmentInsertVariant(b *testing.B, env paymentConstraintBenchE
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := insertFulfillment.ExecContext(env.ctx, orderIDs[i], attemptIDs[i], orderIDs[i]); err != nil {
+		if _, err := insertFulfillment.ExecContext(
+			env.ctx,
+			orderIDs[i],
+			attemptIDs[i],
+			orderIDs[i],
+		); err != nil {
 			b.Fatalf("insert fulfillment: %v", err)
 		}
 	}
 }
 
-func benchmarkMarkOrderFulfilledVariant(b *testing.B, env paymentConstraintBenchEnv, table string) {
+func benchmarkMarkOrderFulfilledVariant(
+	b *testing.B,
+	env paymentConstraintBenchEnv,
+	table string,
+) {
 	b.Helper()
 	idBase := int64(benchNextSeq()) * 1_000_000
 
@@ -2404,7 +3319,8 @@ func benchmarkMarkOrderFulfilledVariant(b *testing.B, env paymentConstraintBench
 	b.StopTimer()
 	for i := 0; i < b.N; i++ {
 		publicID := fmt.Sprintf("%s-%d", table, idBase+int64(i)+1)
-		if err := insertOrder.QueryRowContext(env.ctx, publicID).Scan(&orderIDs[i]); err != nil {
+		if err := insertOrder.QueryRowContext(env.ctx, publicID).
+			Scan(&orderIDs[i]); err != nil {
 			b.Fatalf("read seeded order id: %v", err)
 		}
 	}
@@ -2429,41 +3345,56 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 
 	b.Run("service/Product.CreateKey", func(b *testing.B) {
 		measurePaymentLatency(b, func(i int) error {
-			_, err := env.api.Admin.CreateProductKey(env.ctx, product.CreateKeyParams{
-				WorkspaceID:    benchWorkspaceID,
-				AppID:          7001,
-				PlatformID:     1,
-				PlatformUserID: "latency_key_target_" + strconv.Itoa(i),
-				ProductID:      env.products[i%len(env.products)].id,
-				MaxUses:        1_000_000,
-			})
+			_, err := env.api.Admin.CreateProductKey(
+				env.ctx,
+				product.CreateKeyParams{
+					WorkspaceID:    benchWorkspaceID,
+					AppID:          7001,
+					PlatformID:     1,
+					PlatformUserID: "latency_key_target_" + strconv.Itoa(i),
+					ProductID:      env.products[i%len(env.products)].id,
+					MaxUses:        1_000_000,
+				},
+			)
 			return err
 		})
 	})
 
 	b.Run("service/Checkout.CreateOrder", func(b *testing.B) {
 		measurePaymentLatency(b, func(i int) error {
-			_, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-				Identity:  paymentTestIdentity(benchWorkspaceID, 7001, 1, "latency_checkout_"+strconv.Itoa(i)),
-				ProductID: env.products[i%len(env.products)].id,
-				AssetCode: "RUB",
-				Locale:    "ru",
-			})
+			_, err := env.api.User.CreateOrder(
+				env.ctx,
+				checkout.CreateOrderParams{
+					Identity: paymentTestIdentity(
+						benchWorkspaceID,
+						7001,
+						1,
+						"latency_checkout_"+strconv.Itoa(i),
+					),
+					ProductID: env.products[i%len(env.products)].id,
+					AssetCode: "RUB",
+					Locale:    "ru",
+				},
+			)
 			return err
 		})
 	})
 
 	b.Run("service/VKMA.ChargeableForWorkspace.idempotent", func(b *testing.B) {
 		measurePaymentLatency(b, func(i int) error {
-			_, err := env.api.Adapters.VKMA.ChargeableForWorkspace(env.ctx, benchWorkspaceID, vkmashop.Params{
-				NotificationType: vkmashop.OrderStatusChange,
-				Status:           vkmashop.Chargeable,
-				AppID:            7001,
-				UserID:           9000,
-				Item:             productB.id,
-				OrderID:          1,
-				Lang:             "ru",
-			})
+			_, err := env.api.Adapters.VKMA.ChargeableForWorkspace(
+				env.ctx,
+				benchWorkspaceID,
+				vkmashop.Params{
+					NotificationType: vkmashop.OrderStatusChange,
+					Status:           vkmashop.Chargeable,
+					AppID:            7001,
+					UserID:           9000,
+					Item:             productB.id,
+					OrderID:          1,
+					Lang:             "ru",
+				},
+			)
 			return err
 		})
 	})
@@ -2472,7 +3403,9 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 		subscriptionIDs := make([]int, b.N+paymentLatencyWarmup)
 		b.StopTimer()
 		for i := range subscriptionIDs {
-			subscriptionIDs[i] = int((paymentBenchRunNumber % 1_000_000_000) + benchNextSeq())
+			subscriptionIDs[i] = int(
+				(paymentBenchRunNumber % 1_000_000_000) + benchNextSeq(),
+			)
 			attempt, err := q.AdminGetPaymentAttempt(
 				env.ctx,
 				int64(env.attempts[i%len(env.attempts)]),
@@ -2480,36 +3413,49 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 			benchNoError(b, err)
 			order, err := q.GetPaymentOrder(env.ctx, attempt.OrderID)
 			benchNoError(b, err)
-			_, err = q.UpsertPaymentSubscription(env.ctx, benchmarkUpsertSubscriptionParams(
-				order.ProductID,
-				uint64(order.ID),
-				uint64(attempt.ID),
-				strconv.Itoa(subscriptionIDs[i]),
-			))
+			_, err = q.UpsertPaymentSubscription(
+				env.ctx,
+				benchmarkUpsertSubscriptionParams(
+					order.ProductID,
+					uint64(order.ID),
+					uint64(attempt.ID),
+					strconv.Itoa(subscriptionIDs[i]),
+				),
+			)
 			benchNoError(b, err)
 		}
 		b.StartTimer()
 
 		measurePaymentLatency(b, func(i int) error {
-			_, err := env.api.Adapters.VKMA.Canceled(env.ctx, testWorkspaceID, vkmashop.Params{
-				NotificationType: vkmashop.SubscriptionStatusChange,
-				Status:           vkmashop.Canceled,
-				AppID:            7001,
-				UserID:           9000,
-				SubscriptionID:   subscriptionIDs[i],
-			})
+			_, err := env.api.Adapters.VKMA.Canceled(
+				env.ctx,
+				testWorkspaceID,
+				vkmashop.Params{
+					NotificationType: vkmashop.SubscriptionStatusChange,
+					Status:           vkmashop.Canceled,
+					AppID:            7001,
+					UserID:           9000,
+					SubscriptionID:   subscriptionIDs[i],
+				},
+			)
 			return err
 		})
 	})
 
 	b.Run("sqlc/UpsertProductGroup", func(b *testing.B) {
 		measurePaymentLatency(b, func(i int) error {
-			return q.UpsertProductGroup(env.ctx, paymentsqlc.UpsertProductGroupParams{
-				WorkspaceID: benchWorkspaceID,
-				Code:        "latency_group_write_" + strconv.Itoa(i),
-				TitleKey:    sql.NullString{String: "bench.group.title", Valid: true},
-				IsActive:    true,
-			})
+			return q.UpsertProductGroup(
+				env.ctx,
+				paymentsqlc.UpsertProductGroupParams{
+					WorkspaceID: benchWorkspaceID,
+					Code:        "latency_group_write_" + strconv.Itoa(i),
+					TitleKey: sql.NullString{
+						String: "bench.group.title",
+						Valid:  true,
+					},
+					IsActive: true,
+				},
+			)
 		})
 	})
 
@@ -2518,26 +3464,41 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 		b.StopTimer()
 		for i := range codes {
 			codes[i] = "latency_group_delete_" + strconv.Itoa(i)
-			benchNoError(b, q.UpsertProductGroup(env.ctx, paymentsqlc.UpsertProductGroupParams{
-				WorkspaceID: benchWorkspaceID,
-				Code:        codes[i],
-				IsActive:    true,
-			}))
+			benchNoError(
+				b,
+				q.UpsertProductGroup(
+					env.ctx,
+					paymentsqlc.UpsertProductGroupParams{
+						WorkspaceID: benchWorkspaceID,
+						Code:        codes[i],
+						IsActive:    true,
+					},
+				),
+			)
 		}
 		b.StartTimer()
 
 		measurePaymentLatency(b, func(i int) error {
-			_, err := q.DeleteProductGroup(env.ctx, paymentsqlc.DeleteProductGroupParams{
-				WorkspaceID: benchWorkspaceID,
-				Code:        codes[i],
-			})
+			_, err := q.DeleteProductGroup(
+				env.ctx,
+				paymentsqlc.DeleteProductGroupParams{
+					WorkspaceID: benchWorkspaceID,
+					Code:        codes[i],
+				},
+			)
 			return err
 		})
 	})
 
 	b.Run("sqlc/UpsertProduct", func(b *testing.B) {
 		measurePaymentLatency(b, func(i int) error {
-			return q.UpsertProduct(env.ctx, benchmarkUpsertProductParams("latency_product_write_"+strconv.Itoa(i), "bench_group_0"))
+			return q.UpsertProduct(
+				env.ctx,
+				benchmarkUpsertProductParams(
+					"latency_product_write_"+strconv.Itoa(i),
+					"bench_group_0",
+				),
+			)
 		})
 	})
 
@@ -2546,7 +3507,13 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 		b.StopTimer()
 		for i := range ids {
 			ids[i] = "latency_product_delete_" + strconv.Itoa(i)
-			benchNoError(b, q.UpsertProduct(env.ctx, benchmarkUpsertProductParams(ids[i], "bench_group_0")))
+			benchNoError(
+				b,
+				q.UpsertProduct(
+					env.ctx,
+					benchmarkUpsertProductParams(ids[i], "bench_group_0"),
+				),
+			)
 		}
 		b.StartTimer()
 
@@ -2562,22 +3529,28 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 	b.Run("sqlc/CreateProductPrice", func(b *testing.B) {
 		measurePaymentLatency(b, func(i int) error {
 			seq := benchNextSeq()
-			_, err := q.CreateProductPrice(env.ctx, benchmarkCreatePriceParams(productA.id, benchPriceStart(seq)))
+			_, err := q.CreateProductPrice(
+				env.ctx,
+				benchmarkCreatePriceParams(productA.id, benchPriceStart(seq)),
+			)
 			return err
 		})
 	})
 
 	b.Run("sqlc/UpdateProductPrice", func(b *testing.B) {
 		measurePaymentLatency(b, func(i int) error {
-			_, err := q.UpdateProductPrice(env.ctx, paymentsqlc.UpdateProductPriceParams{
-				ID:                  int64(priceID),
-				WorkspaceID:         benchWorkspaceID,
-				AssetCode:           "RUB",
-				ListAmountMinor:     int64(1000 + i%100),
-				DiscountAmountMinor: 0,
-				StartsAt:            time.Now().Add(-24 * time.Hour),
-				EndsAt:              time.Now().Add(24 * time.Hour),
-			})
+			_, err := q.UpdateProductPrice(
+				env.ctx,
+				paymentsqlc.UpdateProductPriceParams{
+					ID:                  int64(priceID),
+					WorkspaceID:         benchWorkspaceID,
+					AssetCode:           "RUB",
+					ListAmountMinor:     int64(1000 + i%100),
+					DiscountAmountMinor: 0,
+					StartsAt:            time.Now().Add(-24 * time.Hour),
+					EndsAt:              time.Now().Add(24 * time.Hour),
+				},
+			)
 			return err
 		})
 	})
@@ -2587,17 +3560,23 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 		b.StopTimer()
 		for i := range priceIDs {
 			seq := benchNextSeq()
-			id, err := q.CreateProductPrice(env.ctx, benchmarkCreatePriceParams(productA.id, benchPriceStart(seq)))
+			id, err := q.CreateProductPrice(
+				env.ctx,
+				benchmarkCreatePriceParams(productA.id, benchPriceStart(seq)),
+			)
 			benchNoError(b, err)
 			priceIDs[i] = uint64(id)
 		}
 		b.StartTimer()
 
 		measurePaymentLatency(b, func(i int) error {
-			_, err := q.DeleteProductPrice(env.ctx, paymentsqlc.DeleteProductPriceParams{
-				WorkspaceID: benchWorkspaceID,
-				ID:          int64(priceIDs[i]),
-			})
+			_, err := q.DeleteProductPrice(
+				env.ctx,
+				paymentsqlc.DeleteProductPriceParams{
+					WorkspaceID: benchWorkspaceID,
+					ID:          int64(priceIDs[i]),
+				},
+			)
 			return err
 		})
 	})
@@ -2605,18 +3584,9 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 	b.Run("sqlc/GetProductLimitCounterCount", func(b *testing.B) {
 		start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		end := start.Add(24 * time.Hour)
-		_, err := q.EnsureProductLimitCounter(env.ctx, paymentsqlc.EnsureProductLimitCounterParams{
-			WorkspaceID:    benchWorkspaceID,
-			PlatformID:     1,
-			ProductID:      productA.id,
-			CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
-			PlatformUserID: "",
-			WindowStart:    start,
-			WindowEnd:      end,
-		})
-		benchNoError(b, err)
-		measurePaymentLatency(b, func(i int) error {
-			_, err := q.GetProductLimitCounterCount(env.ctx, paymentsqlc.GetProductLimitCounterCountParams{
+		_, err := q.EnsureProductLimitCounter(
+			env.ctx,
+			paymentsqlc.EnsureProductLimitCounterParams{
 				WorkspaceID:    benchWorkspaceID,
 				PlatformID:     1,
 				ProductID:      productA.id,
@@ -2624,7 +3594,22 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 				PlatformUserID: "",
 				WindowStart:    start,
 				WindowEnd:      end,
-			})
+			},
+		)
+		benchNoError(b, err)
+		measurePaymentLatency(b, func(i int) error {
+			_, err := q.GetProductLimitCounterCount(
+				env.ctx,
+				paymentsqlc.GetProductLimitCounterCountParams{
+					WorkspaceID:    benchWorkspaceID,
+					PlatformID:     1,
+					ProductID:      productA.id,
+					CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
+					PlatformUserID: "",
+					WindowStart:    start,
+					WindowEnd:      end,
+				},
+			)
 			return err
 		})
 	})
@@ -2632,15 +3617,20 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 	b.Run("sqlc/CreatePurchaseKey", func(b *testing.B) {
 		measurePaymentLatency(b, func(i int) error {
 			seq := benchNextSeq()
-			_, err := q.CreatePurchaseKey(env.ctx, paymentsqlc.CreatePurchaseKeyParams{
-				WorkspaceID:    benchWorkspaceID,
-				KeyHash:        benchHash(benchRunValue("latency_create_key", seq)),
-				AppID:          7001,
-				PlatformID:     1,
-				PlatformUserID: benchRunValue("latency_key_user", seq),
-				ProductID:      productA.id,
-				MaxUses:        1_000_000,
-			})
+			_, err := q.CreatePurchaseKey(
+				env.ctx,
+				paymentsqlc.CreatePurchaseKeyParams{
+					WorkspaceID: benchWorkspaceID,
+					KeyHash: benchHash(
+						benchRunValue("latency_create_key", seq),
+					),
+					AppID:          7001,
+					PlatformID:     1,
+					PlatformUserID: benchRunValue("latency_key_user", seq),
+					ProductID:      productA.id,
+					MaxUses:        1_000_000,
+				},
+			)
 			return err
 		})
 	})
@@ -2655,7 +3645,15 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 	b.Run("sqlc/CreatePaymentOrder", func(b *testing.B) {
 		measurePaymentLatency(b, func(i int) error {
 			seq := benchNextSeq()
-			_, err := q.CreatePaymentOrder(env.ctx, benchmarkCreateOrderParams(productA, "RUB", priceID, benchRunValue("latency_order", seq)))
+			_, err := q.CreatePaymentOrder(
+				env.ctx,
+				benchmarkCreateOrderParams(
+					productA,
+					"RUB",
+					priceID,
+					benchRunValue("latency_order", seq),
+				),
+			)
 			return err
 		})
 	})
@@ -2665,14 +3663,26 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 		b.StopTimer()
 		for i := range orderIDs {
 			seq := benchNextSeq()
-			order := createBenchmarkOrder(b, env, productA.id, "RUB", benchRunValue("latency_attempt_order", seq))
+			order := createBenchmarkOrder(
+				b,
+				env,
+				productA.id,
+				"RUB",
+				benchRunValue("latency_attempt_order", seq),
+			)
 			orderIDs[i] = order.ID
 		}
 		b.StartTimer()
 
 		measurePaymentLatency(b, func(i int) error {
 			seq := benchNextSeq()
-			_, err := q.CreatePaymentAttempt(env.ctx, benchmarkCreateAttemptParams(orderIDs[i], benchRunValue("latency_attempt", seq)))
+			_, err := q.CreatePaymentAttempt(
+				env.ctx,
+				benchmarkCreateAttemptParams(
+					orderIDs[i],
+					benchRunValue("latency_attempt", seq),
+				),
+			)
 			return err
 		})
 	})
@@ -2686,19 +3696,37 @@ func BenchmarkPaymentLatencyPercentiles(b *testing.B) {
 		b.StopTimer()
 		for i := range inputs {
 			seq := benchNextSeq()
-			order := createBenchmarkOrder(b, env, productA.id, "RUB", benchRunValue("latency_fulfillment_order", seq))
-			attemptID, err := q.CreatePaymentAttempt(env.ctx, benchmarkCreateAttemptParams(order.ID, benchRunValue("latency_fulfillment_attempt", seq)))
+			order := createBenchmarkOrder(
+				b,
+				env,
+				productA.id,
+				"RUB",
+				benchRunValue("latency_fulfillment_order", seq),
+			)
+			attemptID, err := q.CreatePaymentAttempt(
+				env.ctx,
+				benchmarkCreateAttemptParams(
+					order.ID,
+					benchRunValue("latency_fulfillment_attempt", seq),
+				),
+			)
 			benchNoError(b, err)
-			inputs[i] = fulfillmentInput{orderID: order.ID, attemptID: uint64(attemptID)}
+			inputs[i] = fulfillmentInput{
+				orderID:   order.ID,
+				attemptID: uint64(attemptID),
+			}
 		}
 		b.StartTimer()
 
 		measurePaymentLatency(b, func(i int) error {
-			_, err := q.CreateFulfillment(env.ctx, paymentsqlc.CreateFulfillmentParams{
-				OrderID:   int64(inputs[i].orderID),
-				AttemptID: int64(inputs[i].attemptID),
-				Status:    paymentsqlc.PaymentFulfillmentStatusSucceeded,
-			})
+			_, err := q.CreateFulfillment(
+				env.ctx,
+				paymentsqlc.CreateFulfillmentParams{
+					OrderID:   int64(inputs[i].orderID),
+					AttemptID: int64(inputs[i].attemptID),
+					Status:    paymentsqlc.PaymentFulfillmentStatusSucceeded,
+				},
+			)
 			return err
 		})
 	})
@@ -2714,7 +3742,12 @@ func BenchmarkPaymentParallelLatencyPercentiles(b *testing.B) {
 	b.Run("service/Product.Get", func(b *testing.B) {
 		measurePaymentParallelLatency(b, func(i int) error {
 			_, err := env.api.User.GetProduct(env.ctx, product.GetParams{
-				Identity:  paymentTestIdentity(benchWorkspaceID, 7001, 1, "parallel_get_user_"+strconv.Itoa(i%100_000)),
+				Identity: paymentTestIdentity(
+					benchWorkspaceID,
+					7001,
+					1,
+					"parallel_get_user_"+strconv.Itoa(i%100_000),
+				),
 				ProductID: env.products[i%len(env.products)].id,
 				AssetCode: "RUB",
 				Locale:    "ru",
@@ -2726,14 +3759,17 @@ func BenchmarkPaymentParallelLatencyPercentiles(b *testing.B) {
 	b.Run("service/Product.CreateKey", func(b *testing.B) {
 		measurePaymentParallelLatency(b, func(i int) error {
 			seq := benchNextSeq()
-			_, err := env.api.Admin.CreateProductKey(env.ctx, product.CreateKeyParams{
-				WorkspaceID:    benchWorkspaceID,
-				AppID:          7001,
-				PlatformID:     1,
-				PlatformUserID: benchRunValue("parallel_key_target", seq),
-				ProductID:      env.products[i%len(env.products)].id,
-				MaxUses:        1_000_000,
-			})
+			_, err := env.api.Admin.CreateProductKey(
+				env.ctx,
+				product.CreateKeyParams{
+					WorkspaceID:    benchWorkspaceID,
+					AppID:          7001,
+					PlatformID:     1,
+					PlatformUserID: benchRunValue("parallel_key_target", seq),
+					ProductID:      env.products[i%len(env.products)].id,
+					MaxUses:        1_000_000,
+				},
+			)
 			return err
 		})
 	})
@@ -2741,50 +3777,73 @@ func BenchmarkPaymentParallelLatencyPercentiles(b *testing.B) {
 	b.Run("service/Checkout.CreateOrder", func(b *testing.B) {
 		measurePaymentParallelLatency(b, func(i int) error {
 			seq := benchNextSeq()
-			_, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-				Identity:  paymentTestIdentity(benchWorkspaceID, 7001, 1, benchRunValue("parallel_checkout", seq)),
-				ProductID: env.products[i%len(env.products)].id,
-				AssetCode: "RUB",
-				Locale:    "ru",
-			})
+			_, err := env.api.User.CreateOrder(
+				env.ctx,
+				checkout.CreateOrderParams{
+					Identity: paymentTestIdentity(
+						benchWorkspaceID,
+						7001,
+						1,
+						benchRunValue("parallel_checkout", seq),
+					),
+					ProductID: env.products[i%len(env.products)].id,
+					AssetCode: "RUB",
+					Locale:    "ru",
+				},
+			)
 			return err
 		})
 	})
 
 	b.Run("service/VKMA.ChargeableForWorkspace.idempotent", func(b *testing.B) {
 		measurePaymentParallelLatency(b, func(i int) error {
-			_, err := env.api.Adapters.VKMA.ChargeableForWorkspace(env.ctx, benchWorkspaceID, vkmashop.Params{
-				NotificationType: vkmashop.OrderStatusChange,
-				Status:           vkmashop.Chargeable,
-				AppID:            7001,
-				UserID:           9000,
-				Item:             productB.id,
-				OrderID:          1,
-				Lang:             "ru",
-			})
+			_, err := env.api.Adapters.VKMA.ChargeableForWorkspace(
+				env.ctx,
+				benchWorkspaceID,
+				vkmashop.Params{
+					NotificationType: vkmashop.OrderStatusChange,
+					Status:           vkmashop.Chargeable,
+					AppID:            7001,
+					UserID:           9000,
+					Item:             productB.id,
+					OrderID:          1,
+					Lang:             "ru",
+				},
+			)
 			return err
 		})
 	})
 
 	b.Run("service/Subscription.IsActive", func(b *testing.B) {
 		measurePaymentParallelLatency(b, func(i int) error {
-			_, err := env.api.User.IsSubscriptionActive(env.ctx, subscription.IsActiveParams{
-				Identity:     paymentTestIdentity(benchWorkspaceID, 7001, 1, "bench_user_"+strconv.Itoa(i%100_000)),
-				ProductID:    env.products[i%len(env.products)].id,
-				ProviderCode: "vkma",
-			})
+			_, err := env.api.User.IsSubscriptionActive(
+				env.ctx,
+				subscription.IsActiveParams{
+					Identity: paymentTestIdentity(
+						benchWorkspaceID,
+						7001,
+						1,
+						"bench_user_"+strconv.Itoa(i%100_000),
+					),
+					ProductID:    env.products[i%len(env.products)].id,
+					ProviderCode: "vkma",
+				},
+			)
 			return err
 		})
 	})
 
 	b.Run("sqlc/GetProductRows", func(b *testing.B) {
 		measurePaymentParallelLatency(b, func(i int) error {
-			_, err := q.GetProductRows(env.ctx, paymentsqlc.GetProductRowsParams{
-				ProductID:   env.products[i%len(env.products)].id,
-				WorkspaceID: benchWorkspaceID,
-				AssetCode:   "RUB",
-				Locale:      "ru",
-			})
+			_, err := q.GetProductRows(
+				env.ctx,
+				paymentsqlc.GetProductRowsParams{
+					ProductID:   env.products[i%len(env.products)].id,
+					WorkspaceID: benchWorkspaceID,
+					AssetCode:   "RUB",
+					Locale:      "ru",
+				},
+			)
 			return err
 		})
 	})
@@ -2792,18 +3851,9 @@ func BenchmarkPaymentParallelLatencyPercentiles(b *testing.B) {
 	b.Run("sqlc/GetProductLimitCounterCount", func(b *testing.B) {
 		start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		end := start.Add(24 * time.Hour)
-		_, err := q.EnsureProductLimitCounter(env.ctx, paymentsqlc.EnsureProductLimitCounterParams{
-			WorkspaceID:    benchWorkspaceID,
-			PlatformID:     1,
-			ProductID:      productA.id,
-			CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
-			PlatformUserID: "",
-			WindowStart:    start,
-			WindowEnd:      end,
-		})
-		benchNoError(b, err)
-		measurePaymentParallelLatency(b, func(i int) error {
-			_, err := q.GetProductLimitCounterCount(env.ctx, paymentsqlc.GetProductLimitCounterCountParams{
+		_, err := q.EnsureProductLimitCounter(
+			env.ctx,
+			paymentsqlc.EnsureProductLimitCounterParams{
 				WorkspaceID:    benchWorkspaceID,
 				PlatformID:     1,
 				ProductID:      productA.id,
@@ -2811,7 +3861,22 @@ func BenchmarkPaymentParallelLatencyPercentiles(b *testing.B) {
 				PlatformUserID: "",
 				WindowStart:    start,
 				WindowEnd:      end,
-			})
+			},
+		)
+		benchNoError(b, err)
+		measurePaymentParallelLatency(b, func(i int) error {
+			_, err := q.GetProductLimitCounterCount(
+				env.ctx,
+				paymentsqlc.GetProductLimitCounterCountParams{
+					WorkspaceID:    benchWorkspaceID,
+					PlatformID:     1,
+					ProductID:      productA.id,
+					CounterScope:   paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
+					PlatformUserID: "",
+					WindowStart:    start,
+					WindowEnd:      end,
+				},
+			)
 			return err
 		})
 	})
@@ -2819,15 +3884,20 @@ func BenchmarkPaymentParallelLatencyPercentiles(b *testing.B) {
 	b.Run("sqlc/CreatePurchaseKey", func(b *testing.B) {
 		measurePaymentParallelLatency(b, func(i int) error {
 			seq := benchNextSeq()
-			_, err := q.CreatePurchaseKey(env.ctx, paymentsqlc.CreatePurchaseKeyParams{
-				WorkspaceID:    benchWorkspaceID,
-				KeyHash:        benchHash(benchRunValue("parallel_create_key", seq)),
-				AppID:          7001,
-				PlatformID:     1,
-				PlatformUserID: benchRunValue("parallel_key_user", seq),
-				ProductID:      productA.id,
-				MaxUses:        1_000_000,
-			})
+			_, err := q.CreatePurchaseKey(
+				env.ctx,
+				paymentsqlc.CreatePurchaseKeyParams{
+					WorkspaceID: benchWorkspaceID,
+					KeyHash: benchHash(
+						benchRunValue("parallel_create_key", seq),
+					),
+					AppID:          7001,
+					PlatformID:     1,
+					PlatformUserID: benchRunValue("parallel_key_user", seq),
+					ProductID:      productA.id,
+					MaxUses:        1_000_000,
+				},
+			)
 			return err
 		})
 	})
@@ -2835,7 +3905,15 @@ func BenchmarkPaymentParallelLatencyPercentiles(b *testing.B) {
 	b.Run("sqlc/CreatePaymentOrder", func(b *testing.B) {
 		measurePaymentParallelLatency(b, func(i int) error {
 			seq := benchNextSeq()
-			_, err := q.CreatePaymentOrder(env.ctx, benchmarkCreateOrderParams(productA, "RUB", priceID, benchRunValue("parallel_order", seq)))
+			_, err := q.CreatePaymentOrder(
+				env.ctx,
+				benchmarkCreateOrderParams(
+					productA,
+					"RUB",
+					priceID,
+					benchRunValue("parallel_order", seq),
+				),
+			)
 			return err
 		})
 	})
@@ -2845,14 +3923,26 @@ func BenchmarkPaymentParallelLatencyPercentiles(b *testing.B) {
 		b.StopTimer()
 		for i := range orderIDs {
 			seq := benchNextSeq()
-			order := createBenchmarkOrder(b, env, productA.id, "RUB", benchRunValue("parallel_attempt_order", seq))
+			order := createBenchmarkOrder(
+				b,
+				env,
+				productA.id,
+				"RUB",
+				benchRunValue("parallel_attempt_order", seq),
+			)
 			orderIDs[i] = order.ID
 		}
 		b.StartTimer()
 
 		measurePaymentParallelLatency(b, func(i int) error {
 			seq := benchNextSeq()
-			_, err := q.CreatePaymentAttempt(env.ctx, benchmarkCreateAttemptParams(orderIDs[i], benchRunValue("parallel_attempt", seq)))
+			_, err := q.CreatePaymentAttempt(
+				env.ctx,
+				benchmarkCreateAttemptParams(
+					orderIDs[i],
+					benchRunValue("parallel_attempt", seq),
+				),
+			)
 			return err
 		})
 	})
@@ -2866,19 +3956,37 @@ func BenchmarkPaymentParallelLatencyPercentiles(b *testing.B) {
 		b.StopTimer()
 		for i := range inputs {
 			seq := benchNextSeq()
-			order := createBenchmarkOrder(b, env, productA.id, "RUB", benchRunValue("parallel_fulfillment_order", seq))
-			attemptID, err := q.CreatePaymentAttempt(env.ctx, benchmarkCreateAttemptParams(order.ID, benchRunValue("parallel_fulfillment_attempt", seq)))
+			order := createBenchmarkOrder(
+				b,
+				env,
+				productA.id,
+				"RUB",
+				benchRunValue("parallel_fulfillment_order", seq),
+			)
+			attemptID, err := q.CreatePaymentAttempt(
+				env.ctx,
+				benchmarkCreateAttemptParams(
+					order.ID,
+					benchRunValue("parallel_fulfillment_attempt", seq),
+				),
+			)
 			benchNoError(b, err)
-			inputs[i] = fulfillmentInput{orderID: order.ID, attemptID: uint64(attemptID)}
+			inputs[i] = fulfillmentInput{
+				orderID:   order.ID,
+				attemptID: uint64(attemptID),
+			}
 		}
 		b.StartTimer()
 
 		measurePaymentParallelLatency(b, func(i int) error {
-			_, err := q.CreateFulfillment(env.ctx, paymentsqlc.CreateFulfillmentParams{
-				OrderID:   int64(inputs[i].orderID),
-				AttemptID: int64(inputs[i].attemptID),
-				Status:    paymentsqlc.PaymentFulfillmentStatusSucceeded,
-			})
+			_, err := q.CreateFulfillment(
+				env.ctx,
+				paymentsqlc.CreateFulfillmentParams{
+					OrderID:   int64(inputs[i].orderID),
+					AttemptID: int64(inputs[i].attemptID),
+					Status:    paymentsqlc.PaymentFulfillmentStatusSucceeded,
+				},
+			)
 			return err
 		})
 	})
@@ -2955,13 +4063,25 @@ func reportPaymentLatency(b *testing.B, samples []time.Duration) {
 		return samples[i] < samples[j]
 	})
 
-	b.ReportMetric(float64(latencyPercentile(samples, 0.50).Nanoseconds()), "p50-ns/op")
-	b.ReportMetric(float64(latencyPercentile(samples, 0.95).Nanoseconds()), "p95-ns/op")
-	b.ReportMetric(float64(latencyPercentile(samples, 0.99).Nanoseconds()), "p99-ns/op")
+	b.ReportMetric(
+		float64(latencyPercentile(samples, 0.50).Nanoseconds()),
+		"p50-ns/op",
+	)
+	b.ReportMetric(
+		float64(latencyPercentile(samples, 0.95).Nanoseconds()),
+		"p95-ns/op",
+	)
+	b.ReportMetric(
+		float64(latencyPercentile(samples, 0.99).Nanoseconds()),
+		"p99-ns/op",
+	)
 	b.ReportMetric(float64(samples[len(samples)-1].Nanoseconds()), "max-ns/op")
 }
 
-func latencyPercentile(samples []time.Duration, percentile float64) time.Duration {
+func latencyPercentile(
+	samples []time.Duration,
+	percentile float64,
+) time.Duration {
 	if len(samples) == 1 {
 		return samples[0]
 	}
@@ -3006,37 +4126,62 @@ func BenchmarkPaymentAdminStats(b *testing.B) {
 
 	b.Run("ListDailyStats", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := env.api.Admin.ListDailyStats(env.ctx, benchWorkspaceID, productID, from, until)
+			_, err := env.api.Admin.ListDailyStats(
+				env.ctx,
+				benchWorkspaceID,
+				productID,
+				from,
+				until,
+			)
 			benchNoError(b, err)
 		}
 	})
 	b.Run("ListDailyOverview", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := env.api.Admin.ListDailyOverview(env.ctx, benchWorkspaceID, from, until)
+			_, err := env.api.Admin.ListDailyOverview(
+				env.ctx,
+				benchWorkspaceID,
+				from,
+				until,
+			)
 			benchNoError(b, err)
 		}
 	})
 	b.Run("RefreshDailyStats", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			benchNoError(b, env.api.Admin.RefreshDailyStats(env.ctx, benchWorkspaceID, from, until))
+			benchNoError(
+				b,
+				env.api.Admin.RefreshDailyStats(
+					env.ctx,
+					benchWorkspaceID,
+					from,
+					until,
+				),
+			)
 		}
 	})
 	b.Run("GetPaymentReport", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
-				WorkspaceID: benchWorkspaceID,
-				Page:        admin.PageParams{Limit: 100},
-			})
+			_, err := env.api.Admin.GetPaymentReport(
+				env.ctx,
+				admin.PaymentReportParams{
+					WorkspaceID: benchWorkspaceID,
+					Page:        admin.PageParams{Limit: 100},
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
 	b.Run("GetPaymentReportForProduct", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
-				WorkspaceID: benchWorkspaceID,
-				ProductID:   productID,
-				Page:        admin.PageParams{Limit: 100},
-			})
+			_, err := env.api.Admin.GetPaymentReport(
+				env.ctx,
+				admin.PaymentReportParams{
+					WorkspaceID: benchWorkspaceID,
+					ProductID:   productID,
+					Page:        admin.PageParams{Limit: 100},
+				},
+			)
 			benchNoError(b, err)
 		}
 	})
@@ -3045,18 +4190,30 @@ func BenchmarkPaymentAdminStats(b *testing.B) {
 func BenchmarkPaymentPurchaseStatsTrigger(b *testing.B) {
 	env := setupPaymentBenchmark(b)
 
-	if _, err := env.db.ExecContext(env.ctx, "DROP TRIGGER IF EXISTS payment_order_create_purchase_stats ON payment_order"); err != nil {
+	if _, err := env.db.ExecContext(
+		env.ctx,
+		"DROP TRIGGER IF EXISTS payment_order_create_purchase_stats ON payment_order",
+	); err != nil {
 		b.Fatal(err)
 	}
 	b.Cleanup(func() {
-		_, _ = env.db.ExecContext(context.Background(), "DROP TRIGGER IF EXISTS payment_order_create_purchase_stats ON payment_order")
-		_, _ = env.db.ExecContext(context.Background(), paymentPurchaseStatsTrigger)
+		_, _ = env.db.ExecContext(
+			context.Background(),
+			"DROP TRIGGER IF EXISTS payment_order_create_purchase_stats ON payment_order",
+		)
+		_, _ = env.db.ExecContext(
+			context.Background(),
+			paymentPurchaseStatsTrigger,
+		)
 	})
 	b.Run("without_trigger", func(b *testing.B) {
 		benchmarkFulfillmentUpdates(b, env)
 	})
 
-	if _, err := env.db.ExecContext(env.ctx, paymentPurchaseStatsTrigger); err != nil {
+	if _, err := env.db.ExecContext(
+		env.ctx,
+		paymentPurchaseStatsTrigger,
+	); err != nil {
 		b.Fatal(err)
 	}
 	b.Run("with_trigger", func(b *testing.B) {
@@ -3086,7 +4243,10 @@ ON CONFLICT (event_type, source_id) DO NOTHING`, benchWorkspaceID)
 		b.Fatal(err)
 	}
 	if err := env.api.Admin.RefreshDailyStats(
-		env.ctx, benchWorkspaceID, time.Now().Add(-365*24*time.Hour), time.Now().Add(24*time.Hour),
+		env.ctx,
+		benchWorkspaceID,
+		time.Now().Add(-365*24*time.Hour),
+		time.Now().Add(24*time.Hour),
 	); err != nil {
 		b.Fatal(err)
 	}
@@ -3177,7 +4337,11 @@ type vkmaPaymentProcedureTotals struct {
 	procedureTotal       time.Duration
 }
 
-func benchmarkVKMAPaymentProcedure(b *testing.B, env paymentBenchmarkEnv, productID string) {
+func benchmarkVKMAPaymentProcedure(
+	b *testing.B,
+	env paymentBenchmarkEnv,
+	productID string,
+) {
 	b.Helper()
 
 	var totals vkmaPaymentProcedureTotals
@@ -3197,7 +4361,12 @@ func benchmarkVKMAPaymentProcedure(b *testing.B, env paymentBenchmarkEnv, produc
 
 		start := time.Now()
 		_, err := env.api.User.GetProduct(env.ctx, product.GetParams{
-			Identity:  paymentTestIdentity(benchWorkspaceID, 7001, paymentvkma.PlatformID, userID),
+			Identity: paymentTestIdentity(
+				benchWorkspaceID,
+				7001,
+				paymentvkma.PlatformID,
+				userID,
+			),
 			ProductID: productID,
 			AssetCode: paymentvkma.AssetCode,
 			Locale:    "ru",
@@ -3206,69 +4375,99 @@ func benchmarkVKMAPaymentProcedure(b *testing.B, env paymentBenchmarkEnv, produc
 		benchNoError(b, err)
 
 		start = time.Now()
-		_, err = env.api.Adapters.VKMA.GetItemForWorkspace(env.ctx, benchWorkspaceID, vkmashop.Params{
-			NotificationType: vkmashop.GetItem,
-			AppID:            7001,
-			UserID:           int(seq),
-			Item:             productID,
-			Lang:             "ru",
-		})
+		_, err = env.api.Adapters.VKMA.GetItemForWorkspace(
+			env.ctx,
+			benchWorkspaceID,
+			vkmashop.Params{
+				NotificationType: vkmashop.GetItem,
+				AppID:            7001,
+				UserID:           int(seq),
+				Item:             productID,
+				Lang:             "ru",
+			},
+		)
 		totals.platformGetItem += time.Since(start)
 		benchNoError(b, err)
 
 		confirmStart := time.Now()
 
 		start = time.Now()
-		order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-			Identity:  paymentTestIdentity(benchWorkspaceID, 7001, paymentvkma.PlatformID, userID),
-			ProductID: productID,
-			AssetCode: paymentvkma.AssetCode,
-			Locale:    "ru",
-		})
+		order, err := env.api.User.CreateOrder(
+			env.ctx,
+			checkout.CreateOrderParams{
+				Identity: paymentTestIdentity(
+					benchWorkspaceID,
+					7001,
+					paymentvkma.PlatformID,
+					userID,
+				),
+				ProductID: productID,
+				AssetCode: paymentvkma.AssetCode,
+				Locale:    "ru",
+			},
+		)
 		totals.confirmCreateOrder += time.Since(start)
 		benchNoError(b, err)
 
-		idempotencyKey := fmt.Sprintf("%s:%s", paymentvkma.ProviderCode, providerPaymentID)
+		idempotencyKey := fmt.Sprintf(
+			"%s:%s",
+			paymentvkma.ProviderCode,
+			providerPaymentID,
+		)
 
 		start = time.Now()
-		attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-			Identity:          paymentAttemptIdentity(order),
-			OrderID:           order.ID,
-			ProviderCode:      paymentvkma.ProviderCode,
-			ProviderPaymentID: &providerPaymentID,
-			IdempotencyKey:    &idempotencyKey,
-		})
+		attempt, err := env.api.User.CreateAttempt(
+			env.ctx,
+			checkout.CreateAttemptParams{
+				Identity:          paymentAttemptIdentity(order),
+				OrderID:           order.ID,
+				ProviderCode:      paymentvkma.ProviderCode,
+				ProviderPaymentID: &providerPaymentID,
+				IdempotencyKey:    &idempotencyKey,
+			},
+		)
 		totals.confirmCreateAttempt += time.Since(start)
 		benchNoError(b, err)
 
 		orderIDInt64 := int64(order.ID)
 		attemptIDInt64 := int64(attempt.ID)
-		payloadHash := benchmarkVKMAPayloadHash(providerEventID, providerPaymentID, productID, userID)
+		payloadHash := benchmarkVKMAPayloadHash(
+			providerEventID,
+			providerPaymentID,
+			productID,
+			userID,
+		)
 
 		start = time.Now()
-		_, err = env.api.Operational.CreateEvent(env.ctx, checkout.CreateEventParams{
-			ProviderCode:      paymentvkma.ProviderCode,
-			AttemptID:         &attemptIDInt64,
-			OrderID:           &orderIDInt64,
-			ProviderEventID:   &providerEventID,
-			ProviderPaymentID: &providerPaymentID,
-			EventType:         eventType,
-			EventStatus:       &eventStatus,
-			PayloadHash:       payloadHash,
-			SignatureValid:    &signatureValid,
-		})
+		_, err = env.api.Operational.CreateEvent(
+			env.ctx,
+			checkout.CreateEventParams{
+				ProviderCode:      paymentvkma.ProviderCode,
+				AttemptID:         &attemptIDInt64,
+				OrderID:           &orderIDInt64,
+				ProviderEventID:   &providerEventID,
+				ProviderPaymentID: &providerPaymentID,
+				EventType:         eventType,
+				EventStatus:       &eventStatus,
+				PayloadHash:       payloadHash,
+				SignatureValid:    &signatureValid,
+			},
+		)
 		totals.confirmCreateEvent += time.Since(start)
 		benchNoError(b, err)
 
 		start = time.Now()
-		_, err = env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-			WorkspaceID:       testWorkspaceID,
-			AttemptID:         attempt.ID,
-			ProviderCode:      paymentvkma.ProviderCode,
-			ProviderPaymentID: &providerPaymentID,
-			AmountMinor:       attempt.AmountMinor,
-			AssetCode:         paymentvkma.AssetCode,
-		})
+		_, err = env.api.Operational.CompleteAttempt(
+			env.ctx,
+			checkout.CompleteAttemptParams{
+				WorkspaceID:       testWorkspaceID,
+				AttemptID:         attempt.ID,
+				ProviderCode:      paymentvkma.ProviderCode,
+				ProviderPaymentID: &providerPaymentID,
+				AmountMinor:       attempt.AmountMinor,
+				AssetCode:         paymentvkma.AssetCode,
+			},
+		)
 		totals.confirmComplete += time.Since(start)
 		benchNoError(b, err)
 
@@ -3276,27 +4475,74 @@ func benchmarkVKMAPaymentProcedure(b *testing.B, env paymentBenchmarkEnv, produc
 		totals.procedureTotal += time.Since(procedureStart)
 	}
 
-	reportVKMAProcedureMetric(b, "catalog-get-product", totals.catalogGetProduct, b.N)
-	reportVKMAProcedureMetric(b, "platform-get-item", totals.platformGetItem, b.N)
-	reportVKMAProcedureMetric(b, "confirm-create-order", totals.confirmCreateOrder, b.N)
-	reportVKMAProcedureMetric(b, "confirm-create-attempt", totals.confirmCreateAttempt, b.N)
-	reportVKMAProcedureMetric(b, "confirm-create-event", totals.confirmCreateEvent, b.N)
-	reportVKMAProcedureMetric(b, "confirm-complete-attempt", totals.confirmComplete, b.N)
+	reportVKMAProcedureMetric(
+		b,
+		"catalog-get-product",
+		totals.catalogGetProduct,
+		b.N,
+	)
+	reportVKMAProcedureMetric(
+		b,
+		"platform-get-item",
+		totals.platformGetItem,
+		b.N,
+	)
+	reportVKMAProcedureMetric(
+		b,
+		"confirm-create-order",
+		totals.confirmCreateOrder,
+		b.N,
+	)
+	reportVKMAProcedureMetric(
+		b,
+		"confirm-create-attempt",
+		totals.confirmCreateAttempt,
+		b.N,
+	)
+	reportVKMAProcedureMetric(
+		b,
+		"confirm-create-event",
+		totals.confirmCreateEvent,
+		b.N,
+	)
+	reportVKMAProcedureMetric(
+		b,
+		"confirm-complete-attempt",
+		totals.confirmComplete,
+		b.N,
+	)
 	reportVKMAProcedureMetric(b, "confirm-total", totals.confirmTotal, b.N)
 	reportVKMAProcedureMetric(b, "procedure-total", totals.procedureTotal, b.N)
 }
 
-func benchmarkVKMAPayloadHash(providerEventID string, providerPaymentID string, productID string, userID string) string {
-	sum := sha256.Sum256([]byte(providerEventID + "|" + providerPaymentID + "|" + productID + "|" + userID))
+func benchmarkVKMAPayloadHash(
+	providerEventID string,
+	providerPaymentID string,
+	productID string,
+	userID string,
+) string {
+	sum := sha256.Sum256(
+		[]byte(
+			providerEventID + "|" + providerPaymentID + "|" + productID + "|" + userID,
+		),
+	)
 	return hex.EncodeToString(sum[:])
 }
 
-func reportVKMAProcedureMetric(b *testing.B, name string, total time.Duration, iterations int) {
+func reportVKMAProcedureMetric(
+	b *testing.B,
+	name string,
+	total time.Duration,
+	iterations int,
+) {
 	b.Helper()
 	if total == 0 || iterations == 0 {
 		return
 	}
-	b.ReportMetric(float64(total.Nanoseconds())/float64(iterations), name+"-ns/op")
+	b.ReportMetric(
+		float64(total.Nanoseconds())/float64(iterations),
+		name+"-ns/op",
+	)
 }
 
 func createBenchmarkVKMAProduct(b *testing.B, env paymentBenchmarkEnv) string {
@@ -3355,15 +4601,18 @@ func createBenchmarkVKMAProduct(b *testing.B, env paymentBenchmarkEnv) string {
 	})
 	benchNoError(b, err)
 
-	_, err = env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
-		WorkspaceID:         benchWorkspaceID,
-		ProductID:           productID,
-		AssetCode:           paymentvkma.AssetCode,
-		ListAmountMinor:     35,
-		DiscountAmountMinor: 0,
-		StartsAt:            &priceStartsAt,
-		EndsAt:              &priceEndsAt,
-	})
+	_, err = env.api.Admin.CreateCatalogPrice(
+		env.ctx,
+		product.CreatePriceParams{
+			WorkspaceID:         benchWorkspaceID,
+			ProductID:           productID,
+			AssetCode:           paymentvkma.AssetCode,
+			ListAmountMinor:     35,
+			DiscountAmountMinor: 0,
+			StartsAt:            &priceStartsAt,
+			EndsAt:              &priceEndsAt,
+		},
+	)
 	benchNoError(b, err)
 
 	return productID

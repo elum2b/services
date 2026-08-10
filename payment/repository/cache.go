@@ -29,7 +29,8 @@ func queryPaymentCache[T any](
 	key string,
 	loader func(context.Context) (T, error),
 ) (T, error) {
-	globalVersion := repository.db.CacheVersion(paymentCacheVersionScope(paymentGlobalCacheScope)...)
+	globalVersion := repository.db.CacheVersion(
+		paymentCacheVersionScope(paymentGlobalCacheScope)...)
 	value, err := sqlwrap.Query(ctx, repository.db, sqlwrap.Params{
 		Key:               sqlwrap.CreateKey(key, globalVersion),
 		Timeout:           repository.timeout,
@@ -85,7 +86,8 @@ func InvalidateWorkspaceCache(db *sqlwrap.Client, workspaceID string) error {
 
 	return errors.Join(
 		db.BumpCacheVersion(paymentCacheVersionScope(workspaceID)...),
-		db.BumpCacheVersion(paymentProductLimitConfigVersionScope(workspaceID)...),
+		db.BumpCacheVersion(
+			paymentProductLimitConfigVersionScope(workspaceID)...),
 	)
 }
 
@@ -93,7 +95,8 @@ func InvalidateAllCache(db *sqlwrap.Client) error {
 	if db == nil {
 		return nil
 	}
-	return db.BumpCacheVersion(paymentCacheVersionScope(paymentGlobalCacheScope)...)
+	return db.BumpCacheVersion(
+		paymentCacheVersionScope(paymentGlobalCacheScope)...)
 }
 
 func InvalidateTONManifestCache(db *sqlwrap.Client, workspaceID string) error {
@@ -136,7 +139,9 @@ func (r *PaymentRepository) invalidateAllCache() error {
 	return nil
 }
 
-func (r *PaymentRepository) invalidateTONManifestCache(workspaceID string) error {
+func (r *PaymentRepository) invalidateTONManifestCache(
+	workspaceID string,
+) error {
 	if r == nil {
 		return nil
 	}
@@ -163,19 +168,28 @@ func (r *PaymentRepository) reportCacheInvalidationError(err error) {
 	r.onCacheInvalidationError(err)
 }
 
-func (r *PaymentRepository) RebuildWorkspaceProductCache(ctx context.Context, workspaceID string) error {
+func (r *PaymentRepository) RebuildWorkspaceProductCache(
+	ctx context.Context,
+	workspaceID string,
+) error {
 	workspaceID, err := requireWorkspaceID(workspaceID)
 	if err != nil {
 		return err
 	}
 	err = r.inTransaction(ctx, func(tx *PaymentRepository) error {
-		if _, err := tx.q.DeleteWorkspaceProductCache(ctx, workspaceID); err != nil {
+		if _, err := tx.q.DeleteWorkspaceProductCache(
+			ctx,
+			workspaceID,
+		); err != nil {
 			return err
 		}
-		return tx.q.RebuildWorkspaceProductCache(ctx, paymentsqlc.RebuildWorkspaceProductCacheParams{
-			WorkspaceID:   workspaceID,
-			WorkspaceID_2: workspaceID,
-		})
+		return tx.q.RebuildWorkspaceProductCache(
+			ctx,
+			paymentsqlc.RebuildWorkspaceProductCacheParams{
+				WorkspaceID:   workspaceID,
+				WorkspaceID_2: workspaceID,
+			},
+		)
 	})
 	if err != nil {
 		return err
@@ -183,23 +197,33 @@ func (r *PaymentRepository) RebuildWorkspaceProductCache(ctx context.Context, wo
 	return r.invalidateWorkspaceCache(workspaceID)
 }
 
-func (r *PaymentRepository) RebuildProductCache(ctx context.Context, workspaceID string, productID string) error {
+func (r *PaymentRepository) RebuildProductCache(
+	ctx context.Context,
+	workspaceID string,
+	productID string,
+) error {
 	workspaceID, err := requireWorkspaceID(workspaceID)
 	if err != nil {
 		return err
 	}
 	err = r.inTransaction(ctx, func(tx *PaymentRepository) error {
-		if _, err := tx.q.DeleteProductCache(ctx, paymentsqlc.DeleteProductCacheParams{
-			WorkspaceID: workspaceID,
-			ProductID:   productID,
-		}); err != nil {
+		if _, err := tx.q.DeleteProductCache(
+			ctx,
+			paymentsqlc.DeleteProductCacheParams{
+				WorkspaceID: workspaceID,
+				ProductID:   productID,
+			},
+		); err != nil {
 			return err
 		}
-		return tx.q.RebuildProductCache(ctx, paymentsqlc.RebuildProductCacheParams{
-			WorkspaceID:   workspaceID,
-			WorkspaceID_2: workspaceID,
-			ID:            productID,
-		})
+		return tx.q.RebuildProductCache(
+			ctx,
+			paymentsqlc.RebuildProductCacheParams{
+				WorkspaceID:   workspaceID,
+				WorkspaceID_2: workspaceID,
+				ID:            productID,
+			},
+		)
 	})
 	if err != nil {
 		return err

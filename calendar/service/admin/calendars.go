@@ -6,10 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	services "github.com/elum2b/services"
 	"github.com/elum2b/services/calendar/repository"
 	"github.com/elum2b/services/calendar/service/user"
-	"github.com/google/uuid"
 )
 
 type SaveCalendarParams struct {
@@ -29,7 +30,10 @@ type SaveCalendarParams struct {
 	EndAt               *time.Time
 }
 
-func (a *Admin) CreateCalendar(ctx context.Context, params SaveCalendarParams) (string, error) {
+func (a *Admin) CreateCalendar(
+	ctx context.Context,
+	params SaveCalendarParams,
+) (string, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := validateCalendar(&params); err != nil {
@@ -38,10 +42,16 @@ func (a *Admin) CreateCalendar(ctx context.Context, params SaveCalendarParams) (
 	if params.ID == "" {
 		params.ID = uuid.NewString()
 	}
-	return params.ID, a.repository.CreateCalendar(mergedCtx, repository.SaveCalendarParams(params))
+	return params.ID, a.repository.CreateCalendar(
+		mergedCtx,
+		repository.SaveCalendarParams(params),
+	)
 }
 
-func (a *Admin) UpdateCalendar(ctx context.Context, params SaveCalendarParams) (int64, error) {
+func (a *Admin) UpdateCalendar(
+	ctx context.Context,
+	params SaveCalendarParams,
+) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if params.ID == "" {
@@ -50,17 +60,27 @@ func (a *Admin) UpdateCalendar(ctx context.Context, params SaveCalendarParams) (
 	if err := validateCalendar(&params); err != nil {
 		return 0, err
 	}
-	return a.repository.UpdateCalendar(mergedCtx, repository.SaveCalendarParams(params))
+	return a.repository.UpdateCalendar(
+		mergedCtx,
+		repository.SaveCalendarParams(params),
+	)
 }
 
-func (a *Admin) GetCalendar(ctx context.Context, workspaceID, id string) (CalendarModel, error) {
+func (a *Admin) GetCalendar(
+	ctx context.Context,
+	workspaceID, id string,
+) (CalendarModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	value, err := a.repository.GetCalendar(mergedCtx, workspaceID, id, "")
 	if err != nil {
 		return CalendarModel{}, err
 	}
-	localizations, err := a.repository.ListLocalizations(mergedCtx, workspaceID, id)
+	localizations, err := a.repository.ListLocalizations(
+		mergedCtx,
+		workspaceID,
+		id,
+	)
 	if err != nil {
 		return CalendarModel{}, err
 	}
@@ -68,17 +88,28 @@ func (a *Admin) GetCalendar(ctx context.Context, workspaceID, id string) (Calend
 	result.Localizations = make([]LocalizationModel, 0, len(localizations))
 	for _, item := range localizations {
 		result.Localizations = append(result.Localizations, LocalizationModel{
-			Locale: item.Locale, Title: item.Title, Description: item.Description,
+			Locale:      item.Locale,
+			Title:       item.Title,
+			Description: item.Description,
 		})
 	}
 	return result, nil
 }
 
-func (a *Admin) ListCalendars(ctx context.Context, workspaceID string, page Page) ([]CalendarModel, error) {
+func (a *Admin) ListCalendars(
+	ctx context.Context,
+	workspaceID string,
+	page Page,
+) ([]CalendarModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	limit, offset := normalizePage(page)
-	values, err := a.repository.ListCalendars(mergedCtx, workspaceID, limit, offset)
+	values, err := a.repository.ListCalendars(
+		mergedCtx,
+		workspaceID,
+		limit,
+		offset,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -89,13 +120,20 @@ func (a *Admin) ListCalendars(ctx context.Context, workspaceID string, page Page
 	return result, nil
 }
 
-func (a *Admin) SetCalendarActive(ctx context.Context, workspaceID, id string, active bool) (int64, error) {
+func (a *Admin) SetCalendarActive(
+	ctx context.Context,
+	workspaceID, id string,
+	active bool,
+) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	return a.repository.SetCalendarActive(mergedCtx, workspaceID, id, active)
 }
 
-func (a *Admin) DeleteCalendar(ctx context.Context, workspaceID, id string) (int64, error) {
+func (a *Admin) DeleteCalendar(
+	ctx context.Context,
+	workspaceID, id string,
+) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	return a.repository.DeleteCalendar(mergedCtx, workspaceID, id)
@@ -114,7 +152,8 @@ func validateCalendar(params *SaveCalendarParams) error {
 	if params.ResetAfterIntervals == 0 {
 		params.ResetAfterIntervals = 1
 	}
-	if params.IntervalCount > math.MaxInt32 || params.ResetAfterIntervals > math.MaxInt32 {
+	if params.IntervalCount > math.MaxInt32 ||
+		params.ResetAfterIntervals > math.MaxInt32 {
 		return ErrCalendarNumberOutOfRange
 	}
 	if params.Timezone == "" {
@@ -123,14 +162,17 @@ func validateCalendar(params *SaveCalendarParams) error {
 	if _, err := time.LoadLocation(params.Timezone); err != nil {
 		return ErrCalendarTimezoneInvalid
 	}
-	if params.StartAt != nil && params.EndAt != nil && !params.StartAt.Before(*params.EndAt) {
+	if params.StartAt != nil && params.EndAt != nil &&
+		!params.StartAt.Before(*params.EndAt) {
 		return ErrCalendarRangeInvalid
 	}
-	if params.Mode != repository.ModeInterval && params.Mode != repository.ModeSequential &&
+	if params.Mode != repository.ModeInterval &&
+		params.Mode != repository.ModeSequential &&
 		params.Mode != repository.ModeSequentialReset {
 		return ErrCalendarModeInvalid
 	}
-	if params.IntervalType != repository.IntervalCalendar && params.IntervalType != repository.IntervalFloating {
+	if params.IntervalType != repository.IntervalCalendar &&
+		params.IntervalType != repository.IntervalFloating {
 		return ErrCalendarIntervalTypeInvalid
 	}
 	switch params.IntervalUnit {
@@ -138,7 +180,8 @@ func validateCalendar(params *SaveCalendarParams) error {
 	default:
 		return ErrCalendarIntervalUnitInvalid
 	}
-	if params.EndBehavior != repository.EndRestart && params.EndBehavior != repository.EndRepeatLast &&
+	if params.EndBehavior != repository.EndRestart &&
+		params.EndBehavior != repository.EndRepeatLast &&
 		params.EndBehavior != repository.EndStop {
 		return ErrCalendarEndBehaviorInvalid
 	}
@@ -147,12 +190,20 @@ func validateCalendar(params *SaveCalendarParams) error {
 
 func mapCalendar(value repository.Calendar) CalendarModel {
 	model := user.CalendarModel{
-		ID: value.ID, Type: value.Type, Mode: value.Mode, IntervalType: value.IntervalType,
-		IntervalUnit: value.IntervalUnit, IntervalCount: value.IntervalCount,
-		ResetAfterIntervals: value.ResetAfterIntervals, EndBehavior: value.EndBehavior,
-		Timezone: value.Timezone, HideFutureRewards: value.HideFutureRewards,
-		IsActive: value.IsActive, StartAt: value.StartAt, EndAt: value.EndAt,
-		Steps: make([]user.StepModel, 0, len(value.Steps)),
+		ID:                  value.ID,
+		Type:                value.Type,
+		Mode:                value.Mode,
+		IntervalType:        value.IntervalType,
+		IntervalUnit:        value.IntervalUnit,
+		IntervalCount:       value.IntervalCount,
+		ResetAfterIntervals: value.ResetAfterIntervals,
+		EndBehavior:         value.EndBehavior,
+		Timezone:            value.Timezone,
+		HideFutureRewards:   value.HideFutureRewards,
+		IsActive:            value.IsActive,
+		StartAt:             value.StartAt,
+		EndAt:               value.EndAt,
+		Steps:               make([]user.StepModel, 0, len(value.Steps)),
 	}
 	for _, step := range value.Steps {
 		item := user.StepModel{
@@ -162,7 +213,11 @@ func mapCalendar(value repository.Calendar) CalendarModel {
 		}
 		for _, reward := range step.Rewards {
 			item.Rewards = append(item.Rewards, user.RewardModel{
-				Key: reward.Key, Type: reward.Type, Quantity: reward.Quantity, Scale: reward.Scale, Unit: reward.Unit,
+				Key:      reward.Key,
+				Type:     reward.Type,
+				Quantity: reward.Quantity,
+				Scale:    reward.Scale,
+				Unit:     reward.Unit,
 			})
 		}
 		model.Steps = append(model.Steps, item)

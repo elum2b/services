@@ -6,7 +6,10 @@ import (
 	json "github.com/goccy/go-json"
 )
 
-func (a *Platega) SyncPayment(ctx context.Context, params SyncPaymentParams) (*WebhookResult, error) {
+func (a *Platega) SyncPayment(
+	ctx context.Context,
+	params SyncPaymentParams,
+) (*WebhookResult, error) {
 
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
@@ -16,7 +19,9 @@ func (a *Platega) SyncPayment(ctx context.Context, params SyncPaymentParams) (*W
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 
-	transaction, err := NewClient(params.Credentials).GetTransaction(ctx, params.TransactionID)
+	transaction, err := NewClient(
+		params.Credentials,
+	).GetTransaction(ctx, params.TransactionID)
 	if err != nil {
 		return nil, err
 	}

@@ -13,10 +13,16 @@ func TestNullHelpers(t *testing.T) {
 		t.Fatalf("expected %v from ValueFromPtr, got %v", now, got)
 	}
 	if got := ValueFromPtr[*time.Time](nil); got != nil {
-		t.Fatalf("expected nil pointer from ValueFromPtr for nil input, got %v", got)
+		t.Fatalf(
+			"expected nil pointer from ValueFromPtr for nil input, got %v",
+			got,
+		)
 	}
 	if got := ValueFromPtr[int64](nil); got != 0 {
-		t.Fatalf("expected zero int64 from ValueFromPtr for nil input, got %d", got)
+		t.Fatalf(
+			"expected zero int64 from ValueFromPtr for nil input, got %d",
+			got,
+		)
 	}
 
 	nString := NullFromPtr(stringPtr("x"), func(v string) sql.NullString {
@@ -25,9 +31,12 @@ func TestNullHelpers(t *testing.T) {
 	if !nString.Valid || nString.String != "x" {
 		t.Fatalf("expected valid null string 'x', got %+v", nString)
 	}
-	if nString := NullFromPtr[string, sql.NullString](nil, func(v string) sql.NullString {
-		return sql.NullString{String: v, Valid: true}
-	}); nString.Valid {
+	if nString := NullFromPtr[string, sql.NullString](
+		nil,
+		func(v string) sql.NullString {
+			return sql.NullString{String: v, Valid: true}
+		},
+	); nString.Valid {
 		t.Fatalf("expected zero null string for nil input, got %+v", nString)
 	}
 

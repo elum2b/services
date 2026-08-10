@@ -6,8 +6,17 @@ import (
 )
 
 var (
-	ErrRepositoryNotConfigured      = serviceerrors.New(serviceerrors.CodeNotReady, "cpa admin repository is not configured")
-	ErrCodeUploadModeUnsupported    = repository.ErrCodeUploadMode
-	ErrCallbackEventIDRequired      = serviceerrors.New(serviceerrors.CodeInvalidFields, "cpa callback event id is required")
-	ErrCallbackRejectReasonRequired = serviceerrors.New(serviceerrors.CodeInvalidFields, "cpa callback reject reason is required")
+	ErrRepositoryNotConfigured = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"cpa admin repository is not configured",
+	)
+	ErrCodeUploadModeUnsupported = repository.ErrCodeUploadMode
+	ErrCallbackEventIDRequired   = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"cpa callback event id is required",
+	)
+	ErrCallbackRejectReasonRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"cpa callback reject reason is required",
+	)
 )

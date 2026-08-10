@@ -8,11 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	services "github.com/elum2b/services"
 	controlsqlc "github.com/elum2b/services/control/sqlc"
 	serviceerrors "github.com/elum2b/services/errors"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -20,20 +21,50 @@ var (
 		serviceerrors.CodeInvalidFields,
 		"control invalid argument",
 	)
-	ErrNotFound  = serviceerrors.New(serviceerrors.CodeNotFound, "control entity not found")
-	ErrForbidden = serviceerrors.New(serviceerrors.CodeForbidden, "control access denied")
+	ErrNotFound = serviceerrors.New(
+		serviceerrors.CodeNotFound,
+		"control entity not found",
+	)
+	ErrForbidden = serviceerrors.New(
+		serviceerrors.CodeForbidden,
+		"control access denied",
+	)
 	// ErrAuthenticationDenied deliberately has one public form for all failed
 	// interactive-authentication paths. It must not reveal whether an identity
 	// exists, is disabled, or is not a platform member.
-	ErrAuthenticationDenied = serviceerrors.New(serviceerrors.CodeForbidden, "control authentication denied")
-	ErrRoleHierarchy        = serviceerrors.New(serviceerrors.CodeForbidden, "control role hierarchy denied")
-	ErrMethodNotFound       = serviceerrors.New(serviceerrors.CodeNotFound, "control method not found")
-	ErrMethodOwner          = serviceerrors.New(serviceerrors.CodeConflict, "control method belongs to another service")
-	ErrRoleNotFound         = serviceerrors.New(serviceerrors.CodeNotFound, "control role not found")
-	ErrAccountNotFound      = serviceerrors.New(serviceerrors.CodeNotFound, "control account not found")
-	ErrWorkspaceNotFound    = serviceerrors.New(serviceerrors.CodeNotFound, "control workspace not found")
-	ErrNotInitialized       = serviceerrors.New(serviceerrors.CodeNotReady, "control is not initialized")
-	ErrAlreadyInitialized   = serviceerrors.New(
+	ErrAuthenticationDenied = serviceerrors.New(
+		serviceerrors.CodeForbidden,
+		"control authentication denied",
+	)
+	ErrRoleHierarchy = serviceerrors.New(
+		serviceerrors.CodeForbidden,
+		"control role hierarchy denied",
+	)
+	ErrMethodNotFound = serviceerrors.New(
+		serviceerrors.CodeNotFound,
+		"control method not found",
+	)
+	ErrMethodOwner = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"control method belongs to another service",
+	)
+	ErrRoleNotFound = serviceerrors.New(
+		serviceerrors.CodeNotFound,
+		"control role not found",
+	)
+	ErrAccountNotFound = serviceerrors.New(
+		serviceerrors.CodeNotFound,
+		"control account not found",
+	)
+	ErrWorkspaceNotFound = serviceerrors.New(
+		serviceerrors.CodeNotFound,
+		"control workspace not found",
+	)
+	ErrNotInitialized = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"control is not initialized",
+	)
+	ErrAlreadyInitialized = serviceerrors.New(
 		serviceerrors.CodeConflict,
 		"control is already initialized",
 	)
@@ -95,20 +126,27 @@ type Repository struct {
 	secretEncryptionKey      []byte
 }
 
-func New(db *sqlwrap.Client) *Repository { return NewWithOptions(db, Options{}) }
+func New(
+	db *sqlwrap.Client,
+) *Repository {
+	return NewWithOptions(db, Options{})
+}
 
 func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 	timeout := options.QueryTimeout
 	if timeout <= 0 {
 		timeout = time.Second
 	}
+
 	cacheL1, cacheL2 := options.CacheL1Delay, options.CacheL2Delay
 	if cacheL1 <= 0 {
 		cacheL1 = time.Second
 	}
+
 	if cacheL2 <= 0 {
 		cacheL2 = time.Second
 	}
+
 	return &Repository{
 		db:                       db,
 		q:                        controlsqlc.New(db.WithQueryTimeout(timeout)),
@@ -116,7 +154,9 @@ func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 		cacheL1:                  cacheL1,
 		cacheL2:                  cacheL2,
 		onCacheInvalidationError: options.OnCacheInvalidationError,
-		secretEncryptionKey:      append([]byte(nil), options.SecretEncryptionKey...),
+		secretEncryptionKey: append(
+			[]byte(nil),
+			options.SecretEncryptionKey...),
 	}
 }
 
@@ -124,17 +164,29 @@ func (r *Repository) Close() error {
 	if r == nil || r.q == nil {
 		return nil
 	}
+
 	return r.q.Close()
 }
 
 func (r *Repository) Bootstrap(ctx context.Context) error {
-	if err := r.execBootstrapSQL(ctx, controlsqlc.SchemaSQL, "schema"); err != nil {
+	if err := r.execBootstrapSQL(
+		ctx,
+		controlsqlc.SchemaSQL,
+		"schema",
+	); err != nil {
 		return err
 	}
-	if err := r.execBootstrapSQL(ctx, controlsqlc.CatalogSQL, "catalog"); err != nil {
+
+	if err := r.execBootstrapSQL(
+		ctx,
+		controlsqlc.CatalogSQL,
+		"catalog",
+	); err != nil {
 		return err
 	}
+
 	r.bumpCacheVersion("control", "access-catalog")
+
 	return nil
 }
 
@@ -142,30 +194,48 @@ func (r *Repository) bumpCacheVersion(parts ...any) {
 	if r == nil || r.db == nil {
 		return
 	}
-	if err := r.db.BumpCacheVersion(parts...); err != nil && r.onCacheInvalidationError != nil {
+
+	if err := r.db.BumpCacheVersion(
+		parts...); err != nil &&
+		r.onCacheInvalidationError != nil {
 		func() {
 			defer func() {
 				_ = recover()
 			}()
+
 			r.onCacheInvalidationError(err)
 		}()
 	}
 }
 
-func (r *Repository) execBootstrapSQL(ctx context.Context, raw, name string) error {
+func (r *Repository) execBootstrapSQL(
+	ctx context.Context,
+	raw, name string,
+) error {
 	statements, err := sqlwrap.SplitStatements(raw)
 	if err != nil {
 		return fmt.Errorf("control %s SQL parse failed: %w", name, err)
 	}
 
 	for _, statement := range statements {
-		if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
-			_, err := r.db.DB().ExecContext(ctx, statement)
-			return err
-		}); err != nil {
-			return fmt.Errorf("control %s statement failed: %w\n%s", name, err, statement)
+		if err := sqlwrap.Exec(
+			ctx,
+			r.db,
+			sqlwrap.Params{Timeout: bootstrapQueryTimeout},
+			func(ctx context.Context) error {
+				_, err := r.db.DB().ExecContext(ctx, statement)
+				return err
+			},
+		); err != nil {
+			return fmt.Errorf(
+				"control %s statement failed: %w\n%s",
+				name,
+				err,
+				statement,
+			)
 		}
 	}
+
 	return nil
 }
 
@@ -181,6 +251,7 @@ func required(values ...string) error {
 			return ErrInvalidArgument
 		}
 	}
+
 	return nil
 }
 
@@ -188,16 +259,16 @@ func noRows(err error, fallback error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return fallback
 	}
+
 	return err
 }
 
 func writeConflict(err error) error {
-
 	var postgresError *pgconn.PgError
+
 	if errors.As(err, &postgresError) && postgresError.Code == "23505" {
 		return ErrAlreadyExists
 	}
 
 	return err
-
 }

@@ -18,14 +18,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/elum2b/services/control"
 	controlmodel "github.com/elum2b/services/control/model"
 	"github.com/elum2b/services/control/repository"
 	"github.com/elum2b/services/control/service/admin"
 	"github.com/elum2b/services/control/service/internalapi"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	"github.com/google/uuid"
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const (
@@ -39,7 +40,6 @@ const (
 var controlTestSecretEncryptionKey = []byte("0123456789abcdef0123456789abcdef")
 
 func TestControlInitializationAndInvitationOnlyRegistration(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 
@@ -53,87 +53,125 @@ func TestControlInitializationAndInvitationOnlyRegistration(t *testing.T) {
 		t.Fatalf("initialize result = %#v", owner)
 	}
 
-	if _, err := service.Admin.Initialize(ctx, authParams("other-initializer")); !errors.Is(
+	if _, err := service.Admin.Initialize(
+		ctx,
+		authParams("other-initializer"),
+	); !errors.Is(
 		err,
 		repository.ErrAlreadyInitialized,
 	) {
 		t.Fatalf("second initialize error = %v", err)
 	}
 
-	if _, err := service.Admin.CompleteAuth(ctx, authParams("uninvited")); !errors.Is(
+	if _, err := service.Admin.CompleteAuth(
+		ctx,
+		authParams("uninvited"),
+	); !errors.Is(
 		err,
 		repository.ErrAuthenticationDenied,
 	) {
 		t.Fatalf("uninvited registration error = %v", err)
 	}
 
-	if _, err := service.Admin.CompleteAuth(ctx, authParams("owner")); err != nil {
+	if _, err := service.Admin.CompleteAuth(
+		ctx,
+		authParams("owner"),
+	); err != nil {
 		t.Fatalf("existing owner authentication: %v", err)
 	}
-
 }
 
 func TestControlNewPublicFacadesReturnNotReady(t *testing.T) {
-
 	service := control.New()
 	if service.Admin == nil || service.Internal == nil || service.IsReady() {
 		t.Fatal("new control public facades are invalid")
 	}
-	if _, err := service.Internal.GetAuthorizedGlobalMethods(context.Background(), "account"); !errors.Is(err, sqlwrap.ErrServiceNotReady) {
+
+	if _, err := service.Internal.GetAuthorizedGlobalMethods(
+		context.Background(),
+		"account",
+	); !errors.Is(
+		err,
+		sqlwrap.ErrServiceNotReady,
+	) {
 		t.Fatalf("unready control internal error = %v", err)
 	}
 }
 
 func TestControlMCPTokenLifecycleAndPrincipal(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 
-	created, err := service.Admin.CreateMCPToken(ctx, admin.CreateMCPTokenParams{
-		AccountID: owner.Account.ID,
-		Name:      "Claude Desktop",
-		Duration:  time.Hour,
-	})
+	created, err := service.Admin.CreateMCPToken(
+		ctx,
+		admin.CreateMCPTokenParams{
+			AccountID: owner.Account.ID,
+			Name:      "Claude Desktop",
+			Duration:  time.Hour,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create MCP token: %v", err)
 	}
-	if !strings.HasPrefix(created.RawToken, "mcp_") || created.Token.ExpiresAt == nil {
+
+	if !strings.HasPrefix(created.RawToken, "mcp_") ||
+		created.Token.ExpiresAt == nil {
 		t.Fatalf("unexpected created MCP token: %#v", created)
 	}
 
-	principal, err := service.Internal.ValidateMCPToken(ctx, internalapi.ValidateMCPTokenRequest{
-		Token: created.RawToken,
-	})
+	principal, err := service.Internal.ValidateMCPToken(
+		ctx,
+		internalapi.ValidateMCPTokenRequest{
+			Token: created.RawToken,
+		},
+	)
 	if err != nil {
 		t.Fatalf("validate MCP token: %v", err)
 	}
-	if principal.AccountID != owner.Account.ID || principal.TokenID != created.Token.ID ||
+
+	if principal.AccountID != owner.Account.ID ||
+		principal.TokenID != created.Token.ID ||
 		principal.TokenName != "Claude Desktop" {
 		t.Fatalf("unexpected MCP principal: %#v", principal)
 	}
 
-	globalMethods, err := service.Internal.GetAuthorizedGlobalMethods(ctx, principal.AccountID)
+	globalMethods, err := service.Internal.GetAuthorizedGlobalMethods(
+		ctx,
+		principal.AccountID,
+	)
 	if err != nil {
 		t.Fatalf("get MCP principal global permissions: %v", err)
 	}
+
 	if len(globalMethods) == 0 {
 		t.Fatal("platform owner has no global permissions")
 	}
 
-	tokens, err := service.Admin.ListMCPTokens(ctx, admin.ListMCPTokensParams{AccountID: owner.Account.ID})
+	tokens, err := service.Admin.ListMCPTokens(
+		ctx,
+		admin.ListMCPTokensParams{AccountID: owner.Account.ID},
+	)
 	if err != nil || len(tokens) != 1 || tokens[0].ID != created.Token.ID {
 		t.Fatalf("list MCP tokens = %#v, err=%v", tokens, err)
 	}
+
 	if _, err := service.Admin.RevokeMCPToken(ctx, admin.RevokeMCPTokenParams{
 		AccountID: owner.Account.ID,
 		TokenID:   created.Token.ID,
 	}); err != nil {
 		t.Fatalf("revoke MCP token: %v", err)
 	}
-	if _, err := service.Internal.ValidateMCPToken(ctx, internalapi.ValidateMCPTokenRequest{
-		Token: created.RawToken,
-	}); !errors.Is(err, repository.ErrNotFound) {
+
+	if _, err := service.Internal.ValidateMCPToken(
+		ctx,
+		internalapi.ValidateMCPTokenRequest{
+			Token: created.RawToken,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrNotFound,
+	) {
 		t.Fatalf("revoked MCP token validation error = %v", err)
 	}
 
@@ -145,6 +183,7 @@ func TestControlMCPTokenLifecycleAndPrincipal(t *testing.T) {
 	if err != nil || never.Token.ExpiresAt != nil {
 		t.Fatalf("create never-expiring MCP token = %#v, err=%v", never, err)
 	}
+
 	if _, err := service.Admin.CreateMCPToken(ctx, admin.CreateMCPTokenParams{
 		AccountID: owner.Account.ID,
 		Name:      "invalid",
@@ -154,25 +193,42 @@ func TestControlMCPTokenLifecycleAndPrincipal(t *testing.T) {
 	}
 }
 
-func TestApplicationAuthenticationScopesSameAppIDAndInvalidatesSecretCache(t *testing.T) {
-
+func TestApplicationAuthenticationScopesSameAppIDAndInvalidatesSecretCache(
+	t *testing.T,
+) {
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 	first := createWorkspace(t, service, owner.Account.ID, "first-application")
-	limitRequest, err := service.Admin.RequestWorkspaceLimit(ctx, owner.Account.ID, 2, "application isolation test")
+
+	limitRequest, err := service.Admin.RequestWorkspaceLimit(
+		ctx,
+		owner.Account.ID,
+		2,
+		"application isolation test",
+	)
 	if err != nil {
 		t.Fatalf("request workspace limit: %v", err)
 	}
-	if _, err := service.Admin.ResolveLimitRequest(ctx, admin.ResolveLimitRequestParams{
-		ActorID:       owner.Account.ID,
-		RequestID:     limitRequest.ID,
-		Approved:      true,
-		ApprovedLimit: 2,
-	}); err != nil {
+
+	if _, err := service.Admin.ResolveLimitRequest(
+		ctx,
+		admin.ResolveLimitRequestParams{
+			ActorID:       owner.Account.ID,
+			RequestID:     limitRequest.ID,
+			Approved:      true,
+			ApprovedLimit: 2,
+		},
+	); err != nil {
 		t.Fatalf("approve workspace limit: %v", err)
 	}
-	second := createWorkspace(t, service, owner.Account.ID, "second-application")
+
+	second := createWorkspace(
+		t,
+		service,
+		owner.Account.ID,
+		"second-application",
+	)
 
 	const (
 		appID      = int64(9001)
@@ -180,6 +236,7 @@ func TestApplicationAuthenticationScopesSameAppIDAndInvalidatesSecretCache(t *te
 		firstKey   = "first-secret"
 		secondKey  = "second-secret"
 	)
+
 	for _, value := range []struct {
 		workspaceID string
 		secret      string
@@ -187,164 +244,236 @@ func TestApplicationAuthenticationScopesSameAppIDAndInvalidatesSecretCache(t *te
 		{first.ID, firstKey},
 		{second.ID, secondKey},
 	} {
-		_, err := service.Admin.UpsertApplicationPlatform(ctx, admin.UpsertApplicationPlatformParams{
-			ActorID:              owner.Account.ID,
-			WorkspaceID:          value.workspaceID,
-			AppID:                appID,
-			PlatformID:           platformID,
-			Provider:             admin.ApplicationProviderTMA,
-			Secret:               value.secret,
-			MaxAuthenticationAge: time.Hour,
-			IsEnabled:            true,
-		})
+		_, err := service.Admin.UpsertApplicationPlatform(
+			ctx,
+			admin.UpsertApplicationPlatformParams{
+				ActorID:              owner.Account.ID,
+				WorkspaceID:          value.workspaceID,
+				AppID:                appID,
+				PlatformID:           platformID,
+				Provider:             admin.ApplicationProviderTMA,
+				Secret:               value.secret,
+				MaxAuthenticationAge: time.Hour,
+				IsEnabled:            true,
+			},
+		)
 		if err != nil {
 			t.Fatalf("upsert application %q: %v", value.workspaceID, err)
 		}
 	}
 
 	firstLaunch := signedTMALaunch(t, firstKey, 77, time.Now().UTC())
-	identity, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
-		WorkspaceID: first.ID,
-		AppID:       appID,
-		PlatformID:  platformID,
-		Launch:      firstLaunch,
-	})
-	if err != nil || identity.WorkspaceID != first.ID || identity.PlatformUserID != "77" {
+	identity, err := service.Internal.AuthenticateApplicationUser(
+		ctx,
+		internalapi.AuthenticateApplicationUserRequest{
+			WorkspaceID: first.ID,
+			AppID:       appID,
+			PlatformID:  platformID,
+			Launch:      firstLaunch,
+		},
+	)
+
+	if err != nil || identity.WorkspaceID != first.ID ||
+		identity.PlatformUserID != "77" {
 		t.Fatalf("authenticate first application = %#v, %v", identity, err)
 	}
 
-	if _, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
-		WorkspaceID: second.ID,
-		AppID:       appID,
-		PlatformID:  platformID,
-		Launch:      firstLaunch,
-	}); !errors.Is(err, repository.ErrForbidden) {
+	if _, err := service.Internal.AuthenticateApplicationUser(
+		ctx,
+		internalapi.AuthenticateApplicationUserRequest{
+			WorkspaceID: second.ID,
+			AppID:       appID,
+			PlatformID:  platformID,
+			Launch:      firstLaunch,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrForbidden,
+	) {
 		t.Fatalf("cross-workspace launch error = %v", err)
 	}
 
-	_, err = service.Admin.UpsertApplicationPlatform(ctx, admin.UpsertApplicationPlatformParams{
-		ActorID:              owner.Account.ID,
-		WorkspaceID:          first.ID,
-		AppID:                appID,
-		PlatformID:           platformID,
-		Provider:             admin.ApplicationProviderTMA,
-		Secret:               "rotated-secret",
-		MaxAuthenticationAge: time.Hour,
-		IsEnabled:            true,
-	})
+	_, err = service.Admin.UpsertApplicationPlatform(
+		ctx,
+		admin.UpsertApplicationPlatformParams{
+			ActorID:              owner.Account.ID,
+			WorkspaceID:          first.ID,
+			AppID:                appID,
+			PlatformID:           platformID,
+			Provider:             admin.ApplicationProviderTMA,
+			Secret:               "rotated-secret",
+			MaxAuthenticationAge: time.Hour,
+			IsEnabled:            true,
+		},
+	)
 	if err != nil {
 		t.Fatalf("rotate application secret: %v", err)
 	}
-	if _, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
-		WorkspaceID: first.ID,
-		AppID:       appID,
-		PlatformID:  platformID,
-		Launch:      firstLaunch,
-	}); !errors.Is(err, repository.ErrForbidden) {
+
+	if _, err := service.Internal.AuthenticateApplicationUser(
+		ctx,
+		internalapi.AuthenticateApplicationUserRequest{
+			WorkspaceID: first.ID,
+			AppID:       appID,
+			PlatformID:  platformID,
+			Launch:      firstLaunch,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrForbidden,
+	) {
 		t.Fatalf("old cached secret remained valid: %v", err)
 	}
 
 	rotatedLaunch := signedTMALaunch(t, "rotated-secret", 77, time.Now().UTC())
-	if _, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
-		WorkspaceID: first.ID,
-		AppID:       appID,
-		PlatformID:  platformID,
-		Launch:      rotatedLaunch,
-	}); err != nil {
+	if _, err := service.Internal.AuthenticateApplicationUser(
+		ctx,
+		internalapi.AuthenticateApplicationUserRequest{
+			WorkspaceID: first.ID,
+			AppID:       appID,
+			PlatformID:  platformID,
+			Launch:      rotatedLaunch,
+		},
+	); err != nil {
 		t.Fatalf("rotated application authentication: %v", err)
 	}
 
-	applications, err := service.Admin.ListApplicationPlatforms(ctx, admin.ListApplicationPlatformsParams{
-		ActorID:     owner.Account.ID,
-		WorkspaceID: first.ID,
-	})
+	applications, err := service.Admin.ListApplicationPlatforms(
+		ctx,
+		admin.ListApplicationPlatformsParams{
+			ActorID:     owner.Account.ID,
+			WorkspaceID: first.ID,
+		},
+	)
 	if err != nil || len(applications) != 1 || applications[0].AppID != appID {
 		t.Fatalf("list applications = %#v, %v", applications, err)
 	}
-
 }
 
-func TestApplicationAuthenticationRejectsExpiredAndInvalidConfiguration(t *testing.T) {
-
+func TestApplicationAuthenticationRejectsExpiredAndInvalidConfiguration(
+	t *testing.T,
+) {
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
-	workspace := createWorkspace(t, service, owner.Account.ID, "application-expiry")
+	workspace := createWorkspace(
+		t,
+		service,
+		owner.Account.ID,
+		"application-expiry",
+	)
 
-	if _, err := service.Admin.UpsertApplicationPlatform(ctx, admin.UpsertApplicationPlatformParams{
-		ActorID:              owner.Account.ID,
-		WorkspaceID:          workspace.ID,
-		AppID:                100,
-		PlatformID:           2,
-		Provider:             admin.ApplicationProviderTMA,
-		Secret:               "expiry-secret",
-		MaxAuthenticationAge: time.Second,
-		IsEnabled:            true,
-	}); err != nil {
+	if _, err := service.Admin.UpsertApplicationPlatform(
+		ctx,
+		admin.UpsertApplicationPlatformParams{
+			ActorID:              owner.Account.ID,
+			WorkspaceID:          workspace.ID,
+			AppID:                100,
+			PlatformID:           2,
+			Provider:             admin.ApplicationProviderTMA,
+			Secret:               "expiry-secret",
+			MaxAuthenticationAge: time.Second,
+			IsEnabled:            true,
+		},
+	); err != nil {
 		t.Fatalf("upsert expiring application: %v", err)
 	}
 
-	expired := signedTMALaunch(t, "expiry-secret", 10, time.Now().UTC().Add(-2*time.Second))
-	if _, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
-		WorkspaceID: workspace.ID,
-		AppID:       100,
-		PlatformID:  2,
-		Launch:      expired,
-	}); !errors.Is(err, repository.ErrForbidden) {
+	expired := signedTMALaunch(
+		t,
+		"expiry-secret",
+		10,
+		time.Now().UTC().Add(-2*time.Second),
+	)
+	if _, err := service.Internal.AuthenticateApplicationUser(
+		ctx,
+		internalapi.AuthenticateApplicationUserRequest{
+			WorkspaceID: workspace.ID,
+			AppID:       100,
+			PlatformID:  2,
+			Launch:      expired,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrForbidden,
+	) {
 		t.Fatalf("expired launch error = %v", err)
 	}
 
-	if _, err := service.Admin.UpsertApplicationPlatform(ctx, admin.UpsertApplicationPlatformParams{
-		ActorID:              owner.Account.ID,
-		WorkspaceID:          workspace.ID,
-		AppID:                101,
-		PlatformID:           2,
-		Provider:             admin.ApplicationProviderTMA,
-		Secret:               "invalid-age",
-		MaxAuthenticationAge: 1500 * time.Millisecond,
-		IsEnabled:            true,
-	}); !errors.Is(err, repository.ErrInvalidArgument) {
+	if _, err := service.Admin.UpsertApplicationPlatform(
+		ctx,
+		admin.UpsertApplicationPlatformParams{
+			ActorID:              owner.Account.ID,
+			WorkspaceID:          workspace.ID,
+			AppID:                101,
+			PlatformID:           2,
+			Provider:             admin.ApplicationProviderTMA,
+			Secret:               "invalid-age",
+			MaxAuthenticationAge: 1500 * time.Millisecond,
+			IsEnabled:            true,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrInvalidArgument,
+	) {
 		t.Fatalf("fractional authentication age error = %v", err)
 	}
 
-	if _, err := service.Admin.UpsertApplicationPlatform(ctx, admin.UpsertApplicationPlatformParams{
-		ActorID:              owner.Account.ID,
-		WorkspaceID:          workspace.ID,
-		AppID:                100,
-		PlatformID:           2,
-		Provider:             admin.ApplicationProviderTMA,
-		Secret:               "expiry-secret",
-		MaxAuthenticationAge: time.Hour,
-		IsEnabled:            false,
-	}); err != nil {
+	if _, err := service.Admin.UpsertApplicationPlatform(
+		ctx,
+		admin.UpsertApplicationPlatformParams{
+			ActorID:              owner.Account.ID,
+			WorkspaceID:          workspace.ID,
+			AppID:                100,
+			PlatformID:           2,
+			Provider:             admin.ApplicationProviderTMA,
+			Secret:               "expiry-secret",
+			MaxAuthenticationAge: time.Hour,
+			IsEnabled:            false,
+		},
+	); err != nil {
 		t.Fatalf("disable application: %v", err)
 	}
-	if _, err := service.Internal.AuthenticateApplicationUser(ctx, internalapi.AuthenticateApplicationUserRequest{
-		WorkspaceID: workspace.ID,
-		AppID:       100,
-		PlatformID:  2,
-		Launch:      signedTMALaunch(t, "expiry-secret", 10, time.Now().UTC()),
-	}); !errors.Is(err, repository.ErrForbidden) {
+
+	if _, err := service.Internal.AuthenticateApplicationUser(
+		ctx,
+		internalapi.AuthenticateApplicationUserRequest{
+			WorkspaceID: workspace.ID,
+			AppID:       100,
+			PlatformID:  2,
+			Launch: signedTMALaunch(
+				t,
+				"expiry-secret",
+				10,
+				time.Now().UTC(),
+			),
+		},
+	); !errors.Is(
+		err,
+		repository.ErrForbidden,
+	) {
 		t.Fatalf("disabled application error = %v", err)
 	}
-
 }
 
 func TestControlWorkspaceLimitCountsOwnershipOnly(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 
-	creatorRole, err := service.Admin.CreateGlobalRole(ctx, admin.CreateRoleParams{
-		ActorID:  owner.Account.ID,
-		Code:     "workspace_creator",
-		Title:    "Workspace creator",
-		Position: 10,
-	})
+	creatorRole, err := service.Admin.CreateGlobalRole(
+		ctx,
+		admin.CreateRoleParams{
+			ActorID:  owner.Account.ID,
+			Code:     "workspace_creator",
+			Title:    "Workspace creator",
+			Position: 10,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create global role: %v", err)
 	}
+
 	if err := service.Admin.ReplaceGlobalRolePermissions(
 		ctx,
 		admin.ReplaceRolePermissionsParams{
@@ -356,22 +485,33 @@ func TestControlWorkspaceLimitCountsOwnershipOnly(t *testing.T) {
 		t.Fatalf("grant workspace create: %v", err)
 	}
 
-	_, globalToken, err := service.Admin.CreateGlobalInvite(ctx, admin.CreateInviteParams{
-		ActorID: owner.Account.ID,
-		RoleIDs: []string{creatorRole.ID},
-	})
+	_, globalToken, err := service.Admin.CreateGlobalInvite(
+		ctx,
+		admin.CreateInviteParams{
+			ActorID: owner.Account.ID,
+			RoleIDs: []string{creatorRole.ID},
+		},
+	)
 	if err != nil {
 		t.Fatalf("create global invite: %v", err)
 	}
 
 	friendParams := authParams("friend")
+
 	friendParams.InviteToken = globalToken
+
 	friend, err := service.Admin.CompleteAuth(ctx, friendParams)
 	if err != nil {
 		t.Fatalf("register friend: %v", err)
 	}
 
-	ownerWorkspace := createWorkspace(t, service, owner.Account.ID, "owner-workspace")
+	ownerWorkspace := createWorkspace(
+		t,
+		service,
+		owner.Account.ID,
+		"owner-workspace",
+	)
+
 	_, workspaceToken, err := service.Admin.CreateWorkspaceInvite(
 		ctx,
 		admin.CreateInviteParams{
@@ -388,7 +528,12 @@ func TestControlWorkspaceLimitCountsOwnershipOnly(t *testing.T) {
 		t.Fatalf("accept workspace invitation: %v", err)
 	}
 
-	friendWorkspace := createWorkspace(t, service, friend.Account.ID, "friend-workspace")
+	friendWorkspace := createWorkspace(
+		t,
+		service,
+		friend.Account.ID,
+		"friend-workspace",
+	)
 	if friendWorkspace.OwnerAccountID != friend.Account.ID {
 		t.Fatalf("friend workspace owner = %q", friendWorkspace.OwnerAccountID)
 	}
@@ -403,21 +548,24 @@ func TestControlWorkspaceLimitCountsOwnershipOnly(t *testing.T) {
 		t.Fatalf("second owned workspace error = %v", err)
 	}
 
-	workspaces, err := service.Admin.ListWorkspaces(ctx, friend.Account.ID, admin.Page{Limit: 10})
+	workspaces, err := service.Admin.ListWorkspaces(
+		ctx,
+		friend.Account.ID,
+		admin.Page{Limit: 10},
+	)
 	if err != nil || len(workspaces) != 2 {
 		t.Fatalf("friend memberships = %#v err=%v", workspaces, err)
 	}
-
 }
 
 func TestControlWorkspaceEmployeeLimitReservesPendingInvites(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 	workspace := createWorkspace(t, service, owner.Account.ID, "employees")
 
 	inviteIDs := make([]string, 0, 10)
+
 	for index := 0; index < 10; index++ {
 		invite, _, err := service.Admin.CreateWorkspaceInvite(
 			ctx,
@@ -429,6 +577,7 @@ func TestControlWorkspaceEmployeeLimitReservesPendingInvites(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create invite %d: %v", index, err)
 		}
+
 		inviteIDs = append(inviteIDs, invite.ID)
 	}
 
@@ -442,9 +591,14 @@ func TestControlWorkspaceEmployeeLimitReservesPendingInvites(t *testing.T) {
 		t.Fatalf("eleventh pending invite error = %v", err)
 	}
 
-	if _, err := service.Admin.RevokeInvite(ctx, owner.Account.ID, inviteIDs[0]); err != nil {
+	if _, err := service.Admin.RevokeInvite(
+		ctx,
+		owner.Account.ID,
+		inviteIDs[0],
+	); err != nil {
 		t.Fatalf("revoke pending invite: %v", err)
 	}
+
 	if _, _, err := service.Admin.CreateWorkspaceInvite(
 		ctx,
 		admin.CreateInviteParams{
@@ -454,43 +608,54 @@ func TestControlWorkspaceEmployeeLimitReservesPendingInvites(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create invite after revoke: %v", err)
 	}
-
 }
 
 func TestControlOneTimeInviteIsAtomic(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 
-	_, token, err := service.Admin.CreateGlobalInvite(ctx, admin.CreateInviteParams{
-		ActorID: owner.Account.ID,
-	})
+	_, token, err := service.Admin.CreateGlobalInvite(
+		ctx,
+		admin.CreateInviteParams{
+			ActorID: owner.Account.ID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create invite: %v", err)
 	}
 
 	start := make(chan struct{})
 	errorsCh := make(chan error, 2)
+
 	var wait sync.WaitGroup
+
 	for _, subject := range []string{"friend-a", "friend-b"} {
-		subject := subject
+
 		wait.Add(1)
+
 		go func() {
 			defer wait.Done()
+
 			<-start
+
 			params := authParams(subject)
+
 			params.InviteToken = token
+
 			_, err := service.Admin.CompleteAuth(ctx, params)
+
 			errorsCh <- err
 		}()
 	}
+
 	close(start)
 	wait.Wait()
 	close(errorsCh)
 
 	succeeded := 0
 	rejected := 0
+
 	for err := range errorsCh {
 		switch {
 		case err == nil:
@@ -501,20 +666,24 @@ func TestControlOneTimeInviteIsAtomic(t *testing.T) {
 			t.Fatalf("unexpected invite race error: %v", err)
 		}
 	}
+
 	if succeeded != 1 || rejected != 1 {
 		t.Fatalf("invite race: succeeded=%d rejected=%d", succeeded, rejected)
 	}
-
 }
 
 func TestControlOwnershipTransferHonorsTargetLimit(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 	friend := inviteAccount(t, service, owner.Account.ID, "friend")
 
-	ownerWorkspace := createWorkspace(t, service, owner.Account.ID, "owner-workspace")
+	ownerWorkspace := createWorkspace(
+		t,
+		service,
+		owner.Account.ID,
+		"owner-workspace",
+	)
 	friendWorkspace := createWorkspaceWithGlobalPermission(
 		t,
 		service,
@@ -522,7 +691,14 @@ func TestControlOwnershipTransferHonorsTargetLimit(t *testing.T) {
 		friend.Account.ID,
 		"friend-workspace",
 	)
-	inviteIntoWorkspace(t, service, owner.Account.ID, ownerWorkspace.ID, friend.Account.ID, "friend")
+	inviteIntoWorkspace(
+		t,
+		service,
+		owner.Account.ID,
+		ownerWorkspace.ID,
+		friend.Account.ID,
+		"friend",
+	)
 
 	err := service.Admin.TransferWorkspaceOwnership(
 		ctx,
@@ -543,6 +719,7 @@ func TestControlOwnershipTransferHonorsTargetLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request workspace limit: %v", err)
 	}
+
 	if _, err := service.Admin.ResolveLimitRequest(
 		ctx,
 		admin.ResolveLimitRequestParams{
@@ -568,18 +745,23 @@ func TestControlOwnershipTransferHonorsTargetLimit(t *testing.T) {
 	if err != nil || updated.OwnerAccountID != friend.Account.ID {
 		t.Fatalf("updated owner = %#v err=%v", updated, err)
 	}
-	workspaces, err := service.Admin.ListWorkspaces(ctx, owner.Account.ID, admin.Page{Limit: 10})
-	if err != nil || len(workspaces) != 1 || workspaces[0].ID != ownerWorkspace.ID {
+
+	workspaces, err := service.Admin.ListWorkspaces(
+		ctx,
+		owner.Account.ID,
+		admin.Page{Limit: 10},
+	)
+	if err != nil || len(workspaces) != 1 ||
+		workspaces[0].ID != ownerWorkspace.ID {
 		t.Fatalf("former owner membership = %#v err=%v", workspaces, err)
 	}
+
 	if friendWorkspace.OwnerAccountID != friend.Account.ID {
 		t.Fatalf("first friend workspace changed: %#v", friendWorkspace)
 	}
-
 }
 
 func TestControlWorkspaceAccessIsScoped(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
@@ -596,6 +778,7 @@ func TestControlWorkspaceAccessIsScoped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create workspace role: %v", err)
 	}
+
 	if err := service.Admin.ReplaceWorkspaceRolePermissions(
 		ctx,
 		admin.ReplaceRolePermissionsParams{
@@ -607,6 +790,7 @@ func TestControlWorkspaceAccessIsScoped(t *testing.T) {
 	); err != nil {
 		t.Fatalf("grant workspace permission: %v", err)
 	}
+
 	inviteIntoWorkspaceWithRole(
 		t,
 		service,
@@ -628,6 +812,7 @@ func TestControlWorkspaceAccessIsScoped(t *testing.T) {
 	if err != nil || !allowed {
 		t.Fatalf("workspace access: allowed=%v err=%v", allowed, err)
 	}
+
 	globalAllowed, err := service.Internal.CheckGlobalAccess(
 		ctx,
 		internalapi.GlobalAccessRequest{
@@ -636,13 +821,15 @@ func TestControlWorkspaceAccessIsScoped(t *testing.T) {
 		},
 	)
 	if err != nil || globalAllowed {
-		t.Fatalf("workspace role leaked globally: allowed=%v err=%v", globalAllowed, err)
+		t.Fatalf(
+			"workspace role leaked globally: allowed=%v err=%v",
+			globalAllowed,
+			err,
+		)
 	}
-
 }
 
 func TestControlRejectsWrongScopeAndManifestHijack(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
@@ -658,6 +845,7 @@ func TestControlRejectsWrongScopeAndManifestHijack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create role: %v", err)
 	}
+
 	err = service.Admin.ReplaceWorkspaceRolePermissions(
 		ctx,
 		admin.ReplaceRolePermissionsParams{
@@ -671,16 +859,20 @@ func TestControlRejectsWrongScopeAndManifestHijack(t *testing.T) {
 		t.Fatalf("wrong-scope permission error = %v", err)
 	}
 
-	if err := service.Internal.RegisterManifest(ctx, []internalapi.MethodManifest{
-		{
-			Key:      "tasks.task.custom_update",
-			Service:  "tasks",
-			GroupKey: "task",
-			Position: 10,
+	if err := service.Internal.RegisterManifest(
+		ctx,
+		[]internalapi.MethodManifest{
+			{
+				Key:      "tasks.task.custom_update",
+				Service:  "tasks",
+				GroupKey: "task",
+				Position: 10,
+			},
 		},
-	}); err != nil {
+	); err != nil {
 		t.Fatalf("register manifest: %v", err)
 	}
+
 	err = service.Internal.RegisterManifest(ctx, []internalapi.MethodManifest{
 		{
 			Key:      "tasks.task.custom_update",
@@ -692,53 +884,65 @@ func TestControlRejectsWrongScopeAndManifestHijack(t *testing.T) {
 	if !errors.Is(err, repository.ErrMethodOwner) {
 		t.Fatalf("manifest hijack error = %v", err)
 	}
-
 }
 
-func TestControlAccessCatalogHasLocalizedGlobalAndWorkspaceScopes(t *testing.T) {
-
+func TestControlAccessCatalogHasLocalizedGlobalAndWorkspaceScopes(
+	t *testing.T,
+) {
 	service := newControlTestService(t)
 	initializeControl(t, service, "owner")
 
 	for _, scope := range []admin.AccessScope{admin.ScopeGlobal, admin.ScopeWorkspace} {
-		items, err := service.Admin.ListAccess(context.Background(), "ru", scope)
+		items, err := service.Admin.ListAccess(
+			context.Background(),
+			"ru",
+			scope,
+		)
 		if err != nil {
 			t.Fatalf("list %s access: %v", scope, err)
 		}
+
 		found := false
+
 		for _, serviceItem := range items {
 			for _, group := range serviceItem.Groups {
 				for _, access := range group.Accesses {
-					if access.Scope == scope && access.Title != "" && access.Desc != "" {
+					if access.Scope == scope && access.Title != "" &&
+						access.Desc != "" {
 						found = true
 					}
 				}
 			}
 		}
+
 		if !found {
 			t.Fatalf("localized %s access was not found: %#v", scope, items)
 		}
 	}
-
 }
 
-func TestControlPlatformRemovalClearsAccessAndRequiresFreshGlobalInvite(t *testing.T) {
-
+func TestControlPlatformRemovalClearsAccessAndRequiresFreshGlobalInvite(
+	t *testing.T,
+) {
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 	member := inviteAccount(t, service, owner.Account.ID, "member")
 	workspace := createWorkspace(t, service, owner.Account.ID, "removal")
 
-	globalRole, err := service.Admin.CreateGlobalRole(ctx, admin.CreateRoleParams{
-		ActorID:  owner.Account.ID,
-		Code:     "creator",
-		Title:    "Creator",
-		Position: 10,
-	})
+	globalRole, err := service.Admin.CreateGlobalRole(
+		ctx,
+		admin.CreateRoleParams{
+			ActorID:  owner.Account.ID,
+			Code:     "creator",
+			Title:    "Creator",
+			Position: 10,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create global role: %v", err)
 	}
+
 	if err := service.Admin.ReplaceGlobalRolePermissions(
 		ctx,
 		admin.ReplaceRolePermissionsParams{
@@ -749,6 +953,7 @@ func TestControlPlatformRemovalClearsAccessAndRequiresFreshGlobalInvite(t *testi
 	); err != nil {
 		t.Fatalf("grant global permission: %v", err)
 	}
+
 	if err := service.Admin.AssignGlobalRole(ctx, admin.SetRoleMemberParams{
 		ActorID:   owner.Account.ID,
 		AccountID: member.Account.ID,
@@ -757,16 +962,20 @@ func TestControlPlatformRemovalClearsAccessAndRequiresFreshGlobalInvite(t *testi
 		t.Fatalf("assign global role: %v", err)
 	}
 
-	workspaceRole, err := service.Admin.CreateWorkspaceRole(ctx, admin.CreateRoleParams{
-		ActorID:     owner.Account.ID,
-		WorkspaceID: workspace.ID,
-		Code:        "editor",
-		Title:       "Editor",
-		Position:    10,
-	})
+	workspaceRole, err := service.Admin.CreateWorkspaceRole(
+		ctx,
+		admin.CreateRoleParams{
+			ActorID:     owner.Account.ID,
+			WorkspaceID: workspace.ID,
+			Code:        "editor",
+			Title:       "Editor",
+			Position:    10,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create workspace role: %v", err)
 	}
+
 	if err := service.Admin.ReplaceWorkspaceRolePermissions(
 		ctx,
 		admin.ReplaceRolePermissionsParams{
@@ -778,6 +987,7 @@ func TestControlPlatformRemovalClearsAccessAndRequiresFreshGlobalInvite(t *testi
 	); err != nil {
 		t.Fatalf("grant workspace permission: %v", err)
 	}
+
 	inviteIntoWorkspaceWithRole(
 		t,
 		service,
@@ -807,7 +1017,11 @@ func TestControlPlatformRemovalClearsAccessAndRequiresFreshGlobalInvite(t *testi
 	if err != nil || allowed {
 		t.Fatalf("removed workspace access: allowed=%v err=%v", allowed, err)
 	}
-	if _, err := service.Admin.CompleteAuth(ctx, authParams("member")); !errors.Is(
+
+	if _, err := service.Admin.CompleteAuth(
+		ctx,
+		authParams("member"),
+	); !errors.Is(
 		err,
 		repository.ErrAuthenticationDenied,
 	) {
@@ -821,8 +1035,11 @@ func TestControlPlatformRemovalClearsAccessAndRequiresFreshGlobalInvite(t *testi
 	if err != nil {
 		t.Fatalf("create reactivation invite: %v", err)
 	}
+
 	params := authParams("member")
+
 	params.InviteToken = token
+
 	if _, err := service.Admin.CompleteAuth(ctx, params); err != nil {
 		t.Fatalf("reactivate member: %v", err)
 	}
@@ -835,17 +1052,28 @@ func TestControlPlatformRemovalClearsAccessAndRequiresFreshGlobalInvite(t *testi
 		},
 	)
 	if err != nil || globalAllowed {
-		t.Fatalf("old global role restored: allowed=%v err=%v", globalAllowed, err)
-	}
-	workspaces, err := service.Admin.ListWorkspaces(ctx, member.Account.ID, admin.Page{Limit: 10})
-	if err != nil || len(workspaces) != 0 {
-		t.Fatalf("old workspace membership restored: %#v err=%v", workspaces, err)
+		t.Fatalf(
+			"old global role restored: allowed=%v err=%v",
+			globalAllowed,
+			err,
+		)
 	}
 
+	workspaces, err := service.Admin.ListWorkspaces(
+		ctx,
+		member.Account.ID,
+		admin.Page{Limit: 10},
+	)
+	if err != nil || len(workspaces) != 0 {
+		t.Fatalf(
+			"old workspace membership restored: %#v err=%v",
+			workspaces,
+			err,
+		)
+	}
 }
 
 func TestControlBackupCodeIsSingleUseAcrossConcurrentChallenges(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
@@ -855,6 +1083,7 @@ func TestControlBackupCodeIsSingleUseAcrossConcurrentChallenges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open trigger database: %v", err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
 
 	if _, err := db.Exec(`
@@ -870,6 +1099,7 @@ func TestControlBackupCodeIsSingleUseAcrossConcurrentChallenges(t *testing.T) {
 	`); err != nil {
 		t.Fatalf("create backup delay function: %v", err)
 	}
+
 	if _, err := db.Exec(`
 		CREATE TRIGGER control_test_delay_backup_update
 		BEFORE UPDATE OF backup_hashes ON control_two_factor
@@ -885,18 +1115,22 @@ func TestControlBackupCodeIsSingleUseAcrossConcurrentChallenges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create challenge %d: %v", index, err)
 		}
+
 		if !result.TwoFactorRequired || result.TwoFactorChallenge == "" {
 			t.Fatalf("challenge %d result = %#v", index, result)
 		}
+
 		challenges[index] = result.TwoFactorChallenge
 	}
 
 	start := make(chan struct{})
 	results := make(chan error, len(challenges))
+
 	for _, challenge := range challenges {
-		challenge := challenge
+
 		go func() {
 			<-start
+
 			_, err := service.Admin.CompleteTwoFactor(
 				ctx,
 				challenge,
@@ -906,10 +1140,12 @@ func TestControlBackupCodeIsSingleUseAcrossConcurrentChallenges(t *testing.T) {
 			results <- err
 		}()
 	}
+
 	close(start)
 
 	succeeded := 0
 	forbidden := 0
+
 	for range challenges {
 		err := <-results
 		switch {
@@ -921,14 +1157,19 @@ func TestControlBackupCodeIsSingleUseAcrossConcurrentChallenges(t *testing.T) {
 			t.Fatalf("complete challenge error = %v", err)
 		}
 	}
-	if succeeded != 1 || forbidden != 1 {
-		t.Fatalf("challenge results: succeeded=%d forbidden=%d", succeeded, forbidden)
-	}
 
+	if succeeded != 1 || forbidden != 1 {
+		t.Fatalf(
+			"challenge results: succeeded=%d forbidden=%d",
+			succeeded,
+			forbidden,
+		)
+	}
 }
 
-func TestControlPlatformRemovalRevokesSessionsAndDefersTwoFactorReactivation(t *testing.T) {
-
+func TestControlPlatformRemovalRevokesSessionsAndDefersTwoFactorReactivation(
+	t *testing.T,
+) {
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
@@ -942,6 +1183,7 @@ func TestControlPlatformRemovalRevokesSessionsAndDefersTwoFactorReactivation(t *
 	); err != nil {
 		t.Fatalf("remove platform member: %v", err)
 	}
+
 	if _, err := service.Admin.ValidateSession(
 		ctx,
 		member.SessionToken,
@@ -957,21 +1199,32 @@ func TestControlPlatformRemovalRevokesSessionsAndDefersTwoFactorReactivation(t *
 	if err != nil {
 		t.Fatalf("create reactivation invite: %v", err)
 	}
+
 	params := authParams("member")
+
 	params.InviteToken = inviteToken
+
 	challenge, err := service.Admin.CompleteAuth(ctx, params)
 	if err != nil {
 		t.Fatalf("start member reactivation: %v", err)
 	}
+
 	if !challenge.TwoFactorRequired || challenge.TwoFactorChallenge == "" {
 		t.Fatalf("reactivation challenge = %#v", challenge)
 	}
 
-	members, err := service.Admin.ListPlatformMembers(ctx, admin.Page{Limit: 100})
+	members, err := service.Admin.ListPlatformMembers(
+		ctx,
+		admin.Page{Limit: 100},
+	)
 	if err != nil {
 		t.Fatalf("list platform members: %v", err)
 	}
-	if status := platformMemberStatus(members, member.Account.ID); status != "removed" {
+
+	if status := platformMemberStatus(
+		members,
+		member.Account.ID,
+	); status != "removed" {
 		t.Fatalf("member status before second factor = %q", status)
 	}
 
@@ -984,12 +1237,15 @@ func TestControlPlatformRemovalRevokesSessionsAndDefersTwoFactorReactivation(t *
 	if err != nil {
 		t.Fatalf("complete member reactivation: %v", err)
 	}
+
 	if result.SessionToken == "" {
 		t.Fatal("reactivation did not create a session")
 	}
+
 	if result.Session.CreatedAt.IsZero() || result.Session.LastUsedAt.IsZero() {
 		t.Fatalf("reactivation session timestamps = %#v", result.Session)
 	}
+
 	if _, err := service.Admin.ValidateSession(
 		ctx,
 		result.SessionToken,
@@ -997,6 +1253,7 @@ func TestControlPlatformRemovalRevokesSessionsAndDefersTwoFactorReactivation(t *
 	); err != nil {
 		t.Fatalf("validate reactivation session: %v", err)
 	}
+
 	if _, err := service.Admin.ValidateSession(
 		ctx,
 		member.SessionToken,
@@ -1004,31 +1261,37 @@ func TestControlPlatformRemovalRevokesSessionsAndDefersTwoFactorReactivation(t *
 	); err == nil {
 		t.Fatal("old session was restored after reactivation")
 	}
-
 }
 
 func TestControlDeleteRolesRemovesPendingInviteReferences(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 
-	globalRole, err := service.Admin.CreateGlobalRole(ctx, admin.CreateRoleParams{
-		ActorID:  owner.Account.ID,
-		Code:     "temporary_global",
-		Title:    "Temporary global",
-		Position: 10,
-	})
+	globalRole, err := service.Admin.CreateGlobalRole(
+		ctx,
+		admin.CreateRoleParams{
+			ActorID:  owner.Account.ID,
+			Code:     "temporary_global",
+			Title:    "Temporary global",
+			Position: 10,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create global role: %v", err)
 	}
-	_, globalToken, err := service.Admin.CreateGlobalInvite(ctx, admin.CreateInviteParams{
-		ActorID: owner.Account.ID,
-		RoleIDs: []string{globalRole.ID},
-	})
+
+	_, globalToken, err := service.Admin.CreateGlobalInvite(
+		ctx,
+		admin.CreateInviteParams{
+			ActorID: owner.Account.ID,
+			RoleIDs: []string{globalRole.ID},
+		},
+	)
 	if err != nil {
 		t.Fatalf("create global invite: %v", err)
 	}
+
 	if affected, err := service.Admin.DeleteGlobalRole(
 		ctx,
 		owner.Account.ID,
@@ -1036,24 +1299,32 @@ func TestControlDeleteRolesRemovesPendingInviteReferences(t *testing.T) {
 	); err != nil || affected != 1 {
 		t.Fatalf("delete global role: affected=%d err=%v", affected, err)
 	}
+
 	params := authParams("friend")
+
 	params.InviteToken = globalToken
+
 	friend, err := service.Admin.CompleteAuth(ctx, params)
 	if err != nil {
 		t.Fatalf("accept global invite after role deletion: %v", err)
 	}
 
 	workspace := createWorkspace(t, service, owner.Account.ID, "role-delete")
-	workspaceRole, err := service.Admin.CreateWorkspaceRole(ctx, admin.CreateRoleParams{
-		ActorID:     owner.Account.ID,
-		WorkspaceID: workspace.ID,
-		Code:        "temporary_workspace",
-		Title:       "Temporary workspace",
-		Position:    10,
-	})
+
+	workspaceRole, err := service.Admin.CreateWorkspaceRole(
+		ctx,
+		admin.CreateRoleParams{
+			ActorID:     owner.Account.ID,
+			WorkspaceID: workspace.ID,
+			Code:        "temporary_workspace",
+			Title:       "Temporary workspace",
+			Position:    10,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create workspace role: %v", err)
 	}
+
 	_, workspaceToken, err := service.Admin.CreateWorkspaceInvite(
 		ctx,
 		admin.CreateInviteParams{
@@ -1065,6 +1336,7 @@ func TestControlDeleteRolesRemovesPendingInviteReferences(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create workspace invite: %v", err)
 	}
+
 	if affected, err := service.Admin.DeleteWorkspaceRole(
 		ctx,
 		owner.Account.ID,
@@ -1073,48 +1345,65 @@ func TestControlDeleteRolesRemovesPendingInviteReferences(t *testing.T) {
 	); err != nil || affected != 1 {
 		t.Fatalf("delete workspace role: affected=%d err=%v", affected, err)
 	}
+
 	params.InviteToken = workspaceToken
 	if _, err := service.Admin.CompleteAuth(ctx, params); err != nil {
 		t.Fatalf("accept workspace invite after role deletion: %v", err)
 	}
-	workspaces, err := service.Admin.ListWorkspaces(ctx, friend.Account.ID, admin.Page{Limit: 10})
+
+	workspaces, err := service.Admin.ListWorkspaces(
+		ctx,
+		friend.Account.ID,
+		admin.Page{Limit: 10},
+	)
 	if err != nil || len(workspaces) != 1 || workspaces[0].ID != workspace.ID {
 		t.Fatalf("friend workspaces = %#v err=%v", workspaces, err)
 	}
-
 }
 
-func TestControlManifestValidatesNamespaceAndInvalidatesAccessCache(t *testing.T) {
-
+func TestControlManifestValidatesNamespaceAndInvalidatesAccessCache(
+	t *testing.T,
+) {
 	service := newControlTestService(t)
 	ctx := context.Background()
+
 	initializeControl(t, service, "owner")
 
 	const methodKey = "tasks.task.cache_regression"
+
 	before, err := service.Admin.ListAccess(ctx, "en", admin.ScopeWorkspace)
 	if err != nil {
 		t.Fatalf("prime access cache: %v", err)
 	}
+
 	if accessCatalogContains(before, methodKey) {
 		t.Fatalf("test method %q already exists", methodKey)
 	}
 
-	if err := service.Internal.RegisterManifest(ctx, []internalapi.MethodManifest{
-		{
-			Key:      methodKey,
-			Service:  "tasks",
-			GroupKey: "task",
-			Position: 999,
+	if err := service.Internal.RegisterManifest(
+		ctx,
+		[]internalapi.MethodManifest{
+			{
+				Key:      methodKey,
+				Service:  "tasks",
+				GroupKey: "task",
+				Position: 999,
+			},
 		},
-	}); err != nil {
+	); err != nil {
 		t.Fatalf("register valid manifest: %v", err)
 	}
+
 	after, err := service.Admin.ListAccess(ctx, "en", admin.ScopeWorkspace)
 	if err != nil {
 		t.Fatalf("read invalidated access cache: %v", err)
 	}
+
 	if !accessCatalogContains(after, methodKey) {
-		t.Fatalf("registered method %q is missing from access catalog", methodKey)
+		t.Fatalf(
+			"registered method %q is missing from access catalog",
+			methodKey,
+		)
 	}
 
 	invalid := []internalapi.MethodManifest{
@@ -1130,34 +1419,46 @@ func TestControlManifestValidatesNamespaceAndInvalidatesAccessCache(t *testing.T
 		},
 	}
 	for index, manifest := range invalid {
-		err := service.Internal.RegisterManifest(ctx, []internalapi.MethodManifest{manifest})
+		err := service.Internal.RegisterManifest(
+			ctx,
+			[]internalapi.MethodManifest{manifest},
+		)
 		if !errors.Is(err, repository.ErrInvalidArgument) {
 			t.Fatalf("invalid manifest %d error = %v", index, err)
 		}
 	}
-
 }
 
 func TestControlSecurityMutationsAreAudited(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 
-	if err := service.Admin.BindIdentity(ctx, owner.Account.ID, admin.AuthIdentityParams{
-		Provider:    "backup",
-		Subject:     "owner-backup",
-		DisplayName: "Owner backup",
-	}); err != nil {
+	if err := service.Admin.BindIdentity(
+		ctx,
+		owner.Account.ID,
+		admin.AuthIdentityParams{
+			Provider:    "backup",
+			Subject:     "owner-backup",
+			DisplayName: "Owner backup",
+		},
+	); err != nil {
 		t.Fatalf("bind identity: %v", err)
 	}
-	if _, err := service.Admin.UnbindIdentity(ctx, owner.Account.ID, "backup"); err != nil {
+
+	if _, err := service.Admin.UnbindIdentity(
+		ctx,
+		owner.Account.ID,
+		"backup",
+	); err != nil {
 		t.Fatalf("unbind identity: %v", err)
 	}
+
 	extra, err := service.Admin.CompleteAuth(ctx, authParams("owner"))
 	if err != nil {
 		t.Fatalf("create extra session: %v", err)
 	}
+
 	if _, err := service.Admin.RevokeSession(
 		ctx,
 		owner.Account.ID,
@@ -1165,9 +1466,15 @@ func TestControlSecurityMutationsAreAudited(t *testing.T) {
 	); err != nil {
 		t.Fatalf("revoke session: %v", err)
 	}
-	if _, err := service.Admin.RevokeAllSessions(ctx, owner.Account.ID, ""); err != nil {
+
+	if _, err := service.Admin.RevokeAllSessions(
+		ctx,
+		owner.Account.ID,
+		"",
+	); err != nil {
 		t.Fatalf("revoke all sessions: %v", err)
 	}
+
 	_, backupCodes := enableControlTwoFactor(t, service, owner.Account.ID)
 	if _, err := service.Admin.DisableTwoFactor(
 		ctx,
@@ -1181,10 +1488,12 @@ func TestControlSecurityMutationsAreAudited(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list global audit: %v", err)
 	}
+
 	keys := make(map[string]bool, len(events))
 	for _, event := range events {
 		keys[event.MethodKey] = true
 	}
+
 	for _, key := range []string{
 		"control.auth.identity.bind",
 		"control.auth.identity.unbind",
@@ -1198,11 +1507,9 @@ func TestControlSecurityMutationsAreAudited(t *testing.T) {
 			t.Fatalf("audit event %q is missing", key)
 		}
 	}
-
 }
 
 func TestControlTOTPIsSingleUseAcrossChallenges(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
@@ -1214,6 +1521,7 @@ func TestControlTOTPIsSingleUseAcrossChallenges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create challenge %d: %v", index, err)
 		}
+
 		challenges[index] = result.TwoFactorChallenge
 	}
 
@@ -1226,6 +1534,7 @@ func TestControlTOTPIsSingleUseAcrossChallenges(t *testing.T) {
 	); err != nil {
 		t.Fatalf("complete first challenge: %v", err)
 	}
+
 	if _, err := service.Admin.CompleteTwoFactor(
 		ctx,
 		challenges[1],
@@ -1234,11 +1543,9 @@ func TestControlTOTPIsSingleUseAcrossChallenges(t *testing.T) {
 	); !errors.Is(err, repository.ErrForbidden) {
 		t.Fatalf("reused TOTP error = %v", err)
 	}
-
 }
 
 func TestControlRemovalSerializesConcurrentAuthentication(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
@@ -1248,6 +1555,7 @@ func TestControlRemovalSerializesConcurrentAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open trigger database: %v", err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
 
 	delayFunction := fmt.Sprintf(`
@@ -1266,6 +1574,7 @@ func TestControlRemovalSerializesConcurrentAuthentication(t *testing.T) {
 	if _, err := db.Exec(delayFunction); err != nil {
 		t.Fatalf("create session delay function: %v", err)
 	}
+
 	if _, err := db.Exec(`
 		CREATE TRIGGER control_test_delay_member_session
 		BEFORE INSERT ON control_session
@@ -1274,22 +1583,30 @@ func TestControlRemovalSerializesConcurrentAuthentication(t *testing.T) {
 	`); err != nil {
 		t.Fatalf("create session delay trigger: %v", err)
 	}
+
 	t.Cleanup(func() {
-		_, _ = db.Exec("DROP TRIGGER IF EXISTS control_test_delay_member_session ON control_session")
-		_, _ = db.Exec("DROP FUNCTION IF EXISTS control_test_delay_member_session()")
+		_, _ = db.Exec(
+			"DROP TRIGGER IF EXISTS control_test_delay_member_session ON control_session",
+		)
+		_, _ = db.Exec(
+			"DROP FUNCTION IF EXISTS control_test_delay_member_session()",
+		)
 	})
 
 	type authCall struct {
 		result admin.AuthResult
 		err    error
 	}
+
 	authResult := make(chan authCall, 1)
+
 	go func() {
 		result, err := service.Admin.CompleteAuth(ctx, authParams("member"))
 		authResult <- authCall{result: result, err: err}
 	}()
 
 	time.Sleep(100 * time.Millisecond)
+
 	if _, err := service.Admin.RemovePlatformMember(
 		ctx,
 		owner.Account.ID,
@@ -1303,7 +1620,9 @@ func TestControlRemovalSerializesConcurrentAuthentication(t *testing.T) {
 		t.Fatalf("concurrent authentication: %v", concurrentAuth.err)
 	}
 
-	if _, err := db.Exec("DROP TRIGGER IF EXISTS control_test_delay_member_session ON control_session"); err != nil {
+	if _, err := db.Exec(
+		"DROP TRIGGER IF EXISTS control_test_delay_member_session ON control_session",
+	); err != nil {
 		t.Fatalf("drop session delay trigger: %v", err)
 	}
 
@@ -1314,8 +1633,11 @@ func TestControlRemovalSerializesConcurrentAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create reactivation invite: %v", err)
 	}
+
 	params := authParams("member")
+
 	params.InviteToken = inviteToken
+
 	if _, err := service.Admin.CompleteAuth(ctx, params); err != nil {
 		t.Fatalf("reactivate member: %v", err)
 	}
@@ -1325,18 +1647,22 @@ func TestControlRemovalSerializesConcurrentAuthentication(t *testing.T) {
 		concurrentAuth.result.SessionToken,
 		"127.0.0.1",
 	); err == nil {
-		t.Fatal("session committed during removal became valid after reactivation")
+		t.Fatal(
+			"session committed during removal became valid after reactivation",
+		)
 	}
-
 }
 
 func TestControlTwoFactorSetupSerializesBeginAndConfirm(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 
-	setup, err := service.Admin.BeginTwoFactor(ctx, owner.Account.ID, "Elum control test")
+	setup, err := service.Admin.BeginTwoFactor(
+		ctx,
+		owner.Account.ID,
+		"Elum control test",
+	)
 	if err != nil {
 		t.Fatalf("begin two factor: %v", err)
 	}
@@ -1345,6 +1671,7 @@ func TestControlTwoFactorSetupSerializesBeginAndConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open trigger database: %v", err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
 
 	if _, err := db.Exec(`
@@ -1360,6 +1687,7 @@ func TestControlTwoFactorSetupSerializesBeginAndConfirm(t *testing.T) {
 	`); err != nil {
 		t.Fatalf("create two-factor delay function: %v", err)
 	}
+
 	if _, err := db.Exec(`
 		CREATE TRIGGER control_test_delay_two_factor_confirm
 		BEFORE UPDATE OF backup_hashes ON control_two_factor
@@ -1368,12 +1696,18 @@ func TestControlTwoFactorSetupSerializesBeginAndConfirm(t *testing.T) {
 	`); err != nil {
 		t.Fatalf("create two-factor delay trigger: %v", err)
 	}
+
 	t.Cleanup(func() {
-		_, _ = db.Exec("DROP TRIGGER IF EXISTS control_test_delay_two_factor_confirm ON control_two_factor")
-		_, _ = db.Exec("DROP FUNCTION IF EXISTS control_test_delay_two_factor_confirm()")
+		_, _ = db.Exec(
+			"DROP TRIGGER IF EXISTS control_test_delay_two_factor_confirm ON control_two_factor",
+		)
+		_, _ = db.Exec(
+			"DROP FUNCTION IF EXISTS control_test_delay_two_factor_confirm()",
+		)
 	})
 
 	confirmResult := make(chan error, 1)
+
 	go func() {
 		_, err := service.Admin.ConfirmTwoFactor(
 			ctx,
@@ -1384,10 +1718,17 @@ func TestControlTwoFactorSetupSerializesBeginAndConfirm(t *testing.T) {
 	}()
 
 	time.Sleep(100 * time.Millisecond)
-	_, beginErr := service.Admin.BeginTwoFactor(ctx, owner.Account.ID, "Elum control test")
+
+	_, beginErr := service.Admin.BeginTwoFactor(
+		ctx,
+		owner.Account.ID,
+		"Elum control test",
+	)
+
 	if err := <-confirmResult; err != nil {
 		t.Fatalf("confirm two factor: %v", err)
 	}
+
 	if !errors.Is(beginErr, repository.ErrTwoFactorEnabled) {
 		t.Fatalf("concurrent begin error = %v", beginErr)
 	}
@@ -1396,14 +1737,13 @@ func TestControlTwoFactorSetupSerializesBeginAndConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate after confirmation: %v", err)
 	}
+
 	if !result.TwoFactorRequired || result.TwoFactorChallenge == "" {
 		t.Fatalf("two factor was reset by concurrent begin: %#v", result)
 	}
-
 }
 
 func TestControlRemovalRevokesPendingInvitesFromRemovedMember(t *testing.T) {
-
 	t.Run("global", func(t *testing.T) {
 		service := newControlTestService(t)
 		ctx := context.Background()
@@ -1419,6 +1759,7 @@ func TestControlRemovalRevokesPendingInvitesFromRemovedMember(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create global inviter role: %v", err)
 		}
+
 		if err := service.Admin.ReplaceGlobalRolePermissions(
 			ctx,
 			admin.ReplaceRolePermissionsParams{
@@ -1429,6 +1770,7 @@ func TestControlRemovalRevokesPendingInvitesFromRemovedMember(t *testing.T) {
 		); err != nil {
 			t.Fatalf("grant global invite permission: %v", err)
 		}
+
 		if err := service.Admin.AssignGlobalRole(ctx, admin.SetRoleMemberParams{
 			ActorID:   owner.Account.ID,
 			AccountID: moderator.Account.ID,
@@ -1444,6 +1786,7 @@ func TestControlRemovalRevokesPendingInvitesFromRemovedMember(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create global invite: %v", err)
 		}
+
 		if _, err := service.Admin.RemovePlatformMember(
 			ctx,
 			owner.Account.ID,
@@ -1453,7 +1796,9 @@ func TestControlRemovalRevokesPendingInvitesFromRemovedMember(t *testing.T) {
 		}
 
 		params := authParams("global-invite-target")
+
 		params.InviteToken = token
+
 		if _, err := service.Admin.CompleteAuth(ctx, params); !errors.Is(
 			err,
 			repository.ErrInviteUnavailable,
@@ -1468,18 +1813,28 @@ func TestControlRemovalRevokesPendingInvitesFromRemovedMember(t *testing.T) {
 		owner := initializeControl(t, service, "owner")
 		moderator := inviteAccount(t, service, owner.Account.ID, "moderator")
 		inviteAccount(t, service, owner.Account.ID, "target")
-		workspace := createWorkspace(t, service, owner.Account.ID, "invite-revocation")
 
-		role, err := service.Admin.CreateWorkspaceRole(ctx, admin.CreateRoleParams{
-			ActorID:     owner.Account.ID,
-			WorkspaceID: workspace.ID,
-			Code:        "workspace_inviter",
-			Title:       "Workspace inviter",
-			Position:    10,
-		})
+		workspace := createWorkspace(
+			t,
+			service,
+			owner.Account.ID,
+			"invite-revocation",
+		)
+
+		role, err := service.Admin.CreateWorkspaceRole(
+			ctx,
+			admin.CreateRoleParams{
+				ActorID:     owner.Account.ID,
+				WorkspaceID: workspace.ID,
+				Code:        "workspace_inviter",
+				Title:       "Workspace inviter",
+				Position:    10,
+			},
+		)
 		if err != nil {
 			t.Fatalf("create workspace inviter role: %v", err)
 		}
+
 		if err := service.Admin.ReplaceWorkspaceRolePermissions(
 			ctx,
 			admin.ReplaceRolePermissionsParams{
@@ -1491,6 +1846,7 @@ func TestControlRemovalRevokesPendingInvitesFromRemovedMember(t *testing.T) {
 		); err != nil {
 			t.Fatalf("grant workspace invite permission: %v", err)
 		}
+
 		inviteIntoWorkspaceWithRole(
 			t,
 			service,
@@ -1511,6 +1867,7 @@ func TestControlRemovalRevokesPendingInvitesFromRemovedMember(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create workspace invite: %v", err)
 		}
+
 		if _, err := service.Admin.RemoveMember(
 			ctx,
 			owner.Account.ID,
@@ -1521,7 +1878,9 @@ func TestControlRemovalRevokesPendingInvitesFromRemovedMember(t *testing.T) {
 		}
 
 		params := authParams("target")
+
 		params.InviteToken = token
+
 		if _, err := service.Admin.CompleteAuth(ctx, params); !errors.Is(
 			err,
 			repository.ErrInviteUnavailable,
@@ -1529,24 +1888,26 @@ func TestControlRemovalRevokesPendingInvitesFromRemovedMember(t *testing.T) {
 			t.Fatalf("removed member workspace invite error = %v", err)
 		}
 	})
-
 }
 
 func TestControlInviteRolesAreNormalizedAndAuditTargetsInvite(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 
-	globalRole, err := service.Admin.CreateGlobalRole(ctx, admin.CreateRoleParams{
-		ActorID:  owner.Account.ID,
-		Code:     "invite_role",
-		Title:    "Invite role",
-		Position: 10,
-	})
+	globalRole, err := service.Admin.CreateGlobalRole(
+		ctx,
+		admin.CreateRoleParams{
+			ActorID:  owner.Account.ID,
+			Code:     "invite_role",
+			Title:    "Invite role",
+			Position: 10,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create global role: %v", err)
 	}
+
 	globalInvite, _, err := service.Admin.CreateGlobalInvite(
 		ctx,
 		admin.CreateInviteParams{
@@ -1557,14 +1918,20 @@ func TestControlInviteRolesAreNormalizedAndAuditTargetsInvite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create global invite with duplicate roles: %v", err)
 	}
-	if len(globalInvite.RoleIDs) != 1 || globalInvite.RoleIDs[0] != globalRole.ID {
+
+	if len(globalInvite.RoleIDs) != 1 ||
+		globalInvite.RoleIDs[0] != globalRole.ID {
 		t.Fatalf("global invite roles = %#v", globalInvite.RoleIDs)
 	}
 
-	globalAudit, err := service.Admin.ListGlobalAudit(ctx, admin.Page{Limit: 100})
+	globalAudit, err := service.Admin.ListGlobalAudit(
+		ctx,
+		admin.Page{Limit: 100},
+	)
 	if err != nil {
 		t.Fatalf("list global audit: %v", err)
 	}
+
 	if !auditContainsTarget(
 		globalAudit,
 		"control.global.invite.create",
@@ -1574,16 +1941,21 @@ func TestControlInviteRolesAreNormalizedAndAuditTargetsInvite(t *testing.T) {
 	}
 
 	workspace := createWorkspace(t, service, owner.Account.ID, "invite-audit")
-	workspaceRole, err := service.Admin.CreateWorkspaceRole(ctx, admin.CreateRoleParams{
-		ActorID:     owner.Account.ID,
-		WorkspaceID: workspace.ID,
-		Code:        "invite_role",
-		Title:       "Invite role",
-		Position:    10,
-	})
+
+	workspaceRole, err := service.Admin.CreateWorkspaceRole(
+		ctx,
+		admin.CreateRoleParams{
+			ActorID:     owner.Account.ID,
+			WorkspaceID: workspace.ID,
+			Code:        "invite_role",
+			Title:       "Invite role",
+			Position:    10,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create workspace role: %v", err)
 	}
+
 	workspaceInvite, _, err := service.Admin.CreateWorkspaceInvite(
 		ctx,
 		admin.CreateInviteParams{
@@ -1598,7 +1970,9 @@ func TestControlInviteRolesAreNormalizedAndAuditTargetsInvite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create workspace invite with duplicate roles: %v", err)
 	}
-	if len(workspaceInvite.RoleIDs) != 1 || workspaceInvite.RoleIDs[0] != workspaceRole.ID {
+
+	if len(workspaceInvite.RoleIDs) != 1 ||
+		workspaceInvite.RoleIDs[0] != workspaceRole.ID {
 		t.Fatalf("workspace invite roles = %#v", workspaceInvite.RoleIDs)
 	}
 
@@ -1610,18 +1984,20 @@ func TestControlInviteRolesAreNormalizedAndAuditTargetsInvite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list workspace audit: %v", err)
 	}
+
 	if !auditContainsTarget(
 		workspaceAudit,
 		"control.workspace.invite.create",
 		workspaceInvite.ID,
 	) {
-		t.Fatalf("workspace invite audit target %q is missing", workspaceInvite.ID)
+		t.Fatalf(
+			"workspace invite audit target %q is missing",
+			workspaceInvite.ID,
+		)
 	}
-
 }
 
 func TestControlLimitCancellationUsesRequestScope(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
@@ -1637,6 +2013,7 @@ func TestControlLimitCancellationUsesRequestScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request employee limit: %v", err)
 	}
+
 	if _, err := service.Admin.CancelLimitRequest(
 		ctx,
 		owner.Account.ID,
@@ -1653,12 +2030,16 @@ func TestControlLimitCancellationUsesRequestScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list workspace audit: %v", err)
 	}
+
 	if !auditContainsTarget(
 		workspaceAudit,
 		"control.workspace.employee_limit.cancel",
 		employeeRequest.ID,
 	) {
-		t.Fatalf("employee limit cancellation audit %q is missing", employeeRequest.ID)
+		t.Fatalf(
+			"employee limit cancellation audit %q is missing",
+			employeeRequest.ID,
+		)
 	}
 
 	workspaceRequest, err := service.Admin.RequestWorkspaceLimit(
@@ -1670,6 +2051,7 @@ func TestControlLimitCancellationUsesRequestScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request workspace limit: %v", err)
 	}
+
 	if _, err := service.Admin.CancelLimitRequest(
 		ctx,
 		owner.Account.ID,
@@ -1678,31 +2060,40 @@ func TestControlLimitCancellationUsesRequestScope(t *testing.T) {
 		t.Fatalf("cancel workspace limit request: %v", err)
 	}
 
-	globalAudit, err := service.Admin.ListGlobalAudit(ctx, admin.Page{Limit: 100})
+	globalAudit, err := service.Admin.ListGlobalAudit(
+		ctx,
+		admin.Page{Limit: 100},
+	)
 	if err != nil {
 		t.Fatalf("list global audit: %v", err)
 	}
+
 	if !auditContainsTarget(
 		globalAudit,
 		"control.global.limit.cancel",
 		workspaceRequest.ID,
 	) {
-		t.Fatalf("workspace limit cancellation audit %q is missing", workspaceRequest.ID)
+		t.Fatalf(
+			"workspace limit cancellation audit %q is missing",
+			workspaceRequest.ID,
+		)
 	}
-
 }
 
 func TestControlUnbindIdentitySerializesAuthentication(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 
-	if err := service.Admin.BindIdentity(ctx, owner.Account.ID, admin.AuthIdentityParams{
-		Provider:    "backup",
-		Subject:     "owner-backup",
-		DisplayName: "Owner backup",
-	}); err != nil {
+	if err := service.Admin.BindIdentity(
+		ctx,
+		owner.Account.ID,
+		admin.AuthIdentityParams{
+			Provider:    "backup",
+			Subject:     "owner-backup",
+			DisplayName: "Owner backup",
+		},
+	); err != nil {
 		t.Fatalf("bind backup identity: %v", err)
 	}
 
@@ -1710,6 +2101,7 @@ func TestControlUnbindIdentitySerializesAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open trigger database: %v", err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
 
 	delayFunction := fmt.Sprintf(`
@@ -1728,6 +2120,7 @@ func TestControlUnbindIdentitySerializesAuthentication(t *testing.T) {
 	if _, err := db.Exec(delayFunction); err != nil {
 		t.Fatalf("create identity delay function: %v", err)
 	}
+
 	if _, err := db.Exec(`
 		CREATE TRIGGER control_test_delay_identity_delete
 		BEFORE DELETE ON control_identity
@@ -1736,33 +2129,41 @@ func TestControlUnbindIdentitySerializesAuthentication(t *testing.T) {
 	`); err != nil {
 		t.Fatalf("create identity delay trigger: %v", err)
 	}
+
 	t.Cleanup(func() {
-		_, _ = db.Exec("DROP TRIGGER IF EXISTS control_test_delay_identity_delete ON control_identity")
-		_, _ = db.Exec("DROP FUNCTION IF EXISTS control_test_delay_identity_delete()")
+		_, _ = db.Exec(
+			"DROP TRIGGER IF EXISTS control_test_delay_identity_delete ON control_identity",
+		)
+		_, _ = db.Exec(
+			"DROP FUNCTION IF EXISTS control_test_delay_identity_delete()",
+		)
 	})
 
 	unbound := make(chan error, 1)
+
 	go func() {
 		rows, err := service.Admin.UnbindIdentity(ctx, owner.Account.ID, "test")
 		if err == nil && rows != 1 {
 			err = fmt.Errorf("unbind rows = %d, want 1", rows)
 		}
+
 		unbound <- err
 	}()
 
 	time.Sleep(100 * time.Millisecond)
+
 	_, authErr := service.Admin.CompleteAuth(ctx, authParams("owner"))
+
 	if err := <-unbound; err != nil {
 		t.Fatalf("unbind identity: %v", err)
 	}
+
 	if !errors.Is(authErr, repository.ErrAuthenticationDenied) {
 		t.Fatalf("authentication through revoked identity error = %v", authErr)
 	}
-
 }
 
 func TestControlAuthenticationFailureDoesNotRevealIdentityState(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
@@ -1773,45 +2174,62 @@ func TestControlAuthenticationFailureDoesNotRevealIdentityState(t *testing.T) {
 	}
 
 	member := inviteAccount(t, service, owner.Account.ID, "removed-member")
-	if _, err := service.Admin.RemovePlatformMember(ctx, owner.Account.ID, member.Account.ID); err != nil {
+	if _, err := service.Admin.RemovePlatformMember(
+		ctx,
+		owner.Account.ID,
+		member.Account.ID,
+	); err != nil {
 		t.Fatalf("remove member: %v", err)
 	}
-	_, removedErr := service.Admin.CompleteAuth(ctx, authParams("removed-member"))
+
+	_, removedErr := service.Admin.CompleteAuth(
+		ctx,
+		authParams("removed-member"),
+	)
 	if removedErr == nil {
 		t.Fatal("removed member must be rejected")
 	}
 
 	if missingErr.Error() != repository.ErrAuthenticationDenied.Error() ||
 		removedErr.Error() != repository.ErrAuthenticationDenied.Error() {
-		t.Fatalf("authentication failures reveal identity state: missing=%q removed=%q", missingErr, removedErr)
+		t.Fatalf(
+			"authentication failures reveal identity state: missing=%q removed=%q",
+			missingErr,
+			removedErr,
+		)
 	}
-
 }
 
 func TestControlBindIdentityRejectsIdentityOwnedByAnotherAccount(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
 	member := inviteAccount(t, service, owner.Account.ID, "member")
 
-	err := service.Admin.BindIdentity(ctx, member.Account.ID, admin.AuthIdentityParams{
-		Provider:    "test",
-		Subject:     "owner",
-		DisplayName: "Owner identity",
-	})
+	err := service.Admin.BindIdentity(
+		ctx,
+		member.Account.ID,
+		admin.AuthIdentityParams{
+			Provider:    "test",
+			Subject:     "owner",
+			DisplayName: "Owner identity",
+		},
+	)
 	if !errors.Is(err, repository.ErrForbidden) {
 		t.Fatalf("bind identity owned by another account error = %v", err)
 	}
-
 }
 
 func TestControlDuplicatePendingLimitRequestsReturnDomainError(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
-	workspace := createWorkspace(t, service, owner.Account.ID, "duplicate-limits")
+	workspace := createWorkspace(
+		t,
+		service,
+		owner.Account.ID,
+		"duplicate-limits",
+	)
 
 	if _, err := service.Admin.RequestWorkspaceLimit(
 		ctx,
@@ -1821,6 +2239,7 @@ func TestControlDuplicatePendingLimitRequestsReturnDomainError(t *testing.T) {
 	); err != nil {
 		t.Fatalf("request workspace limit: %v", err)
 	}
+
 	if _, err := service.Admin.RequestWorkspaceLimit(
 		ctx,
 		owner.Account.ID,
@@ -1839,6 +2258,7 @@ func TestControlDuplicatePendingLimitRequestsReturnDomainError(t *testing.T) {
 	); err != nil {
 		t.Fatalf("request employee limit: %v", err)
 	}
+
 	if _, err := service.Admin.RequestEmployeeLimit(
 		ctx,
 		owner.Account.ID,
@@ -1848,14 +2268,18 @@ func TestControlDuplicatePendingLimitRequestsReturnDomainError(t *testing.T) {
 	); !errors.Is(err, repository.ErrLimitRequest) {
 		t.Fatalf("duplicate employee limit request error = %v", err)
 	}
-
 }
 
 func TestControlResolveLimitRequestLocksScopeBeforeRequest(t *testing.T) {
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "owner")
-	workspace := createWorkspace(t, service, owner.Account.ID, "limit-lock-order")
+	workspace := createWorkspace(
+		t,
+		service,
+		owner.Account.ID,
+		"limit-lock-order",
+	)
 
 	db, err := sql.Open("pgx", controlPostgresDSN(controlTestDatabase))
 	if err != nil {
@@ -1888,13 +2312,17 @@ func TestControlResolveLimitRequestLocksScopeBeforeRequest(t *testing.T) {
 	}
 
 	accountResult := make(chan error, 1)
+
 	go func() {
-		_, err := service.Admin.ResolveLimitRequest(ctx, admin.ResolveLimitRequestParams{
-			ActorID:       owner.Account.ID,
-			RequestID:     accountRequest.ID,
-			Approved:      true,
-			ApprovedLimit: 2,
-		})
+		_, err := service.Admin.ResolveLimitRequest(
+			ctx,
+			admin.ResolveLimitRequestParams{
+				ActorID:       owner.Account.ID,
+				RequestID:     accountRequest.ID,
+				Approved:      true,
+				ApprovedLimit: 2,
+			},
+		)
 		accountResult <- err
 	}()
 
@@ -1907,9 +2335,11 @@ func TestControlResolveLimitRequestLocksScopeBeforeRequest(t *testing.T) {
 	); err != nil {
 		t.Fatalf("account limit request was locked before member: %v", err)
 	}
+
 	if err := accountTx.Commit(); err != nil {
 		t.Fatalf("release account scope locks: %v", err)
 	}
+
 	if err := <-accountResult; err != nil {
 		t.Fatalf("resolve account limit after releasing member: %v", err)
 	}
@@ -1940,13 +2370,17 @@ func TestControlResolveLimitRequestLocksScopeBeforeRequest(t *testing.T) {
 	}
 
 	employeeResult := make(chan error, 1)
+
 	go func() {
-		_, err := service.Admin.ResolveLimitRequest(ctx, admin.ResolveLimitRequestParams{
-			ActorID:       owner.Account.ID,
-			RequestID:     employeeRequest.ID,
-			Approved:      true,
-			ApprovedLimit: 20,
-		})
+		_, err := service.Admin.ResolveLimitRequest(
+			ctx,
+			admin.ResolveLimitRequestParams{
+				ActorID:       owner.Account.ID,
+				RequestID:     employeeRequest.ID,
+				Approved:      true,
+				ApprovedLimit: 20,
+			},
+		)
 		employeeResult <- err
 	}()
 
@@ -1959,9 +2393,11 @@ func TestControlResolveLimitRequestLocksScopeBeforeRequest(t *testing.T) {
 	); err != nil {
 		t.Fatalf("employee limit request was locked before workspace: %v", err)
 	}
+
 	if err := workspaceTx.Commit(); err != nil {
 		t.Fatalf("release workspace scope locks: %v", err)
 	}
+
 	if err := <-employeeResult; err != nil {
 		t.Fatalf("resolve employee limit after releasing workspace: %v", err)
 	}
@@ -1971,8 +2407,10 @@ func waitForControlBlockedQuery(t *testing.T, db *sql.DB, relation string) {
 	t.Helper()
 
 	deadline := time.Now().Add(3 * time.Second)
+
 	for {
 		var waiting int
+
 		if err := db.QueryRowContext(context.Background(), `
 SELECT COUNT(*)
 FROM pg_stat_activity
@@ -1981,9 +2419,11 @@ WHERE datname = current_database()
   AND query LIKE '%' || $1 || '%'`, relation).Scan(&waiting); err != nil {
 			t.Fatalf("inspect blocked control query: %v", err)
 		}
+
 		if waiting > 0 {
 			return
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatalf("no blocked control query for relation %s", relation)
 		}
@@ -1993,12 +2433,17 @@ WHERE datname = current_database()
 }
 
 func TestControlWorkspaceInviteUsesScopeFirstLockOrder(t *testing.T) {
-
 	t.Run("revoke", func(t *testing.T) {
 		service := newControlTestService(t)
 		ctx := context.Background()
 		owner := initializeControl(t, service, "owner")
-		workspace := createWorkspace(t, service, owner.Account.ID, "revoke-lock-order")
+		workspace := createWorkspace(
+			t,
+			service,
+			owner.Account.ID,
+			"revoke-lock-order",
+		)
+
 		invite, _, err := service.Admin.CreateWorkspaceInvite(
 			ctx,
 			admin.CreateInviteParams{
@@ -2023,6 +2468,7 @@ func TestControlWorkspaceInviteUsesScopeFirstLockOrder(t *testing.T) {
 		defer tx.Rollback()
 
 		var lockedWorkspaceID string
+
 		if err := tx.QueryRowContext(
 			ctx,
 			"SELECT id FROM control_workspace WHERE id = $1 FOR UPDATE",
@@ -2033,13 +2479,20 @@ func TestControlWorkspaceInviteUsesScopeFirstLockOrder(t *testing.T) {
 
 		opCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
+
 		revoked := make(chan error, 1)
+
 		go func() {
-			_, err := service.Admin.RevokeInvite(opCtx, owner.Account.ID, invite.ID)
+			_, err := service.Admin.RevokeInvite(
+				opCtx,
+				owner.Account.ID,
+				invite.ID,
+			)
 			revoked <- err
 		}()
 
 		time.Sleep(100 * time.Millisecond)
+
 		if _, err := tx.ExecContext(
 			opCtx,
 			"UPDATE control_invite SET created_at = created_at WHERE id = $1",
@@ -2047,9 +2500,11 @@ func TestControlWorkspaceInviteUsesScopeFirstLockOrder(t *testing.T) {
 		); err != nil {
 			t.Fatalf("touch invite while workspace is locked: %v", err)
 		}
+
 		if err := tx.Commit(); err != nil {
 			t.Fatalf("commit workspace lock: %v", err)
 		}
+
 		if err := <-revoked; err != nil {
 			t.Fatalf("revoke invite after workspace lock: %v", err)
 		}
@@ -2060,7 +2515,14 @@ func TestControlWorkspaceInviteUsesScopeFirstLockOrder(t *testing.T) {
 		ctx := context.Background()
 		owner := initializeControl(t, service, "owner")
 		inviteAccount(t, service, owner.Account.ID, "target")
-		workspace := createWorkspace(t, service, owner.Account.ID, "accept-lock-order")
+
+		workspace := createWorkspace(
+			t,
+			service,
+			owner.Account.ID,
+			"accept-lock-order",
+		)
+
 		invite, token, err := service.Admin.CreateWorkspaceInvite(
 			ctx,
 			admin.CreateInviteParams{
@@ -2085,6 +2547,7 @@ func TestControlWorkspaceInviteUsesScopeFirstLockOrder(t *testing.T) {
 		defer tx.Rollback()
 
 		var lockedWorkspaceID string
+
 		if err := tx.QueryRowContext(
 			ctx,
 			"SELECT id FROM control_workspace WHERE id = $1 FOR UPDATE",
@@ -2095,15 +2558,21 @@ func TestControlWorkspaceInviteUsesScopeFirstLockOrder(t *testing.T) {
 
 		opCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
+
 		authenticated := make(chan error, 1)
+
 		go func() {
 			params := authParams("target")
+
 			params.InviteToken = token
+
 			_, err := service.Admin.CompleteAuth(opCtx, params)
+
 			authenticated <- err
 		}()
 
 		time.Sleep(100 * time.Millisecond)
+
 		if _, err := tx.ExecContext(
 			opCtx,
 			"UPDATE control_invite SET created_at = created_at WHERE id = $1",
@@ -2111,18 +2580,20 @@ func TestControlWorkspaceInviteUsesScopeFirstLockOrder(t *testing.T) {
 		); err != nil {
 			t.Fatalf("touch invite while workspace is locked: %v", err)
 		}
+
 		if err := tx.Commit(); err != nil {
 			t.Fatalf("commit workspace lock: %v", err)
 		}
+
 		if err := <-authenticated; err != nil {
 			t.Fatalf("accept invite after workspace lock: %v", err)
 		}
 	})
-
 }
 
-func TestControlCreateMethodsReturnPersistedModelsAndDomainConflicts(t *testing.T) {
-
+func TestControlCreateMethodsReturnPersistedModelsAndDomainConflicts(
+	t *testing.T,
+) {
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "persisted-create-owner")
@@ -2131,34 +2602,47 @@ func TestControlCreateMethodsReturnPersistedModelsAndDomainConflicts(t *testing.
 		t.Fatalf("initialized session timestamps = %#v", owner.Session)
 	}
 
-	workspace := createWorkspace(t, service, owner.Account.ID, "persisted-create")
+	workspace := createWorkspace(
+		t,
+		service,
+		owner.Account.ID,
+		"persisted-create",
+	)
 	if workspace.CreatedAt.IsZero() || workspace.UpdatedAt.IsZero() {
 		t.Fatalf("created workspace timestamps = %#v", workspace)
 	}
 
-	globalRole, err := service.Admin.CreateGlobalRole(ctx, admin.CreateRoleParams{
-		ActorID:  owner.Account.ID,
-		Code:     "persisted_global",
-		Title:    "Persisted global",
-		Position: 10,
-	})
+	globalRole, err := service.Admin.CreateGlobalRole(
+		ctx,
+		admin.CreateRoleParams{
+			ActorID:  owner.Account.ID,
+			Code:     "persisted_global",
+			Title:    "Persisted global",
+			Position: 10,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create global role: %v", err)
 	}
+
 	if globalRole.CreatedAt.IsZero() || globalRole.UpdatedAt.IsZero() {
 		t.Fatalf("created global role timestamps = %#v", globalRole)
 	}
 
-	workspaceRole, err := service.Admin.CreateWorkspaceRole(ctx, admin.CreateRoleParams{
-		ActorID:     owner.Account.ID,
-		WorkspaceID: workspace.ID,
-		Code:        "persisted_workspace",
-		Title:       "Persisted workspace",
-		Position:    10,
-	})
+	workspaceRole, err := service.Admin.CreateWorkspaceRole(
+		ctx,
+		admin.CreateRoleParams{
+			ActorID:     owner.Account.ID,
+			WorkspaceID: workspace.ID,
+			Code:        "persisted_workspace",
+			Title:       "Persisted workspace",
+			Position:    10,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create workspace role: %v", err)
 	}
+
 	if workspaceRole.CreatedAt.IsZero() || workspaceRole.UpdatedAt.IsZero() {
 		t.Fatalf("created workspace role timestamps = %#v", workspaceRole)
 	}
@@ -2171,6 +2655,7 @@ func TestControlCreateMethodsReturnPersistedModelsAndDomainConflicts(t *testing.
 	if !errors.Is(err, repository.ErrInvalidArgument) {
 		t.Fatalf("global role without code error = %v", err)
 	}
+
 	_, err = service.Admin.CreateWorkspaceRole(ctx, admin.CreateRoleParams{
 		ActorID:     owner.Account.ID,
 		WorkspaceID: workspace.ID,
@@ -2180,6 +2665,7 @@ func TestControlCreateMethodsReturnPersistedModelsAndDomainConflicts(t *testing.
 	if !errors.Is(err, repository.ErrInvalidArgument) {
 		t.Fatalf("workspace role without title error = %v", err)
 	}
+
 	if _, err := service.Admin.UpdateWorkspace(ctx, admin.UpdateWorkspaceParams{
 		ActorID:     owner.Account.ID,
 		WorkspaceID: workspace.ID,
@@ -2187,6 +2673,7 @@ func TestControlCreateMethodsReturnPersistedModelsAndDomainConflicts(t *testing.
 	}); !errors.Is(err, repository.ErrInvalidArgument) {
 		t.Fatalf("workspace update without slug error = %v", err)
 	}
+
 	if _, err := service.Admin.UpdateGlobalRole(ctx, admin.UpdateRoleParams{
 		ActorID:  owner.Account.ID,
 		ID:       globalRole.ID,
@@ -2194,6 +2681,7 @@ func TestControlCreateMethodsReturnPersistedModelsAndDomainConflicts(t *testing.
 	}); !errors.Is(err, repository.ErrInvalidArgument) {
 		t.Fatalf("global role update without title error = %v", err)
 	}
+
 	if _, err := service.Admin.UpdateWorkspaceRole(ctx, admin.UpdateRoleParams{
 		ActorID:     owner.Account.ID,
 		WorkspaceID: workspace.ID,
@@ -2233,12 +2721,16 @@ func TestControlCreateMethodsReturnPersistedModelsAndDomainConflicts(t *testing.
 	if err != nil {
 		t.Fatalf("request workspace limit: %v", err)
 	}
-	if _, err := service.Admin.ResolveLimitRequest(ctx, admin.ResolveLimitRequestParams{
-		ActorID:       owner.Account.ID,
-		RequestID:     request.ID,
-		Approved:      true,
-		ApprovedLimit: 2,
-	}); err != nil {
+
+	if _, err := service.Admin.ResolveLimitRequest(
+		ctx,
+		admin.ResolveLimitRequestParams{
+			ActorID:       owner.Account.ID,
+			RequestID:     request.ID,
+			Approved:      true,
+			ApprovedLimit: 2,
+		},
+	); err != nil {
 		t.Fatalf("approve workspace limit: %v", err)
 	}
 
@@ -2252,25 +2744,35 @@ func TestControlCreateMethodsReturnPersistedModelsAndDomainConflicts(t *testing.
 		t.Fatalf("duplicate workspace error = %v", err)
 	}
 
-	second := createWorkspace(t, service, owner.Account.ID, "persisted-create-second")
+	second := createWorkspace(
+		t,
+		service,
+		owner.Account.ID,
+		"persisted-create-second",
+	)
+
 	_, err = service.Admin.UpdateWorkspace(ctx, admin.UpdateWorkspaceParams{
 		ActorID:     owner.Account.ID,
 		WorkspaceID: second.ID,
 		Slug:        workspace.Slug,
 		Title:       second.Title,
 	})
+
 	if !errors.Is(err, repository.ErrAlreadyExists) {
 		t.Fatalf("duplicate workspace update error = %v", err)
 	}
-
 }
 
 func TestControlScopeDeactivationCancelsPendingLimitRequests(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "limit-cleanup-owner")
-	member := inviteAccount(t, service, owner.Account.ID, "limit-cleanup-member")
+	member := inviteAccount(
+		t,
+		service,
+		owner.Account.ID,
+		"limit-cleanup-member",
+	)
 
 	accountRequest, err := service.Admin.RequestWorkspaceLimit(
 		ctx,
@@ -2281,6 +2783,7 @@ func TestControlScopeDeactivationCancelsPendingLimitRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request account workspace limit: %v", err)
 	}
+
 	if _, err := service.Admin.RemovePlatformMember(
 		ctx,
 		owner.Account.ID,
@@ -2289,7 +2792,13 @@ func TestControlScopeDeactivationCancelsPendingLimitRequests(t *testing.T) {
 		t.Fatalf("remove platform member: %v", err)
 	}
 
-	workspace := createWorkspace(t, service, owner.Account.ID, "limit-cleanup-workspace")
+	workspace := createWorkspace(
+		t,
+		service,
+		owner.Account.ID,
+		"limit-cleanup-workspace",
+	)
+
 	workspaceRequest, err := service.Admin.RequestEmployeeLimit(
 		ctx,
 		owner.Account.ID,
@@ -2300,7 +2809,12 @@ func TestControlScopeDeactivationCancelsPendingLimitRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request employee limit: %v", err)
 	}
-	if _, err := service.Admin.ArchiveWorkspace(ctx, owner.Account.ID, workspace.ID); err != nil {
+
+	if _, err := service.Admin.ArchiveWorkspace(
+		ctx,
+		owner.Account.ID,
+		workspace.ID,
+	); err != nil {
 		t.Fatalf("archive workspace: %v", err)
 	}
 
@@ -2313,30 +2827,42 @@ func TestControlScopeDeactivationCancelsPendingLimitRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list cancelled limit requests: %v", err)
 	}
+
 	assertLimitRequestStatus(t, requests, accountRequest.ID, "cancelled")
 	assertLimitRequestStatus(t, requests, workspaceRequest.ID, "cancelled")
 
-	if _, err := service.Admin.ResolveLimitRequest(ctx, admin.ResolveLimitRequestParams{
-		ActorID:       owner.Account.ID,
-		RequestID:     accountRequest.ID,
-		Approved:      true,
-		ApprovedLimit: 2,
-	}); !errors.Is(err, repository.ErrLimitRequest) {
+	if _, err := service.Admin.ResolveLimitRequest(
+		ctx,
+		admin.ResolveLimitRequestParams{
+			ActorID:       owner.Account.ID,
+			RequestID:     accountRequest.ID,
+			Approved:      true,
+			ApprovedLimit: 2,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrLimitRequest,
+	) {
 		t.Fatalf("resolve cancelled account limit request error = %v", err)
 	}
-	if _, err := service.Admin.ResolveLimitRequest(ctx, admin.ResolveLimitRequestParams{
-		ActorID:       owner.Account.ID,
-		RequestID:     workspaceRequest.ID,
-		Approved:      true,
-		ApprovedLimit: 11,
-	}); !errors.Is(err, repository.ErrLimitRequest) {
+
+	if _, err := service.Admin.ResolveLimitRequest(
+		ctx,
+		admin.ResolveLimitRequestParams{
+			ActorID:       owner.Account.ID,
+			RequestID:     workspaceRequest.ID,
+			Approved:      true,
+			ApprovedLimit: 11,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrLimitRequest,
+	) {
 		t.Fatalf("resolve cancelled workspace limit request error = %v", err)
 	}
-
 }
 
 func TestControlTypedStatusRejectsUnknownValues(t *testing.T) {
-
 	service := newControlTestService(t)
 	ctx := context.Background()
 	owner := initializeControl(t, service, "typed-status-owner")
@@ -2361,7 +2887,6 @@ func TestControlTypedStatusRejectsUnknownValues(t *testing.T) {
 	if !errors.Is(err, repository.ErrInvalidArgument) {
 		t.Fatalf("unknown audit result error = %v", err)
 	}
-
 }
 
 func assertLimitRequestStatus(
@@ -2370,22 +2895,26 @@ func assertLimitRequestStatus(
 	requestID string,
 	want controlmodel.LimitRequestStatus,
 ) {
-
 	t.Helper()
 
 	for _, request := range requests {
 		if request.ID != requestID {
 			continue
 		}
+
 		if request.Status != want {
-			t.Fatalf("limit request %q status = %q, want %q", requestID, request.Status, want)
+			t.Fatalf(
+				"limit request %q status = %q, want %q",
+				requestID,
+				request.Status,
+				want,
+			)
 		}
 
 		return
 	}
 
 	t.Fatalf("limit request %q is missing", requestID)
-
 }
 
 func auditContainsTarget(
@@ -2393,7 +2922,6 @@ func auditContainsTarget(
 	methodKey string,
 	targetID string,
 ) bool {
-
 	for _, event := range events {
 		if event.MethodKey == methodKey && event.TargetID == targetID {
 			return true
@@ -2401,11 +2929,9 @@ func auditContainsTarget(
 	}
 
 	return false
-
 }
 
 func newControlTestService(t testing.TB) *control.Control {
-
 	t.Helper()
 
 	adminDB, err := sql.Open("pgx", controlPostgresDSN("postgres"))
@@ -2420,10 +2946,16 @@ func newControlTestService(t testing.TB) *control.Control {
 	); err != nil {
 		t.Fatalf("terminate test database connections: %v", err)
 	}
-	if _, err := adminDB.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", controlTestDatabase)); err != nil {
+
+	if _, err := adminDB.Exec(
+		fmt.Sprintf("DROP DATABASE IF EXISTS %s", controlTestDatabase),
+	); err != nil {
 		t.Fatalf("drop test database: %v", err)
 	}
-	if _, err := adminDB.Exec(fmt.Sprintf("CREATE DATABASE %s", controlTestDatabase)); err != nil {
+
+	if _, err := adminDB.Exec(
+		fmt.Sprintf("CREATE DATABASE %s", controlTestDatabase),
+	); err != nil {
 		t.Fatalf("create test database: %v", err)
 	}
 
@@ -2431,14 +2963,17 @@ func newControlTestService(t testing.TB) *control.Control {
 	if err != nil {
 		t.Fatalf("open test database: %v", err)
 	}
+
 	client, err := sqlwrap.New(db)
 	if err != nil {
 		t.Fatalf("new sql client: %v", err)
 	}
+
 	repo := repository.New(client)
 	if err := repo.Bootstrap(context.Background()); err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
+
 	service, err := control.NewWithDatabase(
 		context.Background(),
 		db,
@@ -2451,6 +2986,7 @@ func newControlTestService(t testing.TB) *control.Control {
 	if err != nil {
 		t.Fatalf("new control: %v", err)
 	}
+
 	t.Cleanup(func() {
 		_ = service.Close()
 		_ = repo.Close()
@@ -2458,7 +2994,6 @@ func newControlTestService(t testing.TB) *control.Control {
 	})
 
 	return service
-
 }
 
 func initializeControl(
@@ -2466,16 +3001,17 @@ func initializeControl(
 	service *control.Control,
 	subject string,
 ) admin.AuthResult {
-
 	t.Helper()
 
-	result, err := service.Admin.Initialize(context.Background(), authParams(subject))
+	result, err := service.Admin.Initialize(
+		context.Background(),
+		authParams(subject),
+	)
 	if err != nil {
 		t.Fatalf("initialize control: %v", err)
 	}
 
 	return result
-
 }
 
 func inviteAccount(
@@ -2484,7 +3020,6 @@ func inviteAccount(
 	ownerID string,
 	subject string,
 ) admin.AuthResult {
-
 	t.Helper()
 
 	_, token, err := service.Admin.CreateGlobalInvite(
@@ -2494,15 +3029,17 @@ func inviteAccount(
 	if err != nil {
 		t.Fatalf("create global invite: %v", err)
 	}
+
 	params := authParams(subject)
+
 	params.InviteToken = token
+
 	result, err := service.Admin.CompleteAuth(context.Background(), params)
 	if err != nil {
 		t.Fatalf("accept global invite: %v", err)
 	}
 
 	return result
-
 }
 
 func createWorkspace(
@@ -2511,7 +3048,6 @@ func createWorkspace(
 	actorID string,
 	slug string,
 ) admin.WorkspaceModel {
-
 	t.Helper()
 
 	workspace, err := service.Admin.CreateWorkspace(
@@ -2528,7 +3064,6 @@ func createWorkspace(
 	}
 
 	return workspace
-
 }
 
 func createWorkspaceWithGlobalPermission(
@@ -2538,8 +3073,8 @@ func createWorkspaceWithGlobalPermission(
 	accountID string,
 	slug string,
 ) admin.WorkspaceModel {
-
 	t.Helper()
+
 	ctx := context.Background()
 
 	role, err := service.Admin.CreateGlobalRole(ctx, admin.CreateRoleParams{
@@ -2551,6 +3086,7 @@ func createWorkspaceWithGlobalPermission(
 	if err != nil {
 		t.Fatalf("create creator role: %v", err)
 	}
+
 	if err := service.Admin.ReplaceGlobalRolePermissions(
 		ctx,
 		admin.ReplaceRolePermissionsParams{
@@ -2561,6 +3097,7 @@ func createWorkspaceWithGlobalPermission(
 	); err != nil {
 		t.Fatalf("grant create workspace: %v", err)
 	}
+
 	if err := service.Admin.AssignGlobalRole(ctx, admin.SetRoleMemberParams{
 		ActorID:   ownerID,
 		AccountID: accountID,
@@ -2570,7 +3107,6 @@ func createWorkspaceWithGlobalPermission(
 	}
 
 	return createWorkspace(t, service, accountID, slug)
-
 }
 
 func inviteIntoWorkspace(
@@ -2581,7 +3117,6 @@ func inviteIntoWorkspace(
 	accountID string,
 	subject string,
 ) {
-
 	t.Helper()
 
 	inviteIntoWorkspaceWithRole(
@@ -2593,7 +3128,6 @@ func inviteIntoWorkspace(
 		subject,
 		"",
 	)
-
 }
 
 func inviteIntoWorkspaceWithRole(
@@ -2605,13 +3139,13 @@ func inviteIntoWorkspaceWithRole(
 	subject string,
 	roleID string,
 ) {
-
 	t.Helper()
 
 	roleIDs := []string(nil)
 	if roleID != "" {
 		roleIDs = []string{roleID}
 	}
+
 	_, token, err := service.Admin.CreateWorkspaceInvite(
 		context.Background(),
 		admin.CreateInviteParams{
@@ -2623,20 +3157,26 @@ func inviteIntoWorkspaceWithRole(
 	if err != nil {
 		t.Fatalf("create workspace invite: %v", err)
 	}
+
 	params := authParams(subject)
+
 	params.InviteToken = token
+
 	result, err := service.Admin.CompleteAuth(context.Background(), params)
 	if err != nil {
 		t.Fatalf("accept workspace invite: %v", err)
 	}
-	if result.Account.ID != accountID {
-		t.Fatalf("workspace invite account = %q, want %q", result.Account.ID, accountID)
-	}
 
+	if result.Account.ID != accountID {
+		t.Fatalf(
+			"workspace invite account = %q, want %q",
+			result.Account.ID,
+			accountID,
+		)
+	}
 }
 
 func authParams(subject string) admin.AuthIdentityParams {
-
 	return admin.AuthIdentityParams{
 		Provider:    "test",
 		Subject:     subject,
@@ -2645,11 +3185,9 @@ func authParams(subject string) admin.AuthIdentityParams {
 		UserAgent:   "control-test",
 		ExpiresAt:   time.Now().Add(time.Hour),
 	}
-
 }
 
 func controlPostgresDSN(database string) string {
-
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s?sslmode=disable",
 		controlTestUser,
@@ -2658,7 +3196,6 @@ func controlPostgresDSN(database string) string {
 		controlTestPort,
 		database,
 	)
-
 }
 
 func enableControlTwoFactor(
@@ -2666,7 +3203,6 @@ func enableControlTwoFactor(
 	service *control.Control,
 	accountID string,
 ) (string, []string) {
-
 	t.Helper()
 
 	setup, err := service.Admin.BeginTwoFactor(
@@ -2677,6 +3213,7 @@ func enableControlTwoFactor(
 	if err != nil {
 		t.Fatalf("begin two factor: %v", err)
 	}
+
 	backupCodes, err := service.Admin.ConfirmTwoFactor(
 		context.Background(),
 		accountID,
@@ -2685,19 +3222,18 @@ func enableControlTwoFactor(
 	if err != nil {
 		t.Fatalf("confirm two factor: %v", err)
 	}
+
 	if len(backupCodes) == 0 {
 		t.Fatal("two factor backup codes are empty")
 	}
 
 	return setup.Secret, backupCodes
-
 }
 
 func platformMemberStatus(
 	items []admin.PlatformMemberModel,
 	accountID string,
 ) controlmodel.MembershipStatus {
-
 	for _, item := range items {
 		if item.AccountID == accountID {
 			return item.Status
@@ -2705,11 +3241,12 @@ func platformMemberStatus(
 	}
 
 	return controlmodel.MembershipStatus("")
-
 }
 
-func accessCatalogContains(items []admin.AccessGroupModel, methodKey string) bool {
-
+func accessCatalogContains(
+	items []admin.AccessGroupModel,
+	methodKey string,
+) bool {
 	for _, service := range items {
 		for _, group := range service.Groups {
 			for _, access := range group.Accesses {
@@ -2721,12 +3258,16 @@ func accessCatalogContains(items []admin.AccessGroupModel, methodKey string) boo
 	}
 
 	return false
-
 }
 
-func signedTMALaunch(t testing.TB, secret string, userID int64, issuedAt time.Time) string {
-
+func signedTMALaunch(
+	t testing.TB,
+	secret string,
+	userID int64,
+	issuedAt time.Time,
+) string {
 	t.Helper()
+
 	values := url.Values{
 		"auth_date": {strconv.FormatInt(issuedAt.Unix(), 10)},
 		"user":      {`{"id":` + strconv.FormatInt(userID, 10) + `}`},
@@ -2736,16 +3277,18 @@ func signedTMALaunch(t testing.TB, secret string, userID int64, issuedAt time.Ti
 		"user=" + values.Get("user"),
 	}
 	secretKey := hmac.New(sha256.New, []byte("WebAppData"))
+
 	_, _ = secretKey.Write([]byte(secret))
+
 	mac := hmac.New(sha256.New, secretKey.Sum(nil))
+
 	_, _ = mac.Write([]byte(strings.Join(pairs, "\n")))
 	values.Set("hash", hex.EncodeToString(mac.Sum(nil)))
-	return values.Encode()
 
+	return values.Encode()
 }
 
 func controlTestTOTP(secret string, now time.Time) string {
-
 	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).
 		DecodeString(strings.ToUpper(strings.TrimSpace(secret)))
 	if err != nil {
@@ -2753,10 +3296,13 @@ func controlTestTOTP(secret string, now time.Time) string {
 	}
 
 	var counter [8]byte
+
 	binary.BigEndian.PutUint64(counter[:], uint64(now.Unix()/30))
 
 	mac := hmac.New(sha1.New, key)
+
 	_, _ = mac.Write(counter[:])
+
 	sum := mac.Sum(nil)
 	offset := int(sum[len(sum)-1] & 0x0f)
 	value := (uint32(sum[offset])&0x7f)<<24 |
@@ -2765,5 +3311,4 @@ func controlTestTOTP(secret string, now time.Time) string {
 		uint32(sum[offset+3])
 
 	return fmt.Sprintf("%06d", value%1_000_000)
-
 }

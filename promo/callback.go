@@ -2,8 +2,9 @@ package promo
 
 import (
 	"context"
-	json "github.com/goccy/go-json"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	services "github.com/elum2b/services"
 	serviceerrors "github.com/elum2b/services/errors"
@@ -39,8 +40,17 @@ type callbackRegistration struct {
 	options []CallbackOption
 }
 
-func WithCallbackWorkerID(value string) CallbackOption { return callbackutil.WithWorkerID(value) }
-func WithCallbackBatchSize(value int32) CallbackOption { return callbackutil.WithBatchSize(value) }
+func WithCallbackWorkerID(
+	value string,
+) CallbackOption {
+	return callbackutil.WithWorkerID(value)
+}
+
+func WithCallbackBatchSize(
+	value int32,
+) CallbackOption {
+	return callbackutil.WithBatchSize(value)
+}
 func WithCallbackLeaseTimeout(value time.Duration) CallbackOption {
 	return callbackutil.WithLeaseTimeout(value)
 }
@@ -48,7 +58,11 @@ func WithCallbackIdleDelay(value time.Duration) CallbackOption {
 	return callbackutil.WithIdleDelay(value)
 }
 
-func (p *Promo) OnCallback(ctx context.Context, handler CallbackHandler, opts ...CallbackOption) error {
+func (p *Promo) OnCallback(
+	ctx context.Context,
+	handler CallbackHandler,
+	opts ...CallbackOption,
+) error {
 	if handler == nil {
 		return ErrCallbackHandlerNil
 	}
@@ -65,13 +79,19 @@ func (p *Promo) OnCallback(ctx context.Context, handler CallbackHandler, opts ..
 		return p.runCallback(ctx, handler, opts...)
 	}
 	p.callbacksToRun = append(p.callbacksToRun, callbackRegistration{
-		ctx: ctx, handler: handler, options: append([]CallbackOption(nil), opts...),
+		ctx:     ctx,
+		handler: handler,
+		options: append([]CallbackOption(nil), opts...),
 	})
 	p.lifecycleMu.Unlock()
 	return nil
 }
 
-func (p *Promo) runCallback(ctx context.Context, handler CallbackHandler, opts ...CallbackOption) error {
+func (p *Promo) runCallback(
+	ctx context.Context,
+	handler CallbackHandler,
+	opts ...CallbackOption,
+) error {
 	if p == nil || p.callbacks == nil {
 		return ErrCallbacksNotConfigured
 	}
@@ -81,7 +101,11 @@ func (p *Promo) runCallback(ctx context.Context, handler CallbackHandler, opts .
 	return p.callbacks.On(runCtx, func(callbackCtx callbackutil.Context) error {
 		var payload CallbackPayload
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
-			return serviceerrors.Wrap(serviceerrors.CodeInternalError, "promo callback payload decode failed", err)
+			return serviceerrors.Wrap(
+				serviceerrors.CodeInternalError,
+				"promo callback payload decode failed",
+				err,
+			)
 		}
 		return handler(Context{
 			Context: callbackCtx,

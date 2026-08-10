@@ -8,14 +8,35 @@ import (
 )
 
 var (
-	ErrNotInitialized                  = serviceerrors.New(serviceerrors.CodeNotReady, "telegram_stars adapter is not initialized")
-	ErrBotTokenRequired                = serviceerrors.New(serviceerrors.CodeInvalidFields, "telegram_stars bot token is required")
-	ErrIdempotencyKeyRequired          = serviceerrors.New(serviceerrors.CodeInvalidFields, "telegram_stars idempotency key is required")
-	ErrPaymentAttemptState             = serviceerrors.New(serviceerrors.CodeFailedPrecondition, "telegram_stars payment attempt cannot be reused")
-	ErrCreateInvoiceLinkEmpty          = serviceerrors.New(serviceerrors.CodeUnavailable, "telegram_stars create invoice link returned an empty result")
-	ErrInvoicePayloadRequired          = serviceerrors.New(serviceerrors.CodeInvalidFields, "telegram_stars invoice payload is required")
-	ErrTelegramPaymentChargeIDRequired = serviceerrors.New(serviceerrors.CodeInvalidFields, "telegram_stars payment charge id is required")
-	ErrRecurringExpirationRequired     = serviceerrors.New(
+	ErrNotInitialized = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"telegram_stars adapter is not initialized",
+	)
+	ErrBotTokenRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"telegram_stars bot token is required",
+	)
+	ErrIdempotencyKeyRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"telegram_stars idempotency key is required",
+	)
+	ErrPaymentAttemptState = serviceerrors.New(
+		serviceerrors.CodeFailedPrecondition,
+		"telegram_stars payment attempt cannot be reused",
+	)
+	ErrCreateInvoiceLinkEmpty = serviceerrors.New(
+		serviceerrors.CodeUnavailable,
+		"telegram_stars create invoice link returned an empty result",
+	)
+	ErrInvoicePayloadRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"telegram_stars invoice payload is required",
+	)
+	ErrTelegramPaymentChargeIDRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"telegram_stars payment charge id is required",
+	)
+	ErrRecurringExpirationRequired = serviceerrors.New(
 		serviceerrors.CodeInvalidFields,
 		"telegram_stars recurring payment expiration is required",
 	)
@@ -29,10 +50,21 @@ type apiError struct {
 func (e *apiError) Error() string { return e.err.Error() }
 func (e *apiError) Unwrap() error { return e.err }
 
-func wrapAPIError(action string, status int, code int, _ string, _ string) error {
+func wrapAPIError(
+	action string,
+	status int,
+	code int,
+	_ string,
+	_ string,
+) error {
 	return &apiError{status: status, err: serviceerrors.Wrap(
 		serviceerrors.CodeUnavailable,
-		fmt.Sprintf("telegram_stars %s failed with status %d code %d", action, status, code),
+		fmt.Sprintf(
+			"telegram_stars %s failed with status %d code %d",
+			action,
+			status,
+			code,
+		),
 		errors.New("provider response omitted"),
 	)}
 }

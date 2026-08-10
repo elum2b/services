@@ -17,8 +17,10 @@ const (
 )
 
 func (a *Payment) startPlategaReconciliationWorker() {
-	if a == nil || a.rootCtx == nil || a.goroutines == nil || a.Adapters == nil ||
-		a.Adapters.Platega == nil || a.plategaCredentials == nil {
+	if a == nil || a.rootCtx == nil || a.goroutines == nil ||
+		a.Adapters == nil ||
+		a.Adapters.Platega == nil ||
+		a.plategaCredentials == nil {
 		return
 	}
 	if a.plategaReconcileInterval <= 0 {
@@ -34,9 +36,14 @@ func (a *Payment) startPlategaReconciliationWorker() {
 		a.plategaReconcileBatch = defaultPlategaReconcileBatch
 	}
 
-	a.goroutines.GoRestart(a.rootCtx, "payment.platega_reconciler", time.Second, func() {
-		a.plategaReconciliationLoop()
-	})
+	a.goroutines.GoRestart(
+		a.rootCtx,
+		"payment.platega_reconciler",
+		time.Second,
+		func() {
+			a.plategaReconciliationLoop()
+		},
+	)
 }
 
 func (a *Payment) plategaReconciliationLoop() {
@@ -58,7 +65,9 @@ func (a *Payment) plategaReconciliationLoop() {
 	}
 }
 
-func (a *Payment) reconcilePlatega(ctx context.Context) (platega.ReconcileResult, error) {
+func (a *Payment) reconcilePlatega(
+	ctx context.Context,
+) (platega.ReconcileResult, error) {
 	now := time.Now().UTC()
 
 	return a.Adapters.Platega.ReconcilePending(ctx, platega.ReconcileParams{

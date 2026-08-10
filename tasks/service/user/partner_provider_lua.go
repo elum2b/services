@@ -36,7 +36,11 @@ func (p LuaProvider) ListPartnerTasks(
 		return nil, err
 	}
 	if ok, _ := result["ok"].(bool); !ok {
-		return nil, fmt.Errorf("lua partner %s list failed: %s", p.Provider, stringValue(result["error"]))
+		return nil, fmt.Errorf(
+			"lua partner %s list failed: %s",
+			p.Provider,
+			stringValue(result["error"]),
+		)
 	}
 	rawTasks, _ := result["tasks"].([]any)
 	tasks := make([]PartnerExternalTask, 0, len(rawTasks))
@@ -47,13 +51,19 @@ func (p LuaProvider) ListPartnerTasks(
 		}
 		expiresAt := timePtr(item["expires_at"])
 		tasks = append(tasks, PartnerExternalTask{
-			ExternalID:     stringValue(item["external_id"]),
-			ExternalType:   firstNonEmpty(stringValue(item["external_type"]), "default"),
+			ExternalID: stringValue(item["external_id"]),
+			ExternalType: firstNonEmpty(
+				stringValue(item["external_type"]),
+				"default",
+			),
 			PublicPayload:  rawJSON(item["public_payload"]),
 			PrivatePayload: rawJSON(item["private_payload"]),
 			ExpiresAt:      expiresAt,
-			StartMode:      firstNonEmpty(stringValue(item["start_mode"]), repository.StartModeNone),
-			WindowKey:      stringValue(item["window_key"]),
+			StartMode: firstNonEmpty(
+				stringValue(item["start_mode"]),
+				repository.StartModeNone,
+			),
+			WindowKey: stringValue(item["window_key"]),
 		})
 	}
 	return tasks, nil
@@ -86,8 +96,11 @@ func (p LuaProvider) CheckPartnerTask(
 	}
 	return PartnerCheckResult{
 		Completed: boolValue(result["completed"]),
-		Status:    firstNonEmpty(stringValue(result["status"]), repository.PartnerIssueStatusCompleted),
-		Payload:   rawJSON(result["payload"]),
+		Status: firstNonEmpty(
+			stringValue(result["status"]),
+			repository.PartnerIssueStatusCompleted,
+		),
+		Payload: rawJSON(result["payload"]),
 	}, nil
 }
 
@@ -113,8 +126,11 @@ func (p LuaProvider) StartPartnerTask(
 		return PartnerStartResult{Status: stringValue(result["error"])}, nil
 	}
 	return PartnerStartResult{
-		Started:             boolValue(result["started"]),
-		Status:              firstNonEmpty(stringValue(result["status"]), "started"),
+		Started: boolValue(result["started"]),
+		Status: firstNonEmpty(
+			stringValue(result["status"]),
+			"started",
+		),
 		ActionURL:           stringValue(result["action_url"]),
 		ExternalClickID:     stringValue(result["external_click_id"]),
 		PublicPayloadPatch:  rawJSON(result["public_payload_patch"]),

@@ -8,7 +8,11 @@ import (
 	promosqlc "github.com/elum2b/services/promo/sqlc"
 )
 
-func (r *Repository) GetRedemption(ctx context.Context, identity Identity, promoID uint64) (*Redemption, error) {
+func (r *Repository) GetRedemption(
+	ctx context.Context,
+	identity Identity,
+	promoID uint64,
+) (*Redemption, error) {
 	row, err := r.q.GetRedemption(ctx, promosqlc.GetRedemptionParams{
 		WorkspaceID:    identity.WorkspaceID,
 		PromoID:        int64(promoID),
@@ -33,12 +37,15 @@ func (r *Repository) ListRedemptions(
 	limit, offset int32,
 ) ([]Redemption, error) {
 	limit, offset = normalizePage(limit, offset)
-	rows, err := r.q.AdminListRedemptions(ctx, promosqlc.AdminListRedemptionsParams{
-		WorkspaceID: workspaceID,
-		PromoID:     int64(promoID),
-		Limit:       limit,
-		Offset:      offset,
-	})
+	rows, err := r.q.AdminListRedemptions(
+		ctx,
+		promosqlc.AdminListRedemptionsParams{
+			WorkspaceID: workspaceID,
+			PromoID:     int64(promoID),
+			Limit:       limit,
+			Offset:      offset,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +56,11 @@ func (r *Repository) ListRedemptions(
 	return result, nil
 }
 
-func (r *Repository) GetStats(ctx context.Context, workspaceID string, promoID uint64) (Stats, error) {
+func (r *Repository) GetStats(
+	ctx context.Context,
+	workspaceID string,
+	promoID uint64,
+) (Stats, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return Stats{}, err
 	}
@@ -74,12 +85,15 @@ func (r *Repository) ListDailyStats(
 	promoID uint64,
 	from, until time.Time,
 ) ([]DailyStats, error) {
-	rows, err := r.q.AdminListDailyStats(ctx, promosqlc.AdminListDailyStatsParams{
-		WorkspaceID: workspaceID,
-		PromoID:     int64(promoID),
-		StatsDate:   from,
-		StatsDate_2: until,
-	})
+	rows, err := r.q.AdminListDailyStats(
+		ctx,
+		promosqlc.AdminListDailyStatsParams{
+			WorkspaceID: workspaceID,
+			PromoID:     int64(promoID),
+			StatsDate:   from,
+			StatsDate_2: until,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +108,11 @@ func (r *Repository) ListDailyStats(
 	return result, nil
 }
 
-func (r *Repository) RefreshDailyStats(ctx context.Context, workspaceID string, from, until time.Time) error {
+func (r *Repository) RefreshDailyStats(
+	ctx context.Context,
+	workspaceID string,
+	from, until time.Time,
+) error {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}

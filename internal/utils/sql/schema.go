@@ -10,7 +10,12 @@ import (
 var sqlIdentifierRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // EnsureColumn adds a missing column to an existing table.
-func EnsureColumn(ctx context.Context, db *Client, timeout time.Duration, table, column, definition string) error {
+func EnsureColumn(
+	ctx context.Context,
+	db *Client,
+	timeout time.Duration,
+	table, column, definition string,
+) error {
 	if db == nil || db.db == nil {
 		return ErrNilDB
 	}
@@ -47,7 +52,12 @@ WHERE TABLE_SCHEMA = DATABASE()
 	return err
 }
 
-func ModifyColumn(ctx context.Context, db *Client, timeout time.Duration, table, column, definition string) error {
+func ModifyColumn(
+	ctx context.Context,
+	db *Client,
+	timeout time.Duration,
+	table, column, definition string,
+) error {
 	if db == nil || db.db == nil {
 		return ErrNilDB
 	}
@@ -70,7 +80,12 @@ func ModifyColumn(ctx context.Context, db *Client, timeout time.Duration, table,
 	return err
 }
 
-func EnsureIndex(ctx context.Context, db *Client, timeout time.Duration, table, index, definition string) error {
+func EnsureIndex(
+	ctx context.Context,
+	db *Client,
+	timeout time.Duration,
+	table, index, definition string,
+) error {
 	if db == nil || db.db == nil {
 		return ErrNilDB
 	}

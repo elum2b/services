@@ -3,8 +3,9 @@ package repository
 import (
 	"time"
 
-	controlmodel "github.com/elum2b/services/control/model"
 	json "github.com/goccy/go-json"
+
+	controlmodel "github.com/elum2b/services/control/model"
 )
 
 type AccessScope string
@@ -102,6 +103,21 @@ type ApplicationPlatform struct {
 
 type ApplicationAuthentication struct {
 	ApplicationPlatform
+	Secret string
+}
+
+type ApplicationDelivery struct {
+	WorkspaceID string
+	AppID       int64
+	PlatformID  int64
+	URL         string
+	IsEnabled   bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type ApplicationDeliveryEndpoint struct {
+	ApplicationDelivery
 	Secret string
 }
 

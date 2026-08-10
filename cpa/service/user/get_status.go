@@ -7,7 +7,10 @@ type GetStatusParams struct {
 	CPAID    string
 }
 
-func (u *User) GetStatus(ctx context.Context, params GetStatusParams) (*AssignmentModel, error) {
+func (u *User) GetStatus(
+	ctx context.Context,
+	params GetStatusParams,
+) (*AssignmentModel, error) {
 
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
@@ -16,7 +19,10 @@ func (u *User) GetStatus(ctx context.Context, params GetStatusParams) (*Assignme
 		return nil, err
 	}
 
-	value, err := u.repository.FindAssignment(mergedCtx, scope(params.Identity, params.CPAID))
+	value, err := u.repository.FindAssignment(
+		mergedCtx,
+		scope(params.Identity, params.CPAID),
+	)
 	if err != nil || value == nil {
 		return nil, err
 	}

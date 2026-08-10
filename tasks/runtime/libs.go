@@ -83,7 +83,10 @@ func registerHTTP(L *lua.LState, client *httpClient, calls *int, maxCalls int) {
 				L.RaiseError("http request limit exceeded")
 				return 0
 			}
-			response, err := client.request(L.Context(), luaToGo(L.CheckTable(1)))
+			response, err := client.request(
+				L.Context(),
+				luaToGo(L.CheckTable(1)),
+			)
 			if err != nil {
 				L.RaiseError("http.request failed: %v", err)
 				return 0
@@ -95,7 +98,10 @@ func registerHTTP(L *lua.LState, client *httpClient, calls *int, maxCalls int) {
 	L.SetGlobal("http", module)
 }
 
-func (c *httpClient) request(ctx context.Context, value any) (map[string]any, error) {
+func (c *httpClient) request(
+	ctx context.Context,
+	value any,
+) (map[string]any, error) {
 	params, ok := value.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("params must be object")
@@ -191,7 +197,11 @@ func (c *httpClient) secureClient() *http.Client {
 	client := *base
 	previousRedirect := client.CheckRedirect
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if err := validatePartnerURL(req.Context(), req.URL, c.allowPrivate); err != nil {
+		if err := validatePartnerURL(
+			req.Context(),
+			req.URL,
+			c.allowPrivate,
+		); err != nil {
 			return err
 		}
 		if previousRedirect != nil {
@@ -221,7 +231,11 @@ func (c *httpClient) secureClient() *http.Client {
 			}
 			var dialErr error
 			for _, resolved := range addresses {
-				connection, err := dial(ctx, network, net.JoinHostPort(resolved.String(), port))
+				connection, err := dial(
+					ctx,
+					network,
+					net.JoinHostPort(resolved.String(), port),
+				)
 				if err == nil {
 					return connection, nil
 				}

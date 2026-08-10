@@ -8,11 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	services "github.com/elum2b/services"
 	callbackutil "github.com/elum2b/services/internal/utils/callback"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	promosqlc "github.com/elum2b/services/promo/sqlc"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func requireWorkspaceID(workspaceID string) error {
@@ -51,9 +52,12 @@ func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 	executor := db.WithQueryTimeout(timeout)
 	q := promosqlc.New(executor)
 	return &Repository{
-		db:                       db,
-		q:                        q,
-		callbacks:                callbackutil.NewWithTable(db.DB(), callbackutil.PromoTable),
+		db: db,
+		q:  q,
+		callbacks: callbackutil.NewWithTable(
+			db.DB(),
+			callbackutil.PromoTable,
+		),
 		executor:                 executor,
 		timeout:                  timeout,
 		cacheL1:                  options.CacheL1Delay,
@@ -66,7 +70,11 @@ func NewPrepared(ctx context.Context, db *sqlwrap.Client) (*Repository, error) {
 	return NewPreparedWithOptions(ctx, db, Options{})
 }
 
-func NewPreparedWithOptions(_ context.Context, db *sqlwrap.Client, options Options) (*Repository, error) {
+func NewPreparedWithOptions(
+	_ context.Context,
+	db *sqlwrap.Client,
+	options Options,
+) (*Repository, error) {
 	return NewWithOptions(db, options), nil
 }
 
@@ -84,7 +92,10 @@ func (r *Repository) Close() error {
 	return err
 }
 
-func (r *Repository) WithTx(ctx context.Context, fn func(*Repository) error) error {
+func (r *Repository) WithTx(
+	ctx context.Context,
+	fn func(*Repository) error,
+) error {
 	_, err := sqlwrap.Transaction(ctx, r.db, sqlwrap.Params{
 		Timeout: r.timeout,
 	}, func(ctx context.Context, tx *sql.Tx) (struct{}, error) {
@@ -110,7 +121,11 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 	if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{
 		Timeout: bootstrapQueryTimeout,
 	}, func(ctx context.Context) error {
-		return callbackutil.BootstrapTable(ctx, r.db.DB(), callbackutil.PromoTable)
+		return callbackutil.BootstrapTable(
+			ctx,
+			r.db.DB(),
+			callbackutil.PromoTable,
+		)
 	}); err != nil {
 		return err
 	}
@@ -136,7 +151,12 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 			if isCreateTypeAlreadyExists(statement, err) {
 				continue
 			}
-			return fmt.Errorf("promo %s SQL statement failed: %w\n%s", source, err, statement)
+			return fmt.Errorf(
+				"promo %s SQL statement failed: %w\n%s",
+				source,
+				err,
+				statement,
+			)
 		}
 	}
 	return nil
@@ -144,7 +164,10 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 
 func isCreateTypeAlreadyExists(statement string, err error) bool {
 	var pgErr *pgconn.PgError
-	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(statement)), "CREATE TYPE ") &&
+	return strings.HasPrefix(
+		strings.ToUpper(strings.TrimSpace(statement)),
+		"CREATE TYPE ",
+	) &&
 		errors.As(err, &pgErr) &&
 		pgErr.Code == "42710"
 }

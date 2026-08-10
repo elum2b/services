@@ -20,7 +20,10 @@ func (u *User) Get(ctx context.Context, params GetParams) (ItemModel, error) {
 	return mapItem(item), nil
 }
 
-func (u *User) Resolve(ctx context.Context, params ResolveParams) (ResolveResult, error) {
+func (u *User) Resolve(
+	ctx context.Context,
+	params ResolveParams,
+) (ResolveResult, error) {
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 	keys := normalizeKeys(params.Keys)
@@ -50,12 +53,19 @@ func (u *User) Resolve(ctx context.Context, params ResolveParams) (ResolveResult
 	return result, nil
 }
 
-func (u *User) List(ctx context.Context, params ListParams) ([]ItemModel, error) {
+func (u *User) List(
+	ctx context.Context,
+	params ListParams,
+) ([]ItemModel, error) {
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 	limit, offset := normalizePage(params.Page)
 	items, err := u.repository.List(
-		mergedCtx, params.WorkspaceID, normalizeLocale(params.Locale), limit, offset,
+		mergedCtx,
+		params.WorkspaceID,
+		normalizeLocale(params.Locale),
+		limit,
+		offset,
 	)
 	if err != nil {
 		return nil, err

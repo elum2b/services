@@ -32,7 +32,11 @@ type Launch struct {
 	IssuedAt       time.Time
 }
 
-func Verify(provider Provider, raw, secret string, appID int64) (Launch, error) {
+func Verify(
+	provider Provider,
+	raw, secret string,
+	appID int64,
+) (Launch, error) {
 
 	if appID <= 0 || strings.TrimSpace(raw) == "" || secret == "" {
 		return Launch{}, ErrInvalidLaunch
@@ -51,7 +55,10 @@ func Verify(provider Provider, raw, secret string, appID int64) (Launch, error) 
 
 func verifyVKMA(raw, secret string, appID int64) (Launch, error) {
 
-	params, ok := vkma.Verify(raw, map[string]string{strconv.FormatInt(appID, 10): secret})
+	params, ok := vkma.Verify(
+		raw,
+		map[string]string{strconv.FormatInt(appID, 10): secret},
+	)
 	if !ok || int64(params.VkAppID) != appID || params.VkUserID <= 0 {
 		return Launch{}, ErrInvalidLaunch
 	}
@@ -117,7 +124,11 @@ func verifyTMA(raw, secret string, appID int64) (Launch, error) {
 	var user struct {
 		ID int64 `json:"id"`
 	}
-	if err := json.Unmarshal([]byte(userRaw), &user); err != nil || user.ID <= 0 {
+	if err := json.Unmarshal(
+		[]byte(userRaw),
+		&user,
+	); err != nil ||
+		user.ID <= 0 {
 		return Launch{}, ErrInvalidLaunch
 	}
 

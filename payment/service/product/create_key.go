@@ -18,19 +18,25 @@ type CreateKeyParams struct {
 	ExpiresAt      *time.Time
 }
 
-func (a *Product) CreateKey(ctx context.Context, params CreateKeyParams) (string, error) {
+func (a *Product) CreateKey(
+	ctx context.Context,
+	params CreateKeyParams,
+) (string, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 
-	return a.repository.CreateProductPurchaseKey(ctx, repository.ProductCreateKeyParams{
-		AppID:          params.AppID,
-		WorkspaceID:    params.WorkspaceID,
-		PlatformID:     params.PlatformID,
-		PlatformUserID: params.PlatformUserID,
-		InternalUserID: params.InternalUserID,
-		ProductID:      params.ProductID,
-		MaxUses:        params.MaxUses,
-		ExpiresAt:      params.ExpiresAt,
-	})
+	return a.repository.CreateProductPurchaseKey(
+		ctx,
+		repository.ProductCreateKeyParams{
+			AppID:          params.AppID,
+			WorkspaceID:    params.WorkspaceID,
+			PlatformID:     params.PlatformID,
+			PlatformUserID: params.PlatformUserID,
+			InternalUserID: params.InternalUserID,
+			ProductID:      params.ProductID,
+			MaxUses:        params.MaxUses,
+			ExpiresAt:      params.ExpiresAt,
+		},
+	)
 }

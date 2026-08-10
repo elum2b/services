@@ -6,7 +6,10 @@ import (
 	callbackutil "github.com/elum2b/services/internal/utils/callback"
 )
 
-func (a *Admin) ListCallbackEvents(ctx context.Context, params CallbackEventListParams) ([]callbackutil.Event, error) {
+func (a *Admin) ListCallbackEvents(
+	ctx context.Context,
+	params CallbackEventListParams,
+) ([]callbackutil.Event, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
@@ -21,21 +24,33 @@ func (a *Admin) ListCallbackEvents(ctx context.Context, params CallbackEventList
 	})
 }
 
-func (a *Admin) GetCallbackEvent(ctx context.Context, workspaceID string, id uint64) (callbackutil.Event, error) {
+func (a *Admin) GetCallbackEvent(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (callbackutil.Event, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.callbacks.GetEvent(ctx, workspaceID, id)
 }
 
-func (a *Admin) RetryCallbackEventNow(ctx context.Context, workspaceID string, id uint64) (int64, error) {
+func (a *Admin) RetryCallbackEventNow(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.callbacks.AdminRetryEventNow(ctx, workspaceID, id)
 }
 
-func (a *Admin) MarkCallbackEventOK(ctx context.Context, workspaceID string, id uint64) (int64, error) {
+func (a *Admin) MarkCallbackEventOK(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
@@ -54,7 +69,10 @@ func (a *Admin) MarkCallbackEventReject(
 	return a.callbacks.AdminMarkEventReject(ctx, workspaceID, id, reason)
 }
 
-func (a *Admin) ResetExpiredCallbackProcessing(ctx context.Context, workspaceID string) (int64, error) {
+func (a *Admin) ResetExpiredCallbackProcessing(
+	ctx context.Context,
+	workspaceID string,
+) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx

@@ -23,24 +23,30 @@ type UpdatePriceParams struct {
 	EndsAt                       *time.Time
 }
 
-func (a *Product) UpdatePrice(ctx context.Context, params UpdatePriceParams) (int64, error) {
+func (a *Product) UpdatePrice(
+	ctx context.Context,
+	params UpdatePriceParams,
+) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 
-	return a.repository.UpdateProductPrice(ctx, repository.ProductPriceUpdateParams{
-		ID:                           params.ID,
-		WorkspaceID:                  params.WorkspaceID,
-		AssetCode:                    params.AssetCode,
-		ListAmountMinor:              params.ListAmountMinor,
-		DiscountAmountMinor:          params.DiscountAmountMinor,
-		PricingMode:                  params.PricingMode,
-		ReferenceAssetCode:           params.ReferenceAssetCode,
-		ReferenceListAmountMinor:     params.ReferenceListAmountMinor,
-		ReferenceDiscountAmountMinor: params.ReferenceDiscountAmountMinor,
-		Coefficient:                  params.Coefficient,
-		IsPromotion:                  params.IsPromotion,
-		StartsAt:                     params.StartsAt,
-		EndsAt:                       params.EndsAt,
-	})
+	return a.repository.UpdateProductPrice(
+		ctx,
+		repository.ProductPriceUpdateParams{
+			ID:                           params.ID,
+			WorkspaceID:                  params.WorkspaceID,
+			AssetCode:                    params.AssetCode,
+			ListAmountMinor:              params.ListAmountMinor,
+			DiscountAmountMinor:          params.DiscountAmountMinor,
+			PricingMode:                  params.PricingMode,
+			ReferenceAssetCode:           params.ReferenceAssetCode,
+			ReferenceListAmountMinor:     params.ReferenceListAmountMinor,
+			ReferenceDiscountAmountMinor: params.ReferenceDiscountAmountMinor,
+			Coefficient:                  params.Coefficient,
+			IsPromotion:                  params.IsPromotion,
+			StartsAt:                     params.StartsAt,
+			EndsAt:                       params.EndsAt,
+		},
+	)
 }

@@ -5,7 +5,11 @@ import (
 	"github.com/elum2b/services/cpa/service/user"
 )
 
-func mapOffer(value repository.Offer, localizations []repository.Localization, rewards []repository.Reward) OfferModel {
+func mapOffer(
+	value repository.Offer,
+	localizations []repository.Localization,
+	rewards []repository.Reward,
+) OfferModel {
 	result := OfferModel{
 		ID:                value.ID,
 		Payload:           value.Payload,

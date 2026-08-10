@@ -18,15 +18,42 @@ import (
 )
 
 var (
-	ErrOfferRequired     = serviceerrors.New(serviceerrors.CodeInvalidFields, "cpa offer id is required")
-	ErrLocaleRequired    = serviceerrors.New(serviceerrors.CodeInvalidFields, "cpa locale is required")
-	ErrRewardKeyRequired = serviceerrors.New(serviceerrors.CodeInvalidFields, "cpa reward key is required")
-	ErrCodeRequired      = serviceerrors.New(serviceerrors.CodeInvalidFields, "cpa code is required")
-	ErrInvalidDateRange  = serviceerrors.New(serviceerrors.CodeInvalidFields, "cpa date range is invalid")
-	ErrNoCodesAvailable  = serviceerrors.New(serviceerrors.CodeUnavailable, "cpa personal codes are not available")
-	ErrInvalidCodeConfig = serviceerrors.New(serviceerrors.CodeInvalidFields, "cpa generated code configuration is invalid")
-	ErrCodeUploadMode    = serviceerrors.New(serviceerrors.CodeFailedPrecondition, "cpa codes can only be uploaded to personal pool offers")
-	ErrOfferInUse        = serviceerrors.New(serviceerrors.CodeFailedPrecondition, "cpa offer has assignments and cannot be deleted")
+	ErrOfferRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"cpa offer id is required",
+	)
+	ErrLocaleRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"cpa locale is required",
+	)
+	ErrRewardKeyRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"cpa reward key is required",
+	)
+	ErrCodeRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"cpa code is required",
+	)
+	ErrInvalidDateRange = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"cpa date range is invalid",
+	)
+	ErrNoCodesAvailable = serviceerrors.New(
+		serviceerrors.CodeUnavailable,
+		"cpa personal codes are not available",
+	)
+	ErrInvalidCodeConfig = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"cpa generated code configuration is invalid",
+	)
+	ErrCodeUploadMode = serviceerrors.New(
+		serviceerrors.CodeFailedPrecondition,
+		"cpa codes can only be uploaded to personal pool offers",
+	)
+	ErrOfferInUse = serviceerrors.New(
+		serviceerrors.CodeFailedPrecondition,
+		"cpa offer has assignments and cannot be deleted",
+	)
 )
 
 type Repository struct {
@@ -60,9 +87,12 @@ func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 	timeout := queryTimeout(options.QueryTimeout)
 	executor := db.WithQueryTimeout(timeout)
 	return &Repository{
-		db:                       db,
-		q:                        cpasqlc.New(executor),
-		callbacks:                callbackutil.NewWithTable(db.DB(), callbackutil.CPATable),
+		db: db,
+		q:  cpasqlc.New(executor),
+		callbacks: callbackutil.NewWithTable(
+			db.DB(),
+			callbackutil.CPATable,
+		),
 		executor:                 executor,
 		timeout:                  timeout,
 		cacheL1:                  options.CacheL1Delay,
@@ -75,7 +105,11 @@ func NewPrepared(ctx context.Context, db *sqlwrap.Client) (*Repository, error) {
 	return NewPreparedWithOptions(ctx, db, Options{})
 }
 
-func NewPreparedWithOptions(_ context.Context, db *sqlwrap.Client, options Options) (*Repository, error) {
+func NewPreparedWithOptions(
+	_ context.Context,
+	db *sqlwrap.Client,
+	options Options,
+) (*Repository, error) {
 	return NewWithOptions(db, options), nil
 }
 
@@ -93,7 +127,10 @@ func (r *Repository) Close() error {
 	return err
 }
 
-func (r *Repository) WithTx(ctx context.Context, fn func(*Repository) error) error {
+func (r *Repository) WithTx(
+	ctx context.Context,
+	fn func(*Repository) error,
+) error {
 	_, err := sqlwrap.Transaction(
 		ctx,
 		r.db,
@@ -117,7 +154,10 @@ func (r *Repository) WithTx(ctx context.Context, fn func(*Repository) error) err
 	return err
 }
 
-func (r *Repository) WithReadOnlySnapshot(ctx context.Context, fn func(*Repository) error) error {
+func (r *Repository) WithReadOnlySnapshot(
+	ctx context.Context,
+	fn func(*Repository) error,
+) error {
 	return r.WithTx(ctx, func(txRepo *Repository) error {
 		if _, err := txRepo.executor.ExecContext(
 			ctx,
@@ -144,7 +184,11 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 			Timeout: bootstrapQueryTimeout,
 		},
 		func(ctx context.Context) error {
-			return callbackutil.BootstrapTable(ctx, r.db.DB(), callbackutil.CPATable)
+			return callbackutil.BootstrapTable(
+				ctx,
+				r.db.DB(),
+				callbackutil.CPATable,
+			)
 		},
 	); err != nil {
 		return err
@@ -210,7 +254,12 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 			if isCreateTypeAlreadyExists(statement, err) {
 				continue
 			}
-			return fmt.Errorf("cpa %s SQL statement failed: %w\n%s", source, err, statement)
+			return fmt.Errorf(
+				"cpa %s SQL statement failed: %w\n%s",
+				source,
+				err,
+				statement,
+			)
 		}
 	}
 	return nil
@@ -218,7 +267,10 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 
 func isCreateTypeAlreadyExists(statement string, err error) bool {
 	var pgErr *pgconn.PgError
-	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(statement)), "CREATE TYPE ") &&
+	return strings.HasPrefix(
+		strings.ToUpper(strings.TrimSpace(statement)),
+		"CREATE TYPE ",
+	) &&
 		errors.As(err, &pgErr) &&
 		pgErr.Code == "42710"
 }
@@ -244,7 +296,10 @@ func requireWorkspace(workspaceID string) error {
 	return services.ValidateWorkspaceID(workspaceID)
 }
 
-func (r *Repository) lockWorkspaceMutation(ctx context.Context, workspaceID string) error {
+func (r *Repository) lockWorkspaceMutation(
+	ctx context.Context,
+	workspaceID string,
+) error {
 	_, err := r.executor.ExecContext(
 		ctx,
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
@@ -253,7 +308,10 @@ func (r *Repository) lockWorkspaceMutation(ctx context.Context, workspaceID stri
 	return err
 }
 
-func (r *Repository) lockWorkspaceCatalogRead(ctx context.Context, workspaceID string) error {
+func (r *Repository) lockWorkspaceCatalogRead(
+	ctx context.Context,
+	workspaceID string,
+) error {
 	_, err := r.executor.ExecContext(
 		ctx,
 		"SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 0))",
@@ -262,7 +320,10 @@ func (r *Repository) lockWorkspaceCatalogRead(ctx context.Context, workspaceID s
 	return err
 }
 
-func (r *Repository) lockIssueIdentity(ctx context.Context, scope UserScope) error {
+func (r *Repository) lockIssueIdentity(
+	ctx context.Context,
+	scope UserScope,
+) error {
 	key := fmt.Sprintf(
 		"cpa:issue:%s:%s:%d:%d:%s",
 		scope.WorkspaceID,
@@ -299,5 +360,6 @@ func isNoRows(err error) bool {
 
 func isForeignKeyViolation(err error) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && (pgErr.Code == "23503" || pgErr.Code == "23001")
+	return errors.As(err, &pgErr) &&
+		(pgErr.Code == "23503" || pgErr.Code == "23001")
 }

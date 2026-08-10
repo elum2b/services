@@ -39,7 +39,8 @@ func Wrap(code, message string, err error) *Error {
 		return New(code, message)
 	}
 	var coded Coded
-	if errors.As(err, &coded) && coded.Code() == code && coded.Message() == message {
+	if errors.As(err, &coded) && coded.Code() == code &&
+		coded.Message() == message {
 		if structured, ok := err.(*Error); ok {
 			return structured
 		}

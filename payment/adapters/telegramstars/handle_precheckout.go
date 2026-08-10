@@ -10,7 +10,10 @@ import (
 	"github.com/elum2b/services/payment/repository"
 )
 
-func (a *TelegramStars) HandlePreCheckoutQuery(ctx context.Context, query PreCheckoutQuery) (*PreCheckoutResult, error) {
+func (a *TelegramStars) HandlePreCheckoutQuery(
+	ctx context.Context,
+	query PreCheckoutQuery,
+) (*PreCheckoutResult, error) {
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
 	}
@@ -20,16 +23,24 @@ func (a *TelegramStars) HandlePreCheckoutQuery(ctx context.Context, query PreChe
 	ctx = mergedCtx
 	client := NewClient(query.Credentials)
 
-	attempt, err := a.repository.ValidatePendingAttempt(ctx, repository.PendingAttemptValidationParams{
-		WorkspaceID:       query.WorkspaceID,
-		ProviderCode:      ProviderCode,
-		ProviderPaymentID: query.InvoicePayload,
-		AmountMinor:       query.TotalAmount,
-		AssetCode:         query.Currency,
-		Now:               time.Now().UTC(),
-	})
+	attempt, err := a.repository.ValidatePendingAttempt(
+		ctx,
+		repository.PendingAttemptValidationParams{
+			WorkspaceID:       query.WorkspaceID,
+			ProviderCode:      ProviderCode,
+			ProviderPaymentID: query.InvoicePayload,
+			AmountMinor:       query.TotalAmount,
+			AssetCode:         query.Currency,
+			Now:               time.Now().UTC(),
+		},
+	)
 	if err != nil {
-		answerErr := client.AnswerPreCheckoutQuery(ctx, query.ID, false, "Payment order was not found")
+		answerErr := client.AnswerPreCheckoutQuery(
+			ctx,
+			query.ID,
+			false,
+			"Payment order was not found",
+		)
 		if answerErr != nil {
 			return nil, answerErr
 		}
@@ -52,14 +63,25 @@ func (a *TelegramStars) HandlePreCheckoutQuery(ctx context.Context, query PreChe
 		ProviderPaymentID: refIfNotEmpty(query.InvoicePayload),
 		EventType:         "pre_checkout_query",
 		EventStatus:       utils.Ref("received"),
-		PayloadHash:       sha256Hex([]byte(eventID + ":" + query.InvoicePayload)),
-		SignatureValid:    nil,
+		PayloadHash: sha256Hex(
+			[]byte(eventID + ":" + query.InvoicePayload),
+		),
+		SignatureValid: nil,
 	}); err != nil && !isDuplicateEntry(err) {
 		return nil, err
 	}
 
-	if err := client.AnswerPreCheckoutQuery(ctx, query.ID, true, ""); err != nil {
+	if err := client.AnswerPreCheckoutQuery(
+		ctx,
+		query.ID,
+		true,
+		"",
+	); err != nil {
 		return nil, err
 	}
-	return &PreCheckoutResult{AttemptID: attempt.ID, OrderID: attempt.OrderID, Accepted: true}, nil
+	return &PreCheckoutResult{
+		AttemptID: attempt.ID,
+		OrderID:   attempt.OrderID,
+		Accepted:  true,
+	}, nil
 }

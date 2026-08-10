@@ -6,7 +6,10 @@ import (
 	"github.com/elum2b/services/payment/repository"
 )
 
-func (a *Product) List(ctx context.Context, params ListParams) ([]ProductModel, error) {
+func (a *Product) List(
+	ctx context.Context,
+	params ListParams,
+) ([]ProductModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -14,19 +17,22 @@ func (a *Product) List(ctx context.Context, params ListParams) ([]ProductModel, 
 		return nil, err
 	}
 
-	products, err := a.repository.ListProducts(mergedCtx, repository.ProductListParams{
-		WorkspaceID:    params.Identity.WorkspaceID,
-		AppID:          params.Identity.AppID,
-		PlatformID:     params.Identity.PlatformID,
-		Platform:       params.Identity.Platform,
-		PlatformUserID: params.Identity.PlatformUserID,
-		IsPremium:      params.Identity.IsPremium,
-		Sex:            params.Identity.Sex,
-		Country:        params.Identity.Country,
-		GroupCode:      params.GroupCode,
-		AssetCode:      params.AssetCode,
-		Locale:         params.Locale,
-	})
+	products, err := a.repository.ListProducts(
+		mergedCtx,
+		repository.ProductListParams{
+			WorkspaceID:    params.Identity.WorkspaceID,
+			AppID:          params.Identity.AppID,
+			PlatformID:     params.Identity.PlatformID,
+			Platform:       params.Identity.Platform,
+			PlatformUserID: params.Identity.PlatformUserID,
+			IsPremium:      params.Identity.IsPremium,
+			Sex:            params.Identity.Sex,
+			Country:        params.Identity.Country,
+			GroupCode:      params.GroupCode,
+			AssetCode:      params.AssetCode,
+			Locale:         params.Locale,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}

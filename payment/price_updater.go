@@ -26,7 +26,9 @@ func (a *Payment) startPriceUpdater() {
 		return
 	}
 	if a.pricingHTTPClient == nil {
-		a.pricingHTTPClient = &http.Client{Timeout: defaultPriceUpdateHTTPTimeout}
+		a.pricingHTTPClient = &http.Client{
+			Timeout: defaultPriceUpdateHTTPTimeout,
+		}
 	}
 	if a.pricingInterval <= 0 {
 		a.pricingInterval = defaultPriceUpdateInterval
@@ -36,9 +38,14 @@ func (a *Payment) startPriceUpdater() {
 	}
 
 	workerID := newPriceUpdaterWorkerID()
-	a.goroutines.GoRestart(a.rootCtx, "payment.price_updater", time.Second, func() {
-		a.priceUpdaterLoop(workerID)
-	})
+	a.goroutines.GoRestart(
+		a.rootCtx,
+		"payment.price_updater",
+		time.Second,
+		func() {
+			a.priceUpdaterLoop(workerID)
+		},
+	)
 }
 
 func (a *Payment) priceUpdaterLoop(workerID string) {
@@ -60,21 +67,35 @@ func (a *Payment) priceUpdaterLoop(workerID string) {
 	}
 }
 
-func (a *Payment) runDuePriceUpdates(ctx context.Context, workerID string) error {
+func (a *Payment) runDuePriceUpdates(
+	ctx context.Context,
+	workerID string,
+) error {
 	if _, err := a.pricing.SyncAutomaticAssetRates(ctx); err != nil {
 		return err
 	}
-	updates, err := a.pricing.ClaimDueAssetRateUpdates(ctx, workerID, 300, defaultPriceUpdateLease)
+	updates, err := a.pricing.ClaimDueAssetRateUpdates(
+		ctx,
+		workerID,
+		300,
+		defaultPriceUpdateLease,
+	)
 	if err != nil {
 		return err
 	}
 	groups := groupDuePriceUpdates(updates)
 	for _, group := range groups {
 		if err := a.updateDexScreenerGroup(ctx, workerID, group); err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if errors.Is(err, context.Canceled) ||
+				errors.Is(err, context.DeadlineExceeded) {
 				return err
 			}
-			log.Printf("payment price updater source=%s chain=%s: %v", group.source, group.chainID, err)
+			log.Printf(
+				"payment price updater source=%s chain=%s: %v",
+				group.source,
+				group.chainID,
+				err,
+			)
 		}
 	}
 	return nil
@@ -86,7 +107,9 @@ type duePriceUpdateGroup struct {
 	updates []repository.DueAssetRateUpdate
 }
 
-func groupDuePriceUpdates(updates []repository.DueAssetRateUpdate) []duePriceUpdateGroup {
+func groupDuePriceUpdates(
+	updates []repository.DueAssetRateUpdate,
+) []duePriceUpdateGroup {
 	index := make(map[string]int)
 	groups := make([]duePriceUpdateGroup, 0)
 	for _, update := range updates {
@@ -128,7 +151,12 @@ func (a *Payment) updateDexScreenerGroup(
 		)
 		if err != nil {
 			groupErrors = append(groupErrors, err)
-			if failErr := a.failPriceUpdateGroup(ctx, workerID, batch, err); failErr != nil {
+			if failErr := a.failPriceUpdateGroup(
+				ctx,
+				workerID,
+				batch,
+				err,
+			); failErr != nil {
 				groupErrors = append(groupErrors, failErr)
 			}
 			continue
@@ -142,26 +170,43 @@ func (a *Payment) updateDexScreenerGroup(
 					update.SourceTokenAddress,
 				)
 				groupErrors = append(groupErrors, updateErr)
-				if err := a.pricing.FailAssetRateAutoUpdate(ctx, workerID, update, updateErr); err != nil {
+				if err := a.pricing.FailAssetRateAutoUpdate(
+					ctx,
+					workerID,
+					update,
+					updateErr,
+				); err != nil {
 					groupErrors = append(groupErrors, err)
 				}
 				continue
 			}
-			_, updateErr := a.pricing.UpdateAssetRate(ctx, repository.AssetRateUpdateParams{
-				AssetCode:              update.AssetCode,
-				ReferenceAssetCode:     update.ReferenceAssetCode,
-				ReferencePerAssetMinor: price,
-				Source:                 repository.AssetRateSourceDexScreener,
-				ObservedAt:             time.Now().UTC(),
-			})
+			_, updateErr := a.pricing.UpdateAssetRate(
+				ctx,
+				repository.AssetRateUpdateParams{
+					AssetCode:              update.AssetCode,
+					ReferenceAssetCode:     update.ReferenceAssetCode,
+					ReferencePerAssetMinor: price,
+					Source:                 repository.AssetRateSourceDexScreener,
+					ObservedAt:             time.Now().UTC(),
+				},
+			)
 			if updateErr != nil {
 				groupErrors = append(groupErrors, updateErr)
-				if err := a.pricing.FailAssetRateAutoUpdate(ctx, workerID, update, updateErr); err != nil {
+				if err := a.pricing.FailAssetRateAutoUpdate(
+					ctx,
+					workerID,
+					update,
+					updateErr,
+				); err != nil {
 					groupErrors = append(groupErrors, err)
 				}
 				continue
 			}
-			if err := a.pricing.CompleteAssetRateAutoUpdate(ctx, workerID, update); err != nil {
+			if err := a.pricing.CompleteAssetRateAutoUpdate(
+				ctx,
+				workerID,
+				update,
+			); err != nil {
 				groupErrors = append(groupErrors, err)
 			}
 		}
@@ -177,7 +222,10 @@ func (a *Payment) failPriceUpdateGroup(
 ) error {
 	var result error
 	for _, update := range updates {
-		result = errors.Join(result, a.pricing.FailAssetRateAutoUpdate(ctx, workerID, update, updateErr))
+		result = errors.Join(
+			result,
+			a.pricing.FailAssetRateAutoUpdate(ctx, workerID, update, updateErr),
+		)
 	}
 	return result
 }

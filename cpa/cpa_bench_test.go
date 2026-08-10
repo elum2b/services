@@ -17,9 +17,18 @@ import (
 func BenchmarkCPA(b *testing.B) {
 	b.Run("User.ListActive/cache_hit", benchmarkCPAUserListActiveCacheHit)
 	b.Run("User.GetCode/new_assignment", benchmarkCPAUserGetCodeNewAssignment)
-	b.Run("User.GetCode/new_assignment_parallel", benchmarkCPAUserGetCodeNewAssignmentParallel)
-	b.Run("User.GetCode/existing_assignment", benchmarkCPAUserGetCodeExistingAssignment)
-	b.Run("Admin.Complete/new_assignment", benchmarkCPAAdminCompleteNewAssignment)
+	b.Run(
+		"User.GetCode/new_assignment_parallel",
+		benchmarkCPAUserGetCodeNewAssignmentParallel,
+	)
+	b.Run(
+		"User.GetCode/existing_assignment",
+		benchmarkCPAUserGetCodeExistingAssignment,
+	)
+	b.Run(
+		"Admin.Complete/new_assignment",
+		benchmarkCPAAdminCompleteNewAssignment,
+	)
 	b.Run("Admin.GetOffer/cache_hit", benchmarkCPAAdminGetOfferCacheHit)
 	b.Run("Admin.ListOffers/cache_hit", benchmarkCPAAdminListOffersCacheHit)
 	b.Run("Admin.UpsertOffer", benchmarkCPAAdminUpsertOffer)
@@ -41,10 +50,15 @@ func benchmarkCPAUserGetCodeNewAssignmentParallel(b *testing.B) {
 	b.RunParallel(func(worker *testing.PB) {
 		for worker.Next() {
 			index := sequence.Add(1)
-			if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
-				Identity: cpaTestIdentity(fmt.Sprintf("parallel-benchmark-user-%d", index)),
-				CPAID:    "parallel_issue_offer",
-			}); err != nil {
+			if _, err := env.Service.User.GetCode(
+				env.Context,
+				user.GetCodeParams{
+					Identity: cpaTestIdentity(
+						fmt.Sprintf("parallel-benchmark-user-%d", index),
+					),
+					CPAID: "parallel_issue_offer",
+				},
+			); err != nil {
 				b.Errorf("parallel issue code: %v", err)
 				return
 			}
@@ -55,13 +69,19 @@ func benchmarkCPAUserGetCodeNewAssignmentParallel(b *testing.B) {
 func benchmarkCPAUserListActiveCacheHit(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	seedCPACatalog(b, env, 100)
-	params := user.ListActiveParams{Identity: cpaTestIdentity("list-user"), Locale: "ru"}
+	params := user.ListActiveParams{
+		Identity: cpaTestIdentity("list-user"),
+		Locale:   "ru",
+	}
 	if _, err := env.Service.User.ListActive(env.Context, params); err != nil {
 		b.Fatalf("warm list active cache: %v", err)
 	}
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err := env.Service.User.ListActive(env.Context, params); err != nil {
+		if _, err := env.Service.User.ListActive(
+			env.Context,
+			params,
+		); err != nil {
 			b.Fatalf("list active: %v", err)
 		}
 	}
@@ -117,10 +137,13 @@ func benchmarkCPAAdminCompleteNewAssignment(b *testing.B) {
 	}
 	b.ResetTimer()
 	for index := range identities {
-		if _, err := env.Service.Admin.Complete(env.Context, admin.CompleteParams{
-			Identity: identities[index],
-			CPAID:    "complete_offer",
-		}); err != nil {
+		if _, err := env.Service.Admin.Complete(
+			env.Context,
+			admin.CompleteParams{
+				Identity: identities[index],
+				CPAID:    "complete_offer",
+			},
+		); err != nil {
 			b.Fatalf("complete assignment: %v", err)
 		}
 	}
@@ -129,12 +152,20 @@ func benchmarkCPAAdminCompleteNewAssignment(b *testing.B) {
 func benchmarkCPAAdminGetOfferCacheHit(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	upsertSharedOffer(b, env, "get_offer", true)
-	if _, err := env.Service.Admin.GetOffer(env.Context, cpaTestWorkspaceID, "get_offer"); err != nil {
+	if _, err := env.Service.Admin.GetOffer(
+		env.Context,
+		cpaTestWorkspaceID,
+		"get_offer",
+	); err != nil {
 		b.Fatalf("warm get offer cache: %v", err)
 	}
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err := env.Service.Admin.GetOffer(env.Context, cpaTestWorkspaceID, "get_offer"); err != nil {
+		if _, err := env.Service.Admin.GetOffer(
+			env.Context,
+			cpaTestWorkspaceID,
+			"get_offer",
+		); err != nil {
 			b.Fatalf("get offer: %v", err)
 		}
 	}
@@ -144,12 +175,20 @@ func benchmarkCPAAdminListOffersCacheHit(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	seedCPACatalog(b, env, 100)
 	page := admin.Page{Limit: 100}
-	if _, err := env.Service.Admin.ListOffers(env.Context, cpaTestWorkspaceID, page); err != nil {
+	if _, err := env.Service.Admin.ListOffers(
+		env.Context,
+		cpaTestWorkspaceID,
+		page,
+	); err != nil {
 		b.Fatalf("warm list offers cache: %v", err)
 	}
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err := env.Service.Admin.ListOffers(env.Context, cpaTestWorkspaceID, page); err != nil {
+		if _, err := env.Service.Admin.ListOffers(
+			env.Context,
+			cpaTestWorkspaceID,
+			page,
+		); err != nil {
 			b.Fatalf("list offers: %v", err)
 		}
 	}
@@ -160,14 +199,17 @@ func benchmarkCPAAdminUpsertOffer(b *testing.B) {
 	b.ResetTimer()
 	for index := 0; b.Loop(); index++ {
 		id := fmt.Sprintf("upsert_%d", index)
-		if err := env.Service.Admin.UpsertOffer(env.Context, admin.UpsertOfferParams{
-			WorkspaceID: cpaTestWorkspaceID,
-			ID:          id,
-			Payload:     json.RawMessage(`{"kind":"benchmark"}`),
-			CodeMode:    repository.CodeModeShared,
-			SharedCode:  stringPointer("CODE-" + id),
-			IsActive:    true,
-		}); err != nil {
+		if err := env.Service.Admin.UpsertOffer(
+			env.Context,
+			admin.UpsertOfferParams{
+				WorkspaceID: cpaTestWorkspaceID,
+				ID:          id,
+				Payload:     json.RawMessage(`{"kind":"benchmark"}`),
+				CodeMode:    repository.CodeModeShared,
+				SharedCode:  stringPointer("CODE-" + id),
+				IsActive:    true,
+			},
+		); err != nil {
 			b.Fatalf("upsert offer: %v", err)
 		}
 	}
@@ -178,13 +220,16 @@ func benchmarkCPAAdminUpsertLocalization(b *testing.B) {
 	upsertSharedOffer(b, env, "localization_offer", true)
 	b.ResetTimer()
 	for index := 0; b.Loop(); index++ {
-		if err := env.Service.Admin.UpsertLocalization(env.Context, admin.UpsertLocalizationParams{
-			WorkspaceID: cpaTestWorkspaceID,
-			CPAID:       "localization_offer",
-			Locale:      fmt.Sprintf("locale-%d", index),
-			Title:       "Benchmark localization",
-			Description: "Benchmark localization description",
-		}); err != nil {
+		if err := env.Service.Admin.UpsertLocalization(
+			env.Context,
+			admin.UpsertLocalizationParams{
+				WorkspaceID: cpaTestWorkspaceID,
+				CPAID:       "localization_offer",
+				Locale:      fmt.Sprintf("locale-%d", index),
+				Title:       "Benchmark localization",
+				Description: "Benchmark localization description",
+			},
+		); err != nil {
 			b.Fatalf("upsert localization: %v", err)
 		}
 	}
@@ -195,12 +240,15 @@ func benchmarkCPAAdminUpsertReward(b *testing.B) {
 	upsertSharedOffer(b, env, "reward_offer", true)
 	b.ResetTimer()
 	for index := 0; b.Loop(); index++ {
-		if err := env.Service.Admin.UpsertReward(env.Context, admin.UpsertRewardParams{
-			WorkspaceID: cpaTestWorkspaceID,
-			CPAID:       "reward_offer",
-			Key:         fmt.Sprintf("reward-%d", index),
-			Quantity:    1,
-		}); err != nil {
+		if err := env.Service.Admin.UpsertReward(
+			env.Context,
+			admin.UpsertRewardParams{
+				WorkspaceID: cpaTestWorkspaceID,
+				CPAID:       "reward_offer",
+				Key:         fmt.Sprintf("reward-%d", index),
+				Quantity:    1,
+			},
+		); err != nil {
 			b.Fatalf("upsert reward: %v", err)
 		}
 	}
@@ -212,7 +260,11 @@ func benchmarkCPAAdminGetStats(b *testing.B) {
 	seedCPAAssignments(b, env, "stats_offer", 100)
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err := env.Service.Admin.GetStats(env.Context, cpaTestWorkspaceID, "stats_offer"); err != nil {
+		if _, err := env.Service.Admin.GetStats(
+			env.Context,
+			cpaTestWorkspaceID,
+			"stats_offer",
+		); err != nil {
 			b.Fatalf("get stats: %v", err)
 		}
 	}
@@ -229,7 +281,10 @@ func benchmarkCPAAdminListAssignments(b *testing.B) {
 	}
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err := env.Service.Admin.ListAssignments(env.Context, params); err != nil {
+		if _, err := env.Service.Admin.ListAssignments(
+			env.Context,
+			params,
+		); err != nil {
 			b.Fatalf("list assignments: %v", err)
 		}
 	}
@@ -243,7 +298,12 @@ func benchmarkCPAAdminRefreshDailyStats(b *testing.B) {
 	until := from.Add(2 * time.Hour)
 	b.ResetTimer()
 	for b.Loop() {
-		if err := env.Service.Admin.RefreshDailyStats(env.Context, cpaTestWorkspaceID, from, until); err != nil {
+		if err := env.Service.Admin.RefreshDailyStats(
+			env.Context,
+			cpaTestWorkspaceID,
+			from,
+			until,
+		); err != nil {
 			b.Fatalf("refresh daily stats: %v", err)
 		}
 	}
@@ -254,7 +314,11 @@ func benchmarkCPAAdminExport(b *testing.B) {
 	seedCPACatalog(b, env, 100)
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err := env.Service.Admin.Export(env.Context, cpaTestWorkspaceID, admin.ExportRequest{}); err != nil {
+		if _, err := env.Service.Admin.Export(
+			env.Context,
+			cpaTestWorkspaceID,
+			admin.ExportRequest{},
+		); err != nil {
 			b.Fatalf("export offers: %v", err)
 		}
 	}
@@ -263,7 +327,11 @@ func benchmarkCPAAdminExport(b *testing.B) {
 func benchmarkCPAAdminImport(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	seedCPACatalog(b, env, 100)
-	pkg, err := env.Service.Admin.Export(env.Context, cpaTestWorkspaceID, admin.ExportRequest{})
+	pkg, err := env.Service.Admin.Export(
+		env.Context,
+		cpaTestWorkspaceID,
+		admin.ExportRequest{},
+	)
 	if err != nil {
 		b.Fatalf("prepare import package: %v", err)
 	}
@@ -292,7 +360,12 @@ func seedCPACatalog(tb testing.TB, env cpaTestEnvironment, count int) {
 	}
 }
 
-func seedCPAAssignments(tb testing.TB, env cpaTestEnvironment, cpaID string, count int) {
+func seedCPAAssignments(
+	tb testing.TB,
+	env cpaTestEnvironment,
+	cpaID string,
+	count int,
+) {
 	tb.Helper()
 	for index := 0; index < count; index++ {
 		if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{

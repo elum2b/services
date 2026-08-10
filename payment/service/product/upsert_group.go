@@ -15,17 +15,23 @@ type UpsertGroupParams struct {
 	IsActive       bool
 }
 
-func (a *Product) UpsertGroup(ctx context.Context, params UpsertGroupParams) error {
+func (a *Product) UpsertGroup(
+	ctx context.Context,
+	params UpsertGroupParams,
+) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 
-	return a.repository.UpsertProductGroup(ctx, repository.ProductGroupUpsertParams{
-		Code:           params.Code,
-		WorkspaceID:    params.WorkspaceID,
-		TitleKey:       params.TitleKey,
-		DescriptionKey: params.DescriptionKey,
-		Position:       params.Position,
-		IsActive:       params.IsActive,
-	})
+	return a.repository.UpsertProductGroup(
+		ctx,
+		repository.ProductGroupUpsertParams{
+			Code:           params.Code,
+			WorkspaceID:    params.WorkspaceID,
+			TitleKey:       params.TitleKey,
+			DescriptionKey: params.DescriptionKey,
+			Position:       params.Position,
+			IsActive:       params.IsActive,
+		},
+	)
 }

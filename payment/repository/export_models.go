@@ -3,8 +3,9 @@ package repository
 import (
 	"time"
 
-	"github.com/elum2b/services/payment/tonconnect"
 	json "github.com/goccy/go-json"
+
+	"github.com/elum2b/services/payment/tonconnect"
 )
 
 const (

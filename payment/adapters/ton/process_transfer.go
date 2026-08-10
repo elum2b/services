@@ -13,7 +13,10 @@ import (
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
 )
 
-func (a *TON) ProcessTransfer(ctx context.Context, transfer IncomingTransfer) (*ProcessResult, error) {
+func (a *TON) ProcessTransfer(
+	ctx context.Context,
+	transfer IncomingTransfer,
+) (*ProcessResult, error) {
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
@@ -27,26 +30,34 @@ func (a *TON) ProcessTransfer(ctx context.Context, transfer IncomingTransfer) (*
 	}
 
 	transfer.Network = network
-	transfer.WalletAddress, err = NormalizeWalletAddress(transfer.WalletAddress, network)
+	transfer.WalletAddress, err = NormalizeWalletAddress(
+		transfer.WalletAddress,
+		network,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	var failedTransaction *repository.AdminProviderTransactionModel
 	if transfer.TxHash != "" {
-		existing, err := a.repository.GetProviderTransactionByExternalID(ctx, paymentsqlc.GetProviderTransactionByExternalIDParams{
-			WorkspaceID:           transfer.WorkspaceID,
-			ProviderCode:          ProviderCode,
-			Network:               transfer.Network,
-			SourceKey:             transfer.WalletAddress,
-			ExternalTransactionID: transfer.TxHash,
-		})
+		existing, err := a.repository.GetProviderTransactionByExternalID(
+			ctx,
+			paymentsqlc.GetProviderTransactionByExternalIDParams{
+				WorkspaceID:           transfer.WorkspaceID,
+				ProviderCode:          ProviderCode,
+				Network:               transfer.Network,
+				SourceKey:             transfer.WalletAddress,
+				ExternalTransactionID: transfer.TxHash,
+			},
+		)
 		if err == nil {
 			if !providerTransactionMatchesTransfer(existing, transfer) {
 				return nil, repository.ErrPaymentMismatch
 			}
 
-			if existing.Status == string(paymentsqlc.PaymentProviderTransactionStatusFailed) {
+			if existing.Status == string(
+				paymentsqlc.PaymentProviderTransactionStatusFailed,
+			) {
 				failedTransaction = &existing
 			} else {
 				if err := a.advanceTransferCursor(ctx, transfer); err != nil {
@@ -58,7 +69,9 @@ func (a *TON) ProcessTransfer(ctx context.Context, transfer IncomingTransfer) (*
 					AttemptID:   uint64FromRepositoryNull(existing.AttemptID),
 					Transaction: uint64(existing.ID),
 					AlreadyDone: true,
-					Ignored:     existing.Status == string(paymentsqlc.PaymentProviderTransactionStatusIgnored),
+					Ignored: existing.Status == string(
+						paymentsqlc.PaymentProviderTransactionStatusIgnored,
+					),
 				}, nil
 			}
 		}
@@ -78,14 +91,29 @@ func (a *TON) ProcessTransfer(ctx context.Context, transfer IncomingTransfer) (*
 			return nil, err
 		}
 
-		return a.storeTransfer(ctx, transfer, 0, 0, paymentsqlc.PaymentProviderTransactionStatusIgnored, serviceerrors.PublicMessage(err))
+		return a.storeTransfer(
+			ctx,
+			transfer,
+			0,
+			0,
+			paymentsqlc.PaymentProviderTransactionStatusIgnored,
+			serviceerrors.PublicMessage(err),
+		)
 	}
-	if attempt.AssetCode != transfer.AssetCode || attempt.AmountMinor != transfer.AmountMinor {
+	if attempt.AssetCode != transfer.AssetCode ||
+		attempt.AmountMinor != transfer.AmountMinor {
 		if failedTransaction != nil {
 			return nil, repository.ErrPaymentMismatch
 		}
 
-		return a.storeTransfer(ctx, transfer, attempt.OrderID, attempt.ID, paymentsqlc.PaymentProviderTransactionStatusFailed, repository.ErrPaymentMismatch.Error())
+		return a.storeTransfer(
+			ctx,
+			transfer,
+			attempt.OrderID,
+			attempt.ID,
+			paymentsqlc.PaymentProviderTransactionStatusFailed,
+			repository.ErrPaymentMismatch.Error(),
+		)
 	}
 	if failedTransaction != nil &&
 		((failedTransaction.OrderID.Valid && failedTransaction.OrderID.Int64 != int64(attempt.OrderID)) ||
@@ -93,14 +121,17 @@ func (a *TON) ProcessTransfer(ctx context.Context, transfer IncomingTransfer) (*
 		return nil, repository.ErrPaymentMismatch
 	}
 
-	completed, err := a.repository.CompleteAttempt(ctx, repository.CompleteAttemptParams{
-		WorkspaceID:       attempt.WorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      ProviderCode,
-		ProviderPaymentID: utils.Ref(transfer.Comment),
-		AmountMinor:       transfer.AmountMinor,
-		AssetCode:         transfer.AssetCode,
-	})
+	completed, err := a.repository.CompleteAttempt(
+		ctx,
+		repository.CompleteAttemptParams{
+			WorkspaceID:       attempt.WorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      ProviderCode,
+			ProviderPaymentID: utils.Ref(transfer.Comment),
+			AmountMinor:       transfer.AmountMinor,
+			AssetCode:         transfer.AssetCode,
+		},
+	)
 	if err != nil {
 		// A blockchain transfer is irreversible. Keep it available for replay until
 		// the local completion transaction succeeds instead of advancing the cursor
@@ -130,7 +161,14 @@ func (a *TON) ProcessTransfer(ctx context.Context, transfer IncomingTransfer) (*
 		}, nil
 	}
 
-	result, err := a.storeTransfer(ctx, transfer, completed.OrderID, completed.AttemptID, paymentsqlc.PaymentProviderTransactionStatusMatched, "")
+	result, err := a.storeTransfer(
+		ctx,
+		transfer,
+		completed.OrderID,
+		completed.AttemptID,
+		paymentsqlc.PaymentProviderTransactionStatusMatched,
+		"",
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +176,14 @@ func (a *TON) ProcessTransfer(ctx context.Context, transfer IncomingTransfer) (*
 	return result, nil
 }
 
-func (a *TON) storeTransfer(ctx context.Context, transfer IncomingTransfer, orderID uint64, attemptID uint64, status paymentsqlc.PaymentProviderTransactionStatus, message string) (*ProcessResult, error) {
+func (a *TON) storeTransfer(
+	ctx context.Context,
+	transfer IncomingTransfer,
+	orderID uint64,
+	attemptID uint64,
+	status paymentsqlc.PaymentProviderTransactionStatus,
+	message string,
+) (*ProcessResult, error) {
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
@@ -150,40 +195,50 @@ func (a *TON) storeTransfer(ctx context.Context, transfer IncomingTransfer, orde
 	if occurredAt.IsZero() {
 		occurredAt = time.Now()
 	}
-	id, err := a.repository.StoreProviderTransaction(ctx, paymentsqlc.CreateProviderTransactionParams{
-		WorkspaceID:           transfer.WorkspaceID,
-		ProviderCode:          ProviderCode,
-		Network:               transfer.Network,
-		SourceKey:             transfer.WalletAddress,
-		AssetCode:             transfer.AssetCode,
-		ExternalTransactionID: transfer.TxHash,
-		SequenceNumber:        int64(transfer.LogicalTime),
-		SourceAddress:         transfer.SourceAddress,
-		DestinationAddress:    transfer.DestinationAddress,
-		AmountMinor:           int64(transfer.AmountMinor),
-		PaymentReference:      transfer.Comment,
-		SenderReference:       nullString(transfer.JettonSender),
-		OrderID:               nullInt64FromUint64(orderID),
-		AttemptID:             nullInt64FromUint64(attemptID),
-		Status:                status,
-		Error:                 nullString(message),
-		OccurredAt:            occurredAt,
-	}, cursor)
-	if isDuplicateEntry(err) && transfer.TxHash != "" {
-		existing, existingErr := a.repository.GetProviderTransactionByExternalID(ctx, paymentsqlc.GetProviderTransactionByExternalIDParams{
+	id, err := a.repository.StoreProviderTransaction(
+		ctx,
+		paymentsqlc.CreateProviderTransactionParams{
 			WorkspaceID:           transfer.WorkspaceID,
 			ProviderCode:          ProviderCode,
 			Network:               transfer.Network,
 			SourceKey:             transfer.WalletAddress,
+			AssetCode:             transfer.AssetCode,
 			ExternalTransactionID: transfer.TxHash,
-		})
+			SequenceNumber:        int64(transfer.LogicalTime),
+			SourceAddress:         transfer.SourceAddress,
+			DestinationAddress:    transfer.DestinationAddress,
+			AmountMinor:           int64(transfer.AmountMinor),
+			PaymentReference:      transfer.Comment,
+			SenderReference:       nullString(transfer.JettonSender),
+			OrderID:               nullInt64FromUint64(orderID),
+			AttemptID:             nullInt64FromUint64(attemptID),
+			Status:                status,
+			Error:                 nullString(message),
+			OccurredAt:            occurredAt,
+		},
+		cursor,
+	)
+	if isDuplicateEntry(err) && transfer.TxHash != "" {
+		existing, existingErr := a.repository.GetProviderTransactionByExternalID(
+			ctx,
+			paymentsqlc.GetProviderTransactionByExternalIDParams{
+				WorkspaceID:           transfer.WorkspaceID,
+				ProviderCode:          ProviderCode,
+				Network:               transfer.Network,
+				SourceKey:             transfer.WalletAddress,
+				ExternalTransactionID: transfer.TxHash,
+			},
+		)
 		if existingErr != nil {
 			return nil, existingErr
 		}
 		if !providerTransactionMatchesTransfer(existing, transfer) {
 			return nil, repository.ErrPaymentMismatch
 		}
-		if _, cursorErr := a.repository.UpsertProviderCursor(ctx, cursor); cursorErr != nil {
+		if _, cursorErr := a.repository.UpsertProviderCursor(
+			ctx,
+			cursor,
+		); cursorErr != nil {
 			return nil, cursorErr
 		}
 		return &ProcessResult{
@@ -191,7 +246,9 @@ func (a *TON) storeTransfer(ctx context.Context, transfer IncomingTransfer, orde
 			AttemptID:   uint64FromRepositoryNull(existing.AttemptID),
 			Transaction: uint64(existing.ID),
 			AlreadyDone: true,
-			Ignored:     existing.Status == string(paymentsqlc.PaymentProviderTransactionStatusIgnored),
+			Ignored: existing.Status == string(
+				paymentsqlc.PaymentProviderTransactionStatusIgnored,
+			),
 		}, nil
 	}
 	if err != nil {
@@ -206,15 +263,23 @@ func (a *TON) storeTransfer(ctx context.Context, transfer IncomingTransfer, orde
 	}, nil
 }
 
-func (a *TON) advanceTransferCursor(ctx context.Context, transfer IncomingTransfer) error {
+func (a *TON) advanceTransferCursor(
+	ctx context.Context,
+	transfer IncomingTransfer,
+) error {
 
-	_, err := a.repository.UpsertProviderCursor(ctx, providerCursorParams(transfer))
+	_, err := a.repository.UpsertProviderCursor(
+		ctx,
+		providerCursorParams(transfer),
+	)
 
 	return err
 
 }
 
-func providerCursorParams(transfer IncomingTransfer) paymentsqlc.UpsertProviderCursorParams {
+func providerCursorParams(
+	transfer IncomingTransfer,
+) paymentsqlc.UpsertProviderCursorParams {
 
 	return paymentsqlc.UpsertProviderCursorParams{
 		WorkspaceID:    transfer.WorkspaceID,

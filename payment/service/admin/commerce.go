@@ -8,7 +8,10 @@ import (
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
 )
 
-func (a *Admin) ListPurchaseKeys(ctx context.Context, params PurchaseKeyListParams) ([]PurchaseKeyModel, error) {
+func (a *Admin) ListPurchaseKeys(
+	ctx context.Context,
+	params PurchaseKeyListParams,
+) ([]PurchaseKeyModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
@@ -21,30 +24,40 @@ func (a *Admin) ListPurchaseKeys(ctx context.Context, params PurchaseKeyListPara
 		return nil, err
 	}
 	limit, offset := normalizePage(params.Page)
-	return a.repository.AdminListPurchaseKeys(ctx, paymentsqlc.AdminListPurchaseKeysParams{
-		WorkspaceID:    params.WorkspaceID,
-		Column2:        params.AppID,
-		AppID:          params.AppID,
-		Column4:        params.ProductID,
-		ProductID:      params.ProductID,
-		Column6:        params.Status,
-		Status:         paymentsqlc.PaymentPurchaseKeyStatus(params.Status),
-		Column8:        params.PlatformID,
-		PlatformID:     params.PlatformID,
-		Column10:       params.PlatformUserID,
-		PlatformUserID: params.PlatformUserID,
-		Limit:          limit,
-		Offset:         offset,
-	})
+	return a.repository.AdminListPurchaseKeys(
+		ctx,
+		paymentsqlc.AdminListPurchaseKeysParams{
+			WorkspaceID:    params.WorkspaceID,
+			Column2:        params.AppID,
+			AppID:          params.AppID,
+			Column4:        params.ProductID,
+			ProductID:      params.ProductID,
+			Column6:        params.Status,
+			Status:         paymentsqlc.PaymentPurchaseKeyStatus(params.Status),
+			Column8:        params.PlatformID,
+			PlatformID:     params.PlatformID,
+			Column10:       params.PlatformUserID,
+			PlatformUserID: params.PlatformUserID,
+			Limit:          limit,
+			Offset:         offset,
+		},
+	)
 }
 
-func (a *Admin) GetPurchaseKey(ctx context.Context, workspaceID string, id uint64) (PurchaseKeyModel, error) {
+func (a *Admin) GetPurchaseKey(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (PurchaseKeyModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.repository.AdminGetPurchaseKey(
 		ctx,
-		paymentsqlc.AdminGetPurchaseKeyParams{WorkspaceID: workspaceID, ID: int64(id)},
+		paymentsqlc.AdminGetPurchaseKeyParams{
+			WorkspaceID: workspaceID,
+			ID:          int64(id),
+		},
 	)
 }
 
@@ -57,14 +70,20 @@ func (a *Admin) UpdatePurchaseKeyStatus(
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	return a.repository.AdminUpdatePurchaseKeyStatus(ctx, paymentsqlc.AdminUpdatePurchaseKeyStatusParams{
-		WorkspaceID: workspaceID,
-		ID:          int64(id),
-		Status:      paymentsqlc.PaymentPurchaseKeyStatus(status),
-	})
+	return a.repository.AdminUpdatePurchaseKeyStatus(
+		ctx,
+		paymentsqlc.AdminUpdatePurchaseKeyStatusParams{
+			WorkspaceID: workspaceID,
+			ID:          int64(id),
+			Status:      paymentsqlc.PaymentPurchaseKeyStatus(status),
+		},
+	)
 }
 
-func (a *Admin) ListOrders(ctx context.Context, params OrderListParams) ([]OrderModel, error) {
+func (a *Admin) ListOrders(
+	ctx context.Context,
+	params OrderListParams,
+) ([]OrderModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
@@ -79,7 +98,10 @@ func (a *Admin) ListOrders(ctx context.Context, params OrderListParams) ([]Order
 	return a.listOrders(ctx, params)
 }
 
-func (a *Admin) ListUserOrders(ctx context.Context, params UserOrderListParams) ([]OrderModel, error) {
+func (a *Admin) ListUserOrders(
+	ctx context.Context,
+	params UserOrderListParams,
+) ([]OrderModel, error) {
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
@@ -99,7 +121,10 @@ func (a *Admin) ListUserOrders(ctx context.Context, params UserOrderListParams) 
 	})
 }
 
-func (a *Admin) listOrders(ctx context.Context, params OrderListParams) ([]OrderModel, error) {
+func (a *Admin) listOrders(
+	ctx context.Context,
+	params OrderListParams,
+) ([]OrderModel, error) {
 
 	limit, offset := normalizePage(params.Page)
 	return a.repository.AdminListOrders(ctx, paymentsqlc.AdminListOrdersParams{
@@ -119,53 +144,84 @@ func (a *Admin) listOrders(ctx context.Context, params OrderListParams) ([]Order
 	})
 }
 
-func (a *Admin) GetOrder(ctx context.Context, params OrderRefParams) (OrderModel, error) {
+func (a *Admin) GetOrder(
+	ctx context.Context,
+	params OrderRefParams,
+) (OrderModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.repository.AdminGetOrder(ctx, params.WorkspaceID, params.ID)
 }
 
-func (a *Admin) GetOrderByPublicID(ctx context.Context, params OrderPublicRefParams) (OrderModel, error) {
+func (a *Admin) GetOrderByPublicID(
+	ctx context.Context,
+	params OrderPublicRefParams,
+) (OrderModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	return a.repository.AdminGetOrderByPublicID(ctx, params.WorkspaceID, params.PublicID)
+	return a.repository.AdminGetOrderByPublicID(
+		ctx,
+		params.WorkspaceID,
+		params.PublicID,
+	)
 }
 
-func (a *Admin) UpdateOrderStatus(ctx context.Context, workspaceID string, id uint64, status string) (int64, error) {
+func (a *Admin) UpdateOrderStatus(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+	status string,
+) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.repository.UpdateOrderStatus(ctx, workspaceID, id, status)
 }
 
-func (a *Admin) ListPaymentAttempts(ctx context.Context, params AttemptListParams) ([]PaymentAttemptModel, error) {
+func (a *Admin) ListPaymentAttempts(
+	ctx context.Context,
+	params AttemptListParams,
+) ([]PaymentAttemptModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	limit, offset := normalizePage(params.Page)
-	return a.repository.AdminListPaymentAttempts(ctx, paymentsqlc.AdminListPaymentAttemptsParams{
-		WorkspaceID:  params.WorkspaceID,
-		Column2:      int64(params.OrderID),
-		OrderID:      int64(params.OrderID),
-		Column4:      params.ProviderCode,
-		ProviderCode: params.ProviderCode,
-		Column6:      params.Status,
-		Status:       paymentsqlc.PaymentAttemptStatus(params.Status),
-		Limit:        limit,
-		Offset:       offset,
-	})
+	return a.repository.AdminListPaymentAttempts(
+		ctx,
+		paymentsqlc.AdminListPaymentAttemptsParams{
+			WorkspaceID:  params.WorkspaceID,
+			Column2:      int64(params.OrderID),
+			OrderID:      int64(params.OrderID),
+			Column4:      params.ProviderCode,
+			ProviderCode: params.ProviderCode,
+			Column6:      params.Status,
+			Status:       paymentsqlc.PaymentAttemptStatus(params.Status),
+			Limit:        limit,
+			Offset:       offset,
+		},
+	)
 }
 
-func (a *Admin) GetPaymentAttempt(ctx context.Context, params AttemptRefParams) (PaymentAttemptModel, error) {
+func (a *Admin) GetPaymentAttempt(
+	ctx context.Context,
+	params AttemptRefParams,
+) (PaymentAttemptModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	return a.repository.AdminGetPaymentAttempt(ctx, params.WorkspaceID, params.ID)
+	return a.repository.AdminGetPaymentAttempt(
+		ctx,
+		params.WorkspaceID,
+		params.ID,
+	)
 }
 
-func (a *Admin) UpdatePaymentAttemptStatus(ctx context.Context, params AttemptStatusParams) error {
+func (a *Admin) UpdatePaymentAttemptStatus(
+	ctx context.Context,
+	params AttemptStatusParams,
+) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
@@ -178,47 +234,69 @@ func (a *Admin) UpdatePaymentAttemptStatus(ctx context.Context, params AttemptSt
 	return err
 }
 
-func (a *Admin) ListPaymentEvents(ctx context.Context, params EventListParams) ([]PaymentEventModel, error) {
+func (a *Admin) ListPaymentEvents(
+	ctx context.Context,
+	params EventListParams,
+) ([]PaymentEventModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	limit, offset := normalizePage(params.Page)
-	return a.repository.AdminListPaymentEvents(ctx, paymentsqlc.AdminListPaymentEventsParams{
-		WorkspaceID:      params.WorkspaceID,
-		WorkspaceID_2:    params.WorkspaceID,
-		Column3:          params.ProviderCode,
-		ProviderCode:     params.ProviderCode,
-		Column5:          params.ProcessingStatus,
-		ProcessingStatus: paymentsqlc.PaymentEventProcessingStatus(params.ProcessingStatus),
-		Limit:            limit,
-		Offset:           offset,
-	})
+	return a.repository.AdminListPaymentEvents(
+		ctx,
+		paymentsqlc.AdminListPaymentEventsParams{
+			WorkspaceID:   params.WorkspaceID,
+			WorkspaceID_2: params.WorkspaceID,
+			Column3:       params.ProviderCode,
+			ProviderCode:  params.ProviderCode,
+			Column5:       params.ProcessingStatus,
+			ProcessingStatus: paymentsqlc.PaymentEventProcessingStatus(
+				params.ProcessingStatus,
+			),
+			Limit:  limit,
+			Offset: offset,
+		},
+	)
 }
 
-func (a *Admin) GetPaymentEvent(ctx context.Context, params EventRefParams) (PaymentEventModel, error) {
+func (a *Admin) GetPaymentEvent(
+	ctx context.Context,
+	params EventRefParams,
+) (PaymentEventModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.repository.AdminGetPaymentEvent(ctx, params.WorkspaceID, params.ID)
 }
 
-func (a *Admin) UpdatePaymentEventProcessingStatus(ctx context.Context, params EventStatusParams) error {
+func (a *Admin) UpdatePaymentEventProcessingStatus(
+	ctx context.Context,
+	params EventStatusParams,
+) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	_, err := a.repository.AdminUpdatePaymentEventProcessingStatus(
 		ctx,
 		paymentsqlc.AdminUpdatePaymentEventStatusForWorkspaceParams{
-			ProcessingStatus: paymentsqlc.PaymentEventProcessingStatus(params.Status),
-			ProcessingError:  sql.NullString{String: params.Message, Valid: params.Message != ""},
-			WorkspaceID:      params.WorkspaceID,
-			ID:               int64(params.ID),
+			ProcessingStatus: paymentsqlc.PaymentEventProcessingStatus(
+				params.Status,
+			),
+			ProcessingError: sql.NullString{
+				String: params.Message,
+				Valid:  params.Message != "",
+			},
+			WorkspaceID: params.WorkspaceID,
+			ID:          int64(params.ID),
 		},
 	)
 	return err
 }
 
-func (a *Admin) ListSubscriptions(ctx context.Context, params SubscriptionListParams) ([]SubscriptionModel, error) {
+func (a *Admin) ListSubscriptions(
+	ctx context.Context,
+	params SubscriptionListParams,
+) ([]SubscriptionModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
@@ -231,32 +309,44 @@ func (a *Admin) ListSubscriptions(ctx context.Context, params SubscriptionListPa
 		return nil, err
 	}
 	limit, offset := normalizePage(params.Page)
-	return a.repository.AdminListSubscriptions(ctx, paymentsqlc.AdminListSubscriptionsParams{
-		WorkspaceID:    params.WorkspaceID,
-		Column2:        params.AppID,
-		AppID:          params.AppID,
-		Column4:        params.ProviderCode,
-		ProviderCode:   params.ProviderCode,
-		Column6:        params.ProductID,
-		ProductID:      params.ProductID,
-		Column8:        params.Status,
-		Status:         paymentsqlc.PaymentSubscriptionStatus(params.Status),
-		Column10:       params.PlatformID,
-		PlatformID:     params.PlatformID,
-		Column12:       params.PlatformUserID,
-		PlatformUserID: params.PlatformUserID,
-		Limit:          limit,
-		Offset:         offset,
-	})
+	return a.repository.AdminListSubscriptions(
+		ctx,
+		paymentsqlc.AdminListSubscriptionsParams{
+			WorkspaceID:  params.WorkspaceID,
+			Column2:      params.AppID,
+			AppID:        params.AppID,
+			Column4:      params.ProviderCode,
+			ProviderCode: params.ProviderCode,
+			Column6:      params.ProductID,
+			ProductID:    params.ProductID,
+			Column8:      params.Status,
+			Status: paymentsqlc.PaymentSubscriptionStatus(
+				params.Status,
+			),
+			Column10:       params.PlatformID,
+			PlatformID:     params.PlatformID,
+			Column12:       params.PlatformUserID,
+			PlatformUserID: params.PlatformUserID,
+			Limit:          limit,
+			Offset:         offset,
+		},
+	)
 }
 
-func (a *Admin) GetSubscription(ctx context.Context, workspaceID string, id uint64) (SubscriptionModel, error) {
+func (a *Admin) GetSubscription(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (SubscriptionModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.repository.AdminGetSubscription(
 		ctx,
-		paymentsqlc.AdminGetSubscriptionParams{WorkspaceID: workspaceID, ID: int64(id)},
+		paymentsqlc.AdminGetSubscriptionParams{
+			WorkspaceID: workspaceID,
+			ID:          int64(id),
+		},
 	)
 }
 
@@ -277,75 +367,105 @@ func (a *Admin) GetSubscriptionByProviderID(
 	)
 }
 
-func (a *Admin) UpsertSubscription(ctx context.Context, params SubscriptionUpsertParams) (uint64, error) {
+func (a *Admin) UpsertSubscription(
+	ctx context.Context,
+	params SubscriptionUpsertParams,
+) (uint64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	return a.repository.UpsertSubscription(ctx, repository.SubscriptionUpsertParams{
-		WorkspaceID:            params.WorkspaceID,
-		ProviderCode:           params.ProviderCode,
-		ProviderSubscriptionID: params.ProviderSubscriptionID,
-		AppID:                  params.AppID,
-		PlatformID:             params.PlatformID,
-		PlatformUserID:         params.PlatformUserID,
-		InternalUserID:         params.InternalUserID,
-		ProductID:              params.ProductID,
-		OrderID:                params.OrderID,
-		AttemptID:              params.AttemptID,
-		Status:                 params.Status,
-		CancelReason:           params.CancelReason,
-		StartedAt:              params.StartedAt,
-		EndedAt:                params.EndedAt,
-	})
+	return a.repository.UpsertSubscription(
+		ctx,
+		repository.SubscriptionUpsertParams{
+			WorkspaceID:            params.WorkspaceID,
+			ProviderCode:           params.ProviderCode,
+			ProviderSubscriptionID: params.ProviderSubscriptionID,
+			AppID:                  params.AppID,
+			PlatformID:             params.PlatformID,
+			PlatformUserID:         params.PlatformUserID,
+			InternalUserID:         params.InternalUserID,
+			ProductID:              params.ProductID,
+			OrderID:                params.OrderID,
+			AttemptID:              params.AttemptID,
+			Status:                 params.Status,
+			CancelReason:           params.CancelReason,
+			StartedAt:              params.StartedAt,
+			EndedAt:                params.EndedAt,
+		},
+	)
 }
 
-func (a *Admin) UpdateSubscriptionStatus(ctx context.Context, params SubscriptionStatusUpdateParams) (int64, error) {
+func (a *Admin) UpdateSubscriptionStatus(
+	ctx context.Context,
+	params SubscriptionStatusUpdateParams,
+) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	return a.repository.UpdateSubscriptionStatus(ctx, repository.SubscriptionStatusUpdateParams{
-		WorkspaceID:            params.WorkspaceID,
-		ProviderCode:           params.ProviderCode,
-		ProviderSubscriptionID: params.ProviderSubscriptionID,
-		Status:                 params.Status,
-		CancelReason:           params.CancelReason,
-		EndedAt:                params.EndedAt,
-	})
+	return a.repository.UpdateSubscriptionStatus(
+		ctx,
+		repository.SubscriptionStatusUpdateParams{
+			WorkspaceID:            params.WorkspaceID,
+			ProviderCode:           params.ProviderCode,
+			ProviderSubscriptionID: params.ProviderSubscriptionID,
+			Status:                 params.Status,
+			CancelReason:           params.CancelReason,
+			EndedAt:                params.EndedAt,
+		},
+	)
 }
 
-func (a *Admin) ListFulfillments(ctx context.Context, params FulfillmentListParams) ([]FulfillmentModel, error) {
+func (a *Admin) ListFulfillments(
+	ctx context.Context,
+	params FulfillmentListParams,
+) ([]FulfillmentModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	limit, offset := normalizePage(params.Page)
-	return a.repository.AdminListFulfillments(ctx, paymentsqlc.AdminListFulfillmentsParams{
-		WorkspaceID: params.WorkspaceID,
-		Column2:     params.Status,
-		Status:      paymentsqlc.PaymentFulfillmentStatus(params.Status),
-		Column4:     int64(params.OrderID),
-		OrderID:     int64(params.OrderID),
-		Limit:       limit,
-		Offset:      offset,
-	})
+	return a.repository.AdminListFulfillments(
+		ctx,
+		paymentsqlc.AdminListFulfillmentsParams{
+			WorkspaceID: params.WorkspaceID,
+			Column2:     params.Status,
+			Status:      paymentsqlc.PaymentFulfillmentStatus(params.Status),
+			Column4:     int64(params.OrderID),
+			OrderID:     int64(params.OrderID),
+			Limit:       limit,
+			Offset:      offset,
+		},
+	)
 }
 
-func (a *Admin) GetFulfillment(ctx context.Context, params FulfillmentRefParams) (FulfillmentModel, error) {
+func (a *Admin) GetFulfillment(
+	ctx context.Context,
+	params FulfillmentRefParams,
+) (FulfillmentModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.repository.AdminGetFulfillment(ctx, params.WorkspaceID, params.ID)
 }
 
-func (a *Admin) UpdateFulfillmentStatus(ctx context.Context, params FulfillmentStatusParams) (int64, error) {
+func (a *Admin) UpdateFulfillmentStatus(
+	ctx context.Context,
+	params FulfillmentStatusParams,
+) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	return a.repository.AdminUpdateFulfillmentStatus(ctx, paymentsqlc.AdminUpdateFulfillmentStatusForWorkspaceParams{
-		Status:      paymentsqlc.PaymentFulfillmentStatus(params.Status),
-		Error:       sql.NullString{String: params.Message, Valid: params.Message != ""},
-		WorkspaceID: params.WorkspaceID,
-		ID:          int64(params.ID),
-	})
+	return a.repository.AdminUpdateFulfillmentStatus(
+		ctx,
+		paymentsqlc.AdminUpdateFulfillmentStatusForWorkspaceParams{
+			Status: paymentsqlc.PaymentFulfillmentStatus(params.Status),
+			Error: sql.NullString{
+				String: params.Message,
+				Valid:  params.Message != "",
+			},
+			WorkspaceID: params.WorkspaceID,
+			ID:          int64(params.ID),
+		},
+	)
 }
 
 func (a *Admin) ListFulfillmentItems(
@@ -356,23 +476,40 @@ func (a *Admin) ListFulfillmentItems(
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	limit, offset := normalizePage(params.Page)
-	return a.repository.AdminListFulfillmentItems(ctx, paymentsqlc.AdminListFulfillmentItemsParams{
-		WorkspaceID:   params.WorkspaceID,
-		Column2:       int64(params.FulfillmentID),
-		FulfillmentID: int64(params.FulfillmentID),
-		Limit:         limit,
-		Offset:        offset,
-	})
+	return a.repository.AdminListFulfillmentItems(
+		ctx,
+		paymentsqlc.AdminListFulfillmentItemsParams{
+			WorkspaceID:   params.WorkspaceID,
+			Column2:       int64(params.FulfillmentID),
+			FulfillmentID: int64(params.FulfillmentID),
+			Limit:         limit,
+			Offset:        offset,
+		},
+	)
 }
 
-func (a *Admin) GetFulfillmentItem(ctx context.Context, workspaceID string, fulfillmentID, id uint64) (FulfillmentItemModel, error) {
+func (a *Admin) GetFulfillmentItem(
+	ctx context.Context,
+	workspaceID string,
+	fulfillmentID, id uint64,
+) (FulfillmentItemModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	return a.repository.AdminGetFulfillmentItem(mergedCtx, paymentsqlc.AdminGetFulfillmentItemParams{WorkspaceID: workspaceID, FulfillmentID: int64(fulfillmentID), ID: int64(id)})
+	return a.repository.AdminGetFulfillmentItem(
+		mergedCtx,
+		paymentsqlc.AdminGetFulfillmentItemParams{
+			WorkspaceID:   workspaceID,
+			FulfillmentID: int64(fulfillmentID),
+			ID:            int64(id),
+		},
+	)
 }
 
-func (a *Admin) CreateRefund(ctx context.Context, params RefundCreateParams) (uint64, error) {
+func (a *Admin) CreateRefund(
+	ctx context.Context,
+	params RefundCreateParams,
+) (uint64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
@@ -393,34 +530,52 @@ func (a *Admin) CreateRefund(ctx context.Context, params RefundCreateParams) (ui
 	})
 }
 
-func (a *Admin) ListRefunds(ctx context.Context, params RefundListParams) ([]RefundModel, error) {
+func (a *Admin) ListRefunds(
+	ctx context.Context,
+	params RefundListParams,
+) ([]RefundModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	limit, offset := normalizePage(params.Page)
-	return a.repository.AdminListRefunds(ctx, paymentsqlc.AdminListRefundsParams{
-		WorkspaceID:  params.WorkspaceID,
-		Column2:      int64(params.OrderID),
-		OrderID:      int64(params.OrderID),
-		Column4:      params.ProviderCode,
-		ProviderCode: params.ProviderCode,
-		Column6:      params.Status,
-		Status:       paymentsqlc.PaymentRefundStatus(params.Status),
-		Limit:        limit,
-		Offset:       offset,
-	})
+	return a.repository.AdminListRefunds(
+		ctx,
+		paymentsqlc.AdminListRefundsParams{
+			WorkspaceID:  params.WorkspaceID,
+			Column2:      int64(params.OrderID),
+			OrderID:      int64(params.OrderID),
+			Column4:      params.ProviderCode,
+			ProviderCode: params.ProviderCode,
+			Column6:      params.Status,
+			Status:       paymentsqlc.PaymentRefundStatus(params.Status),
+			Limit:        limit,
+			Offset:       offset,
+		},
+	)
 }
 
-func (a *Admin) GetRefund(ctx context.Context, params RefundRefParams) (RefundModel, error) {
+func (a *Admin) GetRefund(
+	ctx context.Context,
+	params RefundRefParams,
+) (RefundModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.repository.AdminGetRefund(ctx, params.WorkspaceID, params.ID)
 }
 
-func (a *Admin) UpdateRefundStatus(ctx context.Context, params RefundStatusParams) (int64, error) {
+func (a *Admin) UpdateRefundStatus(
+	ctx context.Context,
+	params RefundStatusParams,
+) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	return a.repository.AdminUpdateRefundStatus(ctx, params.WorkspaceID, params.ID, params.Status, params.Reason)
+	return a.repository.AdminUpdateRefundStatus(
+		ctx,
+		params.WorkspaceID,
+		params.ID,
+		params.Status,
+		params.Reason,
+	)
 }

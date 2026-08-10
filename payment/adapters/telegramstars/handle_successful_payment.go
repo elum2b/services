@@ -9,7 +9,10 @@ import (
 	"github.com/elum2b/services/payment/repository"
 )
 
-func (a *TelegramStars) HandleSuccessfulPayment(ctx context.Context, payment SuccessfulPayment) (*SuccessfulPaymentResult, error) {
+func (a *TelegramStars) HandleSuccessfulPayment(
+	ctx context.Context,
+	payment SuccessfulPayment,
+) (*SuccessfulPaymentResult, error) {
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
 	}
@@ -39,18 +42,23 @@ func (a *TelegramStars) HandleSuccessfulPayment(ctx context.Context, payment Suc
 		payment.TelegramPaymentChargeID,
 		payment.IsFirstRecurring,
 	)
-	eventDBID, err := a.repository.CreateEvent(ctx, repository.EventCreateParams{
-		WorkspaceID:       payment.WorkspaceID,
-		ProviderCode:      ProviderCode,
-		AttemptID:         utils.Ref(int64(attempt.ID)),
-		OrderID:           utils.Ref(int64(attempt.OrderID)),
-		ProviderEventID:   utils.Ref(eventID),
-		ProviderPaymentID: utils.Ref(payment.InvoicePayload),
-		EventType:         "successful_payment",
-		EventStatus:       utils.Ref("succeeded"),
-		PayloadHash:       sha256Hex([]byte(eventID + ":" + payment.InvoicePayload)),
-		SignatureValid:    nil,
-	})
+	eventDBID, err := a.repository.CreateEvent(
+		ctx,
+		repository.EventCreateParams{
+			WorkspaceID:       payment.WorkspaceID,
+			ProviderCode:      ProviderCode,
+			AttemptID:         utils.Ref(int64(attempt.ID)),
+			OrderID:           utils.Ref(int64(attempt.OrderID)),
+			ProviderEventID:   utils.Ref(eventID),
+			ProviderPaymentID: utils.Ref(payment.InvoicePayload),
+			EventType:         "successful_payment",
+			EventStatus:       utils.Ref("succeeded"),
+			PayloadHash: sha256Hex(
+				[]byte(eventID + ":" + payment.InvoicePayload),
+			),
+			SignatureValid: nil,
+		},
+	)
 	if err != nil && !isDuplicateEntry(err) {
 		return nil, err
 	}
@@ -104,14 +112,17 @@ func (a *TelegramStars) HandleSuccessfulPayment(ctx context.Context, payment Suc
 		return nil, repository.ErrPaymentMismatch
 	}
 
-	completed, err := a.repository.CompleteAttempt(ctx, repository.CompleteAttemptParams{
-		WorkspaceID:       attempt.WorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      ProviderCode,
-		ProviderPaymentID: utils.Ref(payment.InvoicePayload),
-		AmountMinor:       payment.TotalAmount,
-		AssetCode:         payment.Currency,
-	})
+	completed, err := a.repository.CompleteAttempt(
+		ctx,
+		repository.CompleteAttemptParams{
+			WorkspaceID:       attempt.WorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      ProviderCode,
+			ProviderPaymentID: utils.Ref(payment.InvoicePayload),
+			AmountMinor:       payment.TotalAmount,
+			AssetCode:         payment.Currency,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -121,21 +132,26 @@ func (a *TelegramStars) HandleSuccessfulPayment(ctx context.Context, payment Suc
 		if err != nil {
 			return nil, err
 		}
-		if _, err := a.repository.UpsertSubscription(ctx, repository.SubscriptionUpsertParams{
-			WorkspaceID:            order.WorkspaceID,
-			ProviderCode:           ProviderCode,
-			ProviderSubscriptionID: payment.TelegramPaymentChargeID,
-			AppID:                  order.AppID,
-			PlatformID:             order.PlatformID,
-			PlatformUserID:         order.PlatformUserID,
-			InternalUserID:         order.InternalUserID,
-			ProductID:              order.ProductID,
-			OrderID:                utils.Ref(int64(order.ID)),
-			AttemptID:              utils.Ref(int64(attempt.ID)),
-			Status:                 "active",
-			StartedAt:              time.Now(),
-			EndedAt:                utils.Ref(time.Unix(payment.SubscriptionExpirationDate, 0)),
-		}); err != nil {
+		if _, err := a.repository.UpsertSubscription(
+			ctx,
+			repository.SubscriptionUpsertParams{
+				WorkspaceID:            order.WorkspaceID,
+				ProviderCode:           ProviderCode,
+				ProviderSubscriptionID: payment.TelegramPaymentChargeID,
+				AppID:                  order.AppID,
+				PlatformID:             order.PlatformID,
+				PlatformUserID:         order.PlatformUserID,
+				InternalUserID:         order.InternalUserID,
+				ProductID:              order.ProductID,
+				OrderID:                utils.Ref(int64(order.ID)),
+				AttemptID:              utils.Ref(int64(attempt.ID)),
+				Status:                 "active",
+				StartedAt:              time.Now(),
+				EndedAt: utils.Ref(
+					time.Unix(payment.SubscriptionExpirationDate, 0),
+				),
+			},
+		); err != nil {
 			return nil, err
 		}
 	}

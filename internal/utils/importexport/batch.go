@@ -8,7 +8,9 @@ const (
 	DefaultMaxParameters = 60000
 )
 
-var ErrBatchCallbackRequired = errors.New("importexport: batch callback is required")
+var ErrBatchCallbackRequired = errors.New(
+	"importexport: batch callback is required",
+)
 
 type BatchLimits struct {
 	MaxRows       int

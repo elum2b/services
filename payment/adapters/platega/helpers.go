@@ -11,9 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	utils "github.com/elum2b/services/internal/utils"
 	json "github.com/goccy/go-json"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	utils "github.com/elum2b/services/internal/utils"
 )
 
 func rubMajorFromMinor(amountMinor uint64) json.Number {
@@ -22,7 +23,8 @@ func rubMajorFromMinor(amountMinor uint64) json.Number {
 
 func rubMinorFromMajor(amount json.Number) (uint64, error) {
 	value := strings.TrimSpace(amount.String())
-	if value == "" || strings.HasPrefix(value, "-") || strings.ContainsAny(value, "eE+") {
+	if value == "" || strings.HasPrefix(value, "-") ||
+		strings.ContainsAny(value, "eE+") {
 		return 0, ErrAmountInvalid
 	}
 
@@ -71,7 +73,10 @@ func validateHeaders(headers http.Header, credentials Credentials) bool {
 	if credentials.MerchantID == "" || credentials.Secret == "" {
 		return false
 	}
-	return constantTimeString(headers.Get("X-MerchantId"), credentials.MerchantID) &&
+	return constantTimeString(
+		headers.Get("X-MerchantId"),
+		credentials.MerchantID,
+	) &&
 		constantTimeString(headers.Get("X-Secret"), credentials.Secret)
 }
 
@@ -87,7 +92,12 @@ func constantTimeString(left string, right string) bool {
 }
 
 func webhookEventID(payload callbackPayload) string {
-	return fmt.Sprintf("%s:%s:%d", payload.ID, payload.Status, payload.PaymentMethod)
+	return fmt.Sprintf(
+		"%s:%s:%d",
+		payload.ID,
+		payload.Status,
+		payload.PaymentMethod,
+	)
 }
 
 func sha256Hex(raw []byte) string {

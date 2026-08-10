@@ -6,10 +6,10 @@ import (
 	"time"
 
 	json "github.com/goccy/go-json"
+	"github.com/sqlc-dev/pqtype"
 
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	promosqlc "github.com/elum2b/services/promo/sqlc"
-	"github.com/sqlc-dev/pqtype"
 )
 
 type SavePromoParams struct {
@@ -24,33 +24,48 @@ type SavePromoParams struct {
 	EndAt          *time.Time
 }
 
-func (r *Repository) CreatePromo(ctx context.Context, params SavePromoParams) (uint64, error) {
+func (r *Repository) CreatePromo(
+	ctx context.Context,
+	params SavePromoParams,
+) (uint64, error) {
 	target := params.Target
 	if len(target) == 0 {
 		target = []byte("null")
 	}
 	var id int64
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
-		if err := txRepo.lockWorkspaceMutation(ctx, params.WorkspaceID); err != nil {
+		if err := txRepo.lockWorkspaceMutation(
+			ctx,
+			params.WorkspaceID,
+		); err != nil {
 			return err
 		}
 
 		var err error
-		id, err = txRepo.q.AdminCreatePromo(ctx, promosqlc.AdminCreatePromoParams{
-			WorkspaceID:    params.WorkspaceID,
-			Code:           params.Code,
-			CodeNormalized: normalizeCode(params.Code),
-			Payload:        params.Payload,
-			Target:         rawMessageParam(target),
-			MaxActivations: int64(params.MaxActivations),
-			IsActive:       params.IsActive,
-			StartAt: sqlwrap.NullFromPtr(params.StartAt, func(v time.Time) sql.NullTime {
-				return sql.NullTime{Time: v, Valid: true}
-			}),
-			EndAt: sqlwrap.NullFromPtr(params.EndAt, func(v time.Time) sql.NullTime {
-				return sql.NullTime{Time: v, Valid: true}
-			}),
-		})
+		id, err = txRepo.q.AdminCreatePromo(
+			ctx,
+			promosqlc.AdminCreatePromoParams{
+				WorkspaceID:    params.WorkspaceID,
+				Code:           params.Code,
+				CodeNormalized: normalizeCode(params.Code),
+				Payload:        params.Payload,
+				Target:         rawMessageParam(target),
+				MaxActivations: int64(params.MaxActivations),
+				IsActive:       params.IsActive,
+				StartAt: sqlwrap.NullFromPtr(
+					params.StartAt,
+					func(v time.Time) sql.NullTime {
+						return sql.NullTime{Time: v, Valid: true}
+					},
+				),
+				EndAt: sqlwrap.NullFromPtr(
+					params.EndAt,
+					func(v time.Time) sql.NullTime {
+						return sql.NullTime{Time: v, Valid: true}
+					},
+				),
+			},
+		)
 		return err
 	})
 	if err != nil {
@@ -59,34 +74,49 @@ func (r *Repository) CreatePromo(ctx context.Context, params SavePromoParams) (u
 	return uint64(id), r.invalidatePromoCache(params.WorkspaceID)
 }
 
-func (r *Repository) UpdatePromo(ctx context.Context, params SavePromoParams) (int64, error) {
+func (r *Repository) UpdatePromo(
+	ctx context.Context,
+	params SavePromoParams,
+) (int64, error) {
 	target := params.Target
 	if len(target) == 0 {
 		target = []byte("null")
 	}
 	var rows int64
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
-		if err := txRepo.lockWorkspaceMutation(ctx, params.WorkspaceID); err != nil {
+		if err := txRepo.lockWorkspaceMutation(
+			ctx,
+			params.WorkspaceID,
+		); err != nil {
 			return err
 		}
 
 		var err error
-		rows, err = txRepo.q.AdminUpdatePromo(ctx, promosqlc.AdminUpdatePromoParams{
-			Code:           params.Code,
-			CodeNormalized: normalizeCode(params.Code),
-			Payload:        params.Payload,
-			Target:         rawMessageParam(target),
-			MaxActivations: int64(params.MaxActivations),
-			IsActive:       params.IsActive,
-			StartAt: sqlwrap.NullFromPtr(params.StartAt, func(v time.Time) sql.NullTime {
-				return sql.NullTime{Time: v, Valid: true}
-			}),
-			EndAt: sqlwrap.NullFromPtr(params.EndAt, func(v time.Time) sql.NullTime {
-				return sql.NullTime{Time: v, Valid: true}
-			}),
-			WorkspaceID: params.WorkspaceID,
-			ID:          int64(params.ID),
-		})
+		rows, err = txRepo.q.AdminUpdatePromo(
+			ctx,
+			promosqlc.AdminUpdatePromoParams{
+				Code:           params.Code,
+				CodeNormalized: normalizeCode(params.Code),
+				Payload:        params.Payload,
+				Target:         rawMessageParam(target),
+				MaxActivations: int64(params.MaxActivations),
+				IsActive:       params.IsActive,
+				StartAt: sqlwrap.NullFromPtr(
+					params.StartAt,
+					func(v time.Time) sql.NullTime {
+						return sql.NullTime{Time: v, Valid: true}
+					},
+				),
+				EndAt: sqlwrap.NullFromPtr(
+					params.EndAt,
+					func(v time.Time) sql.NullTime {
+						return sql.NullTime{Time: v, Valid: true}
+					},
+				),
+				WorkspaceID: params.WorkspaceID,
+				ID:          int64(params.ID),
+			},
+		)
 		return err
 	})
 	if err != nil || rows == 0 {
@@ -95,7 +125,11 @@ func (r *Repository) UpdatePromo(ctx context.Context, params SavePromoParams) (i
 	return rows, r.invalidatePromoCache(params.WorkspaceID)
 }
 
-func (r *Repository) GetPromo(ctx context.Context, workspaceID string, id uint64) (Promo, error) {
+func (r *Repository) GetPromo(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (Promo, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return Promo{}, err
 	}
@@ -119,7 +153,11 @@ func (r *Repository) GetPromo(ctx context.Context, workspaceID string, id uint64
 	})
 }
 
-func (r *Repository) ListPromos(ctx context.Context, workspaceID string, limit, offset int32) ([]Promo, error) {
+func (r *Repository) ListPromos(
+	ctx context.Context,
+	workspaceID string,
+	limit, offset int32,
+) ([]Promo, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return nil, err
 	}
@@ -149,7 +187,11 @@ func (r *Repository) ListPromos(ctx context.Context, workspaceID string, limit, 
 	})
 }
 
-func (r *Repository) SoftDeletePromo(ctx context.Context, workspaceID string, id uint64) (int64, error) {
+func (r *Repository) SoftDeletePromo(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (int64, error) {
 	var rows int64
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
@@ -157,10 +199,13 @@ func (r *Repository) SoftDeletePromo(ctx context.Context, workspaceID string, id
 		}
 
 		var err error
-		rows, err = txRepo.q.AdminSoftDeletePromo(ctx, promosqlc.AdminSoftDeletePromoParams{
-			WorkspaceID: workspaceID,
-			ID:          int64(id),
-		})
+		rows, err = txRepo.q.AdminSoftDeletePromo(
+			ctx,
+			promosqlc.AdminSoftDeletePromoParams{
+				WorkspaceID: workspaceID,
+				ID:          int64(id),
+			},
+		)
 		return err
 	})
 	if err != nil || rows == 0 {
@@ -169,16 +214,26 @@ func (r *Repository) SoftDeletePromo(ctx context.Context, workspaceID string, id
 	return rows, r.invalidatePromoCache(workspaceID)
 }
 
-func (r *Repository) UpsertLocalization(ctx context.Context, value Localization) error {
-	err := r.withWorkspaceMutation(ctx, value.WorkspaceID, func(txRepo *Repository) error {
-		return txRepo.q.AdminUpsertLocalization(ctx, promosqlc.AdminUpsertLocalizationParams{
-			WorkspaceID: value.WorkspaceID,
-			PromoID:     int64(value.PromoID),
-			Locale:      value.Locale,
-			Title:       value.Title,
-			Description: value.Description,
-		})
-	})
+func (r *Repository) UpsertLocalization(
+	ctx context.Context,
+	value Localization,
+) error {
+	err := r.withWorkspaceMutation(
+		ctx,
+		value.WorkspaceID,
+		func(txRepo *Repository) error {
+			return txRepo.q.AdminUpsertLocalization(
+				ctx,
+				promosqlc.AdminUpsertLocalizationParams{
+					WorkspaceID: value.WorkspaceID,
+					PromoID:     int64(value.PromoID),
+					Locale:      value.Locale,
+					Title:       value.Title,
+					Description: value.Description,
+				},
+			)
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -192,19 +247,30 @@ func (r *Repository) GetLocalization(
 	promoID uint64,
 	locale string,
 ) (Localization, error) {
-	key := promoCacheKey(promoCacheAdminLocalization, workspaceID, promoID, locale)
+	key := promoCacheKey(
+		promoCacheAdminLocalization,
+		workspaceID,
+		promoID,
+		locale,
+	)
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key:               key,
-		Timeout:           r.timeout,
-		CacheL1Delay:      r.cacheL1,
-		CacheL2Delay:      r.cacheL2,
-		CacheVersionScope: promoCacheScope(promoCacheAdminLocalization, workspaceID),
+		Key:          key,
+		Timeout:      r.timeout,
+		CacheL1Delay: r.cacheL1,
+		CacheL2Delay: r.cacheL2,
+		CacheVersionScope: promoCacheScope(
+			promoCacheAdminLocalization,
+			workspaceID,
+		),
 	}, func(ctx context.Context) (Localization, error) {
-		row, err := r.q.AdminGetLocalization(ctx, promosqlc.AdminGetLocalizationParams{
-			WorkspaceID: workspaceID,
-			PromoID:     int64(promoID),
-			Locale:      locale,
-		})
+		row, err := r.q.AdminGetLocalization(
+			ctx,
+			promosqlc.AdminGetLocalizationParams{
+				WorkspaceID: workspaceID,
+				PromoID:     int64(promoID),
+				Locale:      locale,
+			},
+		)
 		if err != nil {
 			return Localization{}, err
 		}
@@ -219,16 +285,22 @@ func (r *Repository) ListLocalizations(
 ) ([]Localization, error) {
 	key := promoCacheKey(promoCacheAdminLocalizations, workspaceID, promoID)
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key:               key,
-		Timeout:           r.timeout,
-		CacheL1Delay:      r.cacheL1,
-		CacheL2Delay:      r.cacheL2,
-		CacheVersionScope: promoCacheScope(promoCacheAdminLocalizations, workspaceID),
+		Key:          key,
+		Timeout:      r.timeout,
+		CacheL1Delay: r.cacheL1,
+		CacheL2Delay: r.cacheL2,
+		CacheVersionScope: promoCacheScope(
+			promoCacheAdminLocalizations,
+			workspaceID,
+		),
 	}, func(ctx context.Context) ([]Localization, error) {
-		rows, err := r.q.AdminListLocalizations(ctx, promosqlc.AdminListLocalizationsParams{
-			WorkspaceID: workspaceID,
-			PromoID:     int64(promoID),
-		})
+		rows, err := r.q.AdminListLocalizations(
+			ctx,
+			promosqlc.AdminListLocalizationsParams{
+				WorkspaceID: workspaceID,
+				PromoID:     int64(promoID),
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -247,15 +319,22 @@ func (r *Repository) DeleteLocalization(
 	locale string,
 ) (int64, error) {
 	var rows int64
-	err := r.withWorkspaceMutation(ctx, workspaceID, func(txRepo *Repository) error {
-		var err error
-		rows, err = txRepo.q.AdminDeleteLocalization(ctx, promosqlc.AdminDeleteLocalizationParams{
-			WorkspaceID: workspaceID,
-			PromoID:     int64(promoID),
-			Locale:      locale,
-		})
-		return err
-	})
+	err := r.withWorkspaceMutation(
+		ctx,
+		workspaceID,
+		func(txRepo *Repository) error {
+			var err error
+			rows, err = txRepo.q.AdminDeleteLocalization(
+				ctx,
+				promosqlc.AdminDeleteLocalizationParams{
+					WorkspaceID: workspaceID,
+					PromoID:     int64(promoID),
+					Locale:      locale,
+				},
+			)
+			return err
+		},
+	)
 	if err != nil || rows == 0 {
 		return rows, err
 	}
@@ -263,21 +342,35 @@ func (r *Repository) DeleteLocalization(
 	return rows, r.invalidatePromoCache(workspaceID)
 }
 
-func (r *Repository) UpsertReward(ctx context.Context, workspaceID string, promoID uint64, reward Reward) error {
-	err := r.withWorkspaceMutation(ctx, workspaceID, func(txRepo *Repository) error {
-		return txRepo.q.AdminUpsertReward(ctx, promosqlc.AdminUpsertRewardParams{
-			WorkspaceID: workspaceID,
-			PromoID:     int64(promoID),
-			RewardKey:   reward.Key,
-			RewardType:  promosqlc.PromoRewardType(reward.Type),
-			Quantity:    reward.Quantity,
-			Scale:       int16(reward.Scale),
-			DurationUnit: promosqlc.NullPromoDurationUnit{
-				PromoDurationUnit: promosqlc.PromoDurationUnit(stringValue(reward.Unit)),
-				Valid:             reward.Unit != nil,
-			},
-		})
-	})
+func (r *Repository) UpsertReward(
+	ctx context.Context,
+	workspaceID string,
+	promoID uint64,
+	reward Reward,
+) error {
+	err := r.withWorkspaceMutation(
+		ctx,
+		workspaceID,
+		func(txRepo *Repository) error {
+			return txRepo.q.AdminUpsertReward(
+				ctx,
+				promosqlc.AdminUpsertRewardParams{
+					WorkspaceID: workspaceID,
+					PromoID:     int64(promoID),
+					RewardKey:   reward.Key,
+					RewardType:  promosqlc.PromoRewardType(reward.Type),
+					Quantity:    reward.Quantity,
+					Scale:       int16(reward.Scale),
+					DurationUnit: promosqlc.NullPromoDurationUnit{
+						PromoDurationUnit: promosqlc.PromoDurationUnit(
+							stringValue(reward.Unit),
+						),
+						Valid: reward.Unit != nil,
+					},
+				},
+			)
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -285,7 +378,12 @@ func (r *Repository) UpsertReward(ctx context.Context, workspaceID string, promo
 	return r.invalidatePromoCache(workspaceID)
 }
 
-func (r *Repository) GetReward(ctx context.Context, workspaceID string, promoID uint64, key string) (Reward, error) {
+func (r *Repository) GetReward(
+	ctx context.Context,
+	workspaceID string,
+	promoID uint64,
+	key string,
+) (Reward, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return Reward{}, err
 	}
@@ -310,7 +408,11 @@ func (r *Repository) GetReward(ctx context.Context, workspaceID string, promoID 
 	})
 }
 
-func (r *Repository) ListRewards(ctx context.Context, workspaceID string, promoID uint64) ([]Reward, error) {
+func (r *Repository) ListRewards(
+	ctx context.Context,
+	workspaceID string,
+	promoID uint64,
+) ([]Reward, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return nil, err
 	}
@@ -363,17 +465,29 @@ func stringValue(value *string) string {
 	return *value
 }
 
-func (r *Repository) DeleteReward(ctx context.Context, workspaceID string, promoID uint64, key string) (int64, error) {
+func (r *Repository) DeleteReward(
+	ctx context.Context,
+	workspaceID string,
+	promoID uint64,
+	key string,
+) (int64, error) {
 	var rows int64
-	err := r.withWorkspaceMutation(ctx, workspaceID, func(txRepo *Repository) error {
-		var err error
-		rows, err = txRepo.q.AdminDeleteReward(ctx, promosqlc.AdminDeleteRewardParams{
-			WorkspaceID: workspaceID,
-			PromoID:     int64(promoID),
-			RewardKey:   key,
-		})
-		return err
-	})
+	err := r.withWorkspaceMutation(
+		ctx,
+		workspaceID,
+		func(txRepo *Repository) error {
+			var err error
+			rows, err = txRepo.q.AdminDeleteReward(
+				ctx,
+				promosqlc.AdminDeleteRewardParams{
+					WorkspaceID: workspaceID,
+					PromoID:     int64(promoID),
+					RewardKey:   key,
+				},
+			)
+			return err
+		},
+	)
 	if err != nil || rows == 0 {
 		return rows, err
 	}

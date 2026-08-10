@@ -22,7 +22,12 @@ func (e *ImportValidationError) Error() string {
 	if e == nil {
 		return ""
 	}
-	return fmt.Sprintf("cpa import offers[%d].%s: %v", e.OfferIndex, e.Field, e.Cause)
+	return fmt.Sprintf(
+		"cpa import offers[%d].%s: %v",
+		e.OfferIndex,
+		e.Field,
+		e.Cause,
+	)
 }
 
 func (e *ImportValidationError) Code() string {
@@ -43,14 +48,22 @@ func (e *ImportValidationError) Unwrap() error {
 	return e.Cause
 }
 
-func (r *Repository) PreviewImport(ctx context.Context, workspaceID string, pkg ExportPackage) (ImportPreview, error) {
+func (r *Repository) PreviewImport(
+	ctx context.Context,
+	workspaceID string,
+	pkg ExportPackage,
+) (ImportPreview, error) {
 	if err := validateExportPackage(workspaceID, pkg); err != nil {
 		return ImportPreview{}, err
 	}
 	return r.previewImport(ctx, workspaceID, pkg)
 }
 
-func (r *Repository) previewImport(ctx context.Context, workspaceID string, pkg ExportPackage) (ImportPreview, error) {
+func (r *Repository) previewImport(
+	ctx context.Context,
+	workspaceID string,
+	pkg ExportPackage,
+) (ImportPreview, error) {
 	preview := ImportPreview{
 		Format:  pkg.Format,
 		Service: pkg.Service,
@@ -71,7 +84,11 @@ func (r *Repository) previewImport(ctx context.Context, workspaceID string, pkg 
 	return preview, nil
 }
 
-func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportRequest) (ImportResult, error) {
+func (r *Repository) Import(
+	ctx context.Context,
+	workspaceID string,
+	req ImportRequest,
+) (ImportResult, error) {
 	if err := validateExportPackage(workspaceID, req.Package); err != nil {
 		return ImportResult{}, err
 	}
@@ -79,8 +96,12 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 	if strategy == "" {
 		strategy = ImportConflictFail
 	}
-	if strategy != ImportConflictFail && strategy != ImportConflictSkip && strategy != ImportConflictUpdate {
-		return ImportResult{}, fmt.Errorf("unsupported import conflict strategy: %s", strategy)
+	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
+		strategy != ImportConflictUpdate {
+		return ImportResult{}, fmt.Errorf(
+			"unsupported import conflict strategy: %s",
+			strategy,
+		)
 	}
 	result := ImportResult{}
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
@@ -93,10 +114,20 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 			return err
 		}
 		if strategy == ImportConflictFail && len(preview.Conflicts) > 0 {
-			return fmt.Errorf("import conflicts found: %d", len(preview.Conflicts))
+			return fmt.Errorf(
+				"import conflicts found: %d",
+				len(preview.Conflicts),
+			)
 		}
 
-		return txRepo.importBulk(ctx, workspaceID, req.Package, strategy, preview, &result)
+		return txRepo.importBulk(
+			ctx,
+			workspaceID,
+			req.Package,
+			strategy,
+			preview,
+			&result,
+		)
 	})
 	if err != nil {
 		return ImportResult{}, err
@@ -105,22 +136,58 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 	return result, nil
 }
 
-func (r *Repository) importBulk(ctx context.Context, workspaceID string, pkg ExportPackage, strategy string, preview ImportPreview, result *ImportResult) error {
-	if err := r.importOffersBulk(ctx, workspaceID, pkg.Offers, strategy, preview, result); err != nil {
+func (r *Repository) importBulk(
+	ctx context.Context,
+	workspaceID string,
+	pkg ExportPackage,
+	strategy string,
+	preview ImportPreview,
+	result *ImportResult,
+) error {
+	if err := r.importOffersBulk(
+		ctx,
+		workspaceID,
+		pkg.Offers,
+		strategy,
+		preview,
+		result,
+	); err != nil {
 		return err
 	}
 	if strategy == ImportConflictUpdate {
-		if err := r.replaceImportedOfferChildren(ctx, workspaceID, preview); err != nil {
+		if err := r.replaceImportedOfferChildren(
+			ctx,
+			workspaceID,
+			preview,
+		); err != nil {
 			return err
 		}
 	}
-	if err := r.importLocalizationsBulk(ctx, workspaceID, pkg.Offers, strategy, preview, result); err != nil {
+	if err := r.importLocalizationsBulk(
+		ctx,
+		workspaceID,
+		pkg.Offers,
+		strategy,
+		preview,
+		result,
+	); err != nil {
 		return err
 	}
-	return r.importRewardsBulk(ctx, workspaceID, pkg.Offers, strategy, preview, result)
+	return r.importRewardsBulk(
+		ctx,
+		workspaceID,
+		pkg.Offers,
+		strategy,
+		preview,
+		result,
+	)
 }
 
-func (r *Repository) replaceImportedOfferChildren(ctx context.Context, workspaceID string, preview ImportPreview) error {
+func (r *Repository) replaceImportedOfferChildren(
+	ctx context.Context,
+	workspaceID string,
+	preview ImportPreview,
+) error {
 	offerIDs := make([]string, 0, len(preview.Conflicts))
 	for _, conflict := range preview.Conflicts {
 		if conflict.Type == "offer" {
@@ -136,19 +203,33 @@ func (r *Repository) replaceImportedOfferChildren(ctx context.Context, workspace
 		1,
 		importexport.DefaultBatchLimits,
 		func(start, end int) error {
-			query, args := compileImportChildrenDelete("cpa_localization", workspaceID, offerIDs[start:end])
-			if _, err := r.executor.ExecContext(ctx, query, args...); err != nil {
+			query, args := compileImportChildrenDelete(
+				"cpa_localization",
+				workspaceID,
+				offerIDs[start:end],
+			)
+			if _, err := r.executor.ExecContext(
+				ctx,
+				query,
+				args...); err != nil {
 				return err
 			}
 
-			query, args = compileImportChildrenDelete("cpa_reward", workspaceID, offerIDs[start:end])
+			query, args = compileImportChildrenDelete(
+				"cpa_reward",
+				workspaceID,
+				offerIDs[start:end],
+			)
 			_, err := r.executor.ExecContext(ctx, query, args...)
 			return err
 		},
 	)
 }
 
-func compileImportChildrenDelete(table, workspaceID string, offerIDs []string) (string, []any) {
+func compileImportChildrenDelete(
+	table, workspaceID string,
+	offerIDs []string,
+) (string, []any) {
 	var builder strings.Builder
 	builder.WriteString("DELETE FROM ")
 	builder.WriteString(table)
@@ -167,10 +248,18 @@ func compileImportChildrenDelete(table, workspaceID string, offerIDs []string) (
 	return builder.String(), args
 }
 
-func (r *Repository) importOffersBulk(ctx context.Context, workspaceID string, offers []ExportOffer, strategy string, preview ImportPreview, result *ImportResult) error {
+func (r *Repository) importOffersBulk(
+	ctx context.Context,
+	workspaceID string,
+	offers []ExportOffer,
+	strategy string,
+	preview ImportPreview,
+	result *ImportResult,
+) error {
 	rows := make([][]any, 0, len(offers))
 	for _, offer := range offers {
-		if previewHasConflict(preview, "offer", offer.ID) && strategy == ImportConflictSkip {
+		if previewHasConflict(preview, "offer", offer.ID) &&
+			strategy == ImportConflictSkip {
 			result.Skipped.Offers++
 			continue
 		}
@@ -196,8 +285,18 @@ func (r *Repository) importOffersBulk(ctx context.Context, workspaceID string, o
 		ctx,
 		"cpa_offer",
 		[]string{
-			"workspace_id", "id", "payload", "target", "code_mode", "code_source", "shared_code",
-			"generated_length", "generated_alphabet", "is_active", "start_at", "end_at",
+			"workspace_id",
+			"id",
+			"payload",
+			"target",
+			"code_mode",
+			"code_source",
+			"shared_code",
+			"generated_length",
+			"generated_alphabet",
+			"is_active",
+			"start_at",
+			"end_at",
 		},
 		rows,
 		"payload = EXCLUDED.payload, target = EXCLUDED.target, code_mode = EXCLUDED.code_mode, "+
@@ -207,14 +306,31 @@ func (r *Repository) importOffersBulk(ctx context.Context, workspaceID string, o
 	)
 }
 
-func (r *Repository) importLocalizationsBulk(ctx context.Context, workspaceID string, offers []ExportOffer, strategy string, preview ImportPreview, result *ImportResult) error {
+func (r *Repository) importLocalizationsBulk(
+	ctx context.Context,
+	workspaceID string,
+	offers []ExportOffer,
+	strategy string,
+	preview ImportPreview,
+	result *ImportResult,
+) error {
 	rows := make([][]any, 0)
 	for _, offer := range offers {
-		if previewHasConflict(preview, "offer", offer.ID) && strategy == ImportConflictSkip {
+		if previewHasConflict(preview, "offer", offer.ID) &&
+			strategy == ImportConflictSkip {
 			continue
 		}
 		for locale, text := range offer.Localization {
-			rows = append(rows, []any{workspaceID, offer.ID, locale, text.Title, text.Description})
+			rows = append(
+				rows,
+				[]any{
+					workspaceID,
+					offer.ID,
+					locale,
+					text.Title,
+					text.Description,
+				},
+			)
 			result.Imported.Localizations++
 		}
 	}
@@ -227,16 +343,29 @@ func (r *Repository) importLocalizationsBulk(ctx context.Context, workspaceID st
 	)
 }
 
-func (r *Repository) importRewardsBulk(ctx context.Context, workspaceID string, offers []ExportOffer, strategy string, preview ImportPreview, result *ImportResult) error {
+func (r *Repository) importRewardsBulk(
+	ctx context.Context,
+	workspaceID string,
+	offers []ExportOffer,
+	strategy string,
+	preview ImportPreview,
+	result *ImportResult,
+) error {
 	rows := make([][]any, 0)
 	for _, offer := range offers {
-		if previewHasConflict(preview, "offer", offer.ID) && strategy == ImportConflictSkip {
+		if previewHasConflict(preview, "offer", offer.ID) &&
+			strategy == ImportConflictSkip {
 			continue
 		}
 		for _, reward := range offer.Rewards {
 			rows = append(rows, []any{
-				workspaceID, offer.ID, reward.Key, defaultString(reward.Type, "quantity"),
-				reward.Quantity, reward.Scale, nullString(reward.Unit),
+				workspaceID,
+				offer.ID,
+				reward.Key,
+				defaultString(reward.Type, "quantity"),
+				reward.Quantity,
+				reward.Scale,
+				nullString(reward.Unit),
 			})
 			result.Imported.Rewards++
 		}
@@ -244,14 +373,28 @@ func (r *Repository) importRewardsBulk(ctx context.Context, workspaceID string, 
 	return r.execImportBulk(
 		ctx,
 		"cpa_reward",
-		[]string{"workspace_id", "cpa_id", "reward_key", "reward_type", "quantity", "scale", "duration_unit"},
+		[]string{
+			"workspace_id",
+			"cpa_id",
+			"reward_key",
+			"reward_type",
+			"quantity",
+			"scale",
+			"duration_unit",
+		},
 		rows,
 		"reward_type = EXCLUDED.reward_type, quantity = EXCLUDED.quantity, scale = EXCLUDED.scale, "+
 			"duration_unit = EXCLUDED.duration_unit, updated_at = now()",
 	)
 }
 
-func (r *Repository) execImportBulk(ctx context.Context, table string, columns []string, rows [][]any, duplicateUpdate string) error {
+func (r *Repository) execImportBulk(
+	ctx context.Context,
+	table string,
+	columns []string,
+	rows [][]any,
+	duplicateUpdate string,
+) error {
 	if len(rows) == 0 {
 		return nil
 	}
@@ -260,8 +403,16 @@ func (r *Repository) execImportBulk(ctx context.Context, table string, columns [
 		len(columns),
 		importexport.DefaultBatchLimits,
 		func(start, end int) error {
-			query, args := compileImportBulkUpsert(table, columns, rows[start:end], duplicateUpdate)
-			if _, err := r.executor.ExecContext(ctx, query, args...); err != nil {
+			query, args := compileImportBulkUpsert(
+				table,
+				columns,
+				rows[start:end],
+				duplicateUpdate,
+			)
+			if _, err := r.executor.ExecContext(
+				ctx,
+				query,
+				args...); err != nil {
 				return err
 			}
 			return nil
@@ -269,7 +420,12 @@ func (r *Repository) execImportBulk(ctx context.Context, table string, columns [
 	)
 }
 
-func compileImportBulkUpsert(table string, columns []string, rows [][]any, duplicateUpdate string) (string, []any) {
+func compileImportBulkUpsert(
+	table string,
+	columns []string,
+	rows [][]any,
+	duplicateUpdate string,
+) (string, []any) {
 	var builder strings.Builder
 	builder.WriteString("INSERT INTO ")
 	builder.WriteString(table)
@@ -326,7 +482,9 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 	}
 	offerIndexes := make(map[string]int, len(pkg.Offers))
 	for offerIndex, offer := range pkg.Offers {
-		if err := ValidateOffer(exportOfferParams(workspaceID, offer)); err != nil {
+		if err := ValidateOffer(
+			exportOfferParams(workspaceID, offer),
+		); err != nil {
 			return importValidationError(offerIndex, "", err)
 		}
 		if previousIndex, exists := offerIndexes[offer.ID]; exists {
@@ -386,7 +544,11 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 	return nil
 }
 
-func importValidationError(offerIndex int, prefix string, cause error) *ImportValidationError {
+func importValidationError(
+	offerIndex int,
+	prefix string,
+	cause error,
+) *ImportValidationError {
 	field := prefix
 	var validationErr *FieldValidationError
 	if errors.As(cause, &validationErr) {
@@ -402,7 +564,10 @@ func importValidationError(offerIndex int, prefix string, cause error) *ImportVa
 	}
 }
 
-func exportOfferParams(workspaceID string, offer ExportOffer) UpsertOfferParams {
+func exportOfferParams(
+	workspaceID string,
+	offer ExportOffer,
+) UpsertOfferParams {
 	return UpsertOfferParams{
 		WorkspaceID:       workspaceID,
 		ID:                offer.ID,
@@ -429,7 +594,10 @@ func countPackage(pkg ExportPackage) ImportCounts {
 	return counts
 }
 
-func (r *Repository) importExistingOfferKeys(ctx context.Context, workspaceID string) (map[string]bool, error) {
+func (r *Repository) importExistingOfferKeys(
+	ctx context.Context,
+	workspaceID string,
+) (map[string]bool, error) {
 	ids, err := r.q.AdminListOfferIDs(ctx, workspaceID)
 	if err != nil {
 		return nil, err

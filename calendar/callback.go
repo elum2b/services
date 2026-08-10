@@ -2,8 +2,9 @@ package calendar
 
 import (
 	"context"
-	json "github.com/goccy/go-json"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	services "github.com/elum2b/services"
 	serviceerrors "github.com/elum2b/services/errors"
@@ -41,8 +42,17 @@ type callbackRegistration struct {
 	options []CallbackOption
 }
 
-func WithCallbackWorkerID(value string) CallbackOption { return callbackutil.WithWorkerID(value) }
-func WithCallbackBatchSize(value int32) CallbackOption { return callbackutil.WithBatchSize(value) }
+func WithCallbackWorkerID(
+	value string,
+) CallbackOption {
+	return callbackutil.WithWorkerID(value)
+}
+
+func WithCallbackBatchSize(
+	value int32,
+) CallbackOption {
+	return callbackutil.WithBatchSize(value)
+}
 func WithCallbackLeaseTimeout(value time.Duration) CallbackOption {
 	return callbackutil.WithLeaseTimeout(value)
 }
@@ -50,7 +60,11 @@ func WithCallbackIdleDelay(value time.Duration) CallbackOption {
 	return callbackutil.WithIdleDelay(value)
 }
 
-func (c *Calendar) OnCallback(ctx context.Context, handler CallbackHandler, opts ...CallbackOption) error {
+func (c *Calendar) OnCallback(
+	ctx context.Context,
+	handler CallbackHandler,
+	opts ...CallbackOption,
+) error {
 	if handler == nil {
 		return ErrCallbackHandlerNil
 	}
@@ -67,13 +81,19 @@ func (c *Calendar) OnCallback(ctx context.Context, handler CallbackHandler, opts
 		return c.runCallback(ctx, handler, opts...)
 	}
 	c.callbacksToRun = append(c.callbacksToRun, callbackRegistration{
-		ctx: ctx, handler: handler, options: append([]CallbackOption(nil), opts...),
+		ctx:     ctx,
+		handler: handler,
+		options: append([]CallbackOption(nil), opts...),
 	})
 	c.lifecycleMu.Unlock()
 	return nil
 }
 
-func (c *Calendar) runCallback(ctx context.Context, handler CallbackHandler, opts ...CallbackOption) error {
+func (c *Calendar) runCallback(
+	ctx context.Context,
+	handler CallbackHandler,
+	opts ...CallbackOption,
+) error {
 	if c == nil || c.callbacks == nil {
 		return ErrCallbacksNotConfigured
 	}
@@ -83,7 +103,11 @@ func (c *Calendar) runCallback(ctx context.Context, handler CallbackHandler, opt
 	return c.callbacks.On(runCtx, func(callbackCtx callbackutil.Context) error {
 		var payload RewardGrantedPayload
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
-			return serviceerrors.Wrap(serviceerrors.CodeInternalError, "calendar callback payload decode failed", err)
+			return serviceerrors.Wrap(
+				serviceerrors.CodeInternalError,
+				"calendar callback payload decode failed",
+				err,
+			)
 		}
 		return handler(Context{
 			Context: callbackCtx,

@@ -2,8 +2,9 @@ package integration
 
 import (
 	"context"
-	json "github.com/goccy/go-json"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	"github.com/elum2b/services/tasks/repository"
 )
@@ -115,13 +116,22 @@ type TaskContext struct {
 }
 
 type ChannelSubscriptionChecker interface {
-	CheckChannelSubscription(ctx context.Context, params ChannelSubscriptionCheckParams) (CheckResult, error)
+	CheckChannelSubscription(
+		ctx context.Context,
+		params ChannelSubscriptionCheckParams,
+	) (CheckResult, error)
 }
 
 type ChannelBoostChecker interface {
-	CheckChannelBoost(ctx context.Context, params ChannelBoostCheckParams) (CheckResult, error)
+	CheckChannelBoost(
+		ctx context.Context,
+		params ChannelBoostCheckParams,
+	) (CheckResult, error)
 }
 
 type ExternalTaskChecker interface {
-	CheckExternalTask(ctx context.Context, params ExternalTaskCheckParams) (CheckResult, error)
+	CheckExternalTask(
+		ctx context.Context,
+		params ExternalTaskCheckParams,
+	) (CheckResult, error)
 }

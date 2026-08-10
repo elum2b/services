@@ -11,7 +11,10 @@ import (
 	"github.com/elum2b/services/payment/repository"
 )
 
-func (a *TON) CreatePayment(ctx context.Context, params CreatePaymentParams) (*CreatePaymentResponse, error) {
+func (a *TON) CreatePayment(
+	ctx context.Context,
+	params CreatePaymentParams,
+) (*CreatePaymentResponse, error) {
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
@@ -23,11 +26,15 @@ func (a *TON) CreatePayment(ctx context.Context, params CreatePaymentParams) (*C
 		return nil, err
 	}
 
-	if asset.Chain.Valid && asset.Chain.String != "" && !strings.EqualFold(asset.Chain.String, "ton") {
+	if asset.Chain.Valid && asset.Chain.String != "" &&
+		!strings.EqualFold(asset.Chain.String, "ton") {
 		return nil, ErrAssetChainMismatch
 	}
 
-	wallet, err := a.repository.GetEnabledTONWalletForWorkspace(ctx, params.WorkspaceID)
+	wallet, err := a.repository.GetEnabledTONWalletForWorkspace(
+		ctx,
+		params.WorkspaceID,
+	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrWalletNotConfigured
@@ -40,7 +47,8 @@ func (a *TON) CreatePayment(ctx context.Context, params CreatePaymentParams) (*C
 		return nil, err
 	}
 
-	if asset.Network.Valid && asset.Network.String != "" && normalizeNetwork(asset.Network.String) != network {
+	if asset.Network.Valid && asset.Network.String != "" &&
+		normalizeNetwork(asset.Network.String) != network {
 		return nil, ErrAssetNetworkMismatch
 	}
 
@@ -71,12 +79,17 @@ func (a *TON) CreatePayment(ctx context.Context, params CreatePaymentParams) (*C
 	}
 
 	comment := order.PublicID
-	attempt, err := a.repository.CreateAttempt(ctx, repository.AttemptCreateParams{
-		OrderID:           order.ID,
-		ProviderCode:      ProviderCode,
-		ProviderPaymentID: utils.Ref(comment),
-		IdempotencyKey:    utils.Ref(fmt.Sprintf("%s:%s", ProviderCode, comment)),
-	})
+	attempt, err := a.repository.CreateAttempt(
+		ctx,
+		repository.AttemptCreateParams{
+			OrderID:           order.ID,
+			ProviderCode:      ProviderCode,
+			ProviderPaymentID: utils.Ref(comment),
+			IdempotencyKey: utils.Ref(
+				fmt.Sprintf("%s:%s", ProviderCode, comment),
+			),
+		},
+	)
 	if err != nil {
 		return nil, err
 	}

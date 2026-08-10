@@ -49,7 +49,11 @@ func (p SubGramProvider) ListPartnerTasks(
 	params PartnerListProviderParams,
 ) ([]PartnerExternalTask, error) {
 	maxSponsors := partnerLimit(params.Limit, 5)
-	if configured := partnerConfigSetting(params.Config.Settings, "max_sponsors", ""); configured != "" &&
+	if configured := partnerConfigSetting(
+		params.Config.Settings,
+		"max_sponsors",
+		"",
+	); configured != "" &&
 		params.Limit <= 0 {
 		if parsed, err := strconv.Atoi(configured); err == nil && parsed > 0 {
 			maxSponsors = parsed
@@ -57,20 +61,30 @@ func (p SubGramProvider) ListPartnerTasks(
 	}
 	body := map[string]any{
 		"chat_id": partnerInt64String(
-			firstNonEmpty(partnerString(params.Variables, "chat_id"), params.Identity.PlatformUserID),
+			firstNonEmpty(
+				partnerString(params.Variables, "chat_id"),
+				params.Identity.PlatformUserID,
+			),
 		),
 		"user_id":       partnerInt64String(params.Identity.PlatformUserID),
 		"language_code": params.Locale,
 		"is_premium":    params.Identity.IsPremium,
-		"action":        partnerConfigSetting(params.Config.Settings, "action", "task"),
-		"max_sponsors":  maxSponsors,
-		"get_links":     1,
+		"action": partnerConfigSetting(
+			params.Config.Settings,
+			"action",
+			"task",
+		),
+		"max_sponsors": maxSponsors,
+		"get_links":    1,
 	}
 	addPartnerIdentity(body, params.Identity)
 	if value := partnerString(params.Variables, "first_name"); value != "" {
 		body["first_name"] = value
 	}
-	if value := firstNonEmpty(partnerString(params.Variables, "username"), partnerString(params.Variables, "tg_login")); value != "" {
+	if value := firstNonEmpty(
+		partnerString(params.Variables, "username"),
+		partnerString(params.Variables, "tg_login"),
+	); value != "" {
 		body["username"] = value
 	}
 	var response subGramSponsorsResponse
@@ -81,20 +95,27 @@ func (p SubGramProvider) ListPartnerTasks(
 	}
 	result := make([]PartnerExternalTask, 0, len(response.Additional.Sponsors))
 	for _, sponsor := range response.Additional.Sponsors {
-		if sponsor.Link == "" || !sponsor.AvailableNow || sponsor.Status == "subscribed" {
+		if sponsor.Link == "" || !sponsor.AvailableNow ||
+			sponsor.Status == "subscribed" {
 			continue
 		}
 		externalType := firstNonEmpty(sponsor.Type, "resource")
 		adsID := stringifyPartnerID(sponsor.AdsID)
 		externalID := adsID + ":" + sponsor.ResourceID
 		publicPayload := partnerMarshal(map[string]any{
-			"ads_id": adsID, "resource_id": sponsor.ResourceID, "link": sponsor.Link,
-			"button_text":   firstNonEmpty(sponsor.ButtonText, "Подписаться"),
-			"resource_logo": sponsor.ResourceLogo, "resource_name": sponsor.ResourceName,
-			"subgram_status": sponsor.Status, "available_now": sponsor.AvailableNow,
+			"ads_id":         adsID,
+			"resource_id":    sponsor.ResourceID,
+			"link":           sponsor.Link,
+			"button_text":    firstNonEmpty(sponsor.ButtonText, "Подписаться"),
+			"resource_logo":  sponsor.ResourceLogo,
+			"resource_name":  sponsor.ResourceName,
+			"subgram_status": sponsor.Status,
+			"available_now":  sponsor.AvailableNow,
 		})
 		privatePayload := partnerMarshal(map[string]any{
-			"ads_id": adsID, "resource_id": sponsor.ResourceID, "link": sponsor.Link,
+			"ads_id":      adsID,
+			"resource_id": sponsor.ResourceID,
+			"link":        sponsor.Link,
 		})
 		result = append(result, PartnerExternalTask{
 			ExternalID: externalID, ExternalType: externalType,
@@ -112,10 +133,18 @@ func (p SubGramProvider) CheckPartnerTask(
 		AdsID string `json:"ads_id"`
 		Link  string `json:"link"`
 	}
-	if err := json.Unmarshal(params.Issue.PrivatePayload, &private); err != nil {
-		return PartnerCheckResult{}, fmt.Errorf("subgram private payload decode failed: %w", err)
+	if err := json.Unmarshal(
+		params.Issue.PrivatePayload,
+		&private,
+	); err != nil {
+		return PartnerCheckResult{}, fmt.Errorf(
+			"subgram private payload decode failed: %w",
+			err,
+		)
 	}
-	body := map[string]any{"user_id": partnerInt64String(params.Identity.PlatformUserID)}
+	body := map[string]any{
+		"user_id": partnerInt64String(params.Identity.PlatformUserID),
+	}
 	addPartnerIdentity(body, params.Identity)
 	if private.Link != "" {
 		body["links"] = []string{private.Link}
@@ -126,25 +155,36 @@ func (p SubGramProvider) CheckPartnerTask(
 		}
 	}
 	var response subGramSubscriptionsResponse
-	if err := p.client().postJSON(ctx, "/get-user-subscriptions", map[string]string{
-		"Auth": partnerSecret(params.Config.Secret),
-	}, body, &response); err != nil {
+	if err := p.client().
+		postJSON(ctx, "/get-user-subscriptions", map[string]string{
+			"Auth": partnerSecret(params.Config.Secret),
+		}, body, &response); err != nil {
 		return PartnerCheckResult{}, err
 	}
 	status := "not_found"
 	for _, sponsor := range response.Additional.Sponsors {
-		if private.Link != "" && sponsor.Link != "" && sponsor.Link != private.Link {
+		if private.Link != "" && sponsor.Link != "" &&
+			sponsor.Link != private.Link {
 			continue
 		}
 		status = sponsor.Status
 		break
 	}
-	allowNotgetted := partnerConfigSetting(params.Config.Settings, "allow_notgetted", "false") == "true"
-	completed := status == "subscribed" || (status == "notgetted" && allowNotgetted)
+	allowNotgetted := partnerConfigSetting(
+		params.Config.Settings,
+		"allow_notgetted",
+		"false",
+	) == "true"
+	completed := status == "subscribed" ||
+		(status == "notgetted" && allowNotgetted)
 	payload := partnerMarshal(map[string]any{
 		"provider": "subgram", "status": status, "completed": completed,
 	})
-	return PartnerCheckResult{Completed: completed, Status: status, Payload: payload}, nil
+	return PartnerCheckResult{
+		Completed: completed,
+		Status:    status,
+		Payload:   payload,
+	}, nil
 }
 
 func (p SubGramProvider) client() partnerHTTPClient {
@@ -152,7 +192,11 @@ func (p SubGramProvider) client() partnerHTTPClient {
 	if baseURL == "" {
 		baseURL = defaultSubGramBaseURL
 	}
-	return partnerHTTPClient{client: p.Client, timeout: p.Timeout, baseURL: baseURL}
+	return partnerHTTPClient{
+		client:  p.Client,
+		timeout: p.Timeout,
+		baseURL: baseURL,
+	}
 }
 
 func stringifyPartnerID(value any) string {

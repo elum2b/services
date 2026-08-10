@@ -7,7 +7,10 @@ import (
 	"github.com/elum2b/services/tasks/repository"
 )
 
-func (u *User) ListActive(ctx context.Context, params ListActiveParams) ([]TaskGroupModel, error) {
+func (u *User) ListActive(
+	ctx context.Context,
+	params ListActiveParams,
+) ([]TaskGroupModel, error) {
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 
@@ -28,26 +31,42 @@ func (u *User) ListActive(ctx context.Context, params ListActiveParams) ([]TaskG
 	return groupTasks(tasks), nil
 }
 
-func (u *User) StartTask(ctx context.Context, params StartTaskParams) (StartTaskResult, error) {
+func (u *User) StartTask(
+	ctx context.Context,
+	params StartTaskParams,
+) (StartTaskResult, error) {
 	if err := params.Identity.Validate(); err != nil {
 		return StartTaskResult{}, err
 	}
 
 	if _, ok := repository.ParsePartnerIssueRef(params.TaskRef); ok {
 		result, err := u.StartPartner(ctx, PartnerStartParams{
-			Identity: params.Identity, IssueRef: params.TaskRef, Now: params.Now,
+			Identity: params.Identity,
+			IssueRef: params.TaskRef,
+			Now:      params.Now,
 		})
-		return StartTaskResult{Status: result.Status, Started: result.Started, Task: result.Task}, err
+		return StartTaskResult{
+			Status:  result.Status,
+			Started: result.Started,
+			Task:    result.Task,
+		}, err
 	}
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 	result, err := u.repository.StartTask(mergedCtx, repository.StartTaskParams{
-		Identity: repositoryIdentity(params.Identity), TaskRef: params.TaskRef, Now: params.Now,
+		Identity: repositoryIdentity(
+			params.Identity,
+		),
+		TaskRef: params.TaskRef,
+		Now:     params.Now,
 	})
 	if err != nil {
 		return StartTaskResult{}, err
 	}
-	output := StartTaskResult{Status: result.Status, Started: result.Status == repository.StartStatusStarted}
+	output := StartTaskResult{
+		Status:  result.Status,
+		Started: result.Status == repository.StartStatusStarted,
+	}
 	if result.Task != nil {
 		task := mapTask(*result.Task)
 		output.Task = &task
@@ -55,7 +74,10 @@ func (u *User) StartTask(ctx context.Context, params StartTaskParams) (StartTask
 	return output, nil
 }
 
-func (u *User) Claim(ctx context.Context, params ClaimParams) (ClaimResult, error) {
+func (u *User) Claim(
+	ctx context.Context,
+	params ClaimParams,
+) (ClaimResult, error) {
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 
@@ -141,10 +163,18 @@ func groupTasks(tasks []repository.ActiveTask) []TaskGroupModel {
 
 func mapTask(task repository.Task) TaskModel {
 	result := TaskModel{
-		ID: task.ID, Key: task.Key, GroupKey: task.GroupKey, TaskKind: task.TaskKind,
-		ActionKey: task.ActionKey, ActionKind: task.ActionKind, ClaimMode: task.ClaimMode, StartMode: task.StartMode,
-		TargetCount: task.TargetCount, Payload: task.Payload, ImageURL: task.ImageURL,
-		Rewards: task.Rewards,
+		ID:          task.ID,
+		Key:         task.Key,
+		GroupKey:    task.GroupKey,
+		TaskKind:    task.TaskKind,
+		ActionKey:   task.ActionKey,
+		ActionKind:  task.ActionKind,
+		ClaimMode:   task.ClaimMode,
+		StartMode:   task.StartMode,
+		TargetCount: task.TargetCount,
+		Payload:     task.Payload,
+		ImageURL:    task.ImageURL,
+		Rewards:     task.Rewards,
 	}
 	if task.Localization != nil {
 		result.Title = task.Localization.Title
@@ -152,9 +182,12 @@ func mapTask(task repository.Task) TaskModel {
 	}
 	if task.Progress != nil {
 		result.Progress = &repository.ActiveProgress{
-			Progress: task.Progress.Progress, Status: task.Progress.Status,
-			PeriodStartAt: task.Progress.PeriodStartAt, PeriodEndAt: task.Progress.PeriodEndAt,
-			ReadyAt: task.Progress.ReadyAt, ClaimedAt: task.Progress.ClaimedAt,
+			Progress:      task.Progress.Progress,
+			Status:        task.Progress.Status,
+			PeriodStartAt: task.Progress.PeriodStartAt,
+			PeriodEndAt:   task.Progress.PeriodEndAt,
+			ReadyAt:       task.Progress.ReadyAt,
+			ClaimedAt:     task.Progress.ClaimedAt,
 		}
 	}
 	return result

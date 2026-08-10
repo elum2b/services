@@ -20,7 +20,10 @@ type RefundResult struct {
 
 type RefundExecutor func(context.Context, RefundParams) (RefundResult, error)
 
-func (a *Platega) Execute(ctx context.Context, params RefundParams) (RefundResult, error) {
+func (a *Platega) Execute(
+	ctx context.Context,
+	params RefundParams,
+) (RefundResult, error) {
 
 	if a == nil {
 		return RefundResult{}, ErrNotInitialized

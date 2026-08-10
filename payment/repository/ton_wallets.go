@@ -9,7 +9,10 @@ import (
 	"github.com/elum2b/services/payment/tonconnect"
 )
 
-func (r *PaymentRepository) UpsertTONWallet(ctx context.Context, params paymentsqlc.UpsertTONWalletParams) error {
+func (r *PaymentRepository) UpsertTONWallet(
+	ctx context.Context,
+	params paymentsqlc.UpsertTONWalletParams,
+) error {
 	if _, err := requireWorkspaceID(params.WorkspaceID); err != nil {
 		return err
 	}
@@ -21,7 +24,10 @@ func (r *PaymentRepository) UpsertTONWallet(ctx context.Context, params payments
 	return r.invalidateTONManifestCache(params.WorkspaceID)
 }
 
-func (r *PaymentRepository) DeleteTONWallet(ctx context.Context, workspaceID string) (int64, error) {
+func (r *PaymentRepository) DeleteTONWallet(
+	ctx context.Context,
+	workspaceID string,
+) (int64, error) {
 	if _, err := requireWorkspaceID(workspaceID); err != nil {
 		return 0, err
 	}
@@ -46,7 +52,9 @@ func (r *PaymentRepository) AdminGetTONWallet(
 	return mapAdminResult(row, err, mapAdminTONWallet)
 }
 
-func (r *PaymentRepository) ListEnabledTONWallets(ctx context.Context) ([]paymentsqlc.PaymentTonWallet, error) {
+func (r *PaymentRepository) ListEnabledTONWallets(
+	ctx context.Context,
+) ([]paymentsqlc.PaymentTonWallet, error) {
 	return r.q.ListEnabledTONWallets(ctx)
 }
 
@@ -89,11 +97,15 @@ func (r *PaymentRepository) GetEnabledTONConnectManifest(
 			return tonManifestCacheEntry{
 				Found: true,
 				Manifest: tonconnect.Manifest{
-					URL:              row.ManifestAppUrl,
-					Name:             row.ManifestName,
-					IconURL:          row.ManifestIconUrl,
-					TermsOfUseURL:    exportNullStringPtr(row.ManifestTermsOfUseUrl),
-					PrivacyPolicyURL: exportNullStringPtr(row.ManifestPrivacyPolicyUrl),
+					URL:     row.ManifestAppUrl,
+					Name:    row.ManifestName,
+					IconURL: row.ManifestIconUrl,
+					TermsOfUseURL: exportNullStringPtr(
+						row.ManifestTermsOfUseUrl,
+					),
+					PrivacyPolicyURL: exportNullStringPtr(
+						row.ManifestPrivacyPolicyUrl,
+					),
 				},
 			}, nil
 		},

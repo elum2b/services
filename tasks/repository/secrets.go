@@ -24,10 +24,15 @@ func (r *Repository) encryptPartnerSecret(value string) (string, error) {
 	}
 	nonce := make([]byte, aead.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("tasks partner secret nonce generation failed: %w", err)
+		return "", fmt.Errorf(
+			"tasks partner secret nonce generation failed: %w",
+			err,
+		)
 	}
 	sealed := aead.Seal(nonce, nonce, []byte(value), nil)
-	return partnerSecretPrefix + base64.RawURLEncoding.EncodeToString(sealed), nil
+	return partnerSecretPrefix + base64.RawURLEncoding.EncodeToString(
+		sealed,
+	), nil
 
 }
 
@@ -43,13 +48,23 @@ func (r *Repository) decryptPartnerSecret(value *string) (*string, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(*value, partnerSecretPrefix))
+	raw, err := base64.RawURLEncoding.DecodeString(
+		strings.TrimPrefix(*value, partnerSecretPrefix),
+	)
 	if err != nil || len(raw) < aead.NonceSize() {
 		return nil, fmt.Errorf("tasks encrypted partner secret is invalid")
 	}
-	plain, err := aead.Open(nil, raw[:aead.NonceSize()], raw[aead.NonceSize():], nil)
+	plain, err := aead.Open(
+		nil,
+		raw[:aead.NonceSize()],
+		raw[aead.NonceSize():],
+		nil,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("tasks encrypted partner secret authentication failed: %w", err)
+		return nil, fmt.Errorf(
+			"tasks encrypted partner secret authentication failed: %w",
+			err,
+		)
 	}
 	result := string(plain)
 	return &result, nil
@@ -59,11 +74,16 @@ func (r *Repository) decryptPartnerSecret(value *string) (*string, error) {
 func (r *Repository) partnerSecretAEAD() (cipher.AEAD, error) {
 
 	if len(r.secretEncryptionKey) != 32 {
-		return nil, fmt.Errorf("tasks secret encryption key must contain 32 bytes")
+		return nil, fmt.Errorf(
+			"tasks secret encryption key must contain 32 bytes",
+		)
 	}
 	block, err := aes.NewCipher(r.secretEncryptionKey)
 	if err != nil {
-		return nil, fmt.Errorf("tasks partner secret cipher initialization failed: %w", err)
+		return nil, fmt.Errorf(
+			"tasks partner secret cipher initialization failed: %w",
+			err,
+		)
 	}
 	return cipher.NewGCM(block)
 
@@ -87,7 +107,13 @@ WHERE secret IS NOT NULL AND secret <> '' AND secret NOT LIKE 'v1:%'`)
 	items := make([]legacy, 0)
 	for rows.Next() {
 		var item legacy
-		if err := rows.Scan(&item.workspaceID, &item.provider, &item.groupKey, &item.platform, &item.secret); err != nil {
+		if err := rows.Scan(
+			&item.workspaceID,
+			&item.provider,
+			&item.groupKey,
+			&item.platform,
+			&item.secret,
+		); err != nil {
 			return err
 		}
 		items = append(items, item)

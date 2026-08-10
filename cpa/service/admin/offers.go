@@ -24,16 +24,25 @@ type UpsertOfferParams struct {
 	EndAt             *time.Time
 }
 
-func (a *Admin) UpsertOffer(ctx context.Context, params UpsertOfferParams) error {
+func (a *Admin) UpsertOffer(
+	ctx context.Context,
+	params UpsertOfferParams,
+) error {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	return a.repository.UpsertOffer(mergedCtx, repository.UpsertOfferParams(params))
+	return a.repository.UpsertOffer(
+		mergedCtx,
+		repository.UpsertOfferParams(params),
+	)
 
 }
 
-func (a *Admin) GetOffer(ctx context.Context, workspaceID, cpaID string) (OfferModel, error) {
+func (a *Admin) GetOffer(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) (OfferModel, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -47,27 +56,42 @@ func (a *Admin) GetOffer(ctx context.Context, workspaceID, cpaID string) (OfferM
 
 }
 
-func (a *Admin) ListOffers(ctx context.Context, workspaceID string, page Page) ([]OfferModel, error) {
+func (a *Admin) ListOffers(
+	ctx context.Context,
+	workspaceID string,
+	page Page,
+) ([]OfferModel, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
 	limit, offset := normalizePage(page)
-	bundles, err := a.repository.ListOfferBundles(mergedCtx, workspaceID, limit, offset)
+	bundles, err := a.repository.ListOfferBundles(
+		mergedCtx,
+		workspaceID,
+		limit,
+		offset,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	result := make([]OfferModel, 0, len(bundles))
 	for _, bundle := range bundles {
-		result = append(result, mapOffer(bundle.Offer, bundle.Localizations, bundle.Rewards))
+		result = append(
+			result,
+			mapOffer(bundle.Offer, bundle.Localizations, bundle.Rewards),
+		)
 	}
 
 	return result, nil
 
 }
 
-func (a *Admin) DeleteOffer(ctx context.Context, workspaceID, cpaID string) (int64, error) {
+func (a *Admin) DeleteOffer(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) (int64, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()

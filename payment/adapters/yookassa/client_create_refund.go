@@ -5,7 +5,11 @@ import (
 	"net/http"
 )
 
-func (c *Client) CreateRefund(ctx context.Context, payload createRefundRequest, idempotencyKey string) (refundAPIResponse, error) {
+func (c *Client) CreateRefund(
+	ctx context.Context,
+	payload createRefundRequest,
+	idempotencyKey string,
+) (refundAPIResponse, error) {
 	if err := c.requireCredentials(); err != nil {
 		return refundAPIResponse{}, err
 	}
@@ -21,8 +25,13 @@ func (c *Client) CreateRefund(ctx context.Context, payload createRefundRequest, 
 	if err != nil {
 		return refundAPIResponse{}, err
 	}
-	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusMultipleChoices {
-		return refundAPIResponse{}, wrapAPIError("create refund", resp.StatusCode(), resp.String())
+	if resp.StatusCode() < http.StatusOK ||
+		resp.StatusCode() >= http.StatusMultipleChoices {
+		return refundAPIResponse{}, wrapAPIError(
+			"create refund",
+			resp.StatusCode(),
+			resp.String(),
+		)
 	}
 	return result, nil
 }

@@ -27,5 +27,8 @@ var (
 		serviceerrors.CodeInvalidFields,
 		"reference admin type must be quantity or duration",
 	)
-	ErrItemTypeFilterInvalid = serviceerrors.New(serviceerrors.CodeInvalidFields, "reference admin invalid item type")
+	ErrItemTypeFilterInvalid = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"reference admin invalid item type",
+	)
 )

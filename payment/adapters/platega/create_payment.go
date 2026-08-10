@@ -6,12 +6,16 @@ import (
 	"strings"
 	"time"
 
+	json "github.com/goccy/go-json"
+
 	"github.com/elum2b/services/payment/repository"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
-	json "github.com/goccy/go-json"
 )
 
-func (a *Platega) CreatePayment(ctx context.Context, params CreatePaymentParams) (*CreatePaymentResponse, error) {
+func (a *Platega) CreatePayment(
+	ctx context.Context,
+	params CreatePaymentParams,
+) (*CreatePaymentResponse, error) {
 
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
@@ -34,30 +38,35 @@ func (a *Platega) CreatePayment(ctx context.Context, params CreatePaymentParams)
 		return nil, err
 	}
 
-	local, err := a.repository.CreateProviderAttempt(ctx, repository.ProviderAttemptCreateParams{
-		Order: repository.OrderCreateParams{
-			WorkspaceID:    params.WorkspaceID,
-			AppID:          params.AppID,
-			PlatformID:     params.PlatformID,
-			PlatformUserID: params.PlatformUserID,
-			InternalUserID: params.InternalUserID,
-			ProductID:      params.ProductID,
-			Quantity:       params.Quantity,
-			AssetCode:      AssetCode,
-			Locale:         normalizeLocale(params.Locale),
-			ReservedUntil:  params.ReservedUntil,
-			ExpiresAt:      params.ExpiresAt,
+	local, err := a.repository.CreateProviderAttempt(
+		ctx,
+		repository.ProviderAttemptCreateParams{
+			Order: repository.OrderCreateParams{
+				WorkspaceID:    params.WorkspaceID,
+				AppID:          params.AppID,
+				PlatformID:     params.PlatformID,
+				PlatformUserID: params.PlatformUserID,
+				InternalUserID: params.InternalUserID,
+				ProductID:      params.ProductID,
+				Quantity:       params.Quantity,
+				AssetCode:      AssetCode,
+				Locale:         normalizeLocale(params.Locale),
+				ReservedUntil:  params.ReservedUntil,
+				ExpiresAt:      params.ExpiresAt,
+			},
+			ProviderCode:       ProviderCode,
+			IdempotencyKey:     params.IdempotencyKey,
+			RequestFingerprint: fingerprint,
 		},
-		ProviderCode:       ProviderCode,
-		IdempotencyKey:     params.IdempotencyKey,
-		RequestFingerprint: fingerprint,
-	})
+	)
 	if err != nil {
 		return nil, err
 	}
 	order := local.Order
 	if local.AlreadyExists {
-		if local.Attempt.Status == string(paymentsqlc.PaymentAttemptStatusCreated) {
+		if local.Attempt.Status == string(
+			paymentsqlc.PaymentAttemptStatusCreated,
+		) {
 			return nil, ErrTransactionStateUnknown
 		}
 		return plategaExistingPaymentResponse(local, params.PaymentMethod)
@@ -85,8 +94,17 @@ func (a *Platega) CreatePayment(ctx context.Context, params CreatePaymentParams)
 	})
 	if err != nil {
 		if isDefinitiveAPIError(err) {
-			if failErr := a.repository.FailProviderAttempt(ctx, order.WorkspaceID, local.Attempt.ID, ProviderCode); failErr != nil {
-				return nil, fmt.Errorf("%w: fail local attempt: %v", err, failErr)
+			if failErr := a.repository.FailProviderAttempt(
+				ctx,
+				order.WorkspaceID,
+				local.Attempt.ID,
+				ProviderCode,
+			); failErr != nil {
+				return nil, fmt.Errorf(
+					"%w: fail local attempt: %v",
+					err,
+					failErr,
+				)
 			}
 		}
 		return nil, err
@@ -100,17 +118,20 @@ func (a *Platega) CreatePayment(ctx context.Context, params CreatePaymentParams)
 		paymentURL = transaction.Redirect
 	}
 
-	attempt, err := a.repository.BindProviderAttempt(ctx, repository.ProviderAttemptBindParams{
-		WorkspaceID:        order.WorkspaceID,
-		AttemptID:          local.Attempt.ID,
-		ProviderCode:       ProviderCode,
-		RequestFingerprint: fingerprint,
-		ProviderPaymentID:  transaction.TransactionID,
-		ProviderInvoiceID:  &order.PublicID,
-		ConfirmationURL:    nilIfEmpty(paymentURL),
-		ReturnURL:          nilIfEmpty(params.ReturnURL),
-		ExpiresAt:          params.ExpiresAt,
-	})
+	attempt, err := a.repository.BindProviderAttempt(
+		ctx,
+		repository.ProviderAttemptBindParams{
+			WorkspaceID:        order.WorkspaceID,
+			AttemptID:          local.Attempt.ID,
+			ProviderCode:       ProviderCode,
+			RequestFingerprint: fingerprint,
+			ProviderPaymentID:  transaction.TransactionID,
+			ProviderInvoiceID:  &order.PublicID,
+			ConfirmationURL:    nilIfEmpty(paymentURL),
+			ReturnURL:          nilIfEmpty(params.ReturnURL),
+			ExpiresAt:          params.ExpiresAt,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +245,10 @@ func plategaValueOrEmpty(value *string) string {
 	return *value
 }
 
-func (a *Platega) GetH2H(ctx context.Context, params GetH2HParams) (H2HResponse, error) {
+func (a *Platega) GetH2H(
+	ctx context.Context,
+	params GetH2HParams,
+) (H2HResponse, error) {
 
 	if a == nil {
 		return H2HResponse{}, ErrNotInitialized

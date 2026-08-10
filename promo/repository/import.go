@@ -15,7 +15,11 @@ import (
 	"github.com/elum2b/services/internal/utils/target"
 )
 
-func (r *Repository) PreviewImport(ctx context.Context, workspaceID string, pkg ExportPackage) (ImportPreview, error) {
+func (r *Repository) PreviewImport(
+	ctx context.Context,
+	workspaceID string,
+	pkg ExportPackage,
+) (ImportPreview, error) {
 	if err := validateExportPackage(workspaceID, pkg); err != nil {
 		return ImportPreview{}, err
 	}
@@ -40,7 +44,11 @@ func (r *Repository) PreviewImport(ctx context.Context, workspaceID string, pkg 
 	return preview, nil
 }
 
-func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportRequest) (ImportResult, error) {
+func (r *Repository) Import(
+	ctx context.Context,
+	workspaceID string,
+	req ImportRequest,
+) (ImportResult, error) {
 	if err := validateExportPackage(workspaceID, req.Package); err != nil {
 		return ImportResult{}, err
 	}
@@ -48,8 +56,12 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 	if strategy == "" {
 		strategy = ImportConflictFail
 	}
-	if strategy != ImportConflictFail && strategy != ImportConflictSkip && strategy != ImportConflictUpdate {
-		return ImportResult{}, fmt.Errorf("unsupported import conflict strategy: %s", strategy)
+	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
+		strategy != ImportConflictUpdate {
+		return ImportResult{}, fmt.Errorf(
+			"unsupported import conflict strategy: %s",
+			strategy,
+		)
 	}
 	result := ImportResult{}
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
@@ -62,10 +74,20 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 			return err
 		}
 		if strategy == ImportConflictFail && len(preview.Conflicts) > 0 {
-			return fmt.Errorf("import conflicts found: %d", len(preview.Conflicts))
+			return fmt.Errorf(
+				"import conflicts found: %d",
+				len(preview.Conflicts),
+			)
 		}
 
-		return txRepo.importBulk(ctx, workspaceID, req.Package, strategy, preview, &result)
+		return txRepo.importBulk(
+			ctx,
+			workspaceID,
+			req.Package,
+			strategy,
+			preview,
+			&result,
+		)
 	})
 	if err != nil {
 		return ImportResult{}, err
@@ -73,7 +95,10 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 	return result, r.invalidatePromoCache(workspaceID)
 }
 
-func (r *Repository) lockWorkspaceMutation(ctx context.Context, workspaceID string) error {
+func (r *Repository) lockWorkspaceMutation(
+	ctx context.Context,
+	workspaceID string,
+) error {
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return err
 	}
@@ -213,7 +238,8 @@ func (r *Repository) importPromosBulk(
 ) error {
 	rows := make([][]any, 0, len(promos))
 	for _, promo := range promos {
-		if previewHasConflict(preview, "promo", promo.Code) && strategy == ImportConflictSkip {
+		if previewHasConflict(preview, "promo", promo.Code) &&
+			strategy == ImportConflictSkip {
 			result.Skipped.Promos++
 			continue
 		}
@@ -261,7 +287,8 @@ func (r *Repository) importPromoIDs(
 ) (map[string]uint64, error) {
 	needed := make(map[string]struct{}, len(promos))
 	for _, promo := range promos {
-		if previewHasConflict(preview, "promo", promo.Code) && strategy == ImportConflictSkip {
+		if previewHasConflict(preview, "promo", promo.Code) &&
+			strategy == ImportConflictSkip {
 			continue
 		}
 		needed[normalizeCode(promo.Code)] = struct{}{}
@@ -290,7 +317,8 @@ func (r *Repository) importLocalizationsBulk(
 ) error {
 	rows := make([][]any, 0)
 	for _, promo := range promos {
-		if previewHasConflict(preview, "promo", promo.Code) && strategy == ImportConflictSkip {
+		if previewHasConflict(preview, "promo", promo.Code) &&
+			strategy == ImportConflictSkip {
 			continue
 		}
 		id := ids[normalizeCode(promo.Code)]
@@ -305,7 +333,9 @@ func (r *Repository) importLocalizationsBulk(
 			result.Imported.Localizations++
 		}
 	}
-	return r.execImportBulk(ctx, "promo_localization",
+	return r.execImportBulk(
+		ctx,
+		"promo_localization",
 		[]string{"workspace_id", "promo_id", "locale", "title", "description"},
 		rows,
 		"(workspace_id, promo_id, locale)",
@@ -325,7 +355,8 @@ func (r *Repository) importRewardsBulk(
 ) error {
 	rows := make([][]any, 0)
 	for _, promo := range promos {
-		if previewHasConflict(preview, "promo", promo.Code) && strategy == ImportConflictSkip {
+		if previewHasConflict(preview, "promo", promo.Code) &&
+			strategy == ImportConflictSkip {
 			continue
 		}
 		id := ids[normalizeCode(promo.Code)]
@@ -345,7 +376,15 @@ func (r *Repository) importRewardsBulk(
 	return r.execImportBulk(
 		ctx,
 		"promo_reward",
-		[]string{"workspace_id", "promo_id", "reward_key", "reward_type", "quantity", "scale", "duration_unit"},
+		[]string{
+			"workspace_id",
+			"promo_id",
+			"reward_key",
+			"reward_type",
+			"quantity",
+			"scale",
+			"duration_unit",
+		},
 		rows,
 		"(workspace_id, promo_id, reward_key)",
 		"reward_type = EXCLUDED.reward_type, quantity = EXCLUDED.quantity, scale = EXCLUDED.scale, duration_unit = EXCLUDED.duration_unit, updated_at = now()",
@@ -433,7 +472,11 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 		return err
 	}
 	if pkg.Format != ExportFormat || pkg.Service != "promo" {
-		return fmt.Errorf("unsupported export package: %s/%s", pkg.Service, pkg.Format)
+		return fmt.Errorf(
+			"unsupported export package: %s/%s",
+			pkg.Service,
+			pkg.Format,
+		)
 	}
 
 	promoCodes := make(map[string]int, len(pkg.Promos))
@@ -444,7 +487,11 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 			return fmt.Errorf("%s.code: code is required", prefix)
 		}
 		if previousIndex, exists := promoCodes[code]; exists {
-			return fmt.Errorf("%s.code: duplicates promos[%d].code", prefix, previousIndex)
+			return fmt.Errorf(
+				"%s.code: duplicates promos[%d].code",
+				prefix,
+				previousIndex,
+			)
 		}
 		promoCodes[code] = promoIndex
 
@@ -452,12 +499,16 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 			return fmt.Errorf("%s.payload: must be valid JSON", prefix)
 		}
 		if promo.MaxActivations > math.MaxInt64 {
-			return fmt.Errorf("%s.max_activations: numeric value is out of database range", prefix)
+			return fmt.Errorf(
+				"%s.max_activations: numeric value is out of database range",
+				prefix,
+			)
 		}
 		if err := target.Validate(promo.Target); err != nil {
 			return fmt.Errorf("%s.target: %w", prefix, err)
 		}
-		if promo.StartAt != nil && promo.EndAt != nil && !promo.StartAt.Before(*promo.EndAt) {
+		if promo.StartAt != nil && promo.EndAt != nil &&
+			!promo.StartAt.Before(*promo.EndAt) {
 			return fmt.Errorf("%s.start_at: must be before end_at", prefix)
 		}
 
@@ -466,14 +517,22 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 				return fmt.Errorf("%s.localization: locale is required", prefix)
 			}
 			if strings.TrimSpace(text.Title) == "" {
-				return fmt.Errorf("%s.localization.%s.title: title is required", prefix, locale)
+				return fmt.Errorf(
+					"%s.localization.%s.title: title is required",
+					prefix,
+					locale,
+				)
 			}
 		}
 
 		rewardKeys := make(map[string]int, len(promo.Rewards))
 		for rewardIndex, reward := range promo.Rewards {
 			if strings.TrimSpace(reward.Key) == "" {
-				return fmt.Errorf("%s.rewards[%d].key: key is required", prefix, rewardIndex)
+				return fmt.Errorf(
+					"%s.rewards[%d].key: key is required",
+					prefix,
+					rewardIndex,
+				)
 			}
 			if previousIndex, exists := rewardKeys[reward.Key]; exists {
 				return fmt.Errorf(
@@ -485,7 +544,12 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 			}
 			rewardKeys[reward.Key] = rewardIndex
 			if err := validateExportReward(reward); err != nil {
-				return fmt.Errorf("%s.rewards[%d]: %w", prefix, rewardIndex, err)
+				return fmt.Errorf(
+					"%s.rewards[%d]: %w",
+					prefix,
+					rewardIndex,
+					err,
+				)
 			}
 		}
 	}
@@ -535,7 +599,10 @@ func countPackage(pkg ExportPackage) ImportCounts {
 	return counts
 }
 
-func (r *Repository) importExistingPromoCodes(ctx context.Context, workspaceID string) (map[string]bool, error) {
+func (r *Repository) importExistingPromoCodes(
+	ctx context.Context,
+	workspaceID string,
+) (map[string]bool, error) {
 	rows, err := r.q.ListImportPromoCodes(ctx, workspaceID)
 	if err != nil {
 		return nil, err

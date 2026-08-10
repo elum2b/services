@@ -6,7 +6,10 @@ import (
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
 )
 
-func (r *PaymentRepository) GetAsset(ctx context.Context, code string) (paymentsqlc.PaymentAsset, error) {
+func (r *PaymentRepository) GetAsset(
+	ctx context.Context,
+	code string,
+) (paymentsqlc.PaymentAsset, error) {
 	key := paymentCacheKey("asset", code)
 	return queryPaymentCache(
 		ctx,
@@ -23,7 +26,12 @@ func (r *PaymentRepository) GetAssetByChainContract(
 	ctx context.Context,
 	params paymentsqlc.GetAssetByChainContractParams,
 ) (AdminAssetModel, error) {
-	key := paymentCacheKey("asset_chain_contract", params.Chain, params.Network, params.ContractAddress)
+	key := paymentCacheKey(
+		"asset_chain_contract",
+		params.Chain,
+		params.Network,
+		params.ContractAddress,
+	)
 	row, err := queryPaymentCache(
 		ctx,
 		r,
@@ -144,7 +152,9 @@ func (r *PaymentRepository) AdminUpdateProviderTransactionStatus(
 	return r.q.AdminUpdateProviderTransactionStatus(ctx, params)
 }
 
-func validProviderTransactionStatus(status paymentsqlc.PaymentProviderTransactionStatus) bool {
+func validProviderTransactionStatus(
+	status paymentsqlc.PaymentProviderTransactionStatus,
+) bool {
 
 	switch status {
 	case paymentsqlc.PaymentProviderTransactionStatusNew,

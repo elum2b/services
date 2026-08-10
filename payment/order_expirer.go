@@ -28,9 +28,14 @@ func (a *Payment) startOrderExpirationWorker() {
 		a.orderExpirationBatch = defaultOrderExpirationBatch
 	}
 
-	a.goroutines.GoRestart(a.rootCtx, "payment.order_expirer", time.Second, func() {
-		a.orderExpirationLoop()
-	})
+	a.goroutines.GoRestart(
+		a.rootCtx,
+		"payment.order_expirer",
+		time.Second,
+		func() {
+			a.orderExpirationLoop()
+		},
+	)
 }
 
 func (a *Payment) orderExpirationLoop() {

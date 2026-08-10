@@ -22,20 +22,32 @@ type SaveRewardParams struct {
 	Position    uint32
 }
 
-func (a *Admin) CreateReward(ctx context.Context, params SaveRewardParams) (uint64, error) {
+func (a *Admin) CreateReward(
+	ctx context.Context,
+	params SaveRewardParams,
+) (uint64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := validateReward(params); err != nil {
 		return 0, err
 	}
-	return a.repository.UpsertReward(mergedCtx, params.WorkspaceID, params.CalendarID,
-		params.StepID, repository.Reward{
+	return a.repository.UpsertReward(
+		mergedCtx,
+		params.WorkspaceID,
+		params.CalendarID,
+		params.StepID,
+		repository.Reward{
 			Key: params.Key, Type: normalizedRewardType(params.Type),
 			Quantity: params.Quantity, Scale: params.Scale, Unit: params.Unit,
-		}, params.Position)
+		},
+		params.Position,
+	)
 }
 
-func (a *Admin) UpdateReward(ctx context.Context, params SaveRewardParams) (int64, error) {
+func (a *Admin) UpdateReward(
+	ctx context.Context,
+	params SaveRewardParams,
+) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if params.ID == 0 {
@@ -44,15 +56,25 @@ func (a *Admin) UpdateReward(ctx context.Context, params SaveRewardParams) (int6
 	if err := validateReward(params); err != nil {
 		return 0, err
 	}
-	return a.repository.UpdateReward(mergedCtx, params.WorkspaceID, params.CalendarID,
-		params.StepID, params.ID, repository.Reward{
+	return a.repository.UpdateReward(
+		mergedCtx,
+		params.WorkspaceID,
+		params.CalendarID,
+		params.StepID,
+		params.ID,
+		repository.Reward{
 			Key: params.Key, Type: normalizedRewardType(params.Type),
 			Quantity: params.Quantity, Scale: params.Scale, Unit: params.Unit,
 		},
-		params.Position)
+		params.Position,
+	)
 }
 
-func (a *Admin) GetReward(ctx context.Context, workspaceID, calendarID string, id uint64) (user.RewardModel, error) {
+func (a *Admin) GetReward(
+	ctx context.Context,
+	workspaceID, calendarID string,
+	id uint64,
+) (user.RewardModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
@@ -67,11 +89,18 @@ func (a *Admin) GetReward(ctx context.Context, workspaceID, calendarID string, i
 		return user.RewardModel{}, err
 	}
 	return user.RewardModel{
-		Key: value.Key, Type: value.Type, Quantity: value.Quantity, Scale: value.Scale, Unit: value.Unit,
+		Key:      value.Key,
+		Type:     value.Type,
+		Quantity: value.Quantity,
+		Scale:    value.Scale,
+		Unit:     value.Unit,
 	}, nil
 }
 
-func (a *Admin) ListRewards(ctx context.Context, workspaceID, calendarID string) ([]user.RewardModel, error) {
+func (a *Admin) ListRewards(
+	ctx context.Context,
+	workspaceID, calendarID string,
+) ([]user.RewardModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	values, err := a.repository.ListRewards(mergedCtx, workspaceID, calendarID)
@@ -80,12 +109,25 @@ func (a *Admin) ListRewards(ctx context.Context, workspaceID, calendarID string)
 	}
 	result := make([]user.RewardModel, 0, len(values))
 	for _, value := range values {
-		result = append(result, user.RewardModel{Key: value.Key, Type: value.Type, Quantity: value.Quantity, Scale: value.Scale, Unit: value.Unit})
+		result = append(
+			result,
+			user.RewardModel{
+				Key:      value.Key,
+				Type:     value.Type,
+				Quantity: value.Quantity,
+				Scale:    value.Scale,
+				Unit:     value.Unit,
+			},
+		)
 	}
 	return result, nil
 }
 
-func (a *Admin) DeleteReward(ctx context.Context, workspaceID, calendarID string, id uint64) (int64, error) {
+func (a *Admin) DeleteReward(
+	ctx context.Context,
+	workspaceID, calendarID string,
+	id uint64,
+) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {

@@ -32,7 +32,10 @@ var (
 	)
 )
 
-func (r *PaymentRepository) AdminGetProvider(ctx context.Context, code string) (AdminProviderModel, error) {
+func (r *PaymentRepository) AdminGetProvider(
+	ctx context.Context,
+	code string,
+) (AdminProviderModel, error) {
 	row, err := r.q.AdminGetProvider(ctx, code)
 	return mapAdminResult(row, err, mapAdminProvider)
 }
@@ -48,27 +51,39 @@ type ProviderUpsertParams struct {
 	IsActive         bool
 }
 
-func (r *PaymentRepository) UpsertProvider(ctx context.Context, params ProviderUpsertParams) error {
-	if strings.TrimSpace(params.Code) == "" || strings.TrimSpace(params.Title) == "" ||
+func (r *PaymentRepository) UpsertProvider(
+	ctx context.Context,
+	params ProviderUpsertParams,
+) error {
+	if strings.TrimSpace(params.Code) == "" ||
+		strings.TrimSpace(params.Title) == "" ||
 		!validProviderKind(params.ProviderKind) {
 		return ErrInvalidProvider
 	}
-	if err := r.q.AdminUpsertProvider(ctx, paymentsqlc.AdminUpsertProviderParams{
-		Code:             params.Code,
-		Title:            params.Title,
-		ProviderKind:     paymentsqlc.PaymentProviderProviderKind(params.ProviderKind),
-		SupportsCreate:   params.SupportsCreate,
-		SupportsRedirect: params.SupportsRedirect,
-		SupportsWebhook:  params.SupportsWebhook,
-		SupportsRefund:   params.SupportsRefund,
-		IsActive:         params.IsActive,
-	}); err != nil {
+	if err := r.q.AdminUpsertProvider(
+		ctx,
+		paymentsqlc.AdminUpsertProviderParams{
+			Code:  params.Code,
+			Title: params.Title,
+			ProviderKind: paymentsqlc.PaymentProviderProviderKind(
+				params.ProviderKind,
+			),
+			SupportsCreate:   params.SupportsCreate,
+			SupportsRedirect: params.SupportsRedirect,
+			SupportsWebhook:  params.SupportsWebhook,
+			SupportsRefund:   params.SupportsRefund,
+			IsActive:         params.IsActive,
+		},
+	); err != nil {
 		return err
 	}
 	return r.invalidateAllCache()
 }
 
-func (r *PaymentRepository) AdminDeleteProvider(ctx context.Context, code string) (int64, error) {
+func (r *PaymentRepository) AdminDeleteProvider(
+	ctx context.Context,
+	code string,
+) (int64, error) {
 	rows, err := r.q.AdminDeleteProvider(ctx, code)
 	if err != nil {
 		return 0, err
@@ -76,12 +91,18 @@ func (r *PaymentRepository) AdminDeleteProvider(ctx context.Context, code string
 	return rows, r.invalidateAllCache()
 }
 
-func (r *PaymentRepository) AdminGetAsset(ctx context.Context, code string) (AdminAssetModel, error) {
+func (r *PaymentRepository) AdminGetAsset(
+	ctx context.Context,
+	code string,
+) (AdminAssetModel, error) {
 	row, err := r.q.AdminGetAsset(ctx, code)
 	return mapAdminResult(row, err, mapAdminAsset)
 }
 
-func (r *PaymentRepository) AdminUpsertAsset(ctx context.Context, params paymentsqlc.UpsertAssetParams) error {
+func (r *PaymentRepository) AdminUpsertAsset(
+	ctx context.Context,
+	params paymentsqlc.UpsertAssetParams,
+) error {
 	return r.UpsertAsset(ctx, AssetUpsertParams{
 		Code:            params.Code,
 		Title:           params.Title,
@@ -94,13 +115,19 @@ func (r *PaymentRepository) AdminUpsertAsset(ctx context.Context, params payment
 	})
 }
 
-func (r *PaymentRepository) AdminDeleteAsset(ctx context.Context, code string) (int64, error) {
+func (r *PaymentRepository) AdminDeleteAsset(
+	ctx context.Context,
+	code string,
+) (int64, error) {
 	var rows int64
 	err := r.inTransaction(ctx, func(tx *PaymentRepository) error {
-		if _, err := tx.q.DeleteAssetRatesForAsset(ctx, paymentsqlc.DeleteAssetRatesForAssetParams{
-			AssetCode:          code,
-			ReferenceAssetCode: code,
-		}); err != nil {
+		if _, err := tx.q.DeleteAssetRatesForAsset(
+			ctx,
+			paymentsqlc.DeleteAssetRatesForAssetParams{
+				AssetCode:          code,
+				ReferenceAssetCode: code,
+			},
+		); err != nil {
 			return err
 		}
 		deleted, err := tx.q.DeleteAsset(ctx, code)
@@ -299,10 +326,13 @@ func (r *PaymentRepository) AdminGetOrder(
 	workspaceID string,
 	id uint64,
 ) (AdminOrderModel, error) {
-	row, err := r.q.AdminGetOrderForWorkspace(ctx, paymentsqlc.AdminGetOrderForWorkspaceParams{
-		WorkspaceID: workspaceID,
-		ID:          int64(id),
-	})
+	row, err := r.q.AdminGetOrderForWorkspace(
+		ctx,
+		paymentsqlc.AdminGetOrderForWorkspaceParams{
+			WorkspaceID: workspaceID,
+			ID:          int64(id),
+		},
+	)
 	return mapAdminResult(row, err, mapAdminOrder)
 }
 
@@ -311,10 +341,13 @@ func (r *PaymentRepository) AdminGetOrderByPublicID(
 	workspaceID string,
 	publicID string,
 ) (AdminOrderModel, error) {
-	row, err := r.q.AdminGetOrderByPublicIDForWorkspace(ctx, paymentsqlc.AdminGetOrderByPublicIDForWorkspaceParams{
-		WorkspaceID: workspaceID,
-		PublicID:    publicID,
-	})
+	row, err := r.q.AdminGetOrderByPublicIDForWorkspace(
+		ctx,
+		paymentsqlc.AdminGetOrderByPublicIDForWorkspaceParams{
+			WorkspaceID: workspaceID,
+			PublicID:    publicID,
+		},
+	)
 	return mapAdminResult(row, err, mapAdminOrder)
 }
 
@@ -331,10 +364,13 @@ func (r *PaymentRepository) AdminGetPaymentAttempt(
 	workspaceID string,
 	id uint64,
 ) (AdminPaymentAttemptModel, error) {
-	row, err := r.q.AdminGetPaymentAttemptForWorkspace(ctx, paymentsqlc.AdminGetPaymentAttemptForWorkspaceParams{
-		WorkspaceID: workspaceID,
-		ID:          int64(id),
-	})
+	row, err := r.q.AdminGetPaymentAttemptForWorkspace(
+		ctx,
+		paymentsqlc.AdminGetPaymentAttemptForWorkspaceParams{
+			WorkspaceID: workspaceID,
+			ID:          int64(id),
+		},
+	)
 	return mapAdminResult(row, err, mapAdminPaymentAttempt)
 }
 
@@ -387,10 +423,13 @@ func (r *PaymentRepository) AdminGetPaymentEvent(
 	workspaceID string,
 	id uint64,
 ) (AdminPaymentEventModel, error) {
-	row, err := r.q.AdminGetPaymentEventForWorkspace(ctx, paymentsqlc.AdminGetPaymentEventForWorkspaceParams{
-		WorkspaceID: workspaceID,
-		ID:          int64(id),
-	})
+	row, err := r.q.AdminGetPaymentEventForWorkspace(
+		ctx,
+		paymentsqlc.AdminGetPaymentEventForWorkspaceParams{
+			WorkspaceID: workspaceID,
+			ID:          int64(id),
+		},
+	)
 	return mapAdminResult(row, err, mapAdminPaymentEvent)
 }
 
@@ -446,10 +485,13 @@ func (r *PaymentRepository) AdminGetFulfillment(
 	workspaceID string,
 	id uint64,
 ) (AdminFulfillmentModel, error) {
-	row, err := r.q.AdminGetFulfillmentForWorkspace(ctx, paymentsqlc.AdminGetFulfillmentForWorkspaceParams{
-		WorkspaceID: workspaceID,
-		ID:          int64(id),
-	})
+	row, err := r.q.AdminGetFulfillmentForWorkspace(
+		ctx,
+		paymentsqlc.AdminGetFulfillmentForWorkspaceParams{
+			WorkspaceID: workspaceID,
+			ID:          int64(id),
+		},
+	)
 	return mapAdminResult(row, err, mapAdminFulfillment)
 }
 
@@ -498,7 +540,9 @@ func validPaymentAttemptStatus(status paymentsqlc.PaymentAttemptStatus) bool {
 	}
 }
 
-func validPaymentFulfillmentStatus(status paymentsqlc.PaymentFulfillmentStatus) bool {
+func validPaymentFulfillmentStatus(
+	status paymentsqlc.PaymentFulfillmentStatus,
+) bool {
 	switch status {
 	case paymentsqlc.PaymentFulfillmentStatusPending,
 		paymentsqlc.PaymentFulfillmentStatusSucceeded,
@@ -539,9 +583,12 @@ func (r *PaymentRepository) AdminGetRefund(
 	workspaceID string,
 	id uint64,
 ) (AdminRefundModel, error) {
-	row, err := r.q.AdminGetRefundForWorkspace(ctx, paymentsqlc.AdminGetRefundForWorkspaceParams{
-		WorkspaceID: workspaceID,
-		ID:          int64(id),
-	})
+	row, err := r.q.AdminGetRefundForWorkspace(
+		ctx,
+		paymentsqlc.AdminGetRefundForWorkspaceParams{
+			WorkspaceID: workspaceID,
+			ID:          int64(id),
+		},
+	)
 	return mapAdminResult(row, err, mapAdminRefund)
 }

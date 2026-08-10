@@ -22,28 +22,49 @@ func TestMatchAllCriteria(t *testing.T) {
 		"country": ["us", "de"],
 		"loc": ["en", "ru"]
 	}`)
-	if !Match(raw, Context{IsPremium: true, Sex: "MAN", Country: "US", Locale: "en"}) {
+	if !Match(
+		raw,
+		Context{IsPremium: true, Sex: "MAN", Country: "US", Locale: "en"},
+	) {
 		t.Fatal("matching criteria should allow")
 	}
-	if Match(raw, Context{IsPremium: false, Sex: "man", Country: "us", Locale: "en"}) {
+	if Match(
+		raw,
+		Context{IsPremium: false, Sex: "man", Country: "us", Locale: "en"},
+	) {
 		t.Fatal("premium mismatch should deny")
 	}
-	if Match(raw, Context{IsPremium: true, Sex: "woman", Country: "us", Locale: "en"}) {
+	if Match(
+		raw,
+		Context{IsPremium: true, Sex: "woman", Country: "us", Locale: "en"},
+	) {
 		t.Fatal("sex mismatch should deny")
 	}
-	if Match(raw, Context{IsPremium: true, Sex: "man", Country: "fr", Locale: "en"}) {
+	if Match(
+		raw,
+		Context{IsPremium: true, Sex: "man", Country: "fr", Locale: "en"},
+	) {
 		t.Fatal("country mismatch should deny")
 	}
-	if Match(raw, Context{IsPremium: true, Sex: "man", Country: "us", Locale: "tr"}) {
+	if Match(
+		raw,
+		Context{IsPremium: true, Sex: "man", Country: "us", Locale: "tr"},
+	) {
 		t.Fatal("locale mismatch should deny")
 	}
 }
 
 func TestMatchStringAliases(t *testing.T) {
-	if !Match(json.RawMessage(`{"countries":"ru","locale":"ru"}`), Context{Country: "RU", Locale: "ru"}) {
+	if !Match(
+		json.RawMessage(`{"countries":"ru","locale":"ru"}`),
+		Context{Country: "RU", Locale: "ru"},
+	) {
 		t.Fatal("string country and locale aliases should match")
 	}
-	if !Match(json.RawMessage(`{"locales":["en","ru"]}`), Context{Locale: "ru"}) {
+	if !Match(
+		json.RawMessage(`{"locales":["en","ru"]}`),
+		Context{Locale: "ru"},
+	) {
 		t.Fatal("locales alias should match")
 	}
 }
@@ -52,16 +73,25 @@ func TestMatchPlatform(t *testing.T) {
 	if !Match(json.RawMessage(`{"platform_id":10}`), Context{PlatformID: 10}) {
 		t.Fatal("numeric platform_id should match platform id")
 	}
-	if !Match(json.RawMessage(`{"platform_ids":[10,"20"]}`), Context{PlatformID: 20}) {
+	if !Match(
+		json.RawMessage(`{"platform_ids":[10,"20"]}`),
+		Context{PlatformID: 20},
+	) {
 		t.Fatal("mixed platform_ids should match platform id")
 	}
-	if !Match(json.RawMessage(`{"platform":["vkma","tma"]}`), Context{Platform: "TMA"}) {
+	if !Match(
+		json.RawMessage(`{"platform":["vkma","tma"]}`),
+		Context{Platform: "TMA"},
+	) {
 		t.Fatal("platform keys should match platform")
 	}
 	if !Match(json.RawMessage(`{"platform":10}`), Context{PlatformID: 10}) {
 		t.Fatal("numeric platform should match platform id")
 	}
-	if Match(json.RawMessage(`{"platform":["vkma"]}`), Context{Platform: "ok", PlatformID: 10}) {
+	if Match(
+		json.RawMessage(`{"platform":["vkma"]}`),
+		Context{Platform: "ok", PlatformID: 10},
+	) {
 		t.Fatal("platform mismatch should deny")
 	}
 }
@@ -108,7 +138,14 @@ func TestValidateRejectsInvalidRules(t *testing.T) {
 }
 
 func BenchmarkMatchEmptyTarget(b *testing.B) {
-	ctx := Context{IsPremium: true, Sex: "man", Country: "us", Locale: "en", Platform: "tma", PlatformID: 10}
+	ctx := Context{
+		IsPremium:  true,
+		Sex:        "man",
+		Country:    "us",
+		Locale:     "en",
+		Platform:   "tma",
+		PlatformID: 10,
+	}
 	for b.Loop() {
 		_ = Match(nil, ctx)
 	}
@@ -123,7 +160,14 @@ func BenchmarkMatchFullTarget(b *testing.B) {
 		"platform": ["vkma", "tma"],
 		"platform_ids": [10, 20]
 	}`)
-	ctx := Context{IsPremium: true, Sex: "man", Country: "us", Locale: "en", Platform: "tma", PlatformID: 10}
+	ctx := Context{
+		IsPremium:  true,
+		Sex:        "man",
+		Country:    "us",
+		Locale:     "en",
+		Platform:   "tma",
+		PlatformID: 10,
+	}
 	for b.Loop() {
 		_ = Match(raw, ctx)
 	}

@@ -6,13 +6,13 @@ import (
 	"errors"
 	"sync"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+
 	serviceerrors "github.com/elum2b/services/errors"
 	callbackutil "github.com/elum2b/services/internal/utils/callback"
 	"github.com/elum2b/services/internal/utils/contextutil"
 	goroutinemanager "github.com/elum2b/services/internal/utils/goroutine"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	_ "github.com/jackc/pgx/v5/stdlib"
-
 	"github.com/elum2b/services/promo/repository"
 	"github.com/elum2b/services/promo/service/admin"
 	"github.com/elum2b/services/promo/service/user"
@@ -36,10 +36,18 @@ type Promo struct {
 
 func New() *Promo { return newPromo(context.Background(), sqlwrap.NewUnavailable(), true, Options{}) }
 
-func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Promo, error) {
+func NewWithDatabase(
+	ctx context.Context,
+	db *sql.DB,
+	options Options,
+) (*Promo, error) {
 	client, err := sqlwrap.New(db, toSQLWrapOptions(options))
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "promo sql client initialization failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"promo sql client initialization failed",
+			err,
+		)
 	}
 	return newPromo(ctx, client, false, options), nil
 }
@@ -97,12 +105,20 @@ func open(ctx context.Context, params DatabaseParams) (*Promo, error) {
 	}
 	db, err := openPostgres(ctx, params)
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeUnavailable, "promo database connection failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeUnavailable,
+			"promo database connection failed",
+			err,
+		)
 	}
 	client, err := sqlwrap.New(db, toSQLWrapOptions(params.Options))
 	if err != nil {
 		_ = db.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "promo sql client initialization failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"promo sql client initialization failed",
+			err,
+		)
 	}
 	bootstrap := repository.NewWithOptions(client, repository.Options{
 		QueryTimeout:             params.Options.QueryTimeout,
@@ -113,11 +129,19 @@ func open(ctx context.Context, params DatabaseParams) (*Promo, error) {
 	if err := bootstrap.Bootstrap(ctx); err != nil {
 		_ = bootstrap.Close()
 		_ = client.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "promo bootstrap failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"promo bootstrap failed",
+			err,
+		)
 	}
 	if err := bootstrap.Close(); err != nil {
 		_ = client.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "promo bootstrap shutdown failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"promo bootstrap shutdown failed",
+			err,
+		)
 	}
 	return newPromo(ctx, client, true, params.Options), nil
 }
@@ -132,8 +156,13 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 		port = 5432
 	}
 	dsn, err := sqlwrap.PostgresDSN(sqlwrap.PostgresParams{
-		User: params.User, Password: params.Password, Database: params.Database,
-		Host: host, Port: port, SSLMode: params.SSLMode, SSLRootCert: params.SSLRootCert,
+		User:        params.User,
+		Password:    params.Password,
+		Database:    params.Database,
+		Host:        host,
+		Port:        port,
+		SSLMode:     params.SSLMode,
+		SSLRootCert: params.SSLRootCert,
 	})
 	if err != nil {
 		return nil, err
@@ -158,7 +187,12 @@ func (p *Promo) adopt(running *Promo) {
 	p.goroutines = running.goroutines
 }
 
-func newPromo(ctx context.Context, db *sqlwrap.Client, ownsClient bool, options Options) *Promo {
+func newPromo(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	ownsClient bool,
+	options Options,
+) *Promo {
 	rootCtx, cancel := context.WithCancel(contextutil.Normalize(ctx))
 	repositoryOptions := repository.Options{
 		QueryTimeout:             options.QueryTimeout,
@@ -167,8 +201,16 @@ func newPromo(ctx context.Context, db *sqlwrap.Client, ownsClient bool, options 
 		OnCacheInvalidationError: options.OnCacheInvalidationError,
 	}
 	return &Promo{
-		Admin:      admin.NewWithRepositoryOptions(rootCtx, db, repositoryOptions),
-		User:       user.NewWithRepositoryOptions(rootCtx, db, repositoryOptions),
+		Admin: admin.NewWithRepositoryOptions(
+			rootCtx,
+			db,
+			repositoryOptions,
+		),
+		User: user.NewWithRepositoryOptions(
+			rootCtx,
+			db,
+			repositoryOptions,
+		),
 		callbacks:  callbackutil.NewWithTable(db.DB(), callbackutil.PromoTable),
 		client:     db,
 		ownsClient: ownsClient,
@@ -211,10 +253,15 @@ func (p *Promo) IsReady() bool {
 	}
 	p.lifecycleMu.Lock()
 	defer p.lifecycleMu.Unlock()
-	return p.rootCtx != nil && p.rootCtx.Err() == nil && !p.client.IsUnavailable() && p.Admin != nil && p.User != nil
+	return p.rootCtx != nil && p.rootCtx.Err() == nil &&
+		!p.client.IsUnavailable() &&
+		p.Admin != nil &&
+		p.User != nil
 }
 
-func (p *Promo) bindContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (p *Promo) bindContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	if p == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}

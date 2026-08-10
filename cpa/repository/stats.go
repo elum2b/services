@@ -7,22 +7,31 @@ import (
 	cpasqlc "github.com/elum2b/services/cpa/sqlc"
 )
 
-func (r *Repository) GetStats(ctx context.Context, workspaceID, cpaID string) (Stats, error) {
+func (r *Repository) GetStats(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) (Stats, error) {
 	if err := requireScope(workspaceID, cpaID); err != nil {
 		return Stats{}, err
 	}
 
-	assignmentStats, err := r.q.AdminGetOfferStats(ctx, cpasqlc.AdminGetOfferStatsParams{
-		WorkspaceID: workspaceID,
-		CpaID:       cpaID,
-	})
+	assignmentStats, err := r.q.AdminGetOfferStats(
+		ctx,
+		cpasqlc.AdminGetOfferStatsParams{
+			WorkspaceID: workspaceID,
+			CpaID:       cpaID,
+		},
+	)
 	if err != nil {
 		return Stats{}, err
 	}
-	codeStats, err := r.q.AdminGetCodeStats(ctx, cpasqlc.AdminGetCodeStatsParams{
-		WorkspaceID: workspaceID,
-		CpaID:       cpaID,
-	})
+	codeStats, err := r.q.AdminGetCodeStats(
+		ctx,
+		cpasqlc.AdminGetCodeStatsParams{
+			WorkspaceID: workspaceID,
+			CpaID:       cpaID,
+		},
+	)
 	if err != nil {
 		return Stats{}, err
 	}
@@ -39,7 +48,11 @@ func (r *Repository) GetStats(ctx context.Context, workspaceID, cpaID string) (S
 	}, nil
 }
 
-func (r *Repository) ListDailyStats(ctx context.Context, workspaceID, cpaID string, from, until time.Time) ([]DailyStats, error) {
+func (r *Repository) ListDailyStats(
+	ctx context.Context,
+	workspaceID, cpaID string,
+	from, until time.Time,
+) ([]DailyStats, error) {
 	if err := requireScope(workspaceID, cpaID); err != nil {
 		return nil, err
 	}
@@ -68,7 +81,11 @@ func (r *Repository) ListDailyStats(ctx context.Context, workspaceID, cpaID stri
 	return result, nil
 }
 
-func (r *Repository) RefreshDailyStats(ctx context.Context, workspaceID string, from, until time.Time) error {
+func (r *Repository) RefreshDailyStats(
+	ctx context.Context,
+	workspaceID string,
+	from, until time.Time,
+) error {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return err
 	}

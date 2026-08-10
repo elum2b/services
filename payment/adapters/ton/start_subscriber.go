@@ -17,7 +17,10 @@ type SubscriberParams struct {
 	WalletAddress    string
 }
 
-func (a *TON) StartSubscriber(ctx context.Context, params SubscriberParams) (*Sub, error) {
+func (a *TON) StartSubscriber(
+	ctx context.Context,
+	params SubscriberParams,
+) (*Sub, error) {
 	params.NetworkConfigURL = strings.TrimSpace(params.NetworkConfigURL)
 	params.WalletAddress = strings.TrimSpace(params.WalletAddress)
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
@@ -30,7 +33,10 @@ func (a *TON) StartSubscriber(ctx context.Context, params SubscriberParams) (*Su
 	if err != nil {
 		return nil, err
 	}
-	params.WalletAddress, err = NormalizeWalletAddress(params.WalletAddress, network)
+	params.WalletAddress, err = NormalizeWalletAddress(
+		params.WalletAddress,
+		network,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -38,12 +44,15 @@ func (a *TON) StartSubscriber(ctx context.Context, params SubscriberParams) (*Su
 		params.NetworkConfigURL = defaultNetworkConfigURL(network)
 	}
 	lastLT := uint64(0)
-	cursor, err := a.repository.GetProviderCursor(ctx, paymentsqlc.GetProviderCursorParams{
-		WorkspaceID:  params.WorkspaceID,
-		ProviderCode: ProviderCode,
-		Network:      network,
-		SourceKey:    params.WalletAddress,
-	})
+	cursor, err := a.repository.GetProviderCursor(
+		ctx,
+		paymentsqlc.GetProviderCursorParams{
+			WorkspaceID:  params.WorkspaceID,
+			ProviderCode: ProviderCode,
+			Network:      network,
+			SourceKey:    params.WalletAddress,
+		},
+	)
 	if err == nil {
 		lastLT = uint64(cursor.CursorSequence)
 	} else if err != sql.ErrNoRows {
@@ -51,7 +60,13 @@ func (a *TON) StartSubscriber(ctx context.Context, params SubscriberParams) (*Su
 	}
 
 	runCtx, cancel := a.bindContext(ctx)
-	sub, err := NewSub(runCtx, cancel, params.WalletAddress, params.NetworkConfigURL, lastLT)
+	sub, err := NewSub(
+		runCtx,
+		cancel,
+		params.WalletAddress,
+		params.NetworkConfigURL,
+		lastLT,
+	)
 	if err != nil {
 		cancel()
 		return nil, err

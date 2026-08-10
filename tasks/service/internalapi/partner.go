@@ -66,7 +66,10 @@ type PartnerWebhookParams struct {
 	Now         time.Time
 }
 
-func (i *Internal) OnPartnerCallback(ctx context.Context, params PartnerCallbackParams) (PartnerCallbackResult, error) {
+func (i *Internal) OnPartnerCallback(
+	ctx context.Context,
+	params PartnerCallbackParams,
+) (PartnerCallbackResult, error) {
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
@@ -74,7 +77,9 @@ func (i *Internal) OnPartnerCallback(ctx context.Context, params PartnerCallback
 		return PartnerCallbackResult{}, err
 	}
 	if params.Provider == "" {
-		return PartnerCallbackResult{Status: repository.ClaimStatusNotFound}, nil
+		return PartnerCallbackResult{
+			Status: repository.ClaimStatusNotFound,
+		}, nil
 	}
 
 	issueID := params.IssueID
@@ -111,26 +116,39 @@ func (i *Internal) OnPartnerCallback(ctx context.Context, params PartnerCallback
 				},
 			)
 		} else if len(params.Lookup.PrivatePayload) > 0 && params.Lookup.PlatformUserID != "" {
-			issue, found, err = i.lookupPartnerIssueByPrivatePayloadList(mergedCtx, params, params.Lookup.PrivatePayload, params.Lookup.PlatformUserID)
+			issue, found, err = i.lookupPartnerIssueByPrivatePayloadList(
+				mergedCtx,
+				params,
+				params.Lookup.PrivatePayload,
+				params.Lookup.PlatformUserID,
+			)
 		} else {
-			return PartnerCallbackResult{Status: repository.ClaimStatusNotFound}, nil
+			return PartnerCallbackResult{
+				Status: repository.ClaimStatusNotFound,
+			}, nil
 		}
 		if err != nil {
 			if errors.Is(err, repository.ErrPartnerIssueAmbiguous) {
-				return PartnerCallbackResult{Status: PartnerCallbackStatusAmbiguous}, nil
+				return PartnerCallbackResult{
+					Status: PartnerCallbackStatusAmbiguous,
+				}, nil
 			}
 
 			return PartnerCallbackResult{}, err
 		}
 		if !found {
-			return PartnerCallbackResult{Status: repository.ClaimStatusNotFound}, nil
+			return PartnerCallbackResult{
+				Status: repository.ClaimStatusNotFound,
+			}, nil
 		}
 		issueID = issue.ID
 		params.GroupKey = issue.GroupKey
 		params.Platform = issue.Platform
 	}
 	if params.GroupKey == "" || params.Platform == "" {
-		return PartnerCallbackResult{Status: repository.ClaimStatusNotFound}, nil
+		return PartnerCallbackResult{
+			Status: repository.ClaimStatusNotFound,
+		}, nil
 	}
 
 	scope := repository.PartnerIssueScope{
@@ -141,7 +159,10 @@ func (i *Internal) OnPartnerCallback(ctx context.Context, params PartnerCallback
 	}
 
 	switch params.Status {
-	case repository.PartnerIssueStatusCompleted, "complete", "step_completed", "subscribed":
+	case repository.PartnerIssueStatusCompleted,
+		"complete",
+		"step_completed",
+		"subscribed":
 		issue, changed, err := i.repository.CompletePartnerIssue(
 			mergedCtx,
 			scope,
@@ -154,10 +175,15 @@ func (i *Internal) OnPartnerCallback(ctx context.Context, params PartnerCallback
 			return PartnerCallbackResult{}, err
 		}
 		if issue.ID == 0 {
-			return PartnerCallbackResult{Status: repository.ClaimStatusNotFound}, nil
+			return PartnerCallbackResult{
+				Status: repository.ClaimStatusNotFound,
+			}, nil
 		}
 		if !changed {
-			return PartnerCallbackResult{Status: issue.Status, Issue: &issue}, nil
+			return PartnerCallbackResult{
+				Status: issue.Status,
+				Issue:  &issue,
+			}, nil
 		}
 		return PartnerCallbackResult{Status: issue.Status, Issue: &issue}, nil
 	case PartnerCallbackStatusRevoked,
@@ -178,10 +204,15 @@ func (i *Internal) OnPartnerCallback(ctx context.Context, params PartnerCallback
 			return PartnerCallbackResult{}, err
 		}
 		if issue.ID == 0 {
-			return PartnerCallbackResult{Status: repository.ClaimStatusNotFound}, nil
+			return PartnerCallbackResult{
+				Status: repository.ClaimStatusNotFound,
+			}, nil
 		}
 		if !changed {
-			return PartnerCallbackResult{Status: issue.Status, Issue: &issue}, nil
+			return PartnerCallbackResult{
+				Status: issue.Status,
+				Issue:  &issue,
+			}, nil
 		}
 		return PartnerCallbackResult{Status: issue.Status, Issue: &issue}, nil
 	default:
@@ -199,7 +230,13 @@ func (i *Internal) lookupPartnerIssueByPrivatePayloadList(
 		if item.Key == "" || item.Value == "" {
 			continue
 		}
-		issue, found, err := i.lookupPartnerIssueByPrivatePayload(ctx, params, item.Key, item.Value, platformUserID)
+		issue, found, err := i.lookupPartnerIssueByPrivatePayload(
+			ctx,
+			params,
+			item.Key,
+			item.Value,
+			platformUserID,
+		)
 		if err != nil || found {
 			return issue, found, err
 		}
@@ -214,7 +251,8 @@ func (i *Internal) lookupPartnerIssueByPrivatePayload(
 	value string,
 	platformUserID string,
 ) (repository.PartnerIssue, bool, error) {
-	if !partnerLookupKeyPattern.MatchString(key) || value == "" || platformUserID == "" {
+	if !partnerLookupKeyPattern.MatchString(key) || value == "" ||
+		platformUserID == "" {
 		return repository.PartnerIssue{}, false, nil
 	}
 	return i.repository.GetPartnerIssueByPrivatePayloadUser(
@@ -244,10 +282,15 @@ func (i *Internal) HandlePartnerWebhook(
 		return PartnerCallbackResult{}, err
 	}
 	if len(params.Body) > MaxPartnerWebhookBodyBytes {
-		return PartnerCallbackResult{}, fmt.Errorf("tasks partner webhook body exceeds %d bytes", MaxPartnerWebhookBodyBytes)
+		return PartnerCallbackResult{}, fmt.Errorf(
+			"tasks partner webhook body exceeds %d bytes",
+			MaxPartnerWebhookBodyBytes,
+		)
 	}
 	if params.Secret == "" {
-		return PartnerCallbackResult{Status: repository.ClaimStatusNotFound}, nil
+		return PartnerCallbackResult{
+			Status: repository.ClaimStatusNotFound,
+		}, nil
 	}
 	config, found, err := i.repository.GetPartnerConfigByWebhookSecret(
 		mergedCtx,
@@ -258,10 +301,14 @@ func (i *Internal) HandlePartnerWebhook(
 		return PartnerCallbackResult{}, err
 	}
 	if !found || !config.IsEnabled {
-		return PartnerCallbackResult{Status: repository.ClaimStatusNotFound}, nil
+		return PartnerCallbackResult{
+			Status: repository.ClaimStatusNotFound,
+		}, nil
 	}
 	if i.runtime == nil {
-		return PartnerCallbackResult{}, fmt.Errorf("tasks partner runtime is not configured")
+		return PartnerCallbackResult{}, fmt.Errorf(
+			"tasks partner runtime is not configured",
+		)
 	}
 	bodyMap := map[string]any{}
 	if len(params.Body) != 0 {
@@ -269,23 +316,29 @@ func (i *Internal) HandlePartnerWebhook(
 			bodyMap = map[string]any{"raw": string(params.Body)}
 		}
 	}
-	result, err := i.runtime.Handle(mergedCtx, config.Provider, taskruntime.Event{
-		Action:   "callback",
-		Provider: config.Provider,
-		Config:   webhookPartnerConfigMap(config),
-		Request: map[string]any{
-			"headers":  stringMapToAny(params.Headers),
-			"query":    stringMapToAny(params.Query),
-			"body":     bodyMap,
-			"raw_body": string(params.Body),
+	result, err := i.runtime.Handle(
+		mergedCtx,
+		config.Provider,
+		taskruntime.Event{
+			Action:   "callback",
+			Provider: config.Provider,
+			Config:   webhookPartnerConfigMap(config),
+			Request: map[string]any{
+				"headers":  stringMapToAny(params.Headers),
+				"query":    stringMapToAny(params.Query),
+				"body":     bodyMap,
+				"raw_body": string(params.Body),
+			},
+			Now: params.Now,
 		},
-		Now: params.Now,
-	})
+	)
 	if err != nil {
 		return PartnerCallbackResult{}, err
 	}
 	if ok, _ := result["ok"].(bool); !ok {
-		return PartnerCallbackResult{Status: firstWebhookString(result["error"], "unsupported_callback")}, nil
+		return PartnerCallbackResult{
+			Status: firstWebhookString(result["error"], "unsupported_callback"),
+		}, nil
 	}
 	if callbacks, ok := result["callbacks"].([]any); ok {
 		var last PartnerCallbackResult
@@ -338,21 +391,35 @@ func (i *Internal) applyPartnerWebhookCallback(
 		payload = fallbackPayload
 	}
 	return i.OnPartnerCallback(ctx, PartnerCallbackParams{
-		WorkspaceID:     config.WorkspaceID,
-		Provider:        config.Provider,
-		GroupKey:        config.GroupKey,
-		Platform:        config.Platform,
-		IssueID:         webhookUint64(result["issue_id"]),
-		IssueRef:        firstWebhookString(result["issue_ref"], result["task_ref"]),
-		ExternalID:      firstWebhookString(result["external_id"], result["offer_id"], result["task_id"]),
-		ExternalClickID: firstWebhookString(result["external_click_id"], result["click_id"]),
-		PlatformUserID:  firstWebhookString(result["platform_user_id"], result["user_id"], result["tg_user_id"]),
-		AppID:           int64(webhookUint64(result["app_id"])),
-		PlatformID:      int64(webhookUint64(result["platform_id"])),
-		Lookup:          webhookLookup(result),
-		Status:          status,
-		Payload:         payload,
-		Now:             now,
+		WorkspaceID: config.WorkspaceID,
+		Provider:    config.Provider,
+		GroupKey:    config.GroupKey,
+		Platform:    config.Platform,
+		IssueID:     webhookUint64(result["issue_id"]),
+		IssueRef: firstWebhookString(
+			result["issue_ref"],
+			result["task_ref"],
+		),
+		ExternalID: firstWebhookString(
+			result["external_id"],
+			result["offer_id"],
+			result["task_id"],
+		),
+		ExternalClickID: firstWebhookString(
+			result["external_click_id"],
+			result["click_id"],
+		),
+		PlatformUserID: firstWebhookString(
+			result["platform_user_id"],
+			result["user_id"],
+			result["tg_user_id"],
+		),
+		AppID:      int64(webhookUint64(result["app_id"])),
+		PlatformID: int64(webhookUint64(result["platform_id"])),
+		Lookup:     webhookLookup(result),
+		Status:     status,
+		Payload:    payload,
+		Now:        now,
 	})
 }
 
@@ -404,8 +471,12 @@ func webhookLookup(result map[string]any) PartnerCallbackLookup {
 	lookupMap, _ := result["lookup"].(map[string]any)
 	lookup := PartnerCallbackLookup{
 		PlatformUserID: firstWebhookString(
-			result["platform_user_id"], result["user_id"], result["tg_user_id"],
-			lookupMap["platform_user_id"], lookupMap["user_id"], lookupMap["tg_user_id"],
+			result["platform_user_id"],
+			result["user_id"],
+			result["tg_user_id"],
+			lookupMap["platform_user_id"],
+			lookupMap["user_id"],
+			lookupMap["tg_user_id"],
 		),
 		PrivatePayload: []PartnerCallbackLookupItem{},
 	}
@@ -417,7 +488,10 @@ func webhookLookup(result map[string]any) PartnerCallbackLookup {
 		if key == "" || text == "" {
 			continue
 		}
-		lookup.PrivatePayload = append(lookup.PrivatePayload, PartnerCallbackLookupItem{Key: key, Value: text})
+		lookup.PrivatePayload = append(
+			lookup.PrivatePayload,
+			PartnerCallbackLookupItem{Key: key, Value: text},
+		)
 	}
 	if len(lookup.PrivatePayload) == 0 {
 		lookup.PrivatePayload = nil

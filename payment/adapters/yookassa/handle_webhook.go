@@ -3,12 +3,16 @@ package yookassa
 import (
 	"context"
 
+	json "github.com/goccy/go-json"
+
 	utils "github.com/elum2b/services/internal/utils"
 	"github.com/elum2b/services/payment/repository"
-	json "github.com/goccy/go-json"
 )
 
-func (a *YooKassa) HandleWebhook(ctx context.Context, request WebhookRequest) (*WebhookResult, error) {
+func (a *YooKassa) HandleWebhook(
+	ctx context.Context,
+	request WebhookRequest,
+) (*WebhookResult, error) {
 
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
@@ -27,7 +31,13 @@ func (a *YooKassa) HandleWebhook(ctx context.Context, request WebhookRequest) (*
 		return nil, err
 	}
 
-	return a.handlePayload(ctx, request.WorkspaceID, webhook, request.Raw, request.SignatureValid)
+	return a.handlePayload(
+		ctx,
+		request.WorkspaceID,
+		webhook,
+		request.Raw,
+		request.SignatureValid,
+	)
 
 }
 
@@ -58,18 +68,21 @@ func (a *YooKassa) handlePayload(
 	}
 
 	eventID := webhookEventID(webhook)
-	eventDBID, err := a.repository.CreateEvent(ctx, repository.EventCreateParams{
-		WorkspaceID:       workspaceID,
-		ProviderCode:      ProviderCode,
-		AttemptID:         utils.Ref(int64(attempt.ID)),
-		OrderID:           utils.Ref(int64(attempt.OrderID)),
-		ProviderEventID:   utils.Ref(eventID),
-		ProviderPaymentID: utils.Ref(webhook.Object.ID),
-		EventType:         webhook.Event,
-		EventStatus:       utils.Ref(webhook.Object.Status),
-		PayloadHash:       sha256Hex(raw),
-		SignatureValid:    utils.Ref(signatureValid),
-	})
+	eventDBID, err := a.repository.CreateEvent(
+		ctx,
+		repository.EventCreateParams{
+			WorkspaceID:       workspaceID,
+			ProviderCode:      ProviderCode,
+			AttemptID:         utils.Ref(int64(attempt.ID)),
+			OrderID:           utils.Ref(int64(attempt.OrderID)),
+			ProviderEventID:   utils.Ref(eventID),
+			ProviderPaymentID: utils.Ref(webhook.Object.ID),
+			EventType:         webhook.Event,
+			EventStatus:       utils.Ref(webhook.Object.Status),
+			PayloadHash:       sha256Hex(raw),
+			SignatureValid:    utils.Ref(signatureValid),
+		},
+	)
 	if err != nil && !isDuplicateEntry(err) {
 		return nil, err
 	}
@@ -81,18 +94,24 @@ func (a *YooKassa) handlePayload(
 		Status:    webhook.Object.Status,
 	}
 
-	if webhook.Event == "payment.canceled" && webhook.Object.Status == "canceled" {
-		err := a.repository.FinalizeProviderAttempt(ctx, repository.ProviderAttemptTerminalParams{
-			WorkspaceID:       workspaceID,
-			AttemptID:         attempt.ID,
-			ProviderCode:      ProviderCode,
-			ProviderPaymentID: webhook.Object.ID,
-			Status:            repository.ProviderAttemptTerminalCanceled,
-		})
+	if webhook.Event == "payment.canceled" &&
+		webhook.Object.Status == "canceled" {
+		err := a.repository.FinalizeProviderAttempt(
+			ctx,
+			repository.ProviderAttemptTerminalParams{
+				WorkspaceID:       workspaceID,
+				AttemptID:         attempt.ID,
+				ProviderCode:      ProviderCode,
+				ProviderPaymentID: webhook.Object.ID,
+				Status:            repository.ProviderAttemptTerminalCanceled,
+			},
+		)
 		return result, err
 	}
 
-	if webhook.Event != "payment.succeeded" || webhook.Object.Status != "succeeded" || !webhook.Object.Paid {
+	if webhook.Event != "payment.succeeded" ||
+		webhook.Object.Status != "succeeded" ||
+		!webhook.Object.Paid {
 		return result, nil
 	}
 
@@ -101,14 +120,17 @@ func (a *YooKassa) handlePayload(
 		return nil, err
 	}
 
-	completed, err := a.repository.CompleteAttempt(ctx, repository.CompleteAttemptParams{
-		WorkspaceID:       attempt.WorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      ProviderCode,
-		ProviderPaymentID: utils.Ref(webhook.Object.ID),
-		AmountMinor:       amountMinor,
-		AssetCode:         webhook.Object.Amount.Currency,
-	})
+	completed, err := a.repository.CompleteAttempt(
+		ctx,
+		repository.CompleteAttemptParams{
+			WorkspaceID:       attempt.WorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      ProviderCode,
+			ProviderPaymentID: utils.Ref(webhook.Object.ID),
+			AmountMinor:       amountMinor,
+			AssetCode:         webhook.Object.Amount.Currency,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}

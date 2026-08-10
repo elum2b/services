@@ -7,12 +7,30 @@ import (
 )
 
 var (
-	ErrServiceNil                  = serviceerrors.New(serviceerrors.CodeNotReady, "calendar service is nil")
-	ErrServiceRunning              = serviceerrors.New(serviceerrors.CodeConflict, "calendar service is already running")
-	ErrDatabaseConfigRequired      = serviceerrors.New(serviceerrors.CodeInvalidFields, "calendar database user and name are required")
-	ErrCallbackHandlerNil          = serviceerrors.New(serviceerrors.CodeInvalidFields, "calendar callback handler is nil")
-	ErrCallbacksRegistrationClosed = serviceerrors.New(serviceerrors.CodeFailedPrecondition, "calendar callbacks must be registered before Run")
-	ErrCallbacksNotConfigured      = serviceerrors.New(serviceerrors.CodeNotReady, "calendar callback store is not configured")
+	ErrServiceNil = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"calendar service is nil",
+	)
+	ErrServiceRunning = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"calendar service is already running",
+	)
+	ErrDatabaseConfigRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"calendar database user and name are required",
+	)
+	ErrCallbackHandlerNil = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"calendar callback handler is nil",
+	)
+	ErrCallbacksRegistrationClosed = serviceerrors.New(
+		serviceerrors.CodeFailedPrecondition,
+		"calendar callbacks must be registered before Run",
+	)
+	ErrCallbacksNotConfigured = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"calendar callback store is not configured",
+	)
 )
 
 func wrapLifecycleError(err error) error {
@@ -28,5 +46,9 @@ func wrapLifecycleError(err error) error {
 		serviceerrors.IsStructured(err) {
 		return err
 	}
-	return serviceerrors.Wrap(serviceerrors.CodeInternalError, "calendar operation failed", err)
+	return serviceerrors.Wrap(
+		serviceerrors.CodeInternalError,
+		"calendar operation failed",
+		err,
+	)
 }

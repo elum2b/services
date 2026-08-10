@@ -16,30 +16,38 @@ import (
 	"strings"
 	"time"
 
+	json "github.com/goccy/go-json"
+	"github.com/google/uuid"
+
 	controlmodel "github.com/elum2b/services/control/model"
 	controlsqlc "github.com/elum2b/services/control/sqlc"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	json "github.com/goccy/go-json"
-	"github.com/google/uuid"
 )
 
 const twoFactorPeriod = 30 * time.Second
 
-func (r *Repository) BeginTwoFactor(ctx context.Context, accountID, issuer string) (TwoFactorSetup, error) {
+func (r *Repository) BeginTwoFactor(
+	ctx context.Context,
+	accountID, issuer string,
+) (TwoFactorSetup, error) {
 	if err := required(accountID); err != nil {
 		return TwoFactorSetup{}, err
 	}
+
 	secret, err := randomSecret()
 	if err != nil {
 		return TwoFactorSetup{}, err
 	}
+
 	encryptedSecret, err := r.encryptSecret(secret)
 	if err != nil {
 		return TwoFactorSetup{}, err
 	}
+
 	if issuer = strings.TrimSpace(issuer); issuer == "" {
 		issuer = "Elum"
 	}
+
 	err = r.withAuditDBTx(
 		ctx,
 		func(tx *sql.Tx, q *controlsqlc.Queries) error {
@@ -51,6 +59,7 @@ func (r *Repository) BeginTwoFactor(ctx context.Context, accountID, issuer strin
 			if err != nil {
 				return noRows(err, ErrAccountNotFound)
 			}
+
 			if account.Status != string(controlmodel.AccountStatusActive) {
 				return ErrForbidden
 			}
@@ -59,6 +68,7 @@ func (r *Repository) BeginTwoFactor(ctx context.Context, accountID, issuer strin
 			if err != nil {
 				return err
 			}
+
 			if active {
 				return ErrTwoFactorEnabled
 			}
@@ -73,17 +83,22 @@ func (r *Repository) BeginTwoFactor(ctx context.Context, accountID, issuer strin
 	if err != nil {
 		return TwoFactorSetup{}, err
 	}
+
 	uri := fmt.Sprintf(
 		"otpauth://totp/%s?secret=%s&issuer=%s&period=30&digits=6",
 		url.PathEscape(issuer+":"+accountID),
 		url.QueryEscape(secret),
 		url.QueryEscape(issuer),
 	)
+
 	return TwoFactorSetup{Secret: secret, URI: uri}, nil
 }
 
-func (r *Repository) ConfirmTwoFactor(ctx context.Context, accountID, code string, now time.Time) ([]string, error) {
-
+func (r *Repository) ConfirmTwoFactor(
+	ctx context.Context,
+	accountID, code string,
+	now time.Time,
+) ([]string, error) {
 	codes, hashes, err := newBackupCodes()
 	if err != nil {
 		return nil, err
@@ -97,9 +112,14 @@ func (r *Repository) ConfirmTwoFactor(ctx context.Context, accountID, code strin
 	err = r.withAuditDBTx(
 		ctx,
 		func(tx *sql.Tx, q *controlsqlc.Queries) error {
-			if err := lockAccountAuthentication(ctx, tx, accountID); err != nil {
+			if err := lockAccountAuthentication(
+				ctx,
+				tx,
+				accountID,
+			); err != nil {
 				return err
 			}
+
 			if err := lockTwoFactorAccount(ctx, tx, accountID); err != nil {
 				return err
 			}
@@ -129,20 +149,25 @@ func (r *Repository) ConfirmTwoFactor(ctx context.Context, accountID, code strin
 			if err != nil {
 				return err
 			}
+
 			if rows != 1 {
 				return ErrForbidden
 			}
 
-			rows, err = q.ActivateTwoFactor(ctx, controlsqlc.ActivateTwoFactorParams{
-				AccountID: accountID,
-				LastTotpCounter: sql.NullInt64{
-					Int64: counter,
-					Valid: true,
+			rows, err = q.ActivateTwoFactor(
+				ctx,
+				controlsqlc.ActivateTwoFactorParams{
+					AccountID: accountID,
+					LastTotpCounter: sql.NullInt64{
+						Int64: counter,
+						Valid: true,
+					},
 				},
-			})
+			)
 			if err != nil {
 				return err
 			}
+
 			if rows != 1 {
 				return ErrForbidden
 			}
@@ -155,10 +180,13 @@ func (r *Repository) ConfirmTwoFactor(ctx context.Context, accountID, code strin
 	}
 
 	return codes, nil
-
 }
 
-func (r *Repository) VerifyTwoFactor(ctx context.Context, accountID, code string, now time.Time) error {
+func (r *Repository) VerifyTwoFactor(
+	ctx context.Context,
+	accountID, code string,
+	now time.Time,
+) error {
 	return sqlwrap.WithTx(
 		ctx,
 		r.db.DB(),
@@ -174,26 +202,41 @@ func (r *Repository) CompleteTwoFactorChallenge(
 	rawChallenge, code, ip string,
 	now time.Time,
 ) (Session, string, error) {
-	var session Session
-	var rawSession string
-	var rejected error
+	var (
+		session    Session
+		rawSession string
+		rejected   error
+	)
+
 	err := sqlwrap.WithTx(
 		ctx,
 		r.db.DB(),
 		func(tx *sql.Tx) *controlsqlc.Queries { return controlsqlc.New(tx) },
 		func(tx *sql.Tx, q *controlsqlc.Queries) error {
-			accountID, err := q.GetTwoFactorChallengeAccount(ctx, tokenHash(rawChallenge))
+			accountID, err := q.GetTwoFactorChallengeAccount(
+				ctx,
+				tokenHash(rawChallenge),
+			)
 			if err != nil {
 				return noRows(err, ErrNotFound)
 			}
-			if err := lockAccountAuthentication(ctx, tx, accountID); err != nil {
+
+			if err := lockAccountAuthentication(
+				ctx,
+				tx,
+				accountID,
+			); err != nil {
 				return err
 			}
 
-			challenge, err := q.GetTwoFactorChallengeWithFactorForUpdate(ctx, tokenHash(rawChallenge))
+			challenge, err := q.GetTwoFactorChallengeWithFactorForUpdate(
+				ctx,
+				tokenHash(rawChallenge),
+			)
 			if err != nil {
 				return noRows(err, ErrNotFound)
 			}
+
 			if challenge.AccountID != accountID {
 				return ErrForbidden
 			}
@@ -202,6 +245,7 @@ func (r *Repository) CompleteTwoFactorChallenge(
 			if err != nil {
 				return noRows(err, ErrAccountNotFound)
 			}
+
 			if account.Status != string(controlmodel.AccountStatusActive) {
 				rejected = ErrForbidden
 
@@ -214,6 +258,7 @@ func (r *Repository) CompleteTwoFactorChallenge(
 			}
 
 			var invite *controlsqlc.ControlInvite
+
 			if challenge.InviteID.Valid {
 				row, err := getInviteByIDForAcceptance(
 					ctx,
@@ -223,8 +268,10 @@ func (r *Repository) CompleteTwoFactorChallenge(
 				if err != nil {
 					return noRows(err, ErrInviteUnavailable)
 				}
+
 				invite = &row
 			}
+
 			if member.Status != string(controlmodel.MembershipStatusActive) &&
 				(invite == nil || InviteKind(invite.Kind) != InviteKindGlobal) {
 				rejected = ErrForbidden
@@ -251,20 +298,29 @@ func (r *Repository) CompleteTwoFactorChallenge(
 			); err != nil {
 				if errors.Is(err, ErrForbidden) {
 					rejected = err
-					return consumeTwoFactorChallenge(ctx, q, challenge.ChallengeID)
+					return consumeTwoFactorChallenge(
+						ctx,
+						q,
+						challenge.ChallengeID,
+					)
 				}
+
 				return err
 			}
 
 			if invite != nil {
 				if InviteKind(invite.Kind) == InviteKindGlobal {
-					if err := q.AddPlatformMember(ctx, controlsqlc.AddPlatformMemberParams{
-						AccountID: challenge.AccountID,
-						InvitedBy: nullableString(invite.CreatedBy),
-					}); err != nil {
+					if err := q.AddPlatformMember(
+						ctx,
+						controlsqlc.AddPlatformMemberParams{
+							AccountID: challenge.AccountID,
+							InvitedBy: nullableString(invite.CreatedBy),
+						},
+					); err != nil {
 						return err
 					}
 				}
+
 				if err := r.acceptInviteRowWithQueries(
 					ctx,
 					q,
@@ -274,7 +330,12 @@ func (r *Repository) CompleteTwoFactorChallenge(
 					return err
 				}
 			}
-			if err := consumeTwoFactorChallenge(ctx, q, challenge.ChallengeID); err != nil {
+
+			if err := consumeTwoFactorChallenge(
+				ctx,
+				q,
+				challenge.ChallengeID,
+			); err != nil {
 				return err
 			}
 
@@ -282,6 +343,7 @@ func (r *Repository) CompleteTwoFactorChallenge(
 			if err != nil {
 				return err
 			}
+
 			created, err := q.CreateSession(
 				ctx,
 				controlsqlc.CreateSessionParams{
@@ -297,6 +359,7 @@ func (r *Repository) CompleteTwoFactorChallenge(
 			if err != nil {
 				return err
 			}
+
 			session = mapSession(created)
 
 			return nil
@@ -305,20 +368,28 @@ func (r *Repository) CompleteTwoFactorChallenge(
 	if err != nil {
 		return Session{}, "", err
 	}
+
 	if rejected != nil {
 		return Session{}, "", rejected
 	}
+
 	return session, rawSession, nil
 }
 
-func consumeTwoFactorChallenge(ctx context.Context, q *controlsqlc.Queries, challengeID string) error {
+func consumeTwoFactorChallenge(
+	ctx context.Context,
+	q *controlsqlc.Queries,
+	challengeID string,
+) error {
 	rows, err := q.DeleteTwoFactorChallenge(ctx, challengeID)
 	if err != nil {
 		return err
 	}
+
 	if rows != 1 {
 		return ErrNotFound
 	}
+
 	return nil
 }
 
@@ -332,6 +403,7 @@ func (r *Repository) verifyTwoFactorWithQueries(
 	if err != nil {
 		return noRows(err, ErrNotFound)
 	}
+
 	return r.verifyTwoFactorData(
 		ctx,
 		q,
@@ -358,10 +430,12 @@ func (r *Repository) verifyTwoFactorData(
 	if !activatedAt.Valid {
 		return ErrForbidden
 	}
+
 	secret, err := r.decryptSecret(secret)
 	if err != nil {
 		return err
 	}
+
 	if counter, valid := validTOTPCounter(secret, code, now); valid {
 		if lastTOTPCounter.Valid && counter <= lastTOTPCounter.Int64 {
 			return ErrForbidden
@@ -380,6 +454,7 @@ func (r *Repository) verifyTwoFactorData(
 		if err != nil {
 			return err
 		}
+
 		if rows != 1 {
 			return ErrForbidden
 		}
@@ -388,25 +463,32 @@ func (r *Repository) verifyTwoFactorData(
 	}
 
 	var hashes []string
+
 	if err := json.Unmarshal(backupHashes, &hashes); err != nil {
 		return err
 	}
+
 	needle := backupHash(code)
 	index := -1
+
 	for i, hash := range hashes {
 		if hmac.Equal([]byte(hash), []byte(needle)) {
 			index = i
 			break
 		}
 	}
+
 	if index < 0 {
 		return ErrForbidden
 	}
+
 	hashes = append(hashes[:index], hashes[index+1:]...)
+
 	encoded, err := json.Marshal(hashes)
 	if err != nil {
 		return err
 	}
+
 	rows, err := q.UpdateTwoFactorBackupHashes(
 		ctx,
 		controlsqlc.UpdateTwoFactorBackupHashesParams{
@@ -417,25 +499,42 @@ func (r *Repository) verifyTwoFactorData(
 	if err != nil {
 		return err
 	}
+
 	if rows != 1 {
 		return ErrForbidden
 	}
+
 	return nil
 }
 
-func (r *Repository) DisableTwoFactor(ctx context.Context, accountID, code string, now time.Time) (int64, error) {
+func (r *Repository) DisableTwoFactor(
+	ctx context.Context,
+	accountID, code string,
+	now time.Time,
+) (int64, error) {
 	var rows int64
+
 	err := r.withAuditTx(
 		ctx,
 		func(q *controlsqlc.Queries) error {
-			if err := r.verifyTwoFactorWithQueries(ctx, q, accountID, code, now); err != nil {
+			if err := r.verifyTwoFactorWithQueries(
+				ctx,
+				q,
+				accountID,
+				code,
+				now,
+			); err != nil {
 				return err
 			}
+
 			var err error
+
 			rows, err = q.DeleteTwoFactor(ctx, accountID)
+
 			return err
 		},
 	)
+
 	return rows, err
 }
 
@@ -444,31 +543,32 @@ func randomSecret() (string, error) {
 	if _, err := rand.Read(value); err != nil {
 		return "", err
 	}
-	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(value), nil
+
+	return base32.StdEncoding.WithPadding(base32.NoPadding).
+			EncodeToString(value),
+		nil
 }
 
 func validTOTP(secret, code string, now time.Time) bool {
-
 	_, valid := validTOTPCounter(secret, code, now)
 
 	return valid
-
 }
 
 func validTOTPCounter(secret, code string, now time.Time) (int64, bool) {
-
 	for _, offset := range []int64{-1, 0, 1} {
 		candidateTime := now.Add(time.Duration(offset) * twoFactorPeriod)
 		if hmac.Equal(
 			[]byte(totp(secret, candidateTime)),
 			[]byte(strings.TrimSpace(code)),
 		) {
-			return candidateTime.Unix() / int64(twoFactorPeriod/time.Second), true
+			return candidateTime.Unix() / int64(
+				twoFactorPeriod/time.Second,
+			), true
 		}
 	}
 
 	return 0, false
-
 }
 
 func totp(secret string, now time.Time) string {
@@ -477,10 +577,15 @@ func totp(secret string, now time.Time) string {
 	if err != nil {
 		return ""
 	}
+
 	var counter [8]byte
+
 	binary.BigEndian.PutUint64(counter[:], uint64(now.Unix()/30))
+
 	mac := hmac.New(sha1.New, key)
+
 	_, _ = mac.Write(counter[:])
+
 	sum := mac.Sum(nil)
 	offset := int(sum[len(sum)-1] & 0x0f)
 	value := (uint32(sum[offset])&0x7f)<<24 | uint32(
@@ -490,6 +595,7 @@ func totp(secret string, now time.Time) string {
 	)<<8 | uint32(
 		sum[offset+3],
 	)
+
 	return fmt.Sprintf("%06d", value%1_000_000)
 }
 
@@ -500,9 +606,15 @@ func newBackupCodes() ([]string, []string, error) {
 		if _, err := rand.Read(value); err != nil {
 			return nil, nil, err
 		}
-		codes[i] = strings.ToUpper(hex.EncodeToString(value[:4])) + "-" + strings.ToUpper(hex.EncodeToString(value[4:]))
+
+		codes[i] = strings.ToUpper(
+			hex.EncodeToString(value[:4]),
+		) + "-" + strings.ToUpper(
+			hex.EncodeToString(value[4:]),
+		)
 		hashes[i] = backupHash(codes[i])
 	}
+
 	return codes, hashes, nil
 }
 

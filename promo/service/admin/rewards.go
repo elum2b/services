@@ -19,10 +19,18 @@ type SaveRewardParams struct {
 	Unit        *string
 }
 
-func (a *Admin) UpsertReward(ctx context.Context, params SaveRewardParams) error {
+func (a *Admin) UpsertReward(
+	ctx context.Context,
+	params SaveRewardParams,
+) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
-	rewardType, err := validateReward(params.Key, params.Type, params.Quantity, params.Unit)
+	rewardType, err := validateReward(
+		params.Key,
+		params.Type,
+		params.Quantity,
+		params.Unit,
+	)
 	if err != nil {
 		return err
 	}
@@ -36,9 +44,18 @@ func (a *Admin) UpsertReward(ctx context.Context, params SaveRewardParams) error
 		return ErrPromoNumberOutOfRange
 	}
 
-	return a.repository.UpsertReward(mergedCtx, params.WorkspaceID, params.PromoID, repository.Reward{
-		Key: params.Key, Type: rewardType, Quantity: params.Quantity, Scale: params.Scale, Unit: params.Unit,
-	})
+	return a.repository.UpsertReward(
+		mergedCtx,
+		params.WorkspaceID,
+		params.PromoID,
+		repository.Reward{
+			Key:      params.Key,
+			Type:     rewardType,
+			Quantity: params.Quantity,
+			Scale:    params.Scale,
+			Unit:     params.Unit,
+		},
+	)
 }
 
 func (a *Admin) GetReward(
@@ -62,7 +79,11 @@ func (a *Admin) GetReward(
 	}, nil
 }
 
-func (a *Admin) ListRewards(ctx context.Context, workspaceID string, promoID uint64) ([]user.RewardModel, error) {
+func (a *Admin) ListRewards(
+	ctx context.Context,
+	workspaceID string,
+	promoID uint64,
+) ([]user.RewardModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	values, err := a.repository.ListRewards(mergedCtx, workspaceID, promoID)
@@ -72,13 +93,22 @@ func (a *Admin) ListRewards(ctx context.Context, workspaceID string, promoID uin
 	result := make([]user.RewardModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, user.RewardModel{
-			Key: value.Key, Type: value.Type, Quantity: value.Quantity, Scale: value.Scale, Unit: value.Unit,
+			Key:      value.Key,
+			Type:     value.Type,
+			Quantity: value.Quantity,
+			Scale:    value.Scale,
+			Unit:     value.Unit,
 		})
 	}
 	return result, nil
 }
 
-func (a *Admin) DeleteReward(ctx context.Context, workspaceID string, promoID uint64, key string) (int64, error) {
+func (a *Admin) DeleteReward(
+	ctx context.Context,
+	workspaceID string,
+	promoID uint64,
+	key string,
+) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
@@ -94,7 +124,11 @@ func (a *Admin) DeleteReward(ctx context.Context, workspaceID string, promoID ui
 	return a.repository.DeleteReward(mergedCtx, workspaceID, promoID, key)
 }
 
-func validateReward(key, rewardType string, quantity int64, unit *string) (string, error) {
+func validateReward(
+	key, rewardType string,
+	quantity int64,
+	unit *string,
+) (string, error) {
 	if key == "" || quantity <= 0 {
 		return "", ErrRewardRequired
 	}

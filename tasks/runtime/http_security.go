@@ -9,11 +9,17 @@ import (
 	"strings"
 )
 
-func validatePartnerURL(ctx context.Context, value *url.URL, allowPrivate bool) error {
+func validatePartnerURL(
+	ctx context.Context,
+	value *url.URL,
+	allowPrivate bool,
+) error {
 
 	if value == nil || value.Hostname() == "" || value.User != nil ||
 		(value.Scheme != "https" && !(allowPrivate && value.Scheme == "http")) {
-		return fmt.Errorf("partner http URL must be an absolute HTTPS URL without credentials")
+		return fmt.Errorf(
+			"partner http URL must be an absolute HTTPS URL without credentials",
+		)
 	}
 	if allowPrivate {
 		return nil
@@ -22,14 +28,22 @@ func validatePartnerURL(ctx context.Context, value *url.URL, allowPrivate bool) 
 
 }
 
-func validatePartnerHost(ctx context.Context, host string, allowPrivate bool) error {
+func validatePartnerHost(
+	ctx context.Context,
+	host string,
+	allowPrivate bool,
+) error {
 
 	_, err := resolvePartnerHost(ctx, host, allowPrivate)
 	return err
 
 }
 
-func resolvePartnerHost(ctx context.Context, host string, allowPrivate bool) ([]netip.Addr, error) {
+func resolvePartnerHost(
+	ctx context.Context,
+	host string,
+	allowPrivate bool,
+) ([]netip.Addr, error) {
 
 	addresses, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 	if err != nil || len(addresses) == 0 {
@@ -40,7 +54,9 @@ func resolvePartnerHost(ctx context.Context, host string, allowPrivate bool) ([]
 	}
 	for _, address := range addresses {
 		if !isPublicAddress(address) {
-			return nil, fmt.Errorf("partner http host resolves to a non-public address")
+			return nil, fmt.Errorf(
+				"partner http host resolves to a non-public address",
+			)
 		}
 	}
 	return addresses, nil

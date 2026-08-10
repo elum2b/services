@@ -11,13 +11,13 @@ import (
 )
 
 func (r *Repository) RegisterMethod(ctx context.Context, method Method) error {
-
 	return r.RegisterMethods(ctx, []Method{method})
-
 }
 
-func (r *Repository) RegisterMethods(ctx context.Context, methods []Method) error {
-
+func (r *Repository) RegisterMethods(
+	ctx context.Context,
+	methods []Method,
+) error {
 	if len(methods) == 0 {
 		return nil
 	}
@@ -37,16 +37,20 @@ func (r *Repository) RegisterMethods(ctx context.Context, methods []Method) erro
 				if err := validateMethod(method); err != nil {
 					return err
 				}
+
 				stored, err := q.GetMethod(ctx, method.Key)
 				if err == nil && stored.Service != method.Service {
 					return ErrMethodOwner
 				}
+
 				if err != nil && !errors.Is(err, sql.ErrNoRows) {
 					return err
 				}
+
 				if err := validateMethodNamespace(method); err != nil {
 					return err
 				}
+
 				groupExists, err := q.MethodGroupExists(
 					ctx,
 					controlsqlc.MethodGroupExistsParams{
@@ -57,16 +61,22 @@ func (r *Repository) RegisterMethods(ctx context.Context, methods []Method) erro
 				if err != nil {
 					return err
 				}
+
 				if !groupExists {
 					return ErrInvalidArgument
 				}
-				if err := q.UpsertMethodGroup(ctx, controlsqlc.UpsertMethodGroupParams{
-					Service:  method.Service,
-					GroupKey: method.GroupKey,
-					Position: method.GroupPosition,
-				}); err != nil {
+
+				if err := q.UpsertMethodGroup(
+					ctx,
+					controlsqlc.UpsertMethodGroupParams{
+						Service:  method.Service,
+						GroupKey: method.GroupKey,
+						Position: method.GroupPosition,
+					},
+				); err != nil {
 					return err
 				}
+
 				if err := q.UpsertMethod(ctx, controlsqlc.UpsertMethodParams{
 					MethodKey: method.Key,
 					Service:   method.Service,
@@ -87,11 +97,11 @@ func (r *Repository) RegisterMethods(ctx context.Context, methods []Method) erro
 	r.bumpCacheVersion("control", "access-catalog")
 
 	return nil
-
 }
 
-func (r *Repository) ListMethodGroups(ctx context.Context) ([]MethodGroup, error) {
-
+func (r *Repository) ListMethodGroups(
+	ctx context.Context,
+) ([]MethodGroup, error) {
 	rows, err := r.q.ListMethodGroups(ctx)
 	if err != nil {
 		return nil, err
@@ -109,7 +119,6 @@ func (r *Repository) ListMethodGroups(ctx context.Context) ([]MethodGroup, error
 	}
 
 	return result, nil
-
 }
 
 func (r *Repository) ListAccessCatalog(
@@ -117,22 +126,26 @@ func (r *Repository) ListAccessCatalog(
 	locale string,
 	scope AccessScope,
 ) ([]AccessCatalogRow, error) {
-
 	if scope != "" && scope != ScopeGlobal && scope != ScopeWorkspace {
 		return nil, ErrInvalidArgument
 	}
 
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key:               "control:access-catalog:" + locale + ":" + string(scope),
+		Key: "control:access-catalog:" + locale + ":" + string(
+			scope,
+		),
 		Timeout:           r.timeout,
 		CacheVersionScope: []any{"control", "access-catalog"},
 		CacheL1Delay:      r.cacheL1,
 		CacheL2Delay:      r.cacheL2,
 	}, func(ctx context.Context) ([]AccessCatalogRow, error) {
-		rows, err := r.q.ListAccessCatalog(ctx, controlsqlc.ListAccessCatalogParams{
-			Locale: locale,
-			Scope:  string(scope),
-		})
+		rows, err := r.q.ListAccessCatalog(
+			ctx,
+			controlsqlc.ListAccessCatalogParams{
+				Locale: locale,
+				Scope:  string(scope),
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -158,11 +171,9 @@ func (r *Repository) ListAccessCatalog(
 
 		return result, nil
 	})
-
 }
 
 func (r *Repository) ListMethods(ctx context.Context) ([]Method, error) {
-
 	rows, err := r.q.ListMethods(ctx)
 	if err != nil {
 		return nil, err
@@ -174,18 +185,18 @@ func (r *Repository) ListMethods(ctx context.Context) ([]Method, error) {
 	}
 
 	return result, nil
-
 }
 
-func (r *Repository) GetMethod(ctx context.Context, methodKey string) (Method, error) {
-
+func (r *Repository) GetMethod(
+	ctx context.Context,
+	methodKey string,
+) (Method, error) {
 	row, err := r.q.GetMethod(ctx, methodKey)
 	if err != nil {
 		return Method{}, noRows(err, ErrMethodNotFound)
 	}
 
 	return mapMethod(row), nil
-
 }
 
 func (r *Repository) CheckGlobalAccess(
@@ -193,12 +204,10 @@ func (r *Repository) CheckGlobalAccess(
 	accountID string,
 	methodKey string,
 ) (bool, error) {
-
 	return r.q.CheckGlobalAccess(ctx, controlsqlc.CheckGlobalAccessParams{
 		AccountID: accountID,
 		MethodKey: methodKey,
 	})
-
 }
 
 func (r *Repository) CheckWorkspaceAccess(
@@ -207,20 +216,17 @@ func (r *Repository) CheckWorkspaceAccess(
 	workspaceID string,
 	methodKey string,
 ) (bool, error) {
-
 	return r.q.CheckWorkspaceAccess(ctx, controlsqlc.CheckWorkspaceAccessParams{
 		AccountID:   accountID,
 		WorkspaceID: workspaceID,
 		MethodKey:   methodKey,
 	})
-
 }
 
 func (r *Repository) ListAuthorizedGlobalMethods(
 	ctx context.Context,
 	accountID string,
 ) ([]Method, error) {
-
 	rows, err := r.q.ListAuthorizedGlobalMethods(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -238,7 +244,6 @@ func (r *Repository) ListAuthorizedGlobalMethods(
 	}
 
 	return result, nil
-
 }
 
 func (r *Repository) ListAuthorizedWorkspaceMethods(
@@ -246,7 +251,6 @@ func (r *Repository) ListAuthorizedWorkspaceMethods(
 	accountID string,
 	workspaceID string,
 ) ([]Method, error) {
-
 	rows, err := r.q.ListAuthorizedWorkspaceMethods(
 		ctx,
 		controlsqlc.ListAuthorizedWorkspaceMethodsParams{
@@ -270,40 +274,41 @@ func (r *Repository) ListAuthorizedWorkspaceMethods(
 	}
 
 	return result, nil
-
 }
 
 func validateMethod(method Method) error {
-
-	if err := required(method.Key, method.Service, method.GroupKey); err != nil {
+	if err := required(
+		method.Key,
+		method.Service,
+		method.GroupKey,
+	); err != nil {
 		return err
 	}
+
 	if method.Scope != "" {
 		expected := ScopeWorkspace
-		if len(method.Key) >= len("control.global.") && method.Key[:len("control.global.")] == "control.global." {
+		if len(method.Key) >= len("control.global.") &&
+			method.Key[:len("control.global.")] == "control.global." {
 			expected = ScopeGlobal
 		}
+
 		if method.Scope != expected {
 			return ErrInvalidArgument
 		}
 	}
 
 	return nil
-
 }
 
 func validateMethodNamespace(method Method) error {
-
 	if !strings.HasPrefix(method.Key, method.Service+".") {
 		return ErrInvalidArgument
 	}
 
 	return nil
-
 }
 
 func mapMethod(row controlsqlc.ControlMethod) Method {
-
 	return Method{
 		Key:       row.MethodKey,
 		Service:   row.Service,
@@ -313,5 +318,4 @@ func mapMethod(row controlsqlc.ControlMethod) Method {
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}
-
 }

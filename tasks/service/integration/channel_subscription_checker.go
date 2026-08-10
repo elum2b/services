@@ -6,9 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elum2b/services/internal/utils/apiflow"
 	"github.com/go-resty/resty/v2"
 	json "github.com/goccy/go-json"
+
+	"github.com/elum2b/services/internal/utils/apiflow"
 )
 
 const (
@@ -88,7 +89,9 @@ type vkError struct {
 	ErrorMsg  string `json:"error_msg"`
 }
 
-func NewChannelSubscriptionChecker(options ChannelSubscriptionCheckerOptions) *ChannelSubscriptionPlatformChecker {
+func NewChannelSubscriptionChecker(
+	options ChannelSubscriptionCheckerOptions,
+) *ChannelSubscriptionPlatformChecker {
 	return &ChannelSubscriptionPlatformChecker{
 		Client:                options.Client,
 		Timeout:               options.Timeout,
@@ -102,19 +105,36 @@ func (c *ChannelSubscriptionPlatformChecker) CheckChannelSubscription(
 	ctx context.Context,
 	params ChannelSubscriptionCheckParams,
 ) (CheckResult, error) {
-	config, err := parseChannelSubscriptionPayload(params.Task.IntegrationPayload)
+	config, err := parseChannelSubscriptionPayload(
+		params.Task.IntegrationPayload,
+	)
 	if err != nil {
 		return CheckResult{}, err
 	}
-	platform := normalizeChannelPlatform(firstNonEmptyString(params.Provider, config.Platform, params.Task.ActionKey))
+	platform := normalizeChannelPlatform(
+		firstNonEmptyString(
+			params.Provider,
+			config.Platform,
+			params.Task.ActionKey,
+		),
+	)
 	switch platform {
 	case "telegram", "tg":
 		return c.checkTelegram(ctx, params, config)
 	case "vk":
 		return c.checkVK(ctx, params, config)
 	default:
-		payload := marshalChannelCheckPayload(platform, "", false, "unsupported_platform")
-		return CheckResult{Completed: false, Reason: "unsupported_platform", Payload: payload}, nil
+		payload := marshalChannelCheckPayload(
+			platform,
+			"",
+			false,
+			"unsupported_platform",
+		)
+		return CheckResult{
+			Completed: false,
+			Reason:    "unsupported_platform",
+			Payload:   payload,
+		}, nil
 	}
 }
 
@@ -122,14 +142,31 @@ func (c *ChannelSubscriptionPlatformChecker) CheckChannelBoost(
 	ctx context.Context,
 	params ChannelBoostCheckParams,
 ) (CheckResult, error) {
-	config, err := parseChannelSubscriptionPayload(params.Task.IntegrationPayload)
+	config, err := parseChannelSubscriptionPayload(
+		params.Task.IntegrationPayload,
+	)
 	if err != nil {
 		return CheckResult{}, err
 	}
-	platform := normalizeChannelPlatform(firstNonEmptyString(params.Provider, config.Platform, params.Task.ActionKey))
+	platform := normalizeChannelPlatform(
+		firstNonEmptyString(
+			params.Provider,
+			config.Platform,
+			params.Task.ActionKey,
+		),
+	)
 	if platform != "telegram" {
-		payload := marshalChannelCheckPayload(platform, "", false, "unsupported_platform")
-		return CheckResult{Completed: false, Reason: "unsupported_platform", Payload: payload}, nil
+		payload := marshalChannelCheckPayload(
+			platform,
+			"",
+			false,
+			"unsupported_platform",
+		)
+		return CheckResult{
+			Completed: false,
+			Reason:    "unsupported_platform",
+			Payload:   payload,
+		}, nil
 	}
 	return c.checkTelegramBoost(ctx, params, config)
 }
@@ -153,8 +190,17 @@ func (c *ChannelSubscriptionPlatformChecker) checkTelegram(
 	)
 	tokens := channelTokens(tg)
 	if chatID == "" || userID == "" || len(tokens) == 0 {
-		payload := marshalChannelCheckPayload("telegram", "", false, "invalid_config")
-		return CheckResult{Completed: false, Reason: "invalid_config", Payload: payload}, nil
+		payload := marshalChannelCheckPayload(
+			"telegram",
+			"",
+			false,
+			"invalid_config",
+		)
+		return CheckResult{
+			Completed: false,
+			Reason:    "invalid_config",
+			Payload:   payload,
+		}, nil
 	}
 	token, err := c.acquireToken(ctx, tokens, tg.Strategy)
 	if err != nil {
@@ -180,8 +226,17 @@ func (c *ChannelSubscriptionPlatformChecker) checkTelegram(
 	}
 	if !response.OK {
 		status := firstNonEmptyString(response.Description, resp.Status())
-		payload := marshalChannelCheckPayload("telegram", status, false, "check_failed")
-		return CheckResult{Completed: false, Reason: "check_failed", Payload: payload}, nil
+		payload := marshalChannelCheckPayload(
+			"telegram",
+			status,
+			false,
+			"check_failed",
+		)
+		return CheckResult{
+			Completed: false,
+			Reason:    "check_failed",
+			Payload:   payload,
+		}, nil
 	}
 	completed := telegramMemberSubscribed(response.Result)
 	status := response.Result.Status
@@ -211,8 +266,17 @@ func (c *ChannelSubscriptionPlatformChecker) checkTelegramBoost(
 	)
 	tokens := channelTokens(tg)
 	if chatID == "" || userID == "" || len(tokens) == 0 {
-		payload := marshalChannelCheckPayload("telegram", "", false, "invalid_config")
-		return CheckResult{Completed: false, Reason: "invalid_config", Payload: payload}, nil
+		payload := marshalChannelCheckPayload(
+			"telegram",
+			"",
+			false,
+			"invalid_config",
+		)
+		return CheckResult{
+			Completed: false,
+			Reason:    "invalid_config",
+			Payload:   payload,
+		}, nil
 	}
 	token, err := c.acquireToken(ctx, tokens, tg.Strategy)
 	if err != nil {
@@ -238,8 +302,17 @@ func (c *ChannelSubscriptionPlatformChecker) checkTelegramBoost(
 	}
 	if !response.OK {
 		status := firstNonEmptyString(response.Description, resp.Status())
-		payload := marshalChannelCheckPayload("telegram", status, false, "check_failed")
-		return CheckResult{Completed: false, Reason: "check_failed", Payload: payload}, nil
+		payload := marshalChannelCheckPayload(
+			"telegram",
+			status,
+			false,
+			"check_failed",
+		)
+		return CheckResult{
+			Completed: false,
+			Reason:    "check_failed",
+			Payload:   payload,
+		}, nil
 	}
 	completed := len(response.Result.Boosts) > 0
 	status := boostStatus(completed)
@@ -267,7 +340,11 @@ func (c *ChannelSubscriptionPlatformChecker) checkVK(
 	tokens := channelTokens(vk)
 	if groupID == "" || userID == "" || len(tokens) == 0 {
 		payload := marshalChannelCheckPayload("vk", "", false, "invalid_config")
-		return CheckResult{Completed: false, Reason: "invalid_config", Payload: payload}, nil
+		return CheckResult{
+			Completed: false,
+			Reason:    "invalid_config",
+			Payload:   payload,
+		}, nil
 	}
 	apiVersion := firstNonEmptyString(vk.APIVersion, defaultVKAPIVersion)
 	token, err := c.acquireToken(ctx, tokens, vk.Strategy)
@@ -297,8 +374,17 @@ func (c *ChannelSubscriptionPlatformChecker) checkVK(
 		return CheckResult{}, err
 	}
 	if response.Error != nil {
-		payload := marshalChannelCheckPayload("vk", response.Error.ErrorMsg, false, "check_failed")
-		return CheckResult{Completed: false, Reason: "check_failed", Payload: payload}, nil
+		payload := marshalChannelCheckPayload(
+			"vk",
+			response.Error.ErrorMsg,
+			false,
+			"check_failed",
+		)
+		return CheckResult{
+			Completed: false,
+			Reason:    "check_failed",
+			Payload:   payload,
+		}, nil
 	}
 	completed := vkIsMember(response.Response)
 	status := boolStatus(completed)
@@ -360,7 +446,9 @@ func channelTokens(config channelSubscriptionPlatformPayload) []string {
 	return out
 }
 
-func parseChannelSubscriptionPayload(raw json.RawMessage) (channelSubscriptionPayload, error) {
+func parseChannelSubscriptionPayload(
+	raw json.RawMessage,
+) (channelSubscriptionPayload, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return channelSubscriptionPayload{}, nil
 	}
@@ -421,14 +509,19 @@ func (c *ChannelSubscriptionPlatformChecker) acquireToken(
 	if c.tokenFlow == nil {
 		c.tokenFlow = defaultTokenFlow(nil)
 	}
-	return c.tokenFlow.Acquire(ctx, apiflow.TokenSet{Tokens: tokens, Strategy: strategy})
+	return c.tokenFlow.Acquire(
+		ctx,
+		apiflow.TokenSet{Tokens: tokens, Strategy: strategy},
+	)
 }
 
 func defaultTokenFlow(value *apiflow.Flow) *apiflow.Flow {
 	if value != nil {
 		return value
 	}
-	return apiflow.New(apiflow.Options{RatePerSecond: apiflow.DefaultRatePerSecond})
+	return apiflow.New(
+		apiflow.Options{RatePerSecond: apiflow.DefaultRatePerSecond},
+	)
 }
 
 func normalizeChannelPlatform(value string) string {
@@ -473,7 +566,11 @@ func boostStatus(value bool) string {
 	return "not_boosted"
 }
 
-func marshalChannelCheckPayload(platform, status string, completed bool, reason string) json.RawMessage {
+func marshalChannelCheckPayload(
+	platform, status string,
+	completed bool,
+	reason string,
+) json.RawMessage {
 	payload, err := json.Marshal(map[string]any{
 		"provider":  platform,
 		"status":    status,

@@ -10,14 +10,20 @@ import (
 	refsqlc "github.com/elum2b/services/reference/sqlc"
 )
 
-func (r *Repository) Get(ctx context.Context, workspaceID, key, locale string) (Item, error) {
+func (r *Repository) Get(
+	ctx context.Context,
+	workspaceID, key, locale string,
+) (Item, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return Item{}, err
 	}
 	cacheKey := r.referenceCacheKey(referenceCacheGet, workspaceID, key, locale)
 	item, err := sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key: cacheKey, Timeout: r.timeout, CacheVersionScope: referenceCacheScope(referenceCacheGet, workspaceID),
-		CacheL1Delay: r.cacheL1, CacheL2Delay: r.cacheL2,
+		Key:               cacheKey,
+		Timeout:           r.timeout,
+		CacheVersionScope: referenceCacheScope(referenceCacheGet, workspaceID),
+		CacheL1Delay:      r.cacheL1,
+		CacheL2Delay:      r.cacheL2,
 	}, func(ctx context.Context) (Item, error) {
 		rows, err := r.q.GetItemBundle(ctx, refsqlc.GetItemBundleParams{
 			Locale:      locale,
@@ -35,7 +41,12 @@ func (r *Repository) Get(ctx context.Context, workspaceID, key, locale string) (
 	return item, mapNoRows(err)
 }
 
-func (r *Repository) Resolve(ctx context.Context, workspaceID string, keys []string, locale string) ([]Item, error) {
+func (r *Repository) Resolve(
+	ctx context.Context,
+	workspaceID string,
+	keys []string,
+	locale string,
+) ([]Item, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
@@ -44,16 +55,30 @@ func (r *Repository) Resolve(ctx context.Context, workspaceID string, keys []str
 	}
 	cacheKeys := append([]string(nil), keys...)
 	sort.Strings(cacheKeys)
-	cacheKey := r.referenceCacheKey(referenceCacheResolve, workspaceID, locale, strings.Join(cacheKeys, "\x1f"))
+	cacheKey := r.referenceCacheKey(
+		referenceCacheResolve,
+		workspaceID,
+		locale,
+		strings.Join(cacheKeys, "\x1f"),
+	)
 	items, err := sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key: cacheKey, Timeout: r.timeout, CacheVersionScope: referenceCacheScope(referenceCacheResolve, workspaceID),
-		CacheL1Delay: r.cacheL1, CacheL2Delay: r.cacheL2,
+		Key:     cacheKey,
+		Timeout: r.timeout,
+		CacheVersionScope: referenceCacheScope(
+			referenceCacheResolve,
+			workspaceID,
+		),
+		CacheL1Delay: r.cacheL1,
+		CacheL2Delay: r.cacheL2,
 	}, func(ctx context.Context) ([]Item, error) {
-		rows, err := r.q.ResolveItemBundles(ctx, refsqlc.ResolveItemBundlesParams{
-			Locale:      locale,
-			WorkspaceID: workspaceID,
-			Column3:     cacheKeys,
-		})
+		rows, err := r.q.ResolveItemBundles(
+			ctx,
+			refsqlc.ResolveItemBundlesParams{
+				Locale:      locale,
+				WorkspaceID: workspaceID,
+				Column3:     cacheKeys,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -78,14 +103,27 @@ func (r *Repository) Resolve(ctx context.Context, workspaceID string, keys []str
 	return ordered, nil
 }
 
-func (r *Repository) List(ctx context.Context, workspaceID, locale string, limit, offset int32) ([]Item, error) {
+func (r *Repository) List(
+	ctx context.Context,
+	workspaceID, locale string,
+	limit, offset int32,
+) ([]Item, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
-	cacheKey := r.referenceCacheKey(referenceCacheList, workspaceID, locale, limit, offset)
+	cacheKey := r.referenceCacheKey(
+		referenceCacheList,
+		workspaceID,
+		locale,
+		limit,
+		offset,
+	)
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key: cacheKey, Timeout: r.timeout, CacheVersionScope: referenceCacheScope(referenceCacheList, workspaceID),
-		CacheL1Delay: r.cacheL1, CacheL2Delay: r.cacheL2,
+		Key:               cacheKey,
+		Timeout:           r.timeout,
+		CacheVersionScope: referenceCacheScope(referenceCacheList, workspaceID),
+		CacheL1Delay:      r.cacheL1,
+		CacheL2Delay:      r.cacheL2,
 	}, func(ctx context.Context) ([]Item, error) {
 		rows, err := r.q.ListItemBundles(ctx, refsqlc.ListItemBundlesParams{
 			Locale:      locale,

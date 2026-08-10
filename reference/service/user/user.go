@@ -14,8 +14,16 @@ type User struct {
 	rootCtx    context.Context
 }
 
-func NewWithRepositoryOptions(ctx context.Context, db *sqlwrap.Client, options repository.Options) *User {
-	repo, err := repository.NewPreparedWithOptions(contextutil.Normalize(ctx), db, options)
+func NewWithRepositoryOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options repository.Options,
+) *User {
+	repo, err := repository.NewPreparedWithOptions(
+		contextutil.Normalize(ctx),
+		db,
+		options,
+	)
 	if err != nil {
 		repo = repository.NewWithOptions(db, options)
 	}
@@ -35,7 +43,9 @@ func (u *User) Close() error {
 	return u.repository.Close()
 }
 
-func (u *User) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (u *User) withContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	return contextutil.Merge(u.rootCtx, ctx)
 }
 

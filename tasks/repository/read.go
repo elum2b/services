@@ -2,8 +2,9 @@ package repository
 
 import (
 	"context"
-	json "github.com/goccy/go-json"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/internal/utils/target"
@@ -23,13 +24,19 @@ func (r *Repository) ListActive(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	catalog, err := r.listActiveCatalog(ctx, identity.WorkspaceID, locale, groupKey)
+	catalog, err := r.listActiveCatalog(
+		ctx,
+		identity.WorkspaceID,
+		locale,
+		groupKey,
+	)
 	if err != nil {
 		return nil, err
 	}
 	tasks := make([]ActiveTask, 0, len(catalog))
 	for _, task := range catalog {
-		if activeTaskVisibleAt(task, now) && activeTaskTargetMatches(task, identity, locale) {
+		if activeTaskVisibleAt(task, now) &&
+			activeTaskTargetMatches(task, identity, locale) {
 			task.Progress = nil
 			task.Target = nil
 			tasks = append(tasks, task)
@@ -39,11 +46,17 @@ func (r *Repository) ListActive(
 		ctx,
 		r,
 		func(ctx context.Context) ([]tasksqlc.TaskProgress, error) {
-			return r.q.ListCurrentProgressForUser(ctx, tasksqlc.ListCurrentProgressForUserParams{
-				WorkspaceID: identity.WorkspaceID,
-				AppID:       identity.AppID, PlatformID: identity.PlatformID, PlatformUserID: identity.PlatformUserID,
-				PeriodStartAt: now, PeriodEndAt: now,
-			})
+			return r.q.ListCurrentProgressForUser(
+				ctx,
+				tasksqlc.ListCurrentProgressForUserParams{
+					WorkspaceID:    identity.WorkspaceID,
+					AppID:          identity.AppID,
+					PlatformID:     identity.PlatformID,
+					PlatformUserID: identity.PlatformUserID,
+					PeriodStartAt:  now,
+					PeriodEndAt:    now,
+				},
+			)
 		},
 	)
 	if err != nil {
@@ -58,13 +71,21 @@ func (r *Repository) ListActive(
 			tasks[index].Progress = &progress
 		}
 	}
-	if err := r.attachComplexConditions(ctx, identity.WorkspaceID, tasks); err != nil {
+	if err := r.attachComplexConditions(
+		ctx,
+		identity.WorkspaceID,
+		tasks,
+	); err != nil {
 		return nil, err
 	}
 	return tasks, nil
 }
 
-func (r *Repository) attachComplexConditions(ctx context.Context, workspaceID string, tasks []ActiveTask) error {
+func (r *Repository) attachComplexConditions(
+	ctx context.Context,
+	workspaceID string,
+	tasks []ActiveTask,
+) error {
 	if len(tasks) == 0 {
 		return nil
 	}
@@ -94,15 +115,20 @@ func (r *Repository) attachComplexConditions(ctx context.Context, workspaceID st
 	for _, row := range rows {
 		parentIndex, parentOK := taskByID[uint64(row.ParentTaskID)]
 		childIndex, childOK := taskByID[uint64(row.ConditionTaskID)]
-		if !parentOK || !childOK || tasks[parentIndex].TaskKind != TaskKindComplex {
+		if !parentOK || !childOK ||
+			tasks[parentIndex].TaskKind != TaskKindComplex {
 			continue
 		}
 		child := tasks[childIndex]
 		child.Conditions = nil
-		tasks[parentIndex].Conditions = append(tasks[parentIndex].Conditions, child)
+		tasks[parentIndex].Conditions = append(
+			tasks[parentIndex].Conditions,
+			child,
+		)
 	}
 	for index := range tasks {
-		if tasks[index].TaskKind == TaskKindComplex && len(tasks[index].Conditions) > 0 {
+		if tasks[index].TaskKind == TaskKindComplex &&
+			len(tasks[index].Conditions) > 0 {
 			tasks[index].TargetCount = uint64(len(tasks[index].Conditions))
 		}
 	}
@@ -120,13 +146,16 @@ func (r *Repository) listActiveCatalog(
 		CacheL2Delay:      r.cacheL2Delay,
 		CacheVersionScope: taskCatalogCacheScope(workspaceID),
 	}, func(ctx context.Context) ([]ActiveTask, error) {
-		rows, err := r.q.ListActiveTaskBundles(ctx, tasksqlc.ListActiveTaskBundlesParams{
-			Locale:      locale,
-			Locale_2:    locale,
-			WorkspaceID: workspaceID,
-			Column4:     groupKey,
-			GroupKey:    groupKey,
-		})
+		rows, err := r.q.ListActiveTaskBundles(
+			ctx,
+			tasksqlc.ListActiveTaskBundlesParams{
+				Locale:      locale,
+				Locale_2:    locale,
+				WorkspaceID: workspaceID,
+				Column4:     groupKey,
+				GroupKey:    groupKey,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -142,12 +171,24 @@ func activeTasksFromTasks(tasks []Task) []ActiveTask {
 	result := make([]ActiveTask, 0, len(tasks))
 	for _, task := range tasks {
 		out := ActiveTask{
-			ID: task.ID, Key: task.Key, GroupKey: task.GroupKey, TaskKind: task.TaskKind,
-			GroupTitle: task.GroupTitle, GroupDesc: task.GroupDesc,
-			ActionKey: task.ActionKey, ActionKind: task.ActionKind, ClaimMode: task.ClaimMode, StartMode: task.StartMode,
-			TargetCount: task.TargetCount, Payload: task.Payload, ImageURL: task.ImageURL,
-			Rewards: task.Rewards, StartAt: task.StartAt, EndAt: task.EndAt, Target: task.Target,
-			Conditions: task.Conditions,
+			ID:          task.ID,
+			Key:         task.Key,
+			GroupKey:    task.GroupKey,
+			TaskKind:    task.TaskKind,
+			GroupTitle:  task.GroupTitle,
+			GroupDesc:   task.GroupDesc,
+			ActionKey:   task.ActionKey,
+			ActionKind:  task.ActionKind,
+			ClaimMode:   task.ClaimMode,
+			StartMode:   task.StartMode,
+			TargetCount: task.TargetCount,
+			Payload:     task.Payload,
+			ImageURL:    task.ImageURL,
+			Rewards:     task.Rewards,
+			StartAt:     task.StartAt,
+			EndAt:       task.EndAt,
+			Target:      task.Target,
+			Conditions:  task.Conditions,
 		}
 		if task.Localization != nil {
 			out.Title = task.Localization.Title
@@ -159,10 +200,15 @@ func activeTasksFromTasks(tasks []Task) []ActiveTask {
 }
 
 func activeTaskVisibleAt(task ActiveTask, now time.Time) bool {
-	return (task.StartAt == nil || !task.StartAt.After(now)) && (task.EndAt == nil || task.EndAt.After(now))
+	return (task.StartAt == nil || !task.StartAt.After(now)) &&
+		(task.EndAt == nil || task.EndAt.After(now))
 }
 
-func activeTaskTargetMatches(task ActiveTask, identity Identity, locale string) bool {
+func activeTaskTargetMatches(
+	task ActiveTask,
+	identity Identity,
+	locale string,
+) bool {
 	return target.Match(task.Target, target.Context{
 		IsPremium:  identity.IsPremium,
 		Sex:        identity.Sex,

@@ -8,29 +8,45 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	services "github.com/elum2b/services"
 	importexport "github.com/elum2b/services/internal/utils/importexport"
-	"github.com/google/uuid"
 )
 
-func (r *Repository) PreviewImport(ctx context.Context, workspaceID string, pkg ExportPackage) (ImportPreview, error) {
+func (r *Repository) PreviewImport(
+	ctx context.Context,
+	workspaceID string,
+	pkg ExportPackage,
+) (ImportPreview, error) {
 	if err := validateExportPackage(workspaceID, pkg); err != nil {
 		return ImportPreview{}, err
 	}
-	preview := ImportPreview{Format: pkg.Format, Service: pkg.Service, Counts: countPackage(pkg)}
+	preview := ImportPreview{
+		Format:  pkg.Format,
+		Service: pkg.Service,
+		Counts:  countPackage(pkg),
+	}
 	existing, err := r.importExistingCalendarTypes(ctx, workspaceID)
 	if err != nil {
 		return ImportPreview{}, err
 	}
 	for _, calendar := range pkg.Calendars {
 		if existing[calendar.Type] != "" {
-			preview.Conflicts = append(preview.Conflicts, ImportConflict{Type: "calendar", Key: calendar.Type})
+			preview.Conflicts = append(
+				preview.Conflicts,
+				ImportConflict{Type: "calendar", Key: calendar.Type},
+			)
 		}
 	}
 	return preview, nil
 }
 
-func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportRequest) (ImportResult, error) {
+func (r *Repository) Import(
+	ctx context.Context,
+	workspaceID string,
+	req ImportRequest,
+) (ImportResult, error) {
 	if err := validateExportPackage(workspaceID, req.Package); err != nil {
 		return ImportResult{}, err
 	}
@@ -38,8 +54,12 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 	if strategy == "" {
 		strategy = ImportConflictFail
 	}
-	if strategy != ImportConflictFail && strategy != ImportConflictSkip && strategy != ImportConflictUpdate {
-		return ImportResult{}, fmt.Errorf("unsupported import conflict strategy: %s", strategy)
+	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
+		strategy != ImportConflictUpdate {
+		return ImportResult{}, fmt.Errorf(
+			"unsupported import conflict strategy: %s",
+			strategy,
+		)
 	}
 	result := ImportResult{}
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
@@ -52,10 +72,20 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 			return err
 		}
 		if strategy == ImportConflictFail && len(preview.Conflicts) > 0 {
-			return fmt.Errorf("import conflicts found: %d", len(preview.Conflicts))
+			return fmt.Errorf(
+				"import conflicts found: %d",
+				len(preview.Conflicts),
+			)
 		}
 
-		return txRepo.importBulk(ctx, workspaceID, req.Package, strategy, preview, &result)
+		return txRepo.importBulk(
+			ctx,
+			workspaceID,
+			req.Package,
+			strategy,
+			preview,
+			&result,
+		)
 	})
 	if err != nil {
 		return ImportResult{}, err
@@ -64,7 +94,10 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 	return result, nil
 }
 
-func (r *Repository) lockWorkspaceMutation(ctx context.Context, workspaceID string) error {
+func (r *Repository) lockWorkspaceMutation(
+	ctx context.Context,
+	workspaceID string,
+) error {
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return err
 	}
@@ -215,7 +248,8 @@ func (r *Repository) importCalendarsBulk(
 ) error {
 	rows := make([][]any, 0, len(calendars))
 	for _, calendar := range calendars {
-		if previewHasConflict(preview, "calendar", calendar.Type) && strategy == ImportConflictSkip {
+		if previewHasConflict(preview, "calendar", calendar.Type) &&
+			strategy == ImportConflictSkip {
 			result.Skipped.Calendars++
 			continue
 		}
@@ -225,18 +259,49 @@ func (r *Repository) importCalendarsBulk(
 		}
 		calendarIDs[calendar.Type] = id
 		rows = append(rows, []any{
-			id, workspaceID, calendar.Type, defaultString(calendar.Mode, ModeInterval),
-			defaultString(calendar.IntervalType, IntervalCalendar), defaultString(calendar.IntervalUnit, "day"),
-			int32(defaultUint32(calendar.IntervalCount, 1)), int32(defaultUint32(calendar.ResetAfterIntervals, 1)),
-			defaultString(calendar.EndBehavior, EndStop), defaultString(calendar.Timezone, "UTC"),
-			calendar.HideFutureRewards, calendar.IsActive, nullableTime(calendar.StartAt), nullableTime(calendar.EndAt),
+			id,
+			workspaceID,
+			calendar.Type,
+			defaultString(calendar.Mode, ModeInterval),
+			defaultString(
+				calendar.IntervalType,
+				IntervalCalendar,
+			),
+			defaultString(calendar.IntervalUnit, "day"),
+			int32(
+				defaultUint32(calendar.IntervalCount, 1),
+			),
+			int32(defaultUint32(calendar.ResetAfterIntervals, 1)),
+			defaultString(
+				calendar.EndBehavior,
+				EndStop,
+			),
+			defaultString(calendar.Timezone, "UTC"),
+			calendar.HideFutureRewards,
+			calendar.IsActive,
+			nullableTime(calendar.StartAt),
+			nullableTime(calendar.EndAt),
 		})
 		result.Imported.Calendars++
 	}
-	return r.execImportBulk(ctx, "calendar_definition",
+	return r.execImportBulk(
+		ctx,
+		"calendar_definition",
 		[]string{
-			"id", "workspace_id", "type", "mode", "interval_type", "interval_unit", "interval_count",
-			"reset_after_intervals", "end_behavior", "timezone", "hide_future_rewards", "is_active", "start_at", "end_at",
+			"id",
+			"workspace_id",
+			"type",
+			"mode",
+			"interval_type",
+			"interval_unit",
+			"interval_count",
+			"reset_after_intervals",
+			"end_behavior",
+			"timezone",
+			"hide_future_rewards",
+			"is_active",
+			"start_at",
+			"end_at",
 		},
 		rows,
 		"(workspace_id, type)",
@@ -259,17 +324,35 @@ func (r *Repository) importLocalizationsBulk(
 ) error {
 	rows := make([][]any, 0)
 	for _, calendar := range calendars {
-		if previewHasConflict(preview, "calendar", calendar.Type) && strategy == ImportConflictSkip {
+		if previewHasConflict(preview, "calendar", calendar.Type) &&
+			strategy == ImportConflictSkip {
 			continue
 		}
 		calendarID := calendarIDs[calendar.Type]
 		for locale, text := range calendar.Localization {
-			rows = append(rows, []any{workspaceID, calendarID, locale, text.Title, text.Description})
+			rows = append(
+				rows,
+				[]any{
+					workspaceID,
+					calendarID,
+					locale,
+					text.Title,
+					text.Description,
+				},
+			)
 			result.Imported.Localizations++
 		}
 	}
-	return r.execImportBulk(ctx, "calendar_localization",
-		[]string{"workspace_id", "calendar_id", "locale", "title", "description"},
+	return r.execImportBulk(
+		ctx,
+		"calendar_localization",
+		[]string{
+			"workspace_id",
+			"calendar_id",
+			"locale",
+			"title",
+			"description",
+		},
 		rows,
 		"(workspace_id, calendar_id, locale)",
 		"title = EXCLUDED.title, description = EXCLUDED.description, updated_at = now()",
@@ -288,12 +371,16 @@ func (r *Repository) importStepsBulk(
 ) error {
 	rows := make([][]any, 0)
 	for _, calendar := range calendars {
-		if previewHasConflict(preview, "calendar", calendar.Type) && strategy == ImportConflictSkip {
+		if previewHasConflict(preview, "calendar", calendar.Type) &&
+			strategy == ImportConflictSkip {
 			continue
 		}
 		calendarID := calendarIDs[calendar.Type]
 		for _, step := range calendar.Steps {
-			rows = append(rows, []any{workspaceID, calendarID, int32(step.Position)})
+			rows = append(
+				rows,
+				[]any{workspaceID, calendarID, int32(step.Position)},
+			)
 			result.Imported.Steps++
 		}
 	}
@@ -318,7 +405,8 @@ func (r *Repository) importRewardsBulk(
 ) error {
 	rows := make([][]any, 0)
 	for _, calendar := range calendars {
-		if previewHasConflict(preview, "calendar", calendar.Type) && strategy == ImportConflictSkip {
+		if previewHasConflict(preview, "calendar", calendar.Type) &&
+			strategy == ImportConflictSkip {
 			continue
 		}
 		calendarID := calendarIDs[calendar.Type]
@@ -326,8 +414,15 @@ func (r *Repository) importRewardsBulk(
 			stepID := stepIDs[stepMapKey(calendarID, step.Position)]
 			for _, reward := range step.Rewards {
 				rows = append(rows, []any{
-					workspaceID, calendarID, int64(stepID), reward.Key, defaultString(reward.Type, "quantity"),
-					reward.Quantity, int16(reward.Scale), nullableString(reward.Unit), int32(defaultUint32(reward.Position, 1)),
+					workspaceID,
+					calendarID,
+					int64(stepID),
+					reward.Key,
+					defaultString(reward.Type, "quantity"),
+					reward.Quantity,
+					int16(reward.Scale),
+					nullableString(reward.Unit),
+					int32(defaultUint32(reward.Position, 1)),
 				})
 				result.Imported.Rewards++
 			}
@@ -371,7 +466,9 @@ func (r *Repository) importStepIDs(
 	result := make(map[string]uint64)
 	for _, row := range rows {
 		if allowed[row.CalendarID] {
-			result[stepMapKey(row.CalendarID, uint32(row.Position))] = uint64(row.ID)
+			result[stepMapKey(row.CalendarID, uint32(row.Position))] = uint64(
+				row.ID,
+			)
 		}
 	}
 	return result, nil
@@ -433,7 +530,9 @@ func compileImportBulkUpsert(
 				builder.WriteString(", ")
 			}
 			builder.WriteByte('$')
-			builder.WriteString(fmt.Sprint(rowIndex*len(columns) + columnIndex + 1))
+			builder.WriteString(
+				fmt.Sprint(rowIndex*len(columns) + columnIndex + 1),
+			)
 		}
 		builder.WriteByte(')')
 		args = append(args, row...)
@@ -465,7 +564,10 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 
 	calendarTypes := make(map[string]int, len(pkg.Calendars))
 	for calendarIndex, calendar := range pkg.Calendars {
-		fieldPrefix := fmt.Sprintf("calendar import calendars[%d]", calendarIndex)
+		fieldPrefix := fmt.Sprintf(
+			"calendar import calendars[%d]",
+			calendarIndex,
+		)
 		calendarType := strings.TrimSpace(calendar.Type)
 		if calendarType == "" {
 			return fmt.Errorf("%s.type: type is required", fieldPrefix)
@@ -490,11 +592,14 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 func validateExportCalendar(calendar ExportCalendar) error {
 	if defaultUint32(calendar.IntervalCount, 1) > math.MaxInt32 ||
 		defaultUint32(calendar.ResetAfterIntervals, 1) > math.MaxInt32 {
-		return fmt.Errorf("interval_count: numeric value is out of database range")
+		return fmt.Errorf(
+			"interval_count: numeric value is out of database range",
+		)
 	}
 
 	mode := defaultString(calendar.Mode, ModeInterval)
-	if mode != ModeInterval && mode != ModeSequential && mode != ModeSequentialReset {
+	if mode != ModeInterval && mode != ModeSequential &&
+		mode != ModeSequentialReset {
 		return fmt.Errorf("mode: unsupported value %q", mode)
 	}
 
@@ -504,11 +609,15 @@ func validateExportCalendar(calendar ExportCalendar) error {
 	}
 
 	if !validCalendarIntervalUnit(defaultString(calendar.IntervalUnit, "day")) {
-		return fmt.Errorf("interval_unit: unsupported value %q", calendar.IntervalUnit)
+		return fmt.Errorf(
+			"interval_unit: unsupported value %q",
+			calendar.IntervalUnit,
+		)
 	}
 
 	endBehavior := defaultString(calendar.EndBehavior, EndStop)
-	if endBehavior != EndRestart && endBehavior != EndRepeatLast && endBehavior != EndStop {
+	if endBehavior != EndRestart && endBehavior != EndRepeatLast &&
+		endBehavior != EndStop {
 		return fmt.Errorf("end_behavior: unsupported value %q", endBehavior)
 	}
 
@@ -517,7 +626,8 @@ func validateExportCalendar(calendar ExportCalendar) error {
 		return fmt.Errorf("timezone: invalid value %q", timezone)
 	}
 
-	if calendar.StartAt != nil && calendar.EndAt != nil && !calendar.StartAt.Before(*calendar.EndAt) {
+	if calendar.StartAt != nil && calendar.EndAt != nil &&
+		!calendar.StartAt.Before(*calendar.EndAt) {
 		return fmt.Errorf("start_at: must be before end_at")
 	}
 
@@ -526,7 +636,10 @@ func validateExportCalendar(calendar ExportCalendar) error {
 			return fmt.Errorf("localization: locale is required")
 		}
 		if strings.TrimSpace(text.Title) == "" {
-			return fmt.Errorf("localization.%s.title: title is required", locale)
+			return fmt.Errorf(
+				"localization.%s.title: title is required",
+				locale,
+			)
 		}
 	}
 
@@ -547,7 +660,12 @@ func validateExportCalendar(calendar ExportCalendar) error {
 		rewardKeys := make(map[string]int, len(step.Rewards))
 		for rewardIndex, reward := range step.Rewards {
 			if err := validateExportReward(reward); err != nil {
-				return fmt.Errorf("steps[%d].rewards[%d].%w", stepIndex, rewardIndex, err)
+				return fmt.Errorf(
+					"steps[%d].rewards[%d].%w",
+					stepIndex,
+					rewardIndex,
+					err,
+				)
 			}
 			if previousIndex, exists := rewardKeys[reward.Key]; exists {
 				return fmt.Errorf(
@@ -571,18 +689,23 @@ func validateExportReward(reward ExportReward) error {
 	if reward.Quantity <= 0 {
 		return fmt.Errorf("quantity: must be positive")
 	}
-	if reward.Scale > math.MaxInt16 || defaultUint32(reward.Position, 1) > math.MaxInt32 {
+	if reward.Scale > math.MaxInt16 ||
+		defaultUint32(reward.Position, 1) > math.MaxInt32 {
 		return fmt.Errorf("scale: numeric value is out of database range")
 	}
 
 	switch defaultString(reward.Type, "quantity") {
 	case "quantity":
 		if reward.Unit != nil {
-			return fmt.Errorf("unit: quantity reward must not have duration unit")
+			return fmt.Errorf(
+				"unit: quantity reward must not have duration unit",
+			)
 		}
 	case "duration":
 		if reward.Unit == nil || !validCalendarDurationUnit(*reward.Unit) {
-			return fmt.Errorf("unit: duration reward requires a valid duration unit")
+			return fmt.Errorf(
+				"unit: duration reward requires a valid duration unit",
+			)
 		}
 	default:
 		return fmt.Errorf("type: must be quantity or duration")
@@ -617,7 +740,10 @@ func countPackage(pkg ExportPackage) ImportCounts {
 	return counts
 }
 
-func (r *Repository) importExistingCalendarTypes(ctx context.Context, workspaceID string) (map[string]string, error) {
+func (r *Repository) importExistingCalendarTypes(
+	ctx context.Context,
+	workspaceID string,
+) (map[string]string, error) {
 	calendars, err := r.q.ListImportCalendarTypes(ctx, workspaceID)
 	if err != nil {
 		return nil, err

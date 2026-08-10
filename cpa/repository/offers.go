@@ -77,7 +77,11 @@ func ValidateOffer(params UpsertOfferParams) error {
 	if strings.TrimSpace(params.ID) == "" {
 		return invalidOfferField("id", "offer id is required")
 	}
-	if err := validateStoredString("id", params.ID, maxOfferIDLength); err != nil {
+	if err := validateStoredString(
+		"id",
+		params.ID,
+		maxOfferIDLength,
+	); err != nil {
 		return err
 	}
 	if len(params.Payload) == 0 || !json.Valid(params.Payload) {
@@ -86,41 +90,73 @@ func ValidateOffer(params UpsertOfferParams) error {
 	if err := target.Validate(params.Target); err != nil {
 		return invalidOfferField("target", err.Error())
 	}
-	if params.StartAt != nil && params.EndAt != nil && !params.StartAt.Before(*params.EndAt) {
+	if params.StartAt != nil && params.EndAt != nil &&
+		!params.StartAt.Before(*params.EndAt) {
 		return invalidOfferField("start_at", "start_at must be before end_at")
 	}
 	switch params.CodeMode {
 	case CodeModeShared:
-		if params.SharedCode == nil || strings.TrimSpace(*params.SharedCode) == "" {
+		if params.SharedCode == nil ||
+			strings.TrimSpace(*params.SharedCode) == "" {
 			return invalidOfferField("shared_code", "shared code is required")
 		}
-		if err := validateStoredString("shared_code", *params.SharedCode, maxCodeLength); err != nil {
+		if err := validateStoredString(
+			"shared_code",
+			*params.SharedCode,
+			maxCodeLength,
+		); err != nil {
 			return err
 		}
 	case CodeModePersonal:
 		if params.CodeSource == nil {
-			return invalidOfferField("code_source", "personal code source is required")
+			return invalidOfferField(
+				"code_source",
+				"personal code source is required",
+			)
 		}
 		switch *params.CodeSource {
 		case CodeSourcePool:
 		case CodeSourceGenerated:
-			if params.GeneratedLength == nil || *params.GeneratedLength <= 0 || *params.GeneratedLength > maxCodeLength {
-				return invalidOfferField("generated_length", "generated code length must be between 1 and 512")
+			if params.GeneratedLength == nil || *params.GeneratedLength <= 0 ||
+				*params.GeneratedLength > maxCodeLength {
+				return invalidOfferField(
+					"generated_length",
+					"generated code length must be between 1 and 512",
+				)
 			}
 			if params.GeneratedAlphabet == nil {
-				return invalidOfferField("generated_alphabet", "generated alphabet is required")
+				return invalidOfferField(
+					"generated_alphabet",
+					"generated alphabet is required",
+				)
 			}
-			if err := validateStoredString("generated_alphabet", *params.GeneratedAlphabet, maxGeneratedAlphabetLength); err != nil {
+			if err := validateStoredString(
+				"generated_alphabet",
+				*params.GeneratedAlphabet,
+				maxGeneratedAlphabetLength,
+			); err != nil {
 				return err
 			}
 			if uniqueRuneCount(*params.GeneratedAlphabet) < 2 {
-				return invalidOfferField("generated_alphabet", "generated alphabet needs at least two symbols")
+				return invalidOfferField(
+					"generated_alphabet",
+					"generated alphabet needs at least two symbols",
+				)
 			}
-			if !hasMinimumGeneratedCodeEntropy(*params.GeneratedLength, uniqueRuneCount(*params.GeneratedAlphabet)) {
-				return invalidOfferField("generated_length", "generated code space must contain at least 2^64 values")
+			if !hasMinimumGeneratedCodeEntropy(
+				*params.GeneratedLength,
+				uniqueRuneCount(*params.GeneratedAlphabet),
+			) {
+				return invalidOfferField(
+					"generated_length",
+					"generated code space must contain at least 2^64 values",
+				)
 			}
 		default:
-			return invalidOfferField("code_source", "unsupported personal code source")
+			return invalidOfferField(
+				"code_source",
+				"unsupported personal code source",
+			)
 		}
 	default:
 		return invalidOfferField("code_mode", "unsupported code mode")
@@ -178,7 +214,11 @@ func ValidateLocalization(value Localization) error {
 			Detail: "cpa localization locale is required",
 		}
 	}
-	if err := validateStoredString("locale", value.Locale, maxLocaleLength); err != nil {
+	if err := validateStoredString(
+		"locale",
+		value.Locale,
+		maxLocaleLength,
+	); err != nil {
 		return err
 	}
 	if strings.TrimSpace(value.Title) == "" {
@@ -187,7 +227,11 @@ func ValidateLocalization(value Localization) error {
 			Detail: "cpa localization title is required",
 		}
 	}
-	if err := validateStoredString("title", value.Title, maxLocalizationTitleLength); err != nil {
+	if err := validateStoredString(
+		"title",
+		value.Title,
+		maxLocalizationTitleLength,
+	); err != nil {
 		return err
 	}
 	return nil
@@ -203,7 +247,11 @@ func NormalizeAndValidateReward(value Reward) (Reward, error) {
 			Detail: "cpa reward key is required",
 		}
 	}
-	if err := validateStoredString("key", value.Key, maxRewardKeyLength); err != nil {
+	if err := validateStoredString(
+		"key",
+		value.Key,
+		maxRewardKeyLength,
+	); err != nil {
 		return Reward{}, err
 	}
 	if value.Quantity <= 0 {
@@ -258,7 +306,10 @@ func validateStoredString(field, value string, maxLength int) error {
 		return invalidOfferField(field, "value must be valid UTF-8")
 	}
 	if utf8.RuneCountInString(value) > maxLength {
-		return invalidOfferField(field, fmt.Sprintf("value exceeds %d characters", maxLength))
+		return invalidOfferField(
+			field,
+			fmt.Sprintf("value exceeds %d characters", maxLength),
+		)
 	}
 	return nil
 }
@@ -271,7 +322,10 @@ func uniqueRuneCount(value string) int {
 	return len(values)
 }
 
-func (r *Repository) UpsertOffer(ctx context.Context, params UpsertOfferParams) error {
+func (r *Repository) UpsertOffer(
+	ctx context.Context,
+	params UpsertOfferParams,
+) error {
 	if err := ValidateOffer(params); err != nil {
 		return err
 	}
@@ -281,7 +335,10 @@ func (r *Repository) UpsertOffer(ctx context.Context, params UpsertOfferParams) 
 		target = []byte("null")
 	}
 	if err := r.WithTx(ctx, func(txRepo *Repository) error {
-		if err := txRepo.lockWorkspaceMutation(ctx, params.WorkspaceID); err != nil {
+		if err := txRepo.lockWorkspaceMutation(
+			ctx,
+			params.WorkspaceID,
+		); err != nil {
 			return err
 		}
 
@@ -291,28 +348,46 @@ func (r *Repository) UpsertOffer(ctx context.Context, params UpsertOfferParams) 
 			Payload:     params.Payload,
 			Target:      rawMessageParam(target),
 			CodeMode:    cpasqlc.CpaCodeMode(params.CodeMode),
-			CodeSource: sqlwrap.NullFromPtr(params.CodeSource, func(v string) cpasqlc.NullCpaCodeSource {
-				return cpasqlc.NullCpaCodeSource{
-					CpaCodeSource: cpasqlc.CpaCodeSource(v),
-					Valid:         true,
-				}
-			}),
-			SharedCode: sqlwrap.NullFromPtr(params.SharedCode, func(v string) sql.NullString {
-				return sql.NullString{String: v, Valid: true}
-			}),
-			GeneratedLength: sqlwrap.NullFromPtr(params.GeneratedLength, func(v int16) sql.NullInt16 {
-				return sql.NullInt16{Int16: v, Valid: true}
-			}),
-			GeneratedAlphabet: sqlwrap.NullFromPtr(params.GeneratedAlphabet, func(v string) sql.NullString {
-				return sql.NullString{String: v, Valid: true}
-			}),
+			CodeSource: sqlwrap.NullFromPtr(
+				params.CodeSource,
+				func(v string) cpasqlc.NullCpaCodeSource {
+					return cpasqlc.NullCpaCodeSource{
+						CpaCodeSource: cpasqlc.CpaCodeSource(v),
+						Valid:         true,
+					}
+				},
+			),
+			SharedCode: sqlwrap.NullFromPtr(
+				params.SharedCode,
+				func(v string) sql.NullString {
+					return sql.NullString{String: v, Valid: true}
+				},
+			),
+			GeneratedLength: sqlwrap.NullFromPtr(
+				params.GeneratedLength,
+				func(v int16) sql.NullInt16 {
+					return sql.NullInt16{Int16: v, Valid: true}
+				},
+			),
+			GeneratedAlphabet: sqlwrap.NullFromPtr(
+				params.GeneratedAlphabet,
+				func(v string) sql.NullString {
+					return sql.NullString{String: v, Valid: true}
+				},
+			),
 			IsActive: params.IsActive,
-			StartAt: sqlwrap.NullFromPtr(params.StartAt, func(v time.Time) sql.NullTime {
-				return sql.NullTime{Time: v, Valid: true}
-			}),
-			EndAt: sqlwrap.NullFromPtr(params.EndAt, func(v time.Time) sql.NullTime {
-				return sql.NullTime{Time: v, Valid: true}
-			}),
+			StartAt: sqlwrap.NullFromPtr(
+				params.StartAt,
+				func(v time.Time) sql.NullTime {
+					return sql.NullTime{Time: v, Valid: true}
+				},
+			),
+			EndAt: sqlwrap.NullFromPtr(
+				params.EndAt,
+				func(v time.Time) sql.NullTime {
+					return sql.NullTime{Time: v, Valid: true}
+				},
+			),
 		})
 	}); err != nil {
 		return err
@@ -321,7 +396,10 @@ func (r *Repository) UpsertOffer(ctx context.Context, params UpsertOfferParams) 
 	return nil
 }
 
-func (r *Repository) GetOfferBundle(ctx context.Context, workspaceID, cpaID string) (OfferBundle, error) {
+func (r *Repository) GetOfferBundle(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) (OfferBundle, error) {
 	if err := requireScope(workspaceID, cpaID); err != nil {
 		return OfferBundle{}, err
 	}
@@ -336,17 +414,23 @@ func (r *Repository) GetOfferBundle(ctx context.Context, workspaceID, cpaID stri
 	}, func(ctx context.Context) (OfferBundle, error) {
 		var result OfferBundle
 		err := r.WithReadOnlySnapshot(ctx, func(txRepo *Repository) error {
-			offer, err := txRepo.q.AdminGetOffer(ctx, cpasqlc.AdminGetOfferParams{
-				WorkspaceID: workspaceID,
-				ID:          cpaID,
-			})
+			offer, err := txRepo.q.AdminGetOffer(
+				ctx,
+				cpasqlc.AdminGetOfferParams{
+					WorkspaceID: workspaceID,
+					ID:          cpaID,
+				},
+			)
 			if err != nil {
 				return err
 			}
-			localizations, err := txRepo.q.ListLocalizations(ctx, cpasqlc.ListLocalizationsParams{
-				WorkspaceID: workspaceID,
-				CpaID:       cpaID,
-			})
+			localizations, err := txRepo.q.ListLocalizations(
+				ctx,
+				cpasqlc.ListLocalizationsParams{
+					WorkspaceID: workspaceID,
+					CpaID:       cpaID,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -369,7 +453,11 @@ func (r *Repository) GetOfferBundle(ctx context.Context, workspaceID, cpaID stri
 	})
 }
 
-func (r *Repository) ListOfferBundles(ctx context.Context, workspaceID string, limit, offset int32) ([]OfferBundle, error) {
+func (r *Repository) ListOfferBundles(
+	ctx context.Context,
+	workspaceID string,
+	limit, offset int32,
+) ([]OfferBundle, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
@@ -384,19 +472,25 @@ func (r *Repository) ListOfferBundles(ctx context.Context, workspaceID string, l
 	}, func(ctx context.Context) ([]OfferBundle, error) {
 		var result []OfferBundle
 		err := r.WithReadOnlySnapshot(ctx, func(txRepo *Repository) error {
-			rows, err := txRepo.q.AdminListOfferBundles(ctx, cpasqlc.AdminListOfferBundlesParams{
-				WorkspaceID: workspaceID,
-				PageLimit:   limit,
-				PageOffset:  offset,
-			})
+			rows, err := txRepo.q.AdminListOfferBundles(
+				ctx,
+				cpasqlc.AdminListOfferBundlesParams{
+					WorkspaceID: workspaceID,
+					PageLimit:   limit,
+					PageOffset:  offset,
+				},
+			)
 			if err != nil {
 				return err
 			}
-			rewardRows, err := txRepo.q.AdminListOfferBundleRewards(ctx, cpasqlc.AdminListOfferBundleRewardsParams{
-				WorkspaceID: workspaceID,
-				PageLimit:   limit,
-				PageOffset:  offset,
-			})
+			rewardRows, err := txRepo.q.AdminListOfferBundleRewards(
+				ctx,
+				cpasqlc.AdminListOfferBundleRewardsParams{
+					WorkspaceID: workspaceID,
+					PageLimit:   limit,
+					PageOffset:  offset,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -408,34 +502,51 @@ func (r *Repository) ListOfferBundles(ctx context.Context, workspaceID string, l
 	})
 }
 
-func (r *Repository) ListAllOfferBundles(ctx context.Context, workspaceID string) ([]OfferBundle, error) {
+func (r *Repository) ListAllOfferBundles(
+	ctx context.Context,
+	workspaceID string,
+) ([]OfferBundle, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.AdminListOfferBundles(ctx, cpasqlc.AdminListOfferBundlesParams{
-		WorkspaceID: workspaceID,
-		PageLimit:   0,
-		PageOffset:  0,
-	})
+	rows, err := r.q.AdminListOfferBundles(
+		ctx,
+		cpasqlc.AdminListOfferBundlesParams{
+			WorkspaceID: workspaceID,
+			PageLimit:   0,
+			PageOffset:  0,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
-	rewardRows, err := r.q.AdminListOfferBundleRewards(ctx, cpasqlc.AdminListOfferBundleRewardsParams{
-		WorkspaceID: workspaceID,
-		PageLimit:   0,
-		PageOffset:  0,
-	})
+	rewardRows, err := r.q.AdminListOfferBundleRewards(
+		ctx,
+		cpasqlc.AdminListOfferBundleRewardsParams{
+			WorkspaceID: workspaceID,
+			PageLimit:   0,
+			PageOffset:  0,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
 	return mapAdminOfferBundles(rows, rewardRows, len(rows)), nil
 }
 
-func (r *Repository) ListActiveForUser(ctx context.Context, scope UserScope, locale string) ([]OfferBundle, error) {
+func (r *Repository) ListActiveForUser(
+	ctx context.Context,
+	scope UserScope,
+	locale string,
+) ([]OfferBundle, error) {
 	if err := requireUserScope(scope, false); err != nil {
 		return nil, err
 	}
-	if err := validateStoredString("locale", locale, maxLocaleLength); err != nil {
+	if err := validateStoredString(
+		"locale",
+		locale,
+		maxLocaleLength,
+	); err != nil {
 		return nil, err
 	}
 	catalog, err := r.listActiveOfferCatalog(ctx, scope.WorkspaceID, locale)
@@ -490,7 +601,10 @@ func isOfferActiveAt(offer Offer, now time.Time) bool {
 	return true
 }
 
-func (r *Repository) listActiveOfferCatalog(ctx context.Context, workspaceID, locale string) ([]OfferBundle, error) {
+func (r *Repository) listActiveOfferCatalog(
+	ctx context.Context,
+	workspaceID, locale string,
+) ([]OfferBundle, error) {
 	key := cpaCacheKey("user_list_active_catalog", workspaceID, locale)
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:               key,
@@ -499,10 +613,13 @@ func (r *Repository) listActiveOfferCatalog(ctx context.Context, workspaceID, lo
 		CacheL2Delay:      r.cacheL2,
 		CacheVersionScope: cpaUserListCacheVersionScope(workspaceID),
 	}, func(ctx context.Context) ([]OfferBundle, error) {
-		rows, err := r.q.ListActiveOfferCatalog(ctx, cpasqlc.ListActiveOfferCatalogParams{
-			Locale:      locale,
-			WorkspaceID: workspaceID,
-		})
+		rows, err := r.q.ListActiveOfferCatalog(
+			ctx,
+			cpasqlc.ListActiveOfferCatalogParams{
+				Locale:      locale,
+				WorkspaceID: workspaceID,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -510,7 +627,10 @@ func (r *Repository) listActiveOfferCatalog(ctx context.Context, workspaceID, lo
 	})
 }
 
-func (r *Repository) DeleteOffer(ctx context.Context, workspaceID, cpaID string) (int64, error) {
+func (r *Repository) DeleteOffer(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) (int64, error) {
 	if err := requireScope(workspaceID, cpaID); err != nil {
 		return 0, err
 	}
@@ -521,10 +641,13 @@ func (r *Repository) DeleteOffer(ctx context.Context, workspaceID, cpaID string)
 		}
 
 		var err error
-		rows, err = txRepo.q.AdminDeleteOffer(ctx, cpasqlc.AdminDeleteOfferParams{
-			WorkspaceID: workspaceID,
-			ID:          cpaID,
-		})
+		rows, err = txRepo.q.AdminDeleteOffer(
+			ctx,
+			cpasqlc.AdminDeleteOfferParams{
+				WorkspaceID: workspaceID,
+				ID:          cpaID,
+			},
+		)
 		return err
 	})
 	if isForeignKeyViolation(err) {
@@ -537,21 +660,30 @@ func (r *Repository) DeleteOffer(ctx context.Context, workspaceID, cpaID string)
 	return rows, nil
 }
 
-func (r *Repository) UpsertLocalization(ctx context.Context, value Localization) error {
+func (r *Repository) UpsertLocalization(
+	ctx context.Context,
+	value Localization,
+) error {
 	if err := ValidateLocalization(value); err != nil {
 		return err
 	}
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
-		if err := txRepo.lockWorkspaceMutation(ctx, value.WorkspaceID); err != nil {
+		if err := txRepo.lockWorkspaceMutation(
+			ctx,
+			value.WorkspaceID,
+		); err != nil {
 			return err
 		}
-		return txRepo.q.AdminUpsertLocalization(ctx, cpasqlc.AdminUpsertLocalizationParams{
-			WorkspaceID: value.WorkspaceID,
-			CpaID:       value.CPAID,
-			Locale:      value.Locale,
-			Title:       value.Title,
-			Description: value.Description,
-		})
+		return txRepo.q.AdminUpsertLocalization(
+			ctx,
+			cpasqlc.AdminUpsertLocalizationParams{
+				WorkspaceID: value.WorkspaceID,
+				CpaID:       value.CPAID,
+				Locale:      value.Locale,
+				Title:       value.Title,
+				Description: value.Description,
+			},
+		)
 	})
 	if err != nil {
 		return err
@@ -560,7 +692,10 @@ func (r *Repository) UpsertLocalization(ctx context.Context, value Localization)
 	return nil
 }
 
-func (r *Repository) GetLocalization(ctx context.Context, workspaceID, cpaID, locale string) (Localization, error) {
+func (r *Repository) GetLocalization(
+	ctx context.Context,
+	workspaceID, cpaID, locale string,
+) (Localization, error) {
 	if err := requireScope(workspaceID, cpaID); err != nil {
 		return Localization{}, err
 	}
@@ -588,7 +723,10 @@ func (r *Repository) GetLocalization(ctx context.Context, workspaceID, cpaID, lo
 	})
 }
 
-func (r *Repository) ResolveLocalization(ctx context.Context, workspaceID, cpaID, locale string) (*Localization, error) {
+func (r *Repository) ResolveLocalization(
+	ctx context.Context,
+	workspaceID, cpaID, locale string,
+) (*Localization, error) {
 	if locale != "" {
 		value, err := r.GetLocalization(ctx, workspaceID, cpaID, locale)
 		if err == nil {
@@ -605,7 +743,10 @@ func (r *Repository) ResolveLocalization(ctx context.Context, workspaceID, cpaID
 	return &values[0], nil
 }
 
-func (r *Repository) ListLocalizations(ctx context.Context, workspaceID, cpaID string) ([]Localization, error) {
+func (r *Repository) ListLocalizations(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) ([]Localization, error) {
 	if err := requireScope(workspaceID, cpaID); err != nil {
 		return nil, err
 	}
@@ -633,7 +774,10 @@ func (r *Repository) ListLocalizations(ctx context.Context, workspaceID, cpaID s
 	})
 }
 
-func (r *Repository) DeleteLocalization(ctx context.Context, workspaceID, cpaID, locale string) (int64, error) {
+func (r *Repository) DeleteLocalization(
+	ctx context.Context,
+	workspaceID, cpaID, locale string,
+) (int64, error) {
 	if err := requireScope(workspaceID, cpaID); err != nil {
 		return 0, err
 	}
@@ -647,11 +791,14 @@ func (r *Repository) DeleteLocalization(ctx context.Context, workspaceID, cpaID,
 			return err
 		}
 		var err error
-		rows, err = txRepo.q.AdminDeleteLocalization(ctx, cpasqlc.AdminDeleteLocalizationParams{
-			WorkspaceID: workspaceID,
-			CpaID:       cpaID,
-			Locale:      locale,
-		})
+		rows, err = txRepo.q.AdminDeleteLocalization(
+			ctx,
+			cpasqlc.AdminDeleteLocalizationParams{
+				WorkspaceID: workspaceID,
+				CpaID:       cpaID,
+				Locale:      locale,
+			},
+		)
 		return err
 	})
 	if err != nil || rows == 0 {
@@ -667,7 +814,10 @@ func (r *Repository) UpsertReward(ctx context.Context, value Reward) error {
 		return err
 	}
 	err = r.WithTx(ctx, func(txRepo *Repository) error {
-		if err := txRepo.lockWorkspaceMutation(ctx, value.WorkspaceID); err != nil {
+		if err := txRepo.lockWorkspaceMutation(
+			ctx,
+			value.WorkspaceID,
+		); err != nil {
 			return err
 		}
 		return txRepo.q.AdminUpsertReward(ctx, cpasqlc.AdminUpsertRewardParams{
@@ -678,8 +828,10 @@ func (r *Repository) UpsertReward(ctx context.Context, value Reward) error {
 			Quantity:    value.Quantity,
 			Scale:       int32(value.Scale),
 			DurationUnit: cpasqlc.NullCpaDurationUnit{
-				CpaDurationUnit: cpasqlc.CpaDurationUnit(valueOrEmpty(value.Unit)),
-				Valid:           value.Unit != nil,
+				CpaDurationUnit: cpasqlc.CpaDurationUnit(
+					valueOrEmpty(value.Unit),
+				),
+				Valid: value.Unit != nil,
 			},
 		})
 	})
@@ -690,7 +842,10 @@ func (r *Repository) UpsertReward(ctx context.Context, value Reward) error {
 	return nil
 }
 
-func (r *Repository) ListRewards(ctx context.Context, workspaceID, cpaID string) ([]Reward, error) {
+func (r *Repository) ListRewards(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) ([]Reward, error) {
 	if err := requireScope(workspaceID, cpaID); err != nil {
 		return nil, err
 	}
@@ -718,7 +873,10 @@ func (r *Repository) ListRewards(ctx context.Context, workspaceID, cpaID string)
 	})
 }
 
-func (r *Repository) listRewardsDirect(ctx context.Context, workspaceID, cpaID string) ([]Reward, error) {
+func (r *Repository) listRewardsDirect(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) ([]Reward, error) {
 	rows, err := r.q.ListRewards(ctx, cpasqlc.ListRewardsParams{
 		WorkspaceID: workspaceID,
 		CpaID:       cpaID,
@@ -734,7 +892,10 @@ func (r *Repository) listRewardsDirect(ctx context.Context, workspaceID, cpaID s
 	return result, nil
 }
 
-func (r *Repository) DeleteReward(ctx context.Context, workspaceID, cpaID, rewardKey string) (int64, error) {
+func (r *Repository) DeleteReward(
+	ctx context.Context,
+	workspaceID, cpaID, rewardKey string,
+) (int64, error) {
 	if err := requireScope(workspaceID, cpaID); err != nil {
 		return 0, err
 	}
@@ -748,11 +909,14 @@ func (r *Repository) DeleteReward(ctx context.Context, workspaceID, cpaID, rewar
 			return err
 		}
 		var err error
-		rows, err = txRepo.q.AdminDeleteReward(ctx, cpasqlc.AdminDeleteRewardParams{
-			WorkspaceID: workspaceID,
-			CpaID:       cpaID,
-			RewardKey:   rewardKey,
-		})
+		rows, err = txRepo.q.AdminDeleteReward(
+			ctx,
+			cpasqlc.AdminDeleteRewardParams{
+				WorkspaceID: workspaceID,
+				CpaID:       cpaID,
+				RewardKey:   rewardKey,
+			},
+		)
 		return err
 	})
 	if err != nil || rows == 0 {
@@ -796,13 +960,16 @@ func mapAdminOfferBundles(
 			})
 		}
 		if row.Locale.Valid {
-			result[index].Localizations = append(result[index].Localizations, Localization{
-				WorkspaceID: row.WorkspaceID,
-				CPAID:       row.ID,
-				Locale:      row.Locale.String,
-				Title:       row.LocalizationTitle.String,
-				Description: row.LocalizationDescription.String,
-			})
+			result[index].Localizations = append(
+				result[index].Localizations,
+				Localization{
+					WorkspaceID: row.WorkspaceID,
+					CPAID:       row.ID,
+					Locale:      row.Locale.String,
+					Title:       row.LocalizationTitle.String,
+					Description: row.LocalizationDescription.String,
+				},
+			)
 		}
 	}
 	for _, row := range rewardRows {
@@ -887,7 +1054,9 @@ func mapRewards(rows []cpasqlc.CpaReward) []Reward {
 	return result
 }
 
-func mapActiveOfferCatalogRows(rows []cpasqlc.ListActiveOfferCatalogRow) []OfferBundle {
+func mapActiveOfferCatalogRows(
+	rows []cpasqlc.ListActiveOfferCatalogRow,
+) []OfferBundle {
 	result := make([]OfferBundle, 0, len(rows))
 	indexByID := make(map[string]int, len(rows))
 	for _, row := range rows {

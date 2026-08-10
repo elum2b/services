@@ -46,18 +46,24 @@ func Match(raw json.RawMessage, ctx Context) bool {
 	if len(rules.Sex) > 0 && !containsFold(rules.Sex, ctx.Sex) {
 		return false
 	}
-	countries := append(append([]string{}, rules.Country...), rules.Countries...)
+	countries := append(
+		append([]string{}, rules.Country...),
+		rules.Countries...)
 	if len(countries) > 0 && !containsFold(countries, ctx.Country) {
 		return false
 	}
-	locales := append(append(append([]string{}, rules.Loc...), rules.Locale...), rules.Locales...)
+	locales := append(
+		append(append([]string{}, rules.Loc...), rules.Locale...),
+		rules.Locales...)
 	if len(locales) > 0 && !containsFold(locales, ctx.Locale) {
 		return false
 	}
 	if len(rules.Platform) > 0 && !matchesPlatform(rules.Platform, ctx) {
 		return false
 	}
-	platformIDs := append(append([]string{}, rules.PlatformID...), rules.PlatformIDs...)
+	platformIDs := append(
+		append([]string{}, rules.PlatformID...),
+		rules.PlatformIDs...)
 	if len(platformIDs) > 0 && !matchesPlatformID(platformIDs, ctx.PlatformID) {
 		return false
 	}
@@ -153,7 +159,16 @@ func (r *Rules) UnmarshalJSON(data []byte) error {
 
 func isRuleKey(key string) bool {
 	switch key {
-	case "is_premium", "sex", "country", "countries", "loc", "locale", "locales", "platform", "platform_id", "platform_ids":
+	case "is_premium",
+		"sex",
+		"country",
+		"countries",
+		"loc",
+		"locale",
+		"locales",
+		"platform",
+		"platform_id",
+		"platform_ids":
 		return true
 	default:
 		return false
@@ -187,7 +202,10 @@ func stringList(raw json.RawMessage) ([]string, error) {
 			if err := json.Unmarshal(item, &number); err == nil {
 				value = number.String()
 			} else {
-				return nil, fmt.Errorf("item %d must be a string or number", index)
+				return nil, fmt.Errorf(
+					"item %d must be a string or number",
+					index,
+				)
 			}
 		}
 		if value == "" {
@@ -221,7 +239,8 @@ func matchesPlatform(values []string, ctx Context) bool {
 }
 
 func matchesPlatformID(values []string, platformID int64) bool {
-	if platformID != 0 && containsFold(values, strconv.FormatInt(platformID, 10)) {
+	if platformID != 0 &&
+		containsFold(values, strconv.FormatInt(platformID, 10)) {
 		return true
 	}
 	return false

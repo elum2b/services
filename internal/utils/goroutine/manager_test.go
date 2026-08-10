@@ -30,9 +30,14 @@ func TestManagerGoRecoversPanic(t *testing.T) {
 func TestManagerCloseStopsRestartingGoroutine(t *testing.T) {
 
 	manager := New()
-	if !manager.GoRestart(context.Background(), "test.restart", time.Millisecond, func() {
-		panic("restart")
-	}) {
+	if !manager.GoRestart(
+		context.Background(),
+		"test.restart",
+		time.Millisecond,
+		func() {
+			panic("restart")
+		},
+	) {
 		t.Fatal("expected restarting goroutine to start")
 	}
 

@@ -743,6 +743,25 @@ func (q *Queries) CreateWorkspaceRole(ctx context.Context, arg CreateWorkspaceRo
 	return i, err
 }
 
+const deleteApplicationDelivery = `-- name: DeleteApplicationDelivery :execrows
+DELETE FROM control_application_delivery
+WHERE workspace_id = $1 AND app_id = $2 AND platform_id = $3
+`
+
+type DeleteApplicationDeliveryParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	AppID       int64  `json:"app_id"`
+	PlatformID  int64  `json:"platform_id"`
+}
+
+func (q *Queries) DeleteApplicationDelivery(ctx context.Context, arg DeleteApplicationDeliveryParams) (int64, error) {
+	result, err := q.exec(ctx, q.deleteApplicationDeliveryStmt, deleteApplicationDelivery, arg.WorkspaceID, arg.AppID, arg.PlatformID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteApplicationPlatform = `-- name: DeleteApplicationPlatform :execrows
 DELETE FROM control_application_platform
 WHERE workspace_id = $1 AND app_id = $2 AND platform_id = $3
@@ -945,6 +964,34 @@ func (q *Queries) GetAccount(ctx context.Context, id string) (ControlAccount, er
 		&i.ID,
 		&i.DisplayName,
 		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getApplicationDelivery = `-- name: GetApplicationDelivery :one
+SELECT workspace_id, app_id, platform_id, url, encrypted_secret, is_enabled, created_at, updated_at
+FROM control_application_delivery
+WHERE workspace_id = $1 AND app_id = $2 AND platform_id = $3
+`
+
+type GetApplicationDeliveryParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	AppID       int64  `json:"app_id"`
+	PlatformID  int64  `json:"platform_id"`
+}
+
+func (q *Queries) GetApplicationDelivery(ctx context.Context, arg GetApplicationDeliveryParams) (ControlApplicationDelivery, error) {
+	row := q.queryRow(ctx, q.getApplicationDeliveryStmt, getApplicationDelivery, arg.WorkspaceID, arg.AppID, arg.PlatformID)
+	var i ControlApplicationDelivery
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.AppID,
+		&i.PlatformID,
+		&i.Url,
+		&i.EncryptedSecret,
+		&i.IsEnabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -1850,6 +1897,54 @@ func (q *Queries) ListAccessCatalog(ctx context.Context, arg ListAccessCatalogPa
 			&i.Position,
 			&i.AccessTitle,
 			&i.AccessDescription,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listApplicationDeliveries = `-- name: ListApplicationDeliveries :many
+SELECT workspace_id, app_id, platform_id, url, is_enabled, created_at, updated_at
+FROM control_application_delivery
+WHERE workspace_id = $1
+ORDER BY created_at DESC, app_id, platform_id
+`
+
+type ListApplicationDeliveriesRow struct {
+	WorkspaceID string    `json:"workspace_id"`
+	AppID       int64     `json:"app_id"`
+	PlatformID  int64     `json:"platform_id"`
+	Url         string    `json:"url"`
+	IsEnabled   bool      `json:"is_enabled"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) ListApplicationDeliveries(ctx context.Context, workspaceID string) ([]ListApplicationDeliveriesRow, error) {
+	rows, err := q.query(ctx, q.listApplicationDeliveriesStmt, listApplicationDeliveries, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListApplicationDeliveriesRow
+	for rows.Next() {
+		var i ListApplicationDeliveriesRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.AppID,
+			&i.PlatformID,
+			&i.Url,
+			&i.IsEnabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -3534,6 +3629,60 @@ func (q *Queries) UpdateWorkspaceRole(ctx context.Context, arg UpdateWorkspaceRo
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const upsertApplicationDelivery = `-- name: UpsertApplicationDelivery :one
+INSERT INTO control_application_delivery (
+    workspace_id, app_id, platform_id, url, encrypted_secret, is_enabled
+)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (workspace_id, app_id, platform_id) DO UPDATE SET
+    url = EXCLUDED.url,
+    encrypted_secret = EXCLUDED.encrypted_secret,
+    is_enabled = EXCLUDED.is_enabled,
+    updated_at = now()
+RETURNING workspace_id, app_id, platform_id, url, is_enabled, created_at, updated_at
+`
+
+type UpsertApplicationDeliveryParams struct {
+	WorkspaceID     string `json:"workspace_id"`
+	AppID           int64  `json:"app_id"`
+	PlatformID      int64  `json:"platform_id"`
+	Url             string `json:"url"`
+	EncryptedSecret string `json:"encrypted_secret"`
+	IsEnabled       bool   `json:"is_enabled"`
+}
+
+type UpsertApplicationDeliveryRow struct {
+	WorkspaceID string    `json:"workspace_id"`
+	AppID       int64     `json:"app_id"`
+	PlatformID  int64     `json:"platform_id"`
+	Url         string    `json:"url"`
+	IsEnabled   bool      `json:"is_enabled"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) UpsertApplicationDelivery(ctx context.Context, arg UpsertApplicationDeliveryParams) (UpsertApplicationDeliveryRow, error) {
+	row := q.queryRow(ctx, q.upsertApplicationDeliveryStmt, upsertApplicationDelivery,
+		arg.WorkspaceID,
+		arg.AppID,
+		arg.PlatformID,
+		arg.Url,
+		arg.EncryptedSecret,
+		arg.IsEnabled,
+	)
+	var i UpsertApplicationDeliveryRow
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.AppID,
+		&i.PlatformID,
+		&i.Url,
+		&i.IsEnabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const upsertApplicationPlatform = `-- name: UpsertApplicationPlatform :one

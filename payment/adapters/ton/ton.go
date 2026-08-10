@@ -9,7 +9,6 @@ import (
 	"github.com/elum2b/services/internal/utils/contextutil"
 	goroutinemanager "github.com/elum2b/services/internal/utils/goroutine"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-
 	"github.com/elum2b/services/payment/repository"
 )
 
@@ -40,8 +39,16 @@ func New(ctx context.Context, db *sqlwrap.Client) *TON {
 	return NewWithOptions(ctx, db, repository.Options{})
 }
 
-func NewWithOptions(ctx context.Context, db *sqlwrap.Client, options repository.Options) *TON {
-	repo, err := repository.NewPreparedPaymentRepositoryWithOptions(context.Background(), db, options)
+func NewWithOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options repository.Options,
+) *TON {
+	repo, err := repository.NewPreparedPaymentRepositoryWithOptions(
+		context.Background(),
+		db,
+		options,
+	)
 	if err != nil {
 		repo = repository.NewPaymentRepositoryWithOptions(db, options)
 	}
@@ -89,14 +96,18 @@ func (a *TON) Close() error {
 	return a.repository.Close()
 }
 
-func (a *TON) bindContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (a *TON) bindContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	if a == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}
 	return contextutil.Merge(a.rootCtx, ctx)
 }
 
-func (a *TON) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (a *TON) withContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	return contextutil.Merge(a.rootCtx, ctx)
 }
 

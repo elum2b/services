@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	json "github.com/goccy/go-json"
 	"io"
 	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
+
+	json "github.com/goccy/go-json"
 
 	serviceerrors "github.com/elum2b/services/errors"
 	"github.com/elum2b/services/payment/repository"
@@ -72,7 +73,12 @@ func fetchDexScreenerPrices(
 
 	endpoint := strings.TrimRight(baseURL, "/") +
 		"/tokens/v1/" + url.PathEscape(chainID) + "/" + strings.Join(addresses, ",")
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		endpoint,
+		nil,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -83,13 +89,23 @@ func fetchDexScreenerPrices(
 		return nil, err
 	}
 	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+	if response.StatusCode < http.StatusOK ||
+		response.StatusCode >= http.StatusMultipleChoices {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
-		return nil, serviceerrors.Wrap(serviceerrors.CodeUnavailable, fmt.Sprintf("payment dexscreener request failed with status %d", response.StatusCode), errors.New(strings.TrimSpace(string(body))))
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeUnavailable,
+			fmt.Sprintf(
+				"payment dexscreener request failed with status %d",
+				response.StatusCode,
+			),
+			errors.New(strings.TrimSpace(string(body))),
+		)
 	}
 
 	var pairs []dexScreenerPair
-	decoder := json.NewDecoder(io.LimitReader(response.Body, maxDexScreenerResponseSize))
+	decoder := json.NewDecoder(
+		io.LimitReader(response.Body, maxDexScreenerResponseSize),
+	)
 	if err := decoder.Decode(&pairs); err != nil {
 		return nil, err
 	}
@@ -165,7 +181,9 @@ func dexScreenerRequestedPriceMinor(
 	if !parsed || baseUSD.Sign() <= 0 {
 		return "", 0, false
 	}
-	baseInQuote, parsed := new(big.Rat).SetString(strings.TrimSpace(pair.PriceNative))
+	baseInQuote, parsed := new(
+		big.Rat,
+	).SetString(strings.TrimSpace(pair.PriceNative))
 	if !parsed || baseInQuote.Sign() <= 0 {
 		return "", 0, false
 	}
@@ -187,7 +205,9 @@ func ratToUSDTMinor(value *big.Rat) (uint64, error) {
 		return 0, ErrUSDPriceInvalid
 	}
 	scaled := new(big.Rat).Mul(value, big.NewRat(1_000_000, 1))
-	minor, remainder := new(big.Int).QuoRem(scaled.Num(), scaled.Denom(), new(big.Int))
+	minor, remainder := new(
+		big.Int,
+	).QuoRem(scaled.Num(), scaled.Denom(), new(big.Int))
 	if remainder.Sign() > 0 {
 		minor.Add(minor, big.NewInt(1))
 	}

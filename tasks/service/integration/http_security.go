@@ -11,11 +11,17 @@ import (
 	"time"
 )
 
-func validateHTTPCheckURL(ctx context.Context, value *url.URL, allowPrivate bool) error {
+func validateHTTPCheckURL(
+	ctx context.Context,
+	value *url.URL,
+	allowPrivate bool,
+) error {
 
 	if value == nil || value.Hostname() == "" || value.User != nil ||
 		(value.Scheme != "https" && !(allowPrivate && value.Scheme == "http")) {
-		return fmt.Errorf("HTTP check URL must be an absolute HTTPS URL without credentials")
+		return fmt.Errorf(
+			"HTTP check URL must be an absolute HTTPS URL without credentials",
+		)
 	}
 
 	_, err := resolveHTTPCheckHost(ctx, value.Hostname(), allowPrivate)
@@ -23,7 +29,11 @@ func validateHTTPCheckURL(ctx context.Context, value *url.URL, allowPrivate bool
 
 }
 
-func secureHTTPCheckClient(base *http.Client, timeout time.Duration, allowPrivate bool) *http.Client {
+func secureHTTPCheckClient(
+	base *http.Client,
+	timeout time.Duration,
+	allowPrivate bool,
+) *http.Client {
 
 	if base == nil {
 		base = &http.Client{}
@@ -39,7 +49,11 @@ func secureHTTPCheckClient(base *http.Client, timeout time.Duration, allowPrivat
 	previousRedirect := client.CheckRedirect
 	client.CheckRedirect = func(request *http.Request, via []*http.Request) error {
 
-		if err := validateHTTPCheckURL(request.Context(), request.URL, allowPrivate); err != nil {
+		if err := validateHTTPCheckURL(
+			request.Context(),
+			request.URL,
+			allowPrivate,
+		); err != nil {
 			return err
 		}
 		if previousRedirect != nil {
@@ -61,7 +75,10 @@ func secureHTTPCheckClient(base *http.Client, timeout time.Duration, allowPrivat
 
 }
 
-func secureHTTPCheckTransport(base *http.Transport, allowPrivate bool) *http.Transport {
+func secureHTTPCheckTransport(
+	base *http.Transport,
+	allowPrivate bool,
+) *http.Transport {
 
 	transport := base.Clone()
 	dial := transport.DialContext
@@ -82,7 +99,11 @@ func secureHTTPCheckTransport(base *http.Transport, allowPrivate bool) *http.Tra
 
 		var dialErr error
 		for _, resolved := range addresses {
-			connection, err := dial(ctx, network, net.JoinHostPort(resolved.String(), port))
+			connection, err := dial(
+				ctx,
+				network,
+				net.JoinHostPort(resolved.String(), port),
+			)
 			if err == nil {
 				return connection, nil
 			}
@@ -96,7 +117,11 @@ func secureHTTPCheckTransport(base *http.Transport, allowPrivate bool) *http.Tra
 
 }
 
-func resolveHTTPCheckHost(ctx context.Context, host string, allowPrivate bool) ([]netip.Addr, error) {
+func resolveHTTPCheckHost(
+	ctx context.Context,
+	host string,
+	allowPrivate bool,
+) ([]netip.Addr, error) {
 
 	addresses, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 	if err != nil || len(addresses) == 0 {
@@ -107,7 +132,9 @@ func resolveHTTPCheckHost(ctx context.Context, host string, allowPrivate bool) (
 	}
 	for _, address := range addresses {
 		if !isPublicHTTPCheckAddress(address) {
-			return nil, fmt.Errorf("HTTP check host resolves to a non-public address")
+			return nil, fmt.Errorf(
+				"HTTP check host resolves to a non-public address",
+			)
 		}
 	}
 

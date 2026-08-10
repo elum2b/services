@@ -17,7 +17,8 @@ func (a *Refund) Execute(ctx context.Context, params Params) (*Result, error) {
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return nil, err
 	}
-	if params.IdempotencyKey == "" || params.IdempotencyKey != strings.TrimSpace(params.IdempotencyKey) ||
+	if params.IdempotencyKey == "" ||
+		params.IdempotencyKey != strings.TrimSpace(params.IdempotencyKey) ||
 		len(params.IdempotencyKey) > 128 {
 		return nil, ErrIdempotencyKeyRequired
 	}
@@ -47,16 +48,19 @@ func (a *Refund) Execute(ctx context.Context, params Params) (*Result, error) {
 		return nil, ErrProviderUnsupported
 	}
 
-	refundState, err := a.repository.CreateIdempotentRefund(ctx, repository.IdempotentRefundCreateParams{
-		WorkspaceID:    order.WorkspaceID,
-		OrderID:        order.ID,
-		AttemptID:      attempt.ID,
-		ProviderCode:   attempt.ProviderCode,
-		IdempotencyKey: params.IdempotencyKey,
-		AmountMinor:    amount,
-		AssetCode:      attempt.AssetCode,
-		Reason:         refIfNotEmpty(params.Reason),
-	})
+	refundState, err := a.repository.CreateIdempotentRefund(
+		ctx,
+		repository.IdempotentRefundCreateParams{
+			WorkspaceID:    order.WorkspaceID,
+			OrderID:        order.ID,
+			AttemptID:      attempt.ID,
+			ProviderCode:   attempt.ProviderCode,
+			IdempotencyKey: params.IdempotencyKey,
+			AmountMinor:    amount,
+			AssetCode:      attempt.AssetCode,
+			Reason:         refIfNotEmpty(params.Reason),
+		},
+	)
 	if err != nil {
 		return nil, err
 	}

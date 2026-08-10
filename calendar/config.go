@@ -49,8 +49,11 @@ type DatabaseParams struct {
 
 func toSQLWrapOptions(value Options) sqlwrap.Options {
 	result := sqlwrap.Options{
-		MaxConnections: value.MaxConnections, CacheEnabled: value.CacheEnabled,
-		CacheSize: value.CacheSize, CacheTTLCheck: value.CacheTTLCheck, QueryTimeout: value.QueryTimeout,
+		MaxConnections: value.MaxConnections,
+		CacheEnabled:   value.CacheEnabled,
+		CacheSize:      value.CacheSize,
+		CacheTTLCheck:  value.CacheTTLCheck,
+		QueryTimeout:   value.QueryTimeout,
 	}
 	if value.Cache != nil {
 		result.Cache = storageAdapter{value.Cache}

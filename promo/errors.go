@@ -7,12 +7,30 @@ import (
 )
 
 var (
-	ErrServiceNil                  = serviceerrors.New(serviceerrors.CodeNotReady, "promo service is nil")
-	ErrServiceRunning              = serviceerrors.New(serviceerrors.CodeConflict, "promo service is already running")
-	ErrDatabaseConfigRequired      = serviceerrors.New(serviceerrors.CodeInvalidFields, "promo database user and name are required")
-	ErrCallbackHandlerNil          = serviceerrors.New(serviceerrors.CodeInvalidFields, "promo callback handler is nil")
-	ErrCallbacksRegistrationClosed = serviceerrors.New(serviceerrors.CodeFailedPrecondition, "promo callbacks must be registered before Run")
-	ErrCallbacksNotConfigured      = serviceerrors.New(serviceerrors.CodeNotReady, "promo callback store is not configured")
+	ErrServiceNil = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"promo service is nil",
+	)
+	ErrServiceRunning = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"promo service is already running",
+	)
+	ErrDatabaseConfigRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"promo database user and name are required",
+	)
+	ErrCallbackHandlerNil = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"promo callback handler is nil",
+	)
+	ErrCallbacksRegistrationClosed = serviceerrors.New(
+		serviceerrors.CodeFailedPrecondition,
+		"promo callbacks must be registered before Run",
+	)
+	ErrCallbacksNotConfigured = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"promo callback store is not configured",
+	)
 )
 
 func wrapLifecycleError(err error) error {
@@ -28,5 +46,9 @@ func wrapLifecycleError(err error) error {
 		serviceerrors.IsStructured(err) {
 		return err
 	}
-	return serviceerrors.Wrap(serviceerrors.CodeInternalError, "promo operation failed", err)
+	return serviceerrors.Wrap(
+		serviceerrors.CodeInternalError,
+		"promo operation failed",
+		err,
+	)
 }

@@ -92,7 +92,12 @@ type storageAdapter struct{ value Storage }
 func (a storageAdapter) GetWithTTL(key string) ([]byte, time.Duration, error) {
 	return a.value.GetWithTTL(key)
 }
-func (a storageAdapter) Set(key string, value []byte, expiration time.Duration) error {
+
+func (a storageAdapter) Set(
+	key string,
+	value []byte,
+	expiration time.Duration,
+) error {
 	return a.value.Set(key, value, expiration)
 }
 func (a storageAdapter) Delete(key string) error {

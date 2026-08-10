@@ -9,7 +9,10 @@ func Normalize(ctx context.Context) context.Context {
 	return ctx
 }
 
-func Merge(rootCtx context.Context, requestCtx context.Context) (context.Context, context.CancelFunc) {
+func Merge(
+	rootCtx context.Context,
+	requestCtx context.Context,
+) (context.Context, context.CancelFunc) {
 	rootCtx = Normalize(rootCtx)
 	if requestCtx == nil {
 		return context.WithCancel(rootCtx)

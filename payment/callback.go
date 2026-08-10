@@ -132,7 +132,11 @@ func WithCallbackIdleDelay(delay time.Duration) CallbackOption {
 	return callbackutil.WithIdleDelay(delay)
 }
 
-func (a *Payment) OnCallback(ctx context.Context, handler CallbackHandler, opts ...CallbackOption) error {
+func (a *Payment) OnCallback(
+	ctx context.Context,
+	handler CallbackHandler,
+	opts ...CallbackOption,
+) error {
 	if handler == nil {
 		return ErrCallbackHandlerNil
 	}
@@ -149,13 +153,19 @@ func (a *Payment) OnCallback(ctx context.Context, handler CallbackHandler, opts 
 		return a.runCallback(ctx, handler, opts...)
 	}
 	a.callbacksToRun = append(a.callbacksToRun, callbackRegistration{
-		ctx: ctx, handler: handler, options: append([]CallbackOption(nil), opts...),
+		ctx:     ctx,
+		handler: handler,
+		options: append([]CallbackOption(nil), opts...),
 	})
 	a.lifecycleMu.Unlock()
 	return nil
 }
 
-func (a *Payment) runCallback(ctx context.Context, handler CallbackHandler, opts ...CallbackOption) error {
+func (a *Payment) runCallback(
+	ctx context.Context,
+	handler CallbackHandler,
+	opts ...CallbackOption,
+) error {
 	if a == nil || a.callbacks == nil {
 		return ErrCallbacksNotConfigured
 	}
@@ -166,7 +176,11 @@ func (a *Payment) runCallback(ctx context.Context, handler CallbackHandler, opts
 	return a.callbacks.On(runCtx, func(callbackCtx callbackutil.Context) error {
 		paymentCtx, err := newCallbackContext(callbackCtx)
 		if err != nil {
-			return serviceerrors.Wrap(serviceerrors.CodeInternalError, "payment callback payload decode failed", err)
+			return serviceerrors.Wrap(
+				serviceerrors.CodeInternalError,
+				"payment callback payload decode failed",
+				err,
+			)
 		}
 		return handler(paymentCtx)
 	}, opts...)
@@ -178,7 +192,11 @@ func newCallbackContext(callbackCtx callbackutil.Context) (Context, error) {
 	case CallbackEventPaymentOrderFulfilled:
 		var payload PaymentFulfilledCallbackPayload
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
-			return Context{}, serviceerrors.Wrap(serviceerrors.CodeInternalError, "payment callback payload decode failed", err)
+			return Context{}, serviceerrors.Wrap(
+				serviceerrors.CodeInternalError,
+				"payment callback payload decode failed",
+				err,
+			)
 		}
 		ctx.Payload = &services.RewardPayload{
 			Identity: services.Identity{
@@ -193,7 +211,11 @@ func newCallbackContext(callbackCtx callbackutil.Context) (Context, error) {
 	case CallbackEventPaymentOrderRefunded:
 		var payload PaymentRefundedCallbackPayload
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
-			return Context{}, serviceerrors.Wrap(serviceerrors.CodeInternalError, "payment callback payload decode failed", err)
+			return Context{}, serviceerrors.Wrap(
+				serviceerrors.CodeInternalError,
+				"payment callback payload decode failed",
+				err,
+			)
 		}
 		ctx.Payload = &services.RewardPayload{
 			Identity: services.Identity{

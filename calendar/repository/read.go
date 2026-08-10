@@ -8,23 +8,35 @@ import (
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 )
 
-func (r *Repository) GetCalendar(ctx context.Context, workspaceID, ref, locale string) (Calendar, error) {
+func (r *Repository) GetCalendar(
+	ctx context.Context,
+	workspaceID, ref, locale string,
+) (Calendar, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return Calendar{}, err
 	}
 
 	key := calendarCacheKey(calendarCacheUserCalendar, workspaceID, ref, locale)
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key:               key,
-		Timeout:           r.timeout,
-		CacheL1Delay:      r.cacheL1,
-		CacheL2Delay:      r.cacheL2,
-		CacheVersionScope: calendarCacheScope(calendarCacheUserCalendar, workspaceID),
+		Key:          key,
+		Timeout:      r.timeout,
+		CacheL1Delay: r.cacheL1,
+		CacheL2Delay: r.cacheL2,
+		CacheVersionScope: calendarCacheScope(
+			calendarCacheUserCalendar,
+			workspaceID,
+		),
 	}, func(ctx context.Context) (Calendar, error) {
 		id, calendarType := calendarReference(ref)
-		rows, err := r.q.GetCalendarBundle(ctx, calendarsqlc.GetCalendarBundleParams{
-			Locale: locale, WorkspaceID: workspaceID, ID: id, Type: calendarType,
-		})
+		rows, err := r.q.GetCalendarBundle(
+			ctx,
+			calendarsqlc.GetCalendarBundleParams{
+				Locale:      locale,
+				WorkspaceID: workspaceID,
+				ID:          id,
+				Type:        calendarType,
+			},
+		)
 		if err != nil {
 			return Calendar{}, err
 		}
@@ -33,23 +45,33 @@ func (r *Repository) GetCalendar(ctx context.Context, workspaceID, ref, locale s
 		}
 		first := rows[0]
 		value := Calendar{
-			ID: first.ID, WorkspaceID: first.WorkspaceID, Type: first.Type,
+			ID:                  first.ID,
+			WorkspaceID:         first.WorkspaceID,
+			Type:                first.Type,
 			Mode:                first.Mode,
 			IntervalType:        first.IntervalType,
 			IntervalUnit:        first.IntervalUnit,
 			IntervalCount:       uint32(first.IntervalCount),
 			ResetAfterIntervals: uint32(first.ResetAfterIntervals),
 			EndBehavior:         first.EndBehavior,
-			Timezone:            first.Timezone, HideFutureRewards: first.HideFutureRewards,
-			IsActive: first.IsActive, StartAt: sqlwrap.NullTimePtr(first.StartAt),
-			EndAt: sqlwrap.NullTimePtr(first.EndAt), DeletedAt: sqlwrap.NullTimePtr(first.DeletedAt),
-			CreatedAt: first.CreatedAt, UpdatedAt: first.UpdatedAt,
-			Steps: make([]Step, 0),
+			Timezone:            first.Timezone,
+			HideFutureRewards:   first.HideFutureRewards,
+			IsActive:            first.IsActive,
+			StartAt:             sqlwrap.NullTimePtr(first.StartAt),
+			EndAt: sqlwrap.NullTimePtr(
+				first.EndAt,
+			),
+			DeletedAt: sqlwrap.NullTimePtr(first.DeletedAt),
+			CreatedAt: first.CreatedAt,
+			UpdatedAt: first.UpdatedAt,
+			Steps:     make([]Step, 0),
 		}
 		if first.LocalizationLocale.Valid {
 			value.Localization = &Localization{
-				WorkspaceID: first.WorkspaceID, CalendarID: first.ID,
-				Locale: first.LocalizationLocale.String, Title: first.LocalizationTitle.String,
+				WorkspaceID: first.WorkspaceID,
+				CalendarID:  first.ID,
+				Locale:      first.LocalizationLocale.String,
+				Title:       first.LocalizationTitle.String,
 				Description: first.LocalizationDescription.String,
 			}
 		}
@@ -62,23 +84,33 @@ func (r *Repository) GetCalendar(ctx context.Context, workspaceID, ref, locale s
 	})
 }
 
-func (r *Repository) ListActive(ctx context.Context, workspaceID, locale string, now time.Time) ([]Calendar, error) {
+func (r *Repository) ListActive(
+	ctx context.Context,
+	workspaceID, locale string,
+	now time.Time,
+) ([]Calendar, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return nil, err
 	}
 
 	key := calendarCacheKey(calendarCacheUserCatalog, workspaceID, locale)
 	catalog, err := sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key:               key,
-		Timeout:           r.timeout,
-		CacheL1Delay:      r.cacheL1,
-		CacheL2Delay:      r.cacheL2,
-		CacheVersionScope: calendarCacheScope(calendarCacheUserCatalog, workspaceID),
+		Key:          key,
+		Timeout:      r.timeout,
+		CacheL1Delay: r.cacheL1,
+		CacheL2Delay: r.cacheL2,
+		CacheVersionScope: calendarCacheScope(
+			calendarCacheUserCatalog,
+			workspaceID,
+		),
 	}, func(ctx context.Context) ([]Calendar, error) {
-		rows, err := r.q.ListActiveCalendars(ctx, calendarsqlc.ListActiveCalendarsParams{
-			Locale:      locale,
-			WorkspaceID: workspaceID,
-		})
+		rows, err := r.q.ListActiveCalendars(
+			ctx,
+			calendarsqlc.ListActiveCalendarsParams{
+				Locale:      locale,
+				WorkspaceID: workspaceID,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}

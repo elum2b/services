@@ -12,11 +12,11 @@ import (
 	"time"
 
 	json "github.com/goccy/go-json"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	serviceerrors "github.com/elum2b/services/errors"
 	callbackutil "github.com/elum2b/services/internal/utils/callback"
 	tasksqlc "github.com/elum2b/services/tasks/sqlc"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var ErrRecordAmountOverflow = serviceerrors.New(
@@ -39,7 +39,10 @@ var (
 	)
 )
 
-func (r *Repository) Record(ctx context.Context, params RecordParams) (RecordResult, error) {
+func (r *Repository) Record(
+	ctx context.Context,
+	params RecordParams,
+) (RecordResult, error) {
 	if err := params.Identity.Validate(); err != nil {
 		return RecordResult{}, err
 	}
@@ -71,25 +74,37 @@ func (r *Repository) Record(ctx context.Context, params RecordParams) (RecordRes
 
 var errRecordDuplicateEvent = errors.New("tasks: duplicate record event")
 
-func (r *Repository) sequenceStatesForUser(ctx context.Context, identity Identity) (map[string]uint64, error) {
-	return repositoryValue[map[string]uint64](ctx, r, func(ctx context.Context) (map[string]uint64, error) {
-		rows, err := r.q.ListSequenceStatesForUser(ctx, tasksqlc.ListSequenceStatesForUserParams{
-			WorkspaceID: identity.WorkspaceID,
-			AppID:       identity.AppID, PlatformID: identity.PlatformID, PlatformUserID: identity.PlatformUserID,
-		})
-		if err != nil {
-			return nil, err
-		}
-		result := make(map[string]uint64, len(rows))
-		for _, row := range rows {
-			if row.CurrentTaskID.Valid {
-				result[row.SequenceKey] = uint64(row.CurrentTaskID.Int64)
-			} else {
-				result[row.SequenceKey] = 0
+func (r *Repository) sequenceStatesForUser(
+	ctx context.Context,
+	identity Identity,
+) (map[string]uint64, error) {
+	return repositoryValue[map[string]uint64](
+		ctx,
+		r,
+		func(ctx context.Context) (map[string]uint64, error) {
+			rows, err := r.q.ListSequenceStatesForUser(
+				ctx,
+				tasksqlc.ListSequenceStatesForUserParams{
+					WorkspaceID:    identity.WorkspaceID,
+					AppID:          identity.AppID,
+					PlatformID:     identity.PlatformID,
+					PlatformUserID: identity.PlatformUserID,
+				},
+			)
+			if err != nil {
+				return nil, err
 			}
-		}
-		return result, nil
-	})
+			result := make(map[string]uint64, len(rows))
+			for _, row := range rows {
+				if row.CurrentTaskID.Valid {
+					result[row.SequenceKey] = uint64(row.CurrentTaskID.Int64)
+				} else {
+					result[row.SequenceKey] = 0
+				}
+			}
+			return result, nil
+		},
+	)
 }
 
 func (r *Repository) currentProgressForUpdate(
@@ -98,17 +113,28 @@ func (r *Repository) currentProgressForUpdate(
 	taskID uint64,
 	now time.Time,
 ) (Progress, error) {
-	return repositoryValue[Progress](ctx, r, func(ctx context.Context) (Progress, error) {
-		row, err := r.q.GetCurrentProgressForUpdate(ctx, tasksqlc.GetCurrentProgressForUpdateParams{
-			WorkspaceID: identity.WorkspaceID, TaskID: int64(taskID),
-			AppID: identity.AppID, PlatformID: identity.PlatformID, PlatformUserID: identity.PlatformUserID,
-			PeriodStartAt: now, PeriodEndAt: now,
-		})
-		if err != nil {
-			return Progress{}, err
-		}
-		return mapProgress(row), nil
-	})
+	return repositoryValue[Progress](
+		ctx,
+		r,
+		func(ctx context.Context) (Progress, error) {
+			row, err := r.q.GetCurrentProgressForUpdate(
+				ctx,
+				tasksqlc.GetCurrentProgressForUpdateParams{
+					WorkspaceID:    identity.WorkspaceID,
+					TaskID:         int64(taskID),
+					AppID:          identity.AppID,
+					PlatformID:     identity.PlatformID,
+					PlatformUserID: identity.PlatformUserID,
+					PeriodStartAt:  now,
+					PeriodEndAt:    now,
+				},
+			)
+			if err != nil {
+				return Progress{}, err
+			}
+			return mapProgress(row), nil
+		},
+	)
 }
 
 func (r *Repository) recordInTx(
@@ -123,7 +149,11 @@ func (r *Repository) recordInTx(
 			return err
 		}
 
-		catalog, err := txRepo.listRecordCatalog(ctx, params.Identity.WorkspaceID, params.ActionKey)
+		catalog, err := txRepo.listRecordCatalog(
+			ctx,
+			params.Identity.WorkspaceID,
+			params.ActionKey,
+		)
 		if err != nil {
 			return err
 		}
@@ -133,11 +163,18 @@ func (r *Repository) recordInTx(
 		var sequenceStates map[string]uint64
 		if catalogHasSequenceTasks(catalog) {
 			var err error
-			sequenceStates, err = txRepo.sequenceStatesForUser(ctx, params.Identity)
+			sequenceStates, err = txRepo.sequenceStatesForUser(
+				ctx,
+				params.Identity,
+			)
 			if err != nil {
 				return err
 			}
-			if err := txRepo.skipInactiveSequenceTasks(ctx, params.Identity, sequenceStates); err != nil {
+			if err := txRepo.skipInactiveSequenceTasks(
+				ctx,
+				params.Identity,
+				sequenceStates,
+			); err != nil {
 				return err
 			}
 		}
@@ -211,7 +248,8 @@ func (r *Repository) recordInTx(
 			if params.ExternalEventKey != "" {
 				shouldInsertEvent = true
 			}
-			if progress.Status == StatusClaimed || progress.Status == StatusReady {
+			if progress.Status == StatusClaimed ||
+				progress.Status == StatusReady {
 				continue
 			}
 			if task.StartMode == StartModeRequired && !exists {
@@ -235,15 +273,18 @@ func (r *Repository) recordInTx(
 				} else {
 					progress.Status = StatusReady
 					progress.ReadyAt = &now
-					progressUpserts = append(progressUpserts, recordProgressUpsert{
-						taskID:        task.ID,
-						periodStartAt: periodStart,
-						periodEndAt:   periodEnd,
-						delta:         consume,
-						status:        progress.Status,
-						readyAt:       progress.ReadyAt,
-						rewards:       task.Rewards,
-					})
+					progressUpserts = append(
+						progressUpserts,
+						recordProgressUpsert{
+							taskID:        task.ID,
+							periodStartAt: periodStart,
+							periodEndAt:   periodEnd,
+							delta:         consume,
+							status:        progress.Status,
+							readyAt:       progress.ReadyAt,
+							rewards:       task.Rewards,
+						},
+					)
 					changedTaskIDs = append(changedTaskIDs, task.ID)
 				}
 			} else {
@@ -262,7 +303,11 @@ func (r *Repository) recordInTx(
 				maxConsumed = consume
 			}
 			result.Tasks = append(result.Tasks, TaskResult{
-				Task: task, Before: before, After: progress.Progress, Consumed: consume, Claimed: claimed,
+				Task:     task,
+				Before:   before,
+				After:    progress.Progress,
+				Consumed: consume,
+				Claimed:  claimed,
 			})
 		}
 		if shouldInsertEvent {
@@ -270,31 +315,50 @@ func (r *Repository) recordInTx(
 			if len(eventPayload) == 0 {
 				eventPayload = []byte("{}")
 			}
-			affected, err := repositoryValue[int64](ctx, txRepo, func(ctx context.Context) (int64, error) {
-				return txRepo.q.InsertProgressEvent(ctx, tasksqlc.InsertProgressEventParams{
-					WorkspaceID:      params.Identity.WorkspaceID,
-					AppID:            params.Identity.AppID,
-					PlatformID:       params.Identity.PlatformID,
-					PlatformUserID:   params.Identity.PlatformUserID,
-					Source:           params.Source,
-					ExternalEventKey: params.ExternalEventKey,
-					ActionKey:        params.ActionKey,
-					Amount:           int64(amount),
-					Payload:          rawMessageParam(eventPayload),
-				})
-			})
+			affected, err := repositoryValue[int64](
+				ctx,
+				txRepo,
+				func(ctx context.Context) (int64, error) {
+					return txRepo.q.InsertProgressEvent(
+						ctx,
+						tasksqlc.InsertProgressEventParams{
+							WorkspaceID:      params.Identity.WorkspaceID,
+							AppID:            params.Identity.AppID,
+							PlatformID:       params.Identity.PlatformID,
+							PlatformUserID:   params.Identity.PlatformUserID,
+							Source:           params.Source,
+							ExternalEventKey: params.ExternalEventKey,
+							ActionKey:        params.ActionKey,
+							Amount:           int64(amount),
+							Payload:          rawMessageParam(eventPayload),
+						},
+					)
+				},
+			)
 			if err != nil {
 				return err
 			}
 			if affected != 1 {
-				*result = RecordResult{Status: RecordStatusDuplicate, Remaining: amount}
+				*result = RecordResult{
+					Status:    RecordStatusDuplicate,
+					Remaining: amount,
+				}
 				return errRecordDuplicateEvent
 			}
 		}
-		if _, err := txRepo.batchUpsertProgress(ctx, params.Identity, progressUpserts); err != nil {
+		if _, err := txRepo.batchUpsertProgress(
+			ctx,
+			params.Identity,
+			progressUpserts,
+		); err != nil {
 			return err
 		}
-		if err := txRepo.refreshComplexParentsForChangedTasks(ctx, params.Identity, changedTaskIDs, now); err != nil {
+		if err := txRepo.refreshComplexParentsForChangedTasks(
+			ctx,
+			params.Identity,
+			changedTaskIDs,
+			now,
+		); err != nil {
 			return err
 		}
 		for _, item := range autoClaims {
@@ -312,7 +376,14 @@ func (r *Repository) recordInTx(
 				}
 				progress.Progress = item.progress.Progress
 			}
-			if err := txRepo.claimProgress(ctx, params.Identity, &item.task, &progress, autoOperationID(params.ExternalEventKey, item.task.ID), now); err != nil {
+			if err := txRepo.claimProgress(
+				ctx,
+				params.Identity,
+				&item.task,
+				&progress,
+				autoOperationID(params.ExternalEventKey, item.task.ID),
+				now,
+			); err != nil {
 				return err
 			}
 		}
@@ -354,7 +425,10 @@ func catalogHasSequenceTasks(catalog []Task) bool {
 	return false
 }
 
-func (r *Repository) Claim(ctx context.Context, params ClaimParams) (ClaimResult, error) {
+func (r *Repository) Claim(
+	ctx context.Context,
+	params ClaimParams,
+) (ClaimResult, error) {
 	if err := params.Identity.Validate(); err != nil {
 		return ClaimResult{}, err
 	}
@@ -379,9 +453,17 @@ func (r *Repository) Claim(ctx context.Context, params ClaimParams) (ClaimResult
 		var task Task
 		var err error
 		if id != 0 {
-			task, err = txRepo.claimCatalogByID(ctx, params.Identity.WorkspaceID, id)
+			task, err = txRepo.claimCatalogByID(
+				ctx,
+				params.Identity.WorkspaceID,
+				id,
+			)
 		} else {
-			task, err = txRepo.claimCatalogByKey(ctx, params.Identity.WorkspaceID, key)
+			task, err = txRepo.claimCatalogByKey(
+				ctx,
+				params.Identity.WorkspaceID,
+				key,
+			)
 		}
 		if err != nil {
 			if isNoRows(err) {
@@ -390,7 +472,12 @@ func (r *Repository) Claim(ctx context.Context, params ClaimParams) (ClaimResult
 			return err
 		}
 		result.Task = &task
-		refreshedProgress, err := txRepo.refreshComplexTaskBeforeClaim(ctx, params.Identity, task, now)
+		refreshedProgress, err := txRepo.refreshComplexTaskBeforeClaim(
+			ctx,
+			params.Identity,
+			task,
+			now,
+		)
 		if err != nil {
 			return err
 		}
@@ -398,7 +485,12 @@ func (r *Repository) Claim(ctx context.Context, params ClaimParams) (ClaimResult
 		if refreshedProgress != nil && refreshedProgress.ID != 0 {
 			progress = *refreshedProgress
 		} else {
-			progress, err = txRepo.currentProgressForUpdate(ctx, params.Identity, task.ID, now)
+			progress, err = txRepo.currentProgressForUpdate(
+				ctx,
+				params.Identity,
+				task.ID,
+				now,
+			)
 			if err != nil {
 				if isNoRows(err) {
 					if task.StartMode == StartModeRequired {
@@ -427,7 +519,14 @@ func (r *Repository) Claim(ctx context.Context, params ClaimParams) (ClaimResult
 			result.Status = ClaimStatusAlreadyDone
 			return nil
 		case StatusReady:
-			if err := txRepo.claimProgress(ctx, params.Identity, &task, task.Progress, params.OperationID, now); err != nil {
+			if err := txRepo.claimProgress(
+				ctx,
+				params.Identity,
+				&task,
+				task.Progress,
+				params.OperationID,
+				now,
+			); err != nil {
 				return err
 			}
 			result.Task = &task
@@ -441,7 +540,10 @@ func (r *Repository) Claim(ctx context.Context, params ClaimParams) (ClaimResult
 	return result, err
 }
 
-func (r *Repository) StartTask(ctx context.Context, params StartTaskParams) (StartTaskResult, error) {
+func (r *Repository) StartTask(
+	ctx context.Context,
+	params StartTaskParams,
+) (StartTaskResult, error) {
 	if err := params.Identity.Validate(); err != nil {
 		return StartTaskResult{}, err
 	}
@@ -464,13 +566,22 @@ func (r *Repository) StartTask(ctx context.Context, params StartTaskParams) (Sta
 		if id != 0 {
 			row, err := txRepo.q.GetStartTaskByID(
 				ctx,
-				tasksqlc.GetStartTaskByIDParams{WorkspaceID: params.Identity.WorkspaceID, ID: int64(id)},
+				tasksqlc.GetStartTaskByIDParams{
+					WorkspaceID: params.Identity.WorkspaceID,
+					ID:          int64(id),
+				},
 			)
 			if err == nil {
 				task = mapStartTaskByID(row)
 			}
 		} else {
-			row, rowErr := txRepo.q.GetStartTaskByKey(ctx, tasksqlc.GetStartTaskByKeyParams{WorkspaceID: params.Identity.WorkspaceID, Key: key})
+			row, rowErr := txRepo.q.GetStartTaskByKey(
+				ctx,
+				tasksqlc.GetStartTaskByKeyParams{
+					WorkspaceID: params.Identity.WorkspaceID,
+					Key:         key,
+				},
+			)
 			err = rowErr
 			if err == nil {
 				task = mapStartTaskByKey(row)
@@ -487,7 +598,11 @@ func (r *Repository) StartTask(ctx context.Context, params StartTaskParams) (Sta
 			result.Status = RecordStatusNoTasks
 			return nil
 		}
-		allowed, err := txRepo.integrationTaskSequenceReady(ctx, params.Identity, task)
+		allowed, err := txRepo.integrationTaskSequenceReady(
+			ctx,
+			params.Identity,
+			task,
+		)
 		if err != nil {
 			return err
 		}
@@ -496,7 +611,12 @@ func (r *Repository) StartTask(ctx context.Context, params StartTaskParams) (Sta
 			return nil
 		}
 		periodStart, periodEnd := periodFor(task, now)
-		progress, err := txRepo.currentProgressForUpdate(ctx, params.Identity, task.ID, now)
+		progress, err := txRepo.currentProgressForUpdate(
+			ctx,
+			params.Identity,
+			task.ID,
+			now,
+		)
 		if err != nil {
 			if !isNoRows(err) {
 				return err
@@ -507,7 +627,13 @@ func (r *Repository) StartTask(ctx context.Context, params StartTaskParams) (Sta
 				return err
 			}
 
-			progress, err = txRepo.ensureProgress(ctx, params.Identity, task, periodStart, periodEnd)
+			progress, err = txRepo.ensureProgress(
+				ctx,
+				params.Identity,
+				task,
+				periodStart,
+				periodEnd,
+			)
 			if err != nil {
 				return err
 			}
@@ -557,7 +683,12 @@ func (r *Repository) GetClaimTask(
 			return err
 		}
 		found = true
-		progress, err := txRepo.currentProgressForUpdate(ctx, identity, task.ID, now)
+		progress, err := txRepo.currentProgressForUpdate(
+			ctx,
+			identity,
+			task.ID,
+			now,
+		)
 		if err != nil {
 			if !isNoRows(err) {
 				return err
@@ -577,20 +708,24 @@ func (r *Repository) ensureProgress(
 	task Task,
 	start, end time.Time,
 ) (Progress, error) {
-	id, err := repositoryValue[int64](ctx, r, func(ctx context.Context) (int64, error) {
-		return r.q.EnsureProgress(ctx, tasksqlc.EnsureProgressParams{
-			WorkspaceID:    identity.WorkspaceID,
-			TaskID:         int64(task.ID),
-			AppID:          identity.AppID,
-			PlatformID:     identity.PlatformID,
-			PlatformUserID: identity.PlatformUserID,
-			PeriodStartAt:  start,
-			PeriodEndAt:    end,
-			RewardsSnapshot: rawMessageParam(
-				rewardsSnapshot(task.Rewards),
-			),
-		})
-	})
+	id, err := repositoryValue[int64](
+		ctx,
+		r,
+		func(ctx context.Context) (int64, error) {
+			return r.q.EnsureProgress(ctx, tasksqlc.EnsureProgressParams{
+				WorkspaceID:    identity.WorkspaceID,
+				TaskID:         int64(task.ID),
+				AppID:          identity.AppID,
+				PlatformID:     identity.PlatformID,
+				PlatformUserID: identity.PlatformUserID,
+				PeriodStartAt:  start,
+				PeriodEndAt:    end,
+				RewardsSnapshot: rawMessageParam(
+					rewardsSnapshot(task.Rewards),
+				),
+			})
+		},
+	)
 	if err != nil {
 		return Progress{}, err
 	}
@@ -600,17 +735,31 @@ func (r *Repository) ensureProgress(
 	}, nil
 }
 
-func (r *Repository) saveProgress(ctx context.Context, progress Progress) error {
-	_, err := repositoryValue[int64](ctx, r, func(ctx context.Context) (int64, error) {
-		return r.q.UpdateProgress(ctx, tasksqlc.UpdateProgressParams{
-			Progress: int64(progress.Progress), Status: progress.Status,
-			ReadyAt: nullTime(progress.ReadyAt), ClaimedAt: nullTime(progress.ClaimedAt),
-			OperationID: nullString(
-				progress.OperationID,
-			), RewardsSnapshot: rawMessageParam(rewardsSnapshot(progress.Rewards)),
-			ID: int64(progress.ID),
-		})
-	})
+func (r *Repository) saveProgress(
+	ctx context.Context,
+	progress Progress,
+) error {
+	_, err := repositoryValue[int64](
+		ctx,
+		r,
+		func(ctx context.Context) (int64, error) {
+			return r.q.UpdateProgress(ctx, tasksqlc.UpdateProgressParams{
+				Progress: int64(progress.Progress),
+				Status:   progress.Status,
+				ReadyAt: nullTime(
+					progress.ReadyAt,
+				),
+				ClaimedAt: nullTime(progress.ClaimedAt),
+				OperationID: nullString(
+					progress.OperationID,
+				),
+				RewardsSnapshot: rawMessageParam(
+					rewardsSnapshot(progress.Rewards),
+				),
+				ID: int64(progress.ID),
+			})
+		},
+	)
 	return err
 }
 
@@ -633,15 +782,18 @@ func (r *Repository) claimProgress(
 			return err
 		}
 	}
-	claimed, err := r.q.ClaimProgressWithOperation(ctx, tasksqlc.ClaimProgressWithOperationParams{
-		WorkspaceID:     identity.WorkspaceID,
-		OperationID:     operationID,
-		ProgressID:      int64(progress.ID),
-		Progress:        int64(progress.Progress),
-		ReadyAt:         nullTime(progress.ReadyAt),
-		ClaimedAt:       now,
-		RewardsSnapshot: rewardsSnapshot(rewards),
-	})
+	claimed, err := r.q.ClaimProgressWithOperation(
+		ctx,
+		tasksqlc.ClaimProgressWithOperationParams{
+			WorkspaceID:     identity.WorkspaceID,
+			OperationID:     operationID,
+			ProgressID:      int64(progress.ID),
+			Progress:        int64(progress.Progress),
+			ReadyAt:         nullTime(progress.ReadyAt),
+			ClaimedAt:       now,
+			RewardsSnapshot: rewardsSnapshot(rewards),
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -656,27 +808,47 @@ func (r *Repository) claimProgress(
 	if err := r.advanceSequenceState(ctx, identity, task); err != nil {
 		return err
 	}
-	if err := r.refreshComplexParentsForChangedTasks(ctx, identity, []uint64{task.ID}, now); err != nil {
+	if err := r.refreshComplexParentsForChangedTasks(
+		ctx,
+		identity,
+		[]uint64{task.ID},
+		now,
+	); err != nil {
 		return err
 	}
 	task.Rewards = rewards
 	payload, err := json.Marshal(CallbackPayload{
-		WorkspaceID: identity.WorkspaceID, AppID: identity.AppID, PlatformID: identity.PlatformID,
-		PlatformUserID: identity.PlatformUserID, TaskID: task.ID, TaskKey: task.Key,
-		OperationID: operationID, PeriodStartAt: progress.PeriodStartAt,
-		PeriodEndAt: progress.PeriodEndAt, Rewards: rewards, Payload: task.Payload,
+		WorkspaceID:    identity.WorkspaceID,
+		AppID:          identity.AppID,
+		PlatformID:     identity.PlatformID,
+		PlatformUserID: identity.PlatformUserID,
+		TaskID:         task.ID,
+		TaskKey:        task.Key,
+		OperationID:    operationID,
+		PeriodStartAt:  progress.PeriodStartAt,
+		PeriodEndAt:    progress.PeriodEndAt,
+		Rewards:        rewards,
+		Payload:        task.Payload,
 	})
 	if err != nil {
 		return err
 	}
 	eventKey := fmt.Sprintf("tasks.claimed:%d", progress.ID)
-	_, err = repositoryValue[uint64](ctx, r, func(ctx context.Context) (uint64, error) {
-		return r.callbacks.CreateEvent(ctx, callbackutil.CreateParams{
-			WorkspaceID: identity.WorkspaceID, SourceService: "tasks", EventType: CallbackEventClaimed,
-			EventKey: eventKey, IdempotencyKey: eventKey,
-			Payload: payload, NextAttemptAt: now,
-		})
-	})
+	_, err = repositoryValue[uint64](
+		ctx,
+		r,
+		func(ctx context.Context) (uint64, error) {
+			return r.callbacks.CreateEvent(ctx, callbackutil.CreateParams{
+				WorkspaceID:    identity.WorkspaceID,
+				SourceService:  "tasks",
+				EventType:      CallbackEventClaimed,
+				EventKey:       eventKey,
+				IdempotencyKey: eventKey,
+				Payload:        payload,
+				NextAttemptAt:  now,
+			})
+		},
+	)
 	return err
 }
 
@@ -694,11 +866,20 @@ func validateOperationID(value string) (string, error) {
 
 }
 
-func (r *Repository) advanceSequenceState(ctx context.Context, identity Identity, task *Task) error {
+func (r *Repository) advanceSequenceState(
+	ctx context.Context,
+	identity Identity,
+	task *Task,
+) error {
 	if task.SequenceKey == nil || task.SequencePosition == nil {
 		return nil
 	}
-	next, err := r.nextSequenceTask(ctx, task.WorkspaceID, *task.SequenceKey, *task.SequencePosition)
+	next, err := r.nextSequenceTask(
+		ctx,
+		task.WorkspaceID,
+		*task.SequenceKey,
+		*task.SequencePosition,
+	)
 	status := "active"
 	currentTaskID := sql.NullInt64{}
 	if err != nil {
@@ -711,9 +892,13 @@ func (r *Repository) advanceSequenceState(ctx context.Context, identity Identity
 	}
 	return repositoryExec(ctx, r, func(ctx context.Context) error {
 		return r.q.UpsertSequenceState(ctx, tasksqlc.UpsertSequenceStateParams{
-			WorkspaceID: task.WorkspaceID, SequenceKey: *task.SequenceKey,
-			AppID: identity.AppID, PlatformID: identity.PlatformID, PlatformUserID: identity.PlatformUserID,
-			CurrentTaskID: currentTaskID, Status: status,
+			WorkspaceID:    task.WorkspaceID,
+			SequenceKey:    *task.SequenceKey,
+			AppID:          identity.AppID,
+			PlatformID:     identity.PlatformID,
+			PlatformUserID: identity.PlatformUserID,
+			CurrentTaskID:  currentTaskID,
+			Status:         status,
 		})
 	})
 }
@@ -737,15 +922,21 @@ func (r *Repository) skipInactiveSequenceTasks(
 			},
 		)
 		if err == nil {
-			if err := r.q.UpsertSequenceState(ctx, tasksqlc.UpsertSequenceStateParams{
-				WorkspaceID:    identity.WorkspaceID,
-				SequenceKey:    sequenceKey,
-				AppID:          identity.AppID,
-				PlatformID:     identity.PlatformID,
-				PlatformUserID: identity.PlatformUserID,
-				CurrentTaskID:  sql.NullInt64{Int64: nextTaskID, Valid: true},
-				Status:         "active",
-			}); err != nil {
+			if err := r.q.UpsertSequenceState(
+				ctx,
+				tasksqlc.UpsertSequenceStateParams{
+					WorkspaceID:    identity.WorkspaceID,
+					SequenceKey:    sequenceKey,
+					AppID:          identity.AppID,
+					PlatformID:     identity.PlatformID,
+					PlatformUserID: identity.PlatformUserID,
+					CurrentTaskID: sql.NullInt64{
+						Int64: nextTaskID,
+						Valid: true,
+					},
+					Status: "active",
+				},
+			); err != nil {
 				return err
 			}
 			states[sequenceKey] = uint64(nextTaskID)
@@ -755,24 +946,30 @@ func (r *Repository) skipInactiveSequenceTasks(
 			return err
 		}
 
-		inactive, err := r.q.IsSequenceTaskInactive(ctx, tasksqlc.IsSequenceTaskInactiveParams{
-			WorkspaceID: identity.WorkspaceID,
-			ID:          int64(currentTaskID),
-		})
+		inactive, err := r.q.IsSequenceTaskInactive(
+			ctx,
+			tasksqlc.IsSequenceTaskInactiveParams{
+				WorkspaceID: identity.WorkspaceID,
+				ID:          int64(currentTaskID),
+			},
+		)
 		if err != nil {
 			return err
 		}
 		if !inactive {
 			continue
 		}
-		if err := r.q.UpsertSequenceState(ctx, tasksqlc.UpsertSequenceStateParams{
-			WorkspaceID:    identity.WorkspaceID,
-			SequenceKey:    sequenceKey,
-			AppID:          identity.AppID,
-			PlatformID:     identity.PlatformID,
-			PlatformUserID: identity.PlatformUserID,
-			Status:         "completed",
-		}); err != nil {
+		if err := r.q.UpsertSequenceState(
+			ctx,
+			tasksqlc.UpsertSequenceStateParams{
+				WorkspaceID:    identity.WorkspaceID,
+				SequenceKey:    sequenceKey,
+				AppID:          identity.AppID,
+				PlatformID:     identity.PlatformID,
+				PlatformUserID: identity.PlatformUserID,
+				Status:         "completed",
+			},
+		); err != nil {
 			return err
 		}
 		delete(states, sequenceKey)
@@ -782,7 +979,11 @@ func (r *Repository) skipInactiveSequenceTasks(
 
 }
 
-func (r *Repository) rewards(ctx context.Context, workspaceID string, taskID uint64) ([]Reward, error) {
+func (r *Repository) rewards(
+	ctx context.Context,
+	workspaceID string,
+	taskID uint64,
+) ([]Reward, error) {
 	return r.rewardsCatalog(ctx, workspaceID, taskID)
 }
 
@@ -798,7 +999,11 @@ func autoOperationID(eventKey string, taskID uint64) string {
 	if eventKey != "" {
 		digest := sha256.Sum256([]byte(eventKey))
 
-		return fmt.Sprintf("auto:%d:%s", taskID, hex.EncodeToString(digest[:16]))
+		return fmt.Sprintf(
+			"auto:%d:%s",
+			taskID,
+			hex.EncodeToString(digest[:16]),
+		)
 	}
 	return fmt.Sprintf("auto-%d-%d", taskID, time.Now().UnixNano())
 }

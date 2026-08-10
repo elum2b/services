@@ -12,5 +12,10 @@ func (a *Product) DeleteLocalization(
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 
-	return a.repository.DeleteLocalization(ctx, workspaceID, locale, localizationKey)
+	return a.repository.DeleteLocalization(
+		ctx,
+		workspaceID,
+		locale,
+		localizationKey,
+	)
 }

@@ -13,10 +13,13 @@ func (a *Admin) GetAssetRate(
 ) (AssetRateModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
-	return a.repository.AdminGetAssetRate(mergedCtx, paymentsqlc.AdminGetAssetRateParams{
-		AssetCode:          assetCode,
-		ReferenceAssetCode: referenceAssetCode,
-	})
+	return a.repository.AdminGetAssetRate(
+		mergedCtx,
+		paymentsqlc.AdminGetAssetRateParams{
+			AssetCode:          assetCode,
+			ReferenceAssetCode: referenceAssetCode,
+		},
+	)
 }
 
 func (a *Admin) ListAssetRates(
@@ -26,12 +29,15 @@ func (a *Admin) ListAssetRates(
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	limit, offset := normalizePage(params.Page)
-	return a.repository.AdminListAssetRates(mergedCtx, paymentsqlc.AdminListAssetRatesParams{
-		Column1:            params.AssetCode,
-		AssetCode:          params.AssetCode,
-		Column3:            params.ReferenceAssetCode,
-		ReferenceAssetCode: params.ReferenceAssetCode,
-		Limit:              limit,
-		Offset:             offset,
-	})
+	return a.repository.AdminListAssetRates(
+		mergedCtx,
+		paymentsqlc.AdminListAssetRatesParams{
+			Column1:            params.AssetCode,
+			AssetCode:          params.AssetCode,
+			Column3:            params.ReferenceAssetCode,
+			ReferenceAssetCode: params.ReferenceAssetCode,
+			Limit:              limit,
+			Offset:             offset,
+		},
+	)
 }

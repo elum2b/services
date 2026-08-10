@@ -6,12 +6,16 @@ import (
 	"strings"
 	"time"
 
+	json "github.com/goccy/go-json"
+
 	"github.com/elum2b/services/payment/repository"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
-	json "github.com/goccy/go-json"
 )
 
-func (a *TelegramStars) CreatePayment(ctx context.Context, params CreatePaymentParams) (*CreatePaymentResponse, error) {
+func (a *TelegramStars) CreatePayment(
+	ctx context.Context,
+	params CreatePaymentParams,
+) (*CreatePaymentResponse, error) {
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
 	}
@@ -33,30 +37,39 @@ func (a *TelegramStars) CreatePayment(ctx context.Context, params CreatePaymentP
 		return nil, err
 	}
 
-	local, err := a.repository.CreateProviderAttempt(ctx, repository.ProviderAttemptCreateParams{
-		Order: repository.OrderCreateParams{
-			WorkspaceID:    params.WorkspaceID,
-			AppID:          params.AppID,
-			PlatformID:     params.PlatformID,
-			PlatformUserID: params.PlatformUserID,
-			InternalUserID: params.InternalUserID,
-			ProductID:      params.ProductID,
-			Quantity:       params.Quantity,
-			AssetCode:      AssetCode,
-			Locale:         normalizeLocale(params.Locale),
-			ReservedUntil:  params.ReservedUntil,
-			ExpiresAt:      params.ExpiresAt,
+	local, err := a.repository.CreateProviderAttempt(
+		ctx,
+		repository.ProviderAttemptCreateParams{
+			Order: repository.OrderCreateParams{
+				WorkspaceID:    params.WorkspaceID,
+				AppID:          params.AppID,
+				PlatformID:     params.PlatformID,
+				PlatformUserID: params.PlatformUserID,
+				InternalUserID: params.InternalUserID,
+				ProductID:      params.ProductID,
+				Quantity:       params.Quantity,
+				AssetCode:      AssetCode,
+				Locale:         normalizeLocale(params.Locale),
+				ReservedUntil:  params.ReservedUntil,
+				ExpiresAt:      params.ExpiresAt,
+			},
+			ProviderCode:       ProviderCode,
+			IdempotencyKey:     params.IdempotencyKey,
+			RequestFingerprint: fingerprint,
 		},
-		ProviderCode:       ProviderCode,
-		IdempotencyKey:     params.IdempotencyKey,
-		RequestFingerprint: fingerprint,
-	})
+	)
 	if err != nil {
 		return nil, err
 	}
 	order := local.Order
-	if local.AlreadyExists && local.Attempt.Status != string(paymentsqlc.PaymentAttemptStatusCreated) {
-		return telegramStarsExistingPaymentResponse(local, params.SubscriptionPeriod)
+	if local.AlreadyExists &&
+		local.Attempt.Status != string(
+			paymentsqlc.PaymentAttemptStatusCreated,
+		) {
+		return telegramStarsExistingPaymentResponse(
+			local,
+			params.SubscriptionPeriod,
+		)
 	}
 
 	payload := order.PublicID
@@ -65,12 +78,14 @@ func (a *TelegramStars) CreatePayment(ctx context.Context, params CreatePaymentP
 	subscriptionPeriod := normalizeSubscriptionPeriod(params.SubscriptionPeriod)
 
 	invoiceLink, err := client.CreateInvoiceLink(ctx, createInvoiceLinkRequest{
-		Title:              title,
-		Description:        description,
-		Payload:            payload,
-		ProviderToken:      "",
-		Currency:           AssetCode,
-		Prices:             []LabeledPrice{{Label: title, Amount: order.PayableAmountMinor}},
+		Title:         title,
+		Description:   description,
+		Payload:       payload,
+		ProviderToken: "",
+		Currency:      AssetCode,
+		Prices: []LabeledPrice{
+			{Label: title, Amount: order.PayableAmountMinor},
+		},
 		SubscriptionPeriod: subscriptionPeriod,
 	})
 	if err != nil {
@@ -81,7 +96,11 @@ func (a *TelegramStars) CreatePayment(ctx context.Context, params CreatePaymentP
 				local.Attempt.ID,
 				ProviderCode,
 			); failErr != nil {
-				return nil, fmt.Errorf("%w: fail local attempt: %v", err, failErr)
+				return nil, fmt.Errorf(
+					"%w: fail local attempt: %v",
+					err,
+					failErr,
+				)
 			}
 		}
 		return nil, err
@@ -93,21 +112,28 @@ func (a *TelegramStars) CreatePayment(ctx context.Context, params CreatePaymentP
 			local.Attempt.ID,
 			ProviderCode,
 		); failErr != nil {
-			return nil, fmt.Errorf("%w: fail local attempt: %v", ErrCreateInvoiceLinkEmpty, failErr)
+			return nil, fmt.Errorf(
+				"%w: fail local attempt: %v",
+				ErrCreateInvoiceLinkEmpty,
+				failErr,
+			)
 		}
 		return nil, ErrCreateInvoiceLinkEmpty
 	}
 
-	attempt, err := a.repository.BindProviderAttempt(ctx, repository.ProviderAttemptBindParams{
-		WorkspaceID:        order.WorkspaceID,
-		AttemptID:          local.Attempt.ID,
-		ProviderCode:       ProviderCode,
-		RequestFingerprint: fingerprint,
-		ProviderPaymentID:  payload,
-		ProviderInvoiceID:  &payload,
-		ConfirmationURL:    &invoiceLink,
-		ExpiresAt:          params.ExpiresAt,
-	})
+	attempt, err := a.repository.BindProviderAttempt(
+		ctx,
+		repository.ProviderAttemptBindParams{
+			WorkspaceID:        order.WorkspaceID,
+			AttemptID:          local.Attempt.ID,
+			ProviderCode:       ProviderCode,
+			RequestFingerprint: fingerprint,
+			ProviderPaymentID:  payload,
+			ProviderInvoiceID:  &payload,
+			ConfirmationURL:    &invoiceLink,
+			ExpiresAt:          params.ExpiresAt,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +169,9 @@ func telegramStarsExistingPaymentResponse(
 	}, nil
 }
 
-func telegramStarsRequestFingerprint(params CreatePaymentParams) (string, error) {
+func telegramStarsRequestFingerprint(
+	params CreatePaymentParams,
+) (string, error) {
 	raw, err := json.Marshal(struct {
 		WorkspaceID        string
 		AppID              int64
@@ -159,19 +187,21 @@ func telegramStarsRequestFingerprint(params CreatePaymentParams) (string, error)
 		ExpiresAt          *time.Time
 		ReservedUntil      *time.Time
 	}{
-		WorkspaceID:        params.WorkspaceID,
-		AppID:              params.AppID,
-		PlatformID:         params.PlatformID,
-		PlatformUserID:     params.PlatformUserID,
-		InternalUserID:     params.InternalUserID,
-		ProductID:          params.ProductID,
-		Quantity:           params.Quantity,
-		Locale:             normalizeLocale(params.Locale),
-		Title:              strings.TrimSpace(params.Title),
-		Description:        strings.TrimSpace(params.Description),
-		SubscriptionPeriod: normalizeSubscriptionPeriod(params.SubscriptionPeriod),
-		ExpiresAt:          params.ExpiresAt,
-		ReservedUntil:      params.ReservedUntil,
+		WorkspaceID:    params.WorkspaceID,
+		AppID:          params.AppID,
+		PlatformID:     params.PlatformID,
+		PlatformUserID: params.PlatformUserID,
+		InternalUserID: params.InternalUserID,
+		ProductID:      params.ProductID,
+		Quantity:       params.Quantity,
+		Locale:         normalizeLocale(params.Locale),
+		Title:          strings.TrimSpace(params.Title),
+		Description:    strings.TrimSpace(params.Description),
+		SubscriptionPeriod: normalizeSubscriptionPeriod(
+			params.SubscriptionPeriod,
+		),
+		ExpiresAt:     params.ExpiresAt,
+		ReservedUntil: params.ReservedUntil,
 	})
 	if err != nil {
 		return "", err

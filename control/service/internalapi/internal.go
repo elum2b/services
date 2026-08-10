@@ -5,11 +5,12 @@ import (
 	"strings"
 	"time"
 
+	json "github.com/goccy/go-json"
+
 	controlmodel "github.com/elum2b/services/control/model"
 	"github.com/elum2b/services/control/repository"
 	"github.com/elum2b/services/internal/utils/contextutil"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	json "github.com/goccy/go-json"
 )
 
 type AccessScope string
@@ -81,35 +82,30 @@ func NewWithOptions(
 	db *sqlwrap.Client,
 	options repository.Options,
 ) *Internal {
-
 	return &Internal{
 		rootCtx:    contextutil.Normalize(ctx),
 		repository: repository.NewWithOptions(db, options),
 	}
-
 }
 
 func (i *Internal) Close() error {
-
 	if i == nil || i.repository == nil {
 		return nil
 	}
 
 	return i.repository.Close()
-
 }
 
-func (i *Internal) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
-
+func (i *Internal) withContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	return contextutil.Merge(i.rootCtx, ctx)
-
 }
 
 func (i *Internal) RegisterManifest(
 	ctx context.Context,
 	values []MethodManifest,
 ) error {
-
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
@@ -125,14 +121,12 @@ func (i *Internal) RegisterManifest(
 	}
 
 	return i.repository.RegisterMethods(mergedCtx, methods)
-
 }
 
 func (i *Internal) CheckGlobalAccess(
 	ctx context.Context,
 	value GlobalAccessRequest,
 ) (bool, error) {
-
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
@@ -141,22 +135,28 @@ func (i *Internal) CheckGlobalAccess(
 		strings.TrimSpace(value.AccountID),
 		strings.TrimSpace(value.MethodKey),
 	)
-
 }
 
-func (i *Internal) ValidateMCPToken(ctx context.Context, value ValidateMCPTokenRequest) (MCPPrincipal, error) {
-
+func (i *Internal) ValidateMCPToken(
+	ctx context.Context,
+	value ValidateMCPTokenRequest,
+) (MCPPrincipal, error) {
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
-	token, err := i.repository.ValidateMCPToken(mergedCtx, strings.TrimSpace(value.Token))
+	token, err := i.repository.ValidateMCPToken(
+		mergedCtx,
+		strings.TrimSpace(value.Token),
+	)
 	if err != nil {
 		return MCPPrincipal{}, err
 	}
+
 	account, err := i.repository.GetAccount(mergedCtx, token.AccountID)
 	if err != nil {
 		return MCPPrincipal{}, err
 	}
+
 	return MCPPrincipal{
 		AccountID:   account.ID,
 		DisplayName: account.DisplayName,
@@ -170,7 +170,6 @@ func (i *Internal) CheckWorkspaceAccess(
 	ctx context.Context,
 	value WorkspaceAccessRequest,
 ) (bool, error) {
-
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
@@ -180,14 +179,12 @@ func (i *Internal) CheckWorkspaceAccess(
 		strings.TrimSpace(value.WorkspaceID),
 		strings.TrimSpace(value.MethodKey),
 	)
-
 }
 
 func (i *Internal) GetAuthorizedGlobalMethods(
 	ctx context.Context,
 	accountID string,
 ) ([]AuthorizedMethod, error) {
-
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
@@ -200,7 +197,6 @@ func (i *Internal) GetAuthorizedGlobalMethods(
 	}
 
 	return mapAuthorizedMethods(methods), nil
-
 }
 
 func (i *Internal) GetAuthorizedWorkspaceMethods(
@@ -208,7 +204,6 @@ func (i *Internal) GetAuthorizedWorkspaceMethods(
 	accountID string,
 	workspaceID string,
 ) ([]AuthorizedMethod, error) {
-
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
@@ -222,11 +217,12 @@ func (i *Internal) GetAuthorizedWorkspaceMethods(
 	}
 
 	return mapAuthorizedMethods(methods), nil
-
 }
 
-func (i *Internal) AppendAudit(ctx context.Context, params AuditEventParams) error {
-
+func (i *Internal) AppendAudit(
+	ctx context.Context,
+	params AuditEventParams,
+) error {
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
@@ -242,11 +238,9 @@ func (i *Internal) AppendAudit(ctx context.Context, params AuditEventParams) err
 		BeforeData:  params.BeforeData,
 		AfterData:   params.AfterData,
 	})
-
 }
 
 func mapAuthorizedMethods(values []repository.Method) []AuthorizedMethod {
-
 	result := make([]AuthorizedMethod, 0, len(values))
 	for _, value := range values {
 		result = append(result, AuthorizedMethod{
@@ -259,5 +253,4 @@ func mapAuthorizedMethods(values []repository.Method) []AuthorizedMethod {
 	}
 
 	return result
-
 }

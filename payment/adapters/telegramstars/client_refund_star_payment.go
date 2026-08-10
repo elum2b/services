@@ -5,7 +5,10 @@ import (
 	"net/http"
 )
 
-func (c *Client) RefundStarPayment(ctx context.Context, payload refundStarPaymentRequest) error {
+func (c *Client) RefundStarPayment(
+	ctx context.Context,
+	payload refundStarPaymentRequest,
+) error {
 	if err := c.requireCredentials(); err != nil {
 		return err
 	}
@@ -20,8 +23,17 @@ func (c *Client) RefundStarPayment(ctx context.Context, payload refundStarPaymen
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusMultipleChoices || !result.OK || !result.Result {
-		return wrapAPIError("refundStarPayment", resp.StatusCode(), result.ErrorCode, result.Description, resp.String())
+	if resp.StatusCode() < http.StatusOK ||
+		resp.StatusCode() >= http.StatusMultipleChoices ||
+		!result.OK ||
+		!result.Result {
+		return wrapAPIError(
+			"refundStarPayment",
+			resp.StatusCode(),
+			result.ErrorCode,
+			result.Description,
+			resp.String(),
+		)
 	}
 	return nil
 }

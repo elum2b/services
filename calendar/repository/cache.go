@@ -30,13 +30,23 @@ func (r *Repository) invalidateCalendarCache(workspaceID string) {
 		return
 	}
 	err := errors.Join(
-		r.db.BumpCacheVersion(calendarCacheScope(calendarCacheAdminCalendar, workspaceID)...),
-		r.db.BumpCacheVersion(calendarCacheScope(calendarCacheAdminList, workspaceID)...),
-		r.db.BumpCacheVersion(calendarCacheScope(calendarCacheAdminLocalization, workspaceID)...),
-		r.db.BumpCacheVersion(calendarCacheScope(calendarCacheAdminLocalizations, workspaceID)...),
-		r.db.BumpCacheVersion(calendarCacheScope(calendarCacheAdminReward, workspaceID)...),
-		r.db.BumpCacheVersion(calendarCacheScope(calendarCacheUserCalendar, workspaceID)...),
-		r.db.BumpCacheVersion(calendarCacheScope(calendarCacheUserCatalog, workspaceID)...),
+		r.db.BumpCacheVersion(
+			calendarCacheScope(calendarCacheAdminCalendar, workspaceID)...),
+		r.db.BumpCacheVersion(
+			calendarCacheScope(calendarCacheAdminList, workspaceID)...),
+		r.db.BumpCacheVersion(
+			calendarCacheScope(calendarCacheAdminLocalization, workspaceID)...),
+		r.db.BumpCacheVersion(
+			calendarCacheScope(
+				calendarCacheAdminLocalizations,
+				workspaceID,
+			)...),
+		r.db.BumpCacheVersion(
+			calendarCacheScope(calendarCacheAdminReward, workspaceID)...),
+		r.db.BumpCacheVersion(
+			calendarCacheScope(calendarCacheUserCalendar, workspaceID)...),
+		r.db.BumpCacheVersion(
+			calendarCacheScope(calendarCacheUserCatalog, workspaceID)...),
 	)
 	r.reportCacheInvalidationError(err)
 }

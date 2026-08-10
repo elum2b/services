@@ -32,8 +32,12 @@ type testConn struct {
 	stats *txStats
 }
 
-func (c *testConn) Prepare(string) (driver.Stmt, error) { return nil, errors.New("not implemented") }
-func (c *testConn) Close() error                        { return nil }
+func (c *testConn) Prepare(
+	string,
+) (driver.Stmt, error) {
+	return nil, errors.New("not implemented")
+}
+func (c *testConn) Close() error { return nil }
 func (c *testConn) Begin() (driver.Tx, error) {
 	if c.stats.failBegin {
 		return nil, errors.New("begin fail")
@@ -41,7 +45,11 @@ func (c *testConn) Begin() (driver.Tx, error) {
 	c.stats.beginCount.Add(1)
 	return &testTx{stats: c.stats}, nil
 }
-func (c *testConn) BeginTx(context.Context, driver.TxOptions) (driver.Tx, error) {
+
+func (c *testConn) BeginTx(
+	context.Context,
+	driver.TxOptions,
+) (driver.Tx, error) {
 	if c.stats.failBegin {
 		return nil, errors.New("begin fail")
 	}
@@ -159,9 +167,14 @@ func TestWithTx_BeginFail(t *testing.T) {
 	stats := &txStats{failBegin: true}
 	db := openTestDBWithStats(t, stats)
 
-	err := WithTx(context.Background(), db, func(*sql.Tx) *fakeQueries { return &fakeQueries{} }, func(*sql.Tx, *fakeQueries) error {
-		return nil
-	})
+	err := WithTx(
+		context.Background(),
+		db,
+		func(*sql.Tx) *fakeQueries { return &fakeQueries{} },
+		func(*sql.Tx, *fakeQueries) error {
+			return nil
+		},
+	)
 	if err == nil {
 		t.Fatal("expected begin error")
 	}
@@ -171,9 +184,14 @@ func TestWithTx_CommitFail(t *testing.T) {
 	stats := &txStats{failCommit: true}
 	db := openTestDBWithStats(t, stats)
 
-	err := WithTx(context.Background(), db, func(*sql.Tx) *fakeQueries { return &fakeQueries{} }, func(*sql.Tx, *fakeQueries) error {
-		return nil
-	})
+	err := WithTx(
+		context.Background(),
+		db,
+		func(*sql.Tx) *fakeQueries { return &fakeQueries{} },
+		func(*sql.Tx, *fakeQueries) error {
+			return nil
+		},
+	)
 	if err == nil || err.Error() != "failed to commit tx: commit fail" {
 		t.Fatalf("expected wrapped commit error, got %v", err)
 	}
@@ -182,13 +200,31 @@ func TestWithTx_CommitFail(t *testing.T) {
 func TestWithTx_Validation(t *testing.T) {
 	db, _ := openTestDB(t)
 
-	if err := WithTx[fakeQueries](context.Background(), nil, func(*sql.Tx) *fakeQueries { return &fakeQueries{} }, func(*sql.Tx, *fakeQueries) error { return nil }); !errors.Is(err, ErrNilDB) {
+	if err := WithTx[fakeQueries](
+		context.Background(),
+		nil,
+		func(*sql.Tx) *fakeQueries { return &fakeQueries{} },
+		func(*sql.Tx, *fakeQueries) error { return nil },
+	); !errors.Is(
+		err,
+		ErrNilDB,
+	) {
 		t.Fatalf("expected ErrNilDB, got %v", err)
 	}
-	if err := WithTx[fakeQueries](context.Background(), db, nil, func(*sql.Tx, *fakeQueries) error { return nil }); err == nil {
+	if err := WithTx[fakeQueries](
+		context.Background(),
+		db,
+		nil,
+		func(*sql.Tx, *fakeQueries) error { return nil },
+	); err == nil {
 		t.Fatal("expected newQueries nil error")
 	}
-	if err := WithTx[fakeQueries](context.Background(), db, func(*sql.Tx) *fakeQueries { return &fakeQueries{} }, nil); err == nil {
+	if err := WithTx[fakeQueries](
+		context.Background(),
+		db,
+		func(*sql.Tx) *fakeQueries { return &fakeQueries{} },
+		nil,
+	); err == nil {
 		t.Fatal("expected callback nil error")
 	}
 }
@@ -197,7 +233,10 @@ func TestInTx(t *testing.T) {
 	db, stats := openTestDB(t)
 	c := &Client{db: db}
 
-	if err := c.InTx(context.Background(), func(*sql.Tx) error { return nil }); err != nil {
+	if err := c.InTx(
+		context.Background(),
+		func(*sql.Tx) error { return nil },
+	); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if stats.commitCount.Load() != 1 {
@@ -207,7 +246,10 @@ func TestInTx(t *testing.T) {
 
 func TestInTx_ValidationAndRollback(t *testing.T) {
 	c := &Client{}
-	if err := c.InTx(context.Background(), func(*sql.Tx) error { return nil }); err == nil {
+	if err := c.InTx(
+		context.Background(),
+		func(*sql.Tx) error { return nil },
+	); err == nil {
 		t.Fatal("expected nil client/db error")
 	}
 
@@ -217,7 +259,10 @@ func TestInTx_ValidationAndRollback(t *testing.T) {
 		t.Fatal("expected callback nil error")
 	}
 
-	err := c.InTx(context.Background(), func(*sql.Tx) error { return errors.New("x") })
+	err := c.InTx(
+		context.Background(),
+		func(*sql.Tx) error { return errors.New("x") },
+	)
 	if err == nil {
 		t.Fatal("expected callback error")
 	}
@@ -230,14 +275,20 @@ func TestInTx_BeginCommitAndPanicPaths(t *testing.T) {
 	stats := &txStats{failBegin: true}
 	db := openTestDBWithStats(t, stats)
 	c := &Client{db: db}
-	if err := c.InTx(context.Background(), func(*sql.Tx) error { return nil }); err == nil {
+	if err := c.InTx(
+		context.Background(),
+		func(*sql.Tx) error { return nil },
+	); err == nil {
 		t.Fatal("expected begin error")
 	}
 
 	stats = &txStats{failCommit: true}
 	db = openTestDBWithStats(t, stats)
 	c = &Client{db: db}
-	if err := c.InTx(context.Background(), func(*sql.Tx) error { return nil }); err == nil {
+	if err := c.InTx(
+		context.Background(),
+		func(*sql.Tx) error { return nil },
+	); err == nil {
 		t.Fatal("expected commit error")
 	}
 

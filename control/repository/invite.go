@@ -6,10 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	controlmodel "github.com/elum2b/services/control/model"
 	controlsqlc "github.com/elum2b/services/control/sqlc"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	"github.com/google/uuid"
 )
 
 type CreateInviteInput struct {
@@ -23,22 +24,18 @@ func (r *Repository) CreateGlobalInvite(
 	ctx context.Context,
 	input CreateInviteInput,
 ) (Invite, string, error) {
-
 	return r.createInvite(ctx, InviteKindGlobal, input)
-
 }
 
 func (r *Repository) CreateWorkspaceInvite(
 	ctx context.Context,
 	input CreateInviteInput,
 ) (Invite, string, error) {
-
 	if err := requireWorkspaceID(input.WorkspaceID); err != nil {
 		return Invite{}, "", err
 	}
 
 	return r.createInvite(ctx, InviteKindWorkspace, input)
-
 }
 
 func (r *Repository) createInvite(
@@ -46,7 +43,6 @@ func (r *Repository) createInvite(
 	kind InviteKind,
 	input CreateInviteInput,
 ) (Invite, string, error) {
-
 	if err := required(input.ActorID); err != nil {
 		return Invite{}, "", err
 	}
@@ -55,6 +51,7 @@ func (r *Repository) createInvite(
 	for _, roleID := range input.RoleIDs {
 		roleIDs = append(roleIDs, strings.TrimSpace(roleID))
 	}
+
 	roleIDs = uniqueStrings(roleIDs)
 
 	rawToken, err := randomToken()
@@ -91,6 +88,7 @@ func (r *Repository) createInvite(
 			if err != nil {
 				return err
 			}
+
 			if !bundle.ActorIsActive || !allowed(bundle.Allowed) {
 				return ErrForbidden
 			}
@@ -99,12 +97,17 @@ func (r *Repository) createInvite(
 			if err != nil {
 				return err
 			}
+
 			for _, roleID := range roleIDs {
 				role, err := q.GetGlobalRole(ctx, roleID)
 				if err != nil {
 					return noRows(err, ErrRoleNotFound)
 				}
-				if err := requireHigher(actorPosition, role.Position); err != nil {
+
+				if err := requireHigher(
+					actorPosition,
+					role.Position,
+				); err != nil {
 					return err
 				}
 			}
@@ -121,10 +124,14 @@ func (r *Repository) createInvite(
 			if err != nil {
 				return noRows(err, ErrWorkspaceNotFound)
 			}
+
 			if !bundle.ActorIsActive || !allowed(bundle.Allowed) {
 				return ErrForbidden
 			}
-			if bundle.EmployeeCount+bundle.PendingInviteCount >= int64(bundle.EmployeeLimit) {
+
+			if bundle.EmployeeCount+bundle.PendingInviteCount >= int64(
+				bundle.EmployeeLimit,
+			) {
 				return ErrEmployeeLimit
 			}
 
@@ -132,6 +139,7 @@ func (r *Repository) createInvite(
 			if err != nil {
 				return err
 			}
+
 			for _, roleID := range roleIDs {
 				role, err := q.GetWorkspaceRole(
 					ctx,
@@ -143,7 +151,11 @@ func (r *Repository) createInvite(
 				if err != nil {
 					return noRows(err, ErrRoleNotFound)
 				}
-				if err := requireHigher(actorPosition, role.Position); err != nil {
+
+				if err := requireHigher(
+					actorPosition,
+					role.Position,
+				); err != nil {
 					return err
 				}
 			}
@@ -163,25 +175,31 @@ func (r *Repository) createInvite(
 		if len(roleIDs) == 0 {
 			return nil
 		}
+
 		if kind == InviteKindGlobal {
-			return q.AddInviteGlobalRoles(ctx, controlsqlc.AddInviteGlobalRolesParams{
-				InviteID: invite.ID,
-				RoleIds:  roleIDs,
-			})
+			return q.AddInviteGlobalRoles(
+				ctx,
+				controlsqlc.AddInviteGlobalRolesParams{
+					InviteID: invite.ID,
+					RoleIds:  roleIDs,
+				},
+			)
 		}
 
-		return q.AddInviteWorkspaceRoles(ctx, controlsqlc.AddInviteWorkspaceRolesParams{
-			InviteID:    invite.ID,
-			WorkspaceID: input.WorkspaceID,
-			RoleIds:     roleIDs,
-		})
+		return q.AddInviteWorkspaceRoles(
+			ctx,
+			controlsqlc.AddInviteWorkspaceRolesParams{
+				InviteID:    invite.ID,
+				WorkspaceID: input.WorkspaceID,
+				RoleIds:     roleIDs,
+			},
+		)
 	})
 	if err != nil {
 		return Invite{}, "", err
 	}
 
 	return invite, rawToken, nil
-
 }
 
 func (r *Repository) AcceptInvite(
@@ -189,12 +207,12 @@ func (r *Repository) AcceptInvite(
 	accountID string,
 	rawToken string,
 ) (Invite, error) {
-
 	if err := required(accountID, rawToken); err != nil {
 		return Invite{}, err
 	}
 
 	var result Invite
+
 	err := sqlwrap.WithTx(
 		ctx,
 		r.db.DB(),
@@ -202,20 +220,27 @@ func (r *Repository) AcceptInvite(
 			return controlsqlc.New(tx)
 		},
 		func(_ *sql.Tx, q *controlsqlc.Queries) error {
-			row, err := getInviteByHashForAcceptance(ctx, q, tokenHash(rawToken))
+			row, err := getInviteByHashForAcceptance(
+				ctx,
+				q,
+				tokenHash(rawToken),
+			)
 			if err != nil {
 				return noRows(err, ErrInviteUnavailable)
 			}
 
 			result = mapInvite(row)
+
 			result.RoleIDs, err = listInviteRoles(ctx, q, row)
 			if err != nil {
 				return err
 			}
+
 			if row.AcceptedBy.Valid {
 				if row.AcceptedBy.String != accountID {
 					return ErrInviteUnavailable
 				}
+
 				return nil
 			}
 
@@ -227,7 +252,6 @@ func (r *Repository) AcceptInvite(
 	}
 
 	return result, nil
-
 }
 
 func (r *Repository) ListGlobalInvites(
@@ -235,7 +259,6 @@ func (r *Repository) ListGlobalInvites(
 	cursor Cursor,
 	limit int32,
 ) ([]Invite, error) {
-
 	rows, err := r.q.ListGlobalInvites(ctx, controlsqlc.ListGlobalInvitesParams{
 		CursorAt:  nullableCursorTime(cursor),
 		CursorID:  cursor.ID,
@@ -258,15 +281,16 @@ func (r *Repository) ListGlobalInvites(
 			row.RevokedAt,
 			row.CreatedAt,
 		)
+
 		invite.RoleIDs, err = r.q.ListInviteGlobalRoles(ctx, row.ID)
 		if err != nil {
 			return nil, err
 		}
+
 		result = append(result, invite)
 	}
 
 	return result, nil
-
 }
 
 func (r *Repository) ListWorkspaceInvites(
@@ -275,7 +299,6 @@ func (r *Repository) ListWorkspaceInvites(
 	cursor Cursor,
 	limit int32,
 ) ([]Invite, error) {
-
 	rows, err := r.q.ListWorkspaceInvites(
 		ctx,
 		controlsqlc.ListWorkspaceInvitesParams{
@@ -302,15 +325,16 @@ func (r *Repository) ListWorkspaceInvites(
 			row.RevokedAt,
 			row.CreatedAt,
 		)
+
 		invite.RoleIDs, err = r.q.ListInviteWorkspaceRoles(ctx, row.ID)
 		if err != nil {
 			return nil, err
 		}
+
 		result = append(result, invite)
 	}
 
 	return result, nil
-
 }
 
 func (r *Repository) acceptInviteRowWithQueries(
@@ -319,17 +343,19 @@ func (r *Repository) acceptInviteRowWithQueries(
 	invite controlsqlc.ControlInvite,
 	accountID string,
 ) error {
-
 	if err := validateInvite(invite, time.Now()); err != nil {
 		return err
 	}
 
 	switch InviteKind(invite.Kind) {
 	case InviteKindGlobal:
-		if err := q.AddGlobalRolesFromInvite(ctx, controlsqlc.AddGlobalRolesFromInviteParams{
-			AccountID: accountID,
-			InviteID:  invite.ID,
-		}); err != nil {
+		if err := q.AddGlobalRolesFromInvite(
+			ctx,
+			controlsqlc.AddGlobalRolesFromInviteParams{
+				AccountID: accountID,
+				InviteID:  invite.ID,
+			},
+		); err != nil {
 			return err
 		}
 	case InviteKindWorkspace:
@@ -347,18 +373,27 @@ func (r *Repository) acceptInviteRowWithQueries(
 		if err != nil {
 			return err
 		}
+
 		if !active {
-			capacity, err := q.GetWorkspaceCapacityForUpdate(ctx, invite.WorkspaceID.String)
+			capacity, err := q.GetWorkspaceCapacityForUpdate(
+				ctx,
+				invite.WorkspaceID.String,
+			)
 			if err != nil {
 				return noRows(err, ErrWorkspaceNotFound)
 			}
+
 			if capacity.EmployeeCount >= int64(capacity.EmployeeLimit) {
 				return ErrEmployeeLimit
 			}
-			if err := q.AddWorkspaceMember(ctx, controlsqlc.AddWorkspaceMemberParams{
-				WorkspaceID: invite.WorkspaceID.String,
-				AccountID:   accountID,
-			}); err != nil {
+
+			if err := q.AddWorkspaceMember(
+				ctx,
+				controlsqlc.AddWorkspaceMemberParams{
+					WorkspaceID: invite.WorkspaceID.String,
+					AccountID:   accountID,
+				},
+			); err != nil {
 				return err
 			}
 		}
@@ -386,12 +421,12 @@ func (r *Repository) acceptInviteRowWithQueries(
 	if err != nil {
 		return err
 	}
+
 	if rows != 1 {
 		return ErrInviteUnavailable
 	}
 
 	return nil
-
 }
 
 func (r *Repository) RevokeInvite(
@@ -399,8 +434,8 @@ func (r *Repository) RevokeInvite(
 	actorID string,
 	inviteID string,
 ) (int64, error) {
-
 	var rows int64
+
 	err := sqlwrap.WithTx(
 		ctx,
 		r.db.DB(),
@@ -429,6 +464,7 @@ func (r *Repository) RevokeInvite(
 				); err != nil {
 					return err
 				}
+
 				event.Scope = ScopeGlobal
 				event.MethodKey = "control.global.invite.revoke"
 			} else {
@@ -443,6 +479,7 @@ func (r *Repository) RevokeInvite(
 				); err != nil {
 					return err
 				}
+
 				event.Scope = ScopeWorkspace
 				event.WorkspaceID = workspaceID
 				event.MethodKey = "control.workspace.invite.revoke"
@@ -452,6 +489,7 @@ func (r *Repository) RevokeInvite(
 			if err != nil {
 				return noRows(err, ErrNotFound)
 			}
+
 			if !sameInviteScope(snapshot, invite) {
 				return ErrInviteUnavailable
 			}
@@ -460,6 +498,7 @@ func (r *Repository) RevokeInvite(
 			if err != nil {
 				return err
 			}
+
 			if rows != 1 {
 				return ErrInviteUnavailable
 			}
@@ -469,7 +508,6 @@ func (r *Repository) RevokeInvite(
 	)
 
 	return rows, err
-
 }
 
 func getInviteByHashForAcceptance(
@@ -477,11 +515,11 @@ func getInviteByHashForAcceptance(
 	q *controlsqlc.Queries,
 	tokenHash string,
 ) (controlsqlc.ControlInvite, error) {
-
 	snapshot, err := q.GetInviteByHash(ctx, tokenHash)
 	if err != nil {
 		return controlsqlc.ControlInvite{}, err
 	}
+
 	if err := lockInviteAcceptanceScope(ctx, q, snapshot); err != nil {
 		return controlsqlc.ControlInvite{}, err
 	}
@@ -490,12 +528,12 @@ func getInviteByHashForAcceptance(
 	if err != nil {
 		return controlsqlc.ControlInvite{}, err
 	}
+
 	if !sameInviteScope(snapshot, invite) {
 		return controlsqlc.ControlInvite{}, ErrInviteUnavailable
 	}
 
 	return invite, nil
-
 }
 
 func getInviteByIDForAcceptance(
@@ -503,11 +541,11 @@ func getInviteByIDForAcceptance(
 	q *controlsqlc.Queries,
 	inviteID string,
 ) (controlsqlc.ControlInvite, error) {
-
 	snapshot, err := q.GetInvite(ctx, inviteID)
 	if err != nil {
 		return controlsqlc.ControlInvite{}, err
 	}
+
 	if err := lockInviteAcceptanceScope(ctx, q, snapshot); err != nil {
 		return controlsqlc.ControlInvite{}, err
 	}
@@ -516,12 +554,12 @@ func getInviteByIDForAcceptance(
 	if err != nil {
 		return controlsqlc.ControlInvite{}, err
 	}
+
 	if !sameInviteScope(snapshot, invite) {
 		return controlsqlc.ControlInvite{}, ErrInviteUnavailable
 	}
 
 	return invite, nil
-
 }
 
 func lockInviteAcceptanceScope(
@@ -529,7 +567,6 @@ func lockInviteAcceptanceScope(
 	q *controlsqlc.Queries,
 	invite controlsqlc.ControlInvite,
 ) error {
-
 	switch InviteKind(invite.Kind) {
 	case InviteKindGlobal:
 		return nil
@@ -538,38 +575,36 @@ func lockInviteAcceptanceScope(
 			return ErrInviteUnavailable
 		}
 
-		_, err := q.GetWorkspaceCapacityForUpdate(ctx, invite.WorkspaceID.String)
+		_, err := q.GetWorkspaceCapacityForUpdate(
+			ctx,
+			invite.WorkspaceID.String,
+		)
 
 		return noRows(err, ErrWorkspaceNotFound)
 	default:
 		return ErrInviteUnavailable
 	}
-
 }
 
 func sameInviteScope(left, right controlsqlc.ControlInvite) bool {
-
 	return left.ID == right.ID &&
 		left.Kind == right.Kind &&
 		valueString(left.WorkspaceID) == valueString(right.WorkspaceID)
-
 }
 
 func validateInvite(value controlsqlc.ControlInvite, now time.Time) error {
-
 	if value.AcceptedAt.Valid || value.RevokedAt.Valid {
 		return ErrInviteUnavailable
 	}
+
 	if value.ExpiresAt.Valid && !value.ExpiresAt.Time.After(now) {
 		return ErrInviteUnavailable
 	}
 
 	return nil
-
 }
 
 func mapInvite(value controlsqlc.ControlInvite) Invite {
-
 	return mapInviteFields(
 		value.ID,
 		value.Kind,
@@ -581,7 +616,6 @@ func mapInvite(value controlsqlc.ControlInvite) Invite {
 		value.RevokedAt,
 		value.CreatedAt,
 	)
-
 }
 
 func mapInviteFields(
@@ -595,7 +629,6 @@ func mapInviteFields(
 	revokedAt sql.NullTime,
 	createdAt time.Time,
 ) Invite {
-
 	result := Invite{
 		ID:          id,
 		Kind:        InviteKind(kind),
@@ -607,19 +640,19 @@ func mapInviteFields(
 	if expiresAt.Valid {
 		result.ExpiresAt = &expiresAt.Time
 	}
+
 	if acceptedAt.Valid {
 		result.AcceptedAt = &acceptedAt.Time
 	}
+
 	if revokedAt.Valid {
 		result.RevokedAt = &revokedAt.Time
 	}
 
 	return result
-
 }
 
 func nullableTime(value *time.Time) sql.NullTime {
-
 	if value == nil {
 		return sql.NullTime{}
 	}
@@ -628,7 +661,6 @@ func nullableTime(value *time.Time) sql.NullTime {
 		Time:  *value,
 		Valid: true,
 	}
-
 }
 
 func listInviteRoles(
@@ -636,11 +668,9 @@ func listInviteRoles(
 	q *controlsqlc.Queries,
 	invite controlsqlc.ControlInvite,
 ) ([]string, error) {
-
 	if InviteKind(invite.Kind) == InviteKindGlobal {
 		return q.ListInviteGlobalRoles(ctx, invite.ID)
 	}
 
 	return q.ListInviteWorkspaceRoles(ctx, invite.ID)
-
 }

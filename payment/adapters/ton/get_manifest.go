@@ -7,7 +7,10 @@ import (
 )
 
 // GetManifest returns the public TON Connect metadata for an enabled workspace wallet.
-func (a *TON) GetManifest(ctx context.Context, workspaceID string) (tonconnect.Manifest, error) {
+func (a *TON) GetManifest(
+	ctx context.Context,
+	workspaceID string,
+) (tonconnect.Manifest, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 

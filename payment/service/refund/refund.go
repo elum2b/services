@@ -50,7 +50,11 @@ type Refund struct {
 	rootCtx    context.Context
 }
 
-func New(ctx context.Context, db *sqlwrap.Client, providers map[string]ProviderRefundFunc) *Refund {
+func New(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	providers map[string]ProviderRefundFunc,
+) *Refund {
 	return NewWithOptions(ctx, db, providers, repository.Options{})
 }
 
@@ -60,7 +64,11 @@ func NewWithOptions(
 	providers map[string]ProviderRefundFunc,
 	options repository.Options,
 ) *Refund {
-	repo, err := repository.NewPreparedPaymentRepositoryWithOptions(context.Background(), db, options)
+	repo, err := repository.NewPreparedPaymentRepositoryWithOptions(
+		context.Background(),
+		db,
+		options,
+	)
 	if err == nil {
 		return &Refund{
 			repository: repo,
@@ -82,6 +90,8 @@ func (a *Refund) Close() error {
 	return a.repository.Close()
 }
 
-func (a *Refund) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (a *Refund) withContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	return contextutil.Merge(a.rootCtx, ctx)
 }

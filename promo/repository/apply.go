@@ -4,29 +4,37 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	json "github.com/goccy/go-json"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/internal/utils/target"
 	promosqlc "github.com/elum2b/services/promo/sqlc"
 )
 
-func (r *Repository) Apply(ctx context.Context, identity Identity, code, locale string) (ApplyResult, error) {
+func (r *Repository) Apply(
+	ctx context.Context,
+	identity Identity,
+	code, locale string,
+) (ApplyResult, error) {
 	if err := identity.Validate(); err != nil {
 		return ApplyResult{}, err
 	}
 
 	result := ApplyResult{Status: StatusNotFound}
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
-		rows, err := txRepo.q.GetApplyBundleForUpdate(ctx, promosqlc.GetApplyBundleForUpdateParams{
-			Locale:         locale,
-			AppID:          identity.AppID,
-			PlatformID:     identity.PlatformID,
-			PlatformUserID: identity.PlatformUserID,
-			WorkspaceID:    identity.WorkspaceID,
-			CodeNormalized: normalizeCode(code),
-		})
+		rows, err := txRepo.q.GetApplyBundleForUpdate(
+			ctx,
+			promosqlc.GetApplyBundleForUpdateParams{
+				Locale:         locale,
+				AppID:          identity.AppID,
+				PlatformID:     identity.PlatformID,
+				PlatformUserID: identity.PlatformUserID,
+				WorkspaceID:    identity.WorkspaceID,
+				CodeNormalized: normalizeCode(code),
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -71,14 +79,17 @@ func (r *Repository) Apply(ctx context.Context, identity Identity, code, locale 
 			if err != nil {
 				return err
 			}
-			created, err := txRepo.q.CreateRedemption(ctx, promosqlc.CreateRedemptionParams{
-				WorkspaceID:    identity.WorkspaceID,
-				PromoID:        int64(result.Promo.ID),
-				AppID:          identity.AppID,
-				PlatformID:     identity.PlatformID,
-				PlatformUserID: identity.PlatformUserID,
-				RewardSnapshot: rewardSnapshot,
-			})
+			created, err := txRepo.q.CreateRedemption(
+				ctx,
+				promosqlc.CreateRedemptionParams{
+					WorkspaceID:    identity.WorkspaceID,
+					PromoID:        int64(result.Promo.ID),
+					AppID:          identity.AppID,
+					PlatformID:     identity.PlatformID,
+					PlatformUserID: identity.PlatformUserID,
+					RewardSnapshot: rewardSnapshot,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -100,7 +111,9 @@ func (r *Repository) Apply(ctx context.Context, identity Identity, code, locale 
 	return result, err
 }
 
-func mapApplyBundle(rows []promosqlc.GetApplyBundleForUpdateRow) (ApplyResult, error) {
+func mapApplyBundle(
+	rows []promosqlc.GetApplyBundleForUpdateRow,
+) (ApplyResult, error) {
 	first := rows[0]
 	result := ApplyResult{
 		Status: StatusNotFound,
@@ -140,8 +153,14 @@ func mapApplyBundle(rows []promosqlc.GetApplyBundleForUpdateRow) (ApplyResult, e
 			PlatformUserID: first.RedemptionPlatformUserID.String,
 			RedeemedAt:     first.RedemptionRedeemedAt.Time,
 		}
-		if err := json.Unmarshal(nullRawMessage(first.RedemptionRewardSnapshot), &result.Rewards); err != nil {
-			return ApplyResult{}, fmt.Errorf("promo redemption reward snapshot decode failed: %w", err)
+		if err := json.Unmarshal(
+			nullRawMessage(first.RedemptionRewardSnapshot),
+			&result.Rewards,
+		); err != nil {
+			return ApplyResult{}, fmt.Errorf(
+				"promo redemption reward snapshot decode failed: %w",
+				err,
+			)
 		}
 
 		return result, nil

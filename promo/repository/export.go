@@ -7,7 +7,11 @@ import (
 	promosqlc "github.com/elum2b/services/promo/sqlc"
 )
 
-func (r *Repository) Export(ctx context.Context, workspaceID string, req ExportRequest) (ExportPackage, error) {
+func (r *Repository) Export(
+	ctx context.Context,
+	workspaceID string,
+	req ExportRequest,
+) (ExportPackage, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return ExportPackage{}, err
 	}
@@ -33,7 +37,10 @@ func (r *Repository) Export(ctx context.Context, workspaceID string, req ExportR
 			return err
 		}
 
-		localizationRows, err = txRepo.q.ListExportLocalizations(ctx, workspaceID)
+		localizationRows, err = txRepo.q.ListExportLocalizations(
+			ctx,
+			workspaceID,
+		)
 		if err != nil {
 			return err
 		}
@@ -83,13 +90,16 @@ func (r *Repository) Export(ctx context.Context, workspaceID string, req ExportR
 		if !ok {
 			continue
 		}
-		out.Promos[index].Rewards = append(out.Promos[index].Rewards, ExportReward{
-			Key:      reward.RewardKey,
-			Type:     string(reward.RewardType),
-			Quantity: reward.Quantity,
-			Scale:    uint16(reward.Scale),
-			Unit:     promoDurationUnitPtr(reward.DurationUnit),
-		})
+		out.Promos[index].Rewards = append(
+			out.Promos[index].Rewards,
+			ExportReward{
+				Key:      reward.RewardKey,
+				Type:     string(reward.RewardType),
+				Quantity: reward.Quantity,
+				Scale:    uint16(reward.Scale),
+				Unit:     promoDurationUnitPtr(reward.DurationUnit),
+			},
+		)
 	}
 
 	for index := range out.Promos {

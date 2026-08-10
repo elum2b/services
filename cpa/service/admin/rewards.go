@@ -17,7 +17,10 @@ type UpsertRewardParams struct {
 	Unit        *string
 }
 
-func (a *Admin) UpsertReward(ctx context.Context, params UpsertRewardParams) error {
+func (a *Admin) UpsertReward(
+	ctx context.Context,
+	params UpsertRewardParams,
+) error {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -34,7 +37,10 @@ func (a *Admin) UpsertReward(ctx context.Context, params UpsertRewardParams) err
 
 }
 
-func (a *Admin) ListRewards(ctx context.Context, workspaceID, cpaID string) ([]user.RewardModel, error) {
+func (a *Admin) ListRewards(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) ([]user.RewardModel, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -49,7 +55,10 @@ func (a *Admin) ListRewards(ctx context.Context, workspaceID, cpaID string) ([]u
 
 }
 
-func (a *Admin) DeleteReward(ctx context.Context, workspaceID, cpaID, rewardKey string) (int64, error) {
+func (a *Admin) DeleteReward(
+	ctx context.Context,
+	workspaceID, cpaID, rewardKey string,
+) (int64, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()

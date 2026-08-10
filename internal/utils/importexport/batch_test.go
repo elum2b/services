@@ -38,7 +38,10 @@ func TestBatchSize(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := BatchSize(test.parametersPerRow, test.limits); got != test.want {
+			if got := BatchSize(
+				test.parametersPerRow,
+				test.limits,
+			); got != test.want {
 				t.Fatalf("BatchSize() = %d, want %d", got, test.want)
 			}
 		})
@@ -47,10 +50,15 @@ func TestBatchSize(t *testing.T) {
 
 func TestForEachBatch(t *testing.T) {
 	var got [][2]int
-	err := ForEachBatch(2501, 12, DefaultBatchLimits, func(start, end int) error {
-		got = append(got, [2]int{start, end})
-		return nil
-	})
+	err := ForEachBatch(
+		2501,
+		12,
+		DefaultBatchLimits,
+		func(start, end int) error {
+			got = append(got, [2]int{start, end})
+			return nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("iterate batches: %v", err)
 	}
@@ -62,9 +70,14 @@ func TestForEachBatch(t *testing.T) {
 
 func TestForEachBatchStopsOnError(t *testing.T) {
 	want := errors.New("stop")
-	err := ForEachBatch(1001, 12, DefaultBatchLimits, func(start, end int) error {
-		return want
-	})
+	err := ForEachBatch(
+		1001,
+		12,
+		DefaultBatchLimits,
+		func(start, end int) error {
+			return want
+		},
+	)
 	if !errors.Is(err, want) {
 		t.Fatalf("ForEachBatch() error = %v, want %v", err, want)
 	}
@@ -73,6 +86,10 @@ func TestForEachBatchStopsOnError(t *testing.T) {
 func TestForEachBatchRejectsNilCallback(t *testing.T) {
 	err := ForEachBatch(1, 1, DefaultBatchLimits, nil)
 	if !errors.Is(err, ErrBatchCallbackRequired) {
-		t.Fatalf("ForEachBatch() error = %v, want %v", err, ErrBatchCallbackRequired)
+		t.Fatalf(
+			"ForEachBatch() error = %v, want %v",
+			err,
+			ErrBatchCallbackRequired,
+		)
 	}
 }

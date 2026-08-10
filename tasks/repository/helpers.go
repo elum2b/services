@@ -2,9 +2,10 @@ package repository
 
 import (
 	"database/sql"
-	json "github.com/goccy/go-json"
 	"strconv"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	tasksqlc "github.com/elum2b/services/tasks/sqlc"
@@ -86,15 +87,21 @@ func periodFor(task Task, now time.Time) (time.Time, time.Time) {
 	switch task.ResetUnit {
 	case ResetSecond:
 		step := time.Duration(count) * time.Second
-		start = periodAnchor.Add(time.Duration(now.Sub(periodAnchor)/step) * step)
+		start = periodAnchor.Add(
+			time.Duration(now.Sub(periodAnchor)/step) * step,
+		)
 		return start, start.Add(step)
 	case ResetMinute:
 		step := time.Duration(count) * time.Minute
-		start = periodAnchor.Add(time.Duration(now.Sub(periodAnchor)/step) * step)
+		start = periodAnchor.Add(
+			time.Duration(now.Sub(periodAnchor)/step) * step,
+		)
 		return start, start.Add(step)
 	case ResetHour:
 		step := time.Duration(count) * time.Hour
-		start = periodAnchor.Add(time.Duration(now.Sub(periodAnchor)/step) * step)
+		start = periodAnchor.Add(
+			time.Duration(now.Sub(periodAnchor)/step) * step,
+		)
 		return start, start.Add(step)
 	case ResetDay:
 		days := int(now.Sub(periodAnchor).Hours() / 24)
@@ -111,18 +118,43 @@ func periodFor(task Task, now time.Time) (time.Time, time.Time) {
 
 func mapTask(row tasksqlc.TaskDefinition) Task {
 	return Task{
-		ID: uint64(row.ID), WorkspaceID: row.WorkspaceID, Key: row.Key, GroupKey: row.GroupKey,
-		SequenceKey: ptrString(row.SequenceKey), SequencePosition: ptrUint32(row.SequencePosition),
-		TaskKind: row.TaskKind, ActionKey: row.ActionKey, ActionKind: string(row.ActionKind), ClaimMode: string(row.ClaimMode), StartMode: string(row.StartMode),
-		TargetCount: uint64(row.TargetCount), ResetUnit: string(row.ResetUnit), ResetEvery: uint32(row.ResetEvery),
-		Position: row.Position, Payload: nullRawMessage(row.Payload), Target: nullRawMessage(row.Target), IntegrationKind: ptrString(row.IntegrationKind),
+		ID: uint64(
+			row.ID,
+		),
+		WorkspaceID: row.WorkspaceID,
+		Key:         row.Key,
+		GroupKey:    row.GroupKey,
+		SequenceKey: ptrString(
+			row.SequenceKey,
+		),
+		SequencePosition: ptrUint32(row.SequencePosition),
+		TaskKind:         row.TaskKind,
+		ActionKey:        row.ActionKey,
+		ActionKind:       string(row.ActionKind),
+		ClaimMode:        string(row.ClaimMode),
+		StartMode:        string(row.StartMode),
+		TargetCount: uint64(
+			row.TargetCount,
+		),
+		ResetUnit:       string(row.ResetUnit),
+		ResetEvery:      uint32(row.ResetEvery),
+		Position:        row.Position,
+		Payload:         nullRawMessage(row.Payload),
+		Target:          nullRawMessage(row.Target),
+		IntegrationKind: ptrString(row.IntegrationKind),
 		IntegrationProvider: ptrString(
 			row.IntegrationProvider,
-		), IntegrationPayload: nullRawMessage(row.IntegrationPayload),
-		ImageURL:  ptrString(row.ImageUrl),
-		IsVisible: row.IsVisible, IsActive: row.IsActive, StartAt: ptrTime(row.StartAt),
-		EndAt: ptrTime(row.EndAt), DeletedAt: ptrTime(row.DeletedAt),
-		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, Rewards: make([]Reward, 0),
+		),
+		IntegrationPayload: nullRawMessage(row.IntegrationPayload),
+		ImageURL:           ptrString(row.ImageUrl),
+		IsVisible:          row.IsVisible,
+		IsActive:           row.IsActive,
+		StartAt:            ptrTime(row.StartAt),
+		EndAt:              ptrTime(row.EndAt),
+		DeletedAt:          ptrTime(row.DeletedAt),
+		CreatedAt:          row.CreatedAt,
+		UpdatedAt:          row.UpdatedAt,
+		Rewards:            make([]Reward, 0),
 	}
 }
 

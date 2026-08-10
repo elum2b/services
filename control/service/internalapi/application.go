@@ -21,11 +21,11 @@ func (i *Internal) AuthenticateApplicationUser(
 	ctx context.Context,
 	params AuthenticateApplicationUserRequest,
 ) (services.Identity, error) {
-
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
 	workspaceID := strings.TrimSpace(params.WorkspaceID)
+
 	configuration, err := i.repository.GetApplicationAuthentication(
 		mergedCtx,
 		workspaceID,
@@ -35,6 +35,7 @@ func (i *Internal) AuthenticateApplicationUser(
 	if err != nil {
 		return services.Identity{}, err
 	}
+
 	if !configuration.IsEnabled {
 		return services.Identity{}, repository.ErrForbidden
 	}
@@ -66,6 +67,6 @@ func (i *Internal) AuthenticateApplicationUser(
 	if err := identity.Validate(); err != nil {
 		return services.Identity{}, err
 	}
-	return identity, nil
 
+	return identity, nil
 }

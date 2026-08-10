@@ -14,8 +14,17 @@ func TestPayableAmountMinorRejectsInvalidAmounts(t *testing.T) {
 		{list: -1, discount: 0, want: 0},
 		{list: 1, discount: -1, want: 0},
 	} {
-		if got := payableAmountMinor(value.list, value.discount); got != value.want {
-			t.Fatalf("payableAmountMinor(%d, %d) = %d, want %d", value.list, value.discount, got, value.want)
+		if got := payableAmountMinor(
+			value.list,
+			value.discount,
+		); got != value.want {
+			t.Fatalf(
+				"payableAmountMinor(%d, %d) = %d, want %d",
+				value.list,
+				value.discount,
+				got,
+				value.want,
+			)
 		}
 	}
 

@@ -55,7 +55,11 @@ func (r *Repository) invalidateCPACache(workspaceID string, cpaIDs ...string) {
 			continue
 		}
 		seen[cpaID] = struct{}{}
-		err = errors.Join(err, r.db.BumpCacheVersion(cpaOfferCacheVersionScope(workspaceID, cpaID)...))
+		err = errors.Join(
+			err,
+			r.db.BumpCacheVersion(
+				cpaOfferCacheVersionScope(workspaceID, cpaID)...),
+		)
 	}
 	r.reportCacheInvalidationError(err)
 }

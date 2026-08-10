@@ -29,12 +29,18 @@ func (r *Repository) invalidatePromoCache(workspaceID string) error {
 		return nil
 	}
 	err := errors.Join(
-		r.db.BumpCacheVersion(promoCacheScope(promoCacheAdminPromo, workspaceID)...),
-		r.db.BumpCacheVersion(promoCacheScope(promoCacheAdminList, workspaceID)...),
-		r.db.BumpCacheVersion(promoCacheScope(promoCacheAdminLocalization, workspaceID)...),
-		r.db.BumpCacheVersion(promoCacheScope(promoCacheAdminLocalizations, workspaceID)...),
-		r.db.BumpCacheVersion(promoCacheScope(promoCacheAdminReward, workspaceID)...),
-		r.db.BumpCacheVersion(promoCacheScope(promoCacheAdminRewards, workspaceID)...),
+		r.db.BumpCacheVersion(
+			promoCacheScope(promoCacheAdminPromo, workspaceID)...),
+		r.db.BumpCacheVersion(
+			promoCacheScope(promoCacheAdminList, workspaceID)...),
+		r.db.BumpCacheVersion(
+			promoCacheScope(promoCacheAdminLocalization, workspaceID)...),
+		r.db.BumpCacheVersion(
+			promoCacheScope(promoCacheAdminLocalizations, workspaceID)...),
+		r.db.BumpCacheVersion(
+			promoCacheScope(promoCacheAdminReward, workspaceID)...),
+		r.db.BumpCacheVersion(
+			promoCacheScope(promoCacheAdminRewards, workspaceID)...),
 	)
 	r.reportCacheInvalidationError(err)
 	return nil

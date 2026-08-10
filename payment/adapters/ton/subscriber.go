@@ -7,12 +7,13 @@ import (
 	"sync"
 	"time"
 
-	serviceerrors "github.com/elum2b/services/errors"
-	goroutinemanager "github.com/elum2b/services/internal/utils/goroutine"
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/liteclient"
 	"github.com/xssnick/tonutils-go/tlb"
 	tonclient "github.com/xssnick/tonutils-go/ton"
+
+	serviceerrors "github.com/elum2b/services/errors"
+	goroutinemanager "github.com/elum2b/services/internal/utils/goroutine"
 )
 
 type CallbackJetton func(t *RootJetton) error
@@ -72,29 +73,53 @@ func (s *Sub) Err() error {
 	return s.lastErr
 }
 
-func (s *Sub) JettonMasterAddress(ctx context.Context, jettonWalletAddress string) (string, error) {
+func (s *Sub) JettonMasterAddress(
+	ctx context.Context,
+	jettonWalletAddress string,
+) (string, error) {
 	if s == nil || s.Api == nil {
 		return "", ErrSubscriberNotInitialized
 	}
 	wallet, err := address.ParseAddr(jettonWalletAddress)
 	if err != nil {
-		return "", serviceerrors.Wrap(serviceerrors.CodeInvalidFields, "ton jetton wallet address is invalid", err)
+		return "", serviceerrors.Wrap(
+			serviceerrors.CodeInvalidFields,
+			"ton jetton wallet address is invalid",
+			err,
+		)
 	}
 	block, err := s.Api.CurrentMasterchainInfo(ctx)
 	if err != nil {
-		return "", serviceerrors.Wrap(serviceerrors.CodeUnavailable, "ton masterchain info request failed", err)
+		return "", serviceerrors.Wrap(
+			serviceerrors.CodeUnavailable,
+			"ton masterchain info request failed",
+			err,
+		)
 	}
-	result, err := s.Api.WaitForBlock(block.SeqNo).RunGetMethod(ctx, block, wallet, "get_wallet_data")
+	result, err := s.Api.WaitForBlock(block.SeqNo).
+		RunGetMethod(ctx, block, wallet, "get_wallet_data")
 	if err != nil {
-		return "", serviceerrors.Wrap(serviceerrors.CodeUnavailable, "ton jetton wallet data request failed", err)
+		return "", serviceerrors.Wrap(
+			serviceerrors.CodeUnavailable,
+			"ton jetton wallet data request failed",
+			err,
+		)
 	}
 	masterSlice, err := result.Slice(2)
 	if err != nil {
-		return "", serviceerrors.Wrap(serviceerrors.CodeInternalError, "ton jetton master result read failed", err)
+		return "", serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"ton jetton master result read failed",
+			err,
+		)
 	}
 	master, err := masterSlice.LoadAddr()
 	if err != nil {
-		return "", serviceerrors.Wrap(serviceerrors.CodeInternalError, "ton jetton master address read failed", err)
+		return "", serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"ton jetton master address read failed",
+			err,
+		)
 	}
 	if master == nil || master.IsAddrNone() {
 		return "", ErrJettonMasterAddressEmpty
@@ -102,7 +127,13 @@ func (s *Sub) JettonMasterAddress(ctx context.Context, jettonWalletAddress strin
 	return master.StringRaw(), nil
 }
 
-func NewSub(ctx context.Context, stop context.CancelFunc, addr string, networkConfigURL string, lt ...uint64) (*Sub, error) {
+func NewSub(
+	ctx context.Context,
+	stop context.CancelFunc,
+	addr string,
+	networkConfigURL string,
+	lt ...uint64,
+) (*Sub, error) {
 	client := liteclient.NewConnectionPool()
 	if ctx == nil {
 		ctx = context.Background()
@@ -117,7 +148,8 @@ func NewSub(ctx context.Context, stop context.CancelFunc, addr string, networkCo
 		return nil, err
 	}
 
-	api := tonclient.NewAPIClient(client, tonclient.ProofCheckPolicyFast).WithRetryTimeout(0, 5*time.Second)
+	api := tonclient.NewAPIClient(client, tonclient.ProofCheckPolicyFast).
+		WithRetryTimeout(0, 5*time.Second)
 	api.SetTrustedBlockFromConfig(cfg)
 
 	master, err := api.CurrentMasterchainInfo(ctx)
@@ -175,7 +207,12 @@ func (s *Sub) Start() {
 			s.pool.Stop()
 		})
 		s.manager.Go("payment.ton.subscriber.transactions", func() {
-			s.Api.SubscribeOnTransactions(s.Context, s.wallet, s.LastLT(), transactions)
+			s.Api.SubscribeOnTransactions(
+				s.Context,
+				s.wallet,
+				s.LastLT(),
+				transactions,
+			)
 		})
 	})
 }
@@ -243,7 +280,8 @@ func (s *Sub) subscribe(channel chan *tlb.Transaction) {
 		if tx.IO.In == nil || tx.IO.In.MsgType != tlb.MsgTypeInternal {
 			continue
 		}
-		if dsc, ok := tx.Description.(tlb.TransactionDescriptionOrdinary); ok && dsc.BouncePhase != nil {
+		if dsc, ok := tx.Description.(tlb.TransactionDescriptionOrdinary); ok &&
+			dsc.BouncePhase != nil {
 			if _, ok = dsc.BouncePhase.Phase.(tlb.BouncePhaseOk); ok {
 				continue
 			}

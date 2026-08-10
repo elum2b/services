@@ -8,7 +8,11 @@ import (
 	"github.com/elum2b/services/promo/service/user"
 )
 
-func (a *Admin) GetStats(ctx context.Context, workspaceID string, promoID uint64) (StatsModel, error) {
+func (a *Admin) GetStats(
+	ctx context.Context,
+	workspaceID string,
+	promoID uint64,
+) (StatsModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	value, err := a.repository.GetStats(mergedCtx, workspaceID, promoID)
@@ -51,7 +55,13 @@ func (a *Admin) ListRedemptions(
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	limit, offset := normalizePage(page)
-	values, err := a.repository.ListRedemptions(mergedCtx, workspaceID, promoID, limit, offset)
+	values, err := a.repository.ListRedemptions(
+		mergedCtx,
+		workspaceID,
+		promoID,
+		limit,
+		offset,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +80,13 @@ func (a *Admin) ListDailyStats(
 ) ([]DailyStatsModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
-	values, err := a.repository.ListDailyStats(mergedCtx, workspaceID, promoID, from, until)
+	values, err := a.repository.ListDailyStats(
+		mergedCtx,
+		workspaceID,
+		promoID,
+		from,
+		until,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +97,11 @@ func (a *Admin) ListDailyStats(
 	return result, nil
 }
 
-func (a *Admin) RefreshDailyStats(ctx context.Context, workspaceID string, from, until time.Time) error {
+func (a *Admin) RefreshDailyStats(
+	ctx context.Context,
+	workspaceID string,
+	from, until time.Time,
+) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	return a.repository.RefreshDailyStats(mergedCtx, workspaceID, from, until)

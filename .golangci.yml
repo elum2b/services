@@ -1,0 +1,82 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  disable:
+    # ETP controller registration is intentionally side-effect-only: handlers
+    # follow the established `func(event string, socket etp.Router)` contract.
+    - errcheck
+  enable:
+    - bodyclose
+    - copyloopvar
+    - cyclop
+    - depguard
+    - errorlint
+    - gocognit
+    - gomoddirectives
+    - misspell
+    - nestif
+    - nilerr
+    - nilnil
+    - nlreturn
+    - noctx
+    - prealloc
+    - tagliatelle
+    - testifylint
+    - unconvert
+    - usestdlibvars
+    - wsl_v5
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    cyclop:
+      max-complexity: 15
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: github.com/pkg/errors
+              desc: use the standard errors package
+    gocognit:
+      min-complexity: 20
+    gomoddirectives:
+      check-module-path: true
+      exclude-forbidden: true
+      ignore-forbidden: true
+    nlreturn:
+      block-size: 2
+    nestif:
+      min-complexity: 4
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+    testifylint:
+      enable-all: true
+    wsl_v5:
+      default: all
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - goimports
+    - golines
+
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/elum2b/services)
+      custom-order: true
+    golines:
+      max-len: 80
+    goimports:
+      local-prefixes:
+        - github.com/elum2b/services

@@ -11,7 +11,11 @@ func (a *Admin) ExportManifest(ctx context.Context) (ExportManifest, error) {
 	return a.repository.ExportManifest(), nil
 }
 
-func (a *Admin) Export(ctx context.Context, workspaceID string, req ExportRequest) (ExportPackage, error) {
+func (a *Admin) Export(
+	ctx context.Context,
+	workspaceID string,
+	req ExportRequest,
+) (ExportPackage, error) {
 	if a == nil || a.repository == nil {
 		return ExportPackage{}, ErrRepositoryNotConfigured
 	}

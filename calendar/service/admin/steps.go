@@ -15,7 +15,10 @@ type SaveStepParams struct {
 	Position    uint32
 }
 
-func (a *Admin) CreateStep(ctx context.Context, params SaveStepParams) (uint64, error) {
+func (a *Admin) CreateStep(
+	ctx context.Context,
+	params SaveStepParams,
+) (uint64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
@@ -28,10 +31,18 @@ func (a *Admin) CreateStep(ctx context.Context, params SaveStepParams) (uint64, 
 		return 0, ErrCalendarNumberOutOfRange
 	}
 
-	return a.repository.CreateStep(mergedCtx, params.WorkspaceID, params.CalendarID, params.Position)
+	return a.repository.CreateStep(
+		mergedCtx,
+		params.WorkspaceID,
+		params.CalendarID,
+		params.Position,
+	)
 }
 
-func (a *Admin) UpdateStep(ctx context.Context, params SaveStepParams) (int64, error) {
+func (a *Admin) UpdateStep(
+	ctx context.Context,
+	params SaveStepParams,
+) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
@@ -45,11 +56,19 @@ func (a *Admin) UpdateStep(ctx context.Context, params SaveStepParams) (int64, e
 	}
 
 	return a.repository.UpdateStep(
-		mergedCtx, params.WorkspaceID, params.CalendarID, params.ID, params.Position,
+		mergedCtx,
+		params.WorkspaceID,
+		params.CalendarID,
+		params.ID,
+		params.Position,
 	)
 }
 
-func (a *Admin) DeleteStep(ctx context.Context, workspaceID, calendarID string, id uint64) (int64, error) {
+func (a *Admin) DeleteStep(
+	ctx context.Context,
+	workspaceID, calendarID string,
+	id uint64,
+) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
@@ -65,13 +84,20 @@ func (a *Admin) DeleteStep(ctx context.Context, workspaceID, calendarID string, 
 	return a.repository.DeleteStep(mergedCtx, workspaceID, calendarID, id)
 }
 
-func (a *Admin) GetStep(ctx context.Context, workspaceID, calendarID string, id uint64) (repository.Step, error) {
+func (a *Admin) GetStep(
+	ctx context.Context,
+	workspaceID, calendarID string,
+	id uint64,
+) (repository.Step, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	return a.repository.GetStep(mergedCtx, workspaceID, calendarID, id)
 }
 
-func (a *Admin) ListSteps(ctx context.Context, workspaceID, calendarID string) ([]repository.Step, error) {
+func (a *Admin) ListSteps(
+	ctx context.Context,
+	workspaceID, calendarID string,
+) ([]repository.Step, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	return a.repository.ListSteps(mergedCtx, workspaceID, calendarID)

@@ -94,7 +94,10 @@ type paymentSubscriptionRenewedCallbackPayload struct {
 	Rewards                []paymentCallbackReward `json:"rewards"`
 }
 
-func (r *PaymentRepository) UpsertSubscription(ctx context.Context, params SubscriptionUpsertParams) (uint64, error) {
+func (r *PaymentRepository) UpsertSubscription(
+	ctx context.Context,
+	params SubscriptionUpsertParams,
+) (uint64, error) {
 	workspaceID, err := requireWorkspaceID(params.WorkspaceID)
 	if err != nil {
 		return 0, err
@@ -109,32 +112,50 @@ func (r *PaymentRepository) UpsertSubscription(ctx context.Context, params Subsc
 		status = string(paymentsqlc.PaymentSubscriptionStatusActive)
 	}
 
-	id, err := r.q.UpsertPaymentSubscription(ctx, paymentsqlc.UpsertPaymentSubscriptionParams{
-		ProviderCode:           params.ProviderCode,
-		WorkspaceID:            workspaceID,
-		ProviderSubscriptionID: params.ProviderSubscriptionID,
-		AppID:                  params.AppID,
-		PlatformID:             params.PlatformID,
-		PlatformUserID:         params.PlatformUserID,
-		InternalUserID: sqlwrap.NullFromPtr(params.InternalUserID, func(value int64) sql.NullInt64 {
-			return sql.NullInt64{Int64: value, Valid: true}
-		}),
-		ProductID: params.ProductID,
-		OrderID: sqlwrap.NullFromPtr(params.OrderID, func(value int64) sql.NullInt64 {
-			return sql.NullInt64{Int64: value, Valid: true}
-		}),
-		AttemptID: sqlwrap.NullFromPtr(params.AttemptID, func(value int64) sql.NullInt64 {
-			return sql.NullInt64{Int64: value, Valid: true}
-		}),
-		Status: paymentsqlc.PaymentSubscriptionStatus(status),
-		CancelReason: sqlwrap.NullFromPtr(params.CancelReason, func(value string) sql.NullString {
-			return sql.NullString{String: value, Valid: true}
-		}),
-		StartedAt: startedAt,
-		EndedAt: sqlwrap.NullFromPtr(params.EndedAt, func(value time.Time) sql.NullTime {
-			return sql.NullTime{Time: value, Valid: true}
-		}),
-	})
+	id, err := r.q.UpsertPaymentSubscription(
+		ctx,
+		paymentsqlc.UpsertPaymentSubscriptionParams{
+			ProviderCode:           params.ProviderCode,
+			WorkspaceID:            workspaceID,
+			ProviderSubscriptionID: params.ProviderSubscriptionID,
+			AppID:                  params.AppID,
+			PlatformID:             params.PlatformID,
+			PlatformUserID:         params.PlatformUserID,
+			InternalUserID: sqlwrap.NullFromPtr(
+				params.InternalUserID,
+				func(value int64) sql.NullInt64 {
+					return sql.NullInt64{Int64: value, Valid: true}
+				},
+			),
+			ProductID: params.ProductID,
+			OrderID: sqlwrap.NullFromPtr(
+				params.OrderID,
+				func(value int64) sql.NullInt64 {
+					return sql.NullInt64{Int64: value, Valid: true}
+				},
+			),
+			AttemptID: sqlwrap.NullFromPtr(
+				params.AttemptID,
+				func(value int64) sql.NullInt64 {
+					return sql.NullInt64{Int64: value, Valid: true}
+				},
+			),
+			Status: paymentsqlc.PaymentSubscriptionStatus(status),
+			CancelReason: sqlwrap.NullFromPtr(
+				params.CancelReason,
+				func(value string) sql.NullString {
+					return sql.NullString{String: value, Valid: true}
+				},
+			),
+			StartedAt: startedAt,
+			EndedAt: sqlwrap.NullFromPtr(
+				params.EndedAt,
+				func(value time.Time) sql.NullTime {
+					return sql.NullTime{Time: value, Valid: true}
+				},
+			),
+		},
+	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, ErrPaymentMismatch
@@ -158,7 +179,9 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 
 	params.ProviderCode = strings.TrimSpace(params.ProviderCode)
 	params.ProviderPaymentID = strings.TrimSpace(params.ProviderPaymentID)
-	params.ProviderSubscriptionID = strings.TrimSpace(params.ProviderSubscriptionID)
+	params.ProviderSubscriptionID = strings.TrimSpace(
+		params.ProviderSubscriptionID,
+	)
 	params.ProviderChargeID = strings.TrimSpace(params.ProviderChargeID)
 	params.AssetCode = strings.TrimSpace(params.AssetCode)
 	if params.AttemptID == 0 || params.AttemptID > math.MaxInt64 ||
@@ -171,7 +194,10 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 
 	var result SubscriptionRenewalResult
 	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
-		attempt, err := txRepo.q.LockPaymentAttempt(ctx, int64(params.AttemptID))
+		attempt, err := txRepo.q.LockPaymentAttempt(
+			ctx,
+			int64(params.AttemptID),
+		)
 		if err != nil {
 			return err
 		}
@@ -245,27 +271,34 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 			}
 			return err
 		}
-		if !subscription.OrderID.Valid || subscription.OrderID.Int64 != order.ID ||
-			!subscription.AttemptID.Valid || subscription.AttemptID.Int64 != attempt.ID ||
+		if !subscription.OrderID.Valid ||
+			subscription.OrderID.Int64 != order.ID ||
+			!subscription.AttemptID.Valid ||
+			subscription.AttemptID.Int64 != attempt.ID ||
 			subscription.Status != paymentsqlc.PaymentSubscriptionStatusActive {
 			return ErrPaymentMismatch
 		}
 
-		subscriptionID, err := txRepo.UpsertSubscription(ctx, SubscriptionUpsertParams{
-			WorkspaceID:            order.WorkspaceID,
-			ProviderCode:           params.ProviderCode,
-			ProviderSubscriptionID: params.ProviderSubscriptionID,
-			AppID:                  order.AppID,
-			PlatformID:             order.PlatformID,
-			PlatformUserID:         order.PlatformUserID,
-			InternalUserID:         nullInt64Ptr(order.InternalUserID),
-			ProductID:              order.ProductID,
-			OrderID:                utils.Ref(order.ID),
-			AttemptID:              utils.Ref(attempt.ID),
-			Status:                 string(paymentsqlc.PaymentSubscriptionStatusActive),
-			StartedAt:              time.Now().UTC(),
-			EndedAt:                utils.Ref(params.PeriodEnd),
-		})
+		subscriptionID, err := txRepo.UpsertSubscription(
+			ctx,
+			SubscriptionUpsertParams{
+				WorkspaceID:            order.WorkspaceID,
+				ProviderCode:           params.ProviderCode,
+				ProviderSubscriptionID: params.ProviderSubscriptionID,
+				AppID:                  order.AppID,
+				PlatformID:             order.PlatformID,
+				PlatformUserID:         order.PlatformUserID,
+				InternalUserID:         nullInt64Ptr(order.InternalUserID),
+				ProductID:              order.ProductID,
+				OrderID:                utils.Ref(order.ID),
+				AttemptID:              utils.Ref(attempt.ID),
+				Status: string(
+					paymentsqlc.PaymentSubscriptionStatusActive,
+				),
+				StartedAt: time.Now().UTC(),
+				EndedAt:   utils.Ref(params.PeriodEnd),
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -421,18 +454,27 @@ func (r *PaymentRepository) UpdateSubscriptionStatus(
 		return 0, err
 	}
 
-	return r.q.UpdatePaymentSubscriptionStatusForWorkspace(ctx, paymentsqlc.UpdatePaymentSubscriptionStatusForWorkspaceParams{
-		Status: paymentsqlc.PaymentSubscriptionStatus(params.Status),
-		CancelReason: sqlwrap.NullFromPtr(params.CancelReason, func(value string) sql.NullString {
-			return sql.NullString{String: value, Valid: true}
-		}),
-		EndedAt: sqlwrap.NullFromPtr(params.EndedAt, func(value time.Time) sql.NullTime {
-			return sql.NullTime{Time: value, Valid: true}
-		}),
-		WorkspaceID:            workspaceID,
-		ProviderCode:           params.ProviderCode,
-		ProviderSubscriptionID: params.ProviderSubscriptionID,
-	})
+	return r.q.UpdatePaymentSubscriptionStatusForWorkspace(
+		ctx,
+		paymentsqlc.UpdatePaymentSubscriptionStatusForWorkspaceParams{
+			Status: paymentsqlc.PaymentSubscriptionStatus(params.Status),
+			CancelReason: sqlwrap.NullFromPtr(
+				params.CancelReason,
+				func(value string) sql.NullString {
+					return sql.NullString{String: value, Valid: true}
+				},
+			),
+			EndedAt: sqlwrap.NullFromPtr(
+				params.EndedAt,
+				func(value time.Time) sql.NullTime {
+					return sql.NullTime{Time: value, Valid: true}
+				},
+			),
+			WorkspaceID:            workspaceID,
+			ProviderCode:           params.ProviderCode,
+			ProviderSubscriptionID: params.ProviderSubscriptionID,
+		},
+	)
 }
 
 func (r *PaymentRepository) UpdateSubscriptionStatusByProvider(
@@ -444,21 +486,33 @@ func (r *PaymentRepository) UpdateSubscriptionStatusByProvider(
 		return 0, err
 	}
 
-	return r.q.UpdatePaymentSubscriptionStatusByProvider(ctx, paymentsqlc.UpdatePaymentSubscriptionStatusByProviderParams{
-		Status: paymentsqlc.PaymentSubscriptionStatus(params.Status),
-		CancelReason: sqlwrap.NullFromPtr(params.CancelReason, func(value string) sql.NullString {
-			return sql.NullString{String: value, Valid: true}
-		}),
-		EndedAt: sqlwrap.NullFromPtr(params.EndedAt, func(value time.Time) sql.NullTime {
-			return sql.NullTime{Time: value, Valid: true}
-		}),
-		WorkspaceID:            workspaceID,
-		ProviderCode:           params.ProviderCode,
-		ProviderSubscriptionID: params.ProviderSubscriptionID,
-	})
+	return r.q.UpdatePaymentSubscriptionStatusByProvider(
+		ctx,
+		paymentsqlc.UpdatePaymentSubscriptionStatusByProviderParams{
+			Status: paymentsqlc.PaymentSubscriptionStatus(params.Status),
+			CancelReason: sqlwrap.NullFromPtr(
+				params.CancelReason,
+				func(value string) sql.NullString {
+					return sql.NullString{String: value, Valid: true}
+				},
+			),
+			EndedAt: sqlwrap.NullFromPtr(
+				params.EndedAt,
+				func(value time.Time) sql.NullTime {
+					return sql.NullTime{Time: value, Valid: true}
+				},
+			),
+			WorkspaceID:            workspaceID,
+			ProviderCode:           params.ProviderCode,
+			ProviderSubscriptionID: params.ProviderSubscriptionID,
+		},
+	)
 }
 
-func (r *PaymentRepository) IsSubscriptionActive(ctx context.Context, params SubscriptionIsActiveParams) (bool, error) {
+func (r *PaymentRepository) IsSubscriptionActive(
+	ctx context.Context,
+	params SubscriptionIsActiveParams,
+) (bool, error) {
 	workspaceID, err := requireWorkspaceID(params.WorkspaceID)
 	if err != nil {
 		return false, err
@@ -484,31 +538,40 @@ func (r *PaymentRepository) IsSubscriptionActive(ctx context.Context, params Sub
 			},
 		)
 	} else if params.ProductID != "" {
-		count, err = r.q.CountActivePaymentSubscriptionsForProduct(ctx, paymentsqlc.CountActivePaymentSubscriptionsForProductParams{
-			AppID:          params.AppID,
-			PlatformID:     params.PlatformID,
-			PlatformUserID: params.PlatformUserID,
-			WorkspaceID:    workspaceID,
-			ProductID:      params.ProductID,
-			EndedAt:        endedAt,
-		})
+		count, err = r.q.CountActivePaymentSubscriptionsForProduct(
+			ctx,
+			paymentsqlc.CountActivePaymentSubscriptionsForProductParams{
+				AppID:          params.AppID,
+				PlatformID:     params.PlatformID,
+				PlatformUserID: params.PlatformUserID,
+				WorkspaceID:    workspaceID,
+				ProductID:      params.ProductID,
+				EndedAt:        endedAt,
+			},
+		)
 	} else if params.ProviderCode != "" {
-		count, err = r.q.CountActivePaymentSubscriptionsForProvider(ctx, paymentsqlc.CountActivePaymentSubscriptionsForProviderParams{
-			AppID:          params.AppID,
-			PlatformID:     params.PlatformID,
-			PlatformUserID: params.PlatformUserID,
-			WorkspaceID:    workspaceID,
-			ProviderCode:   params.ProviderCode,
-			EndedAt:        endedAt,
-		})
+		count, err = r.q.CountActivePaymentSubscriptionsForProvider(
+			ctx,
+			paymentsqlc.CountActivePaymentSubscriptionsForProviderParams{
+				AppID:          params.AppID,
+				PlatformID:     params.PlatformID,
+				PlatformUserID: params.PlatformUserID,
+				WorkspaceID:    workspaceID,
+				ProviderCode:   params.ProviderCode,
+				EndedAt:        endedAt,
+			},
+		)
 	} else {
-		count, err = r.q.CountActivePaymentSubscriptionsAll(ctx, paymentsqlc.CountActivePaymentSubscriptionsAllParams{
-			AppID:          params.AppID,
-			PlatformID:     params.PlatformID,
-			PlatformUserID: params.PlatformUserID,
-			WorkspaceID:    workspaceID,
-			EndedAt:        endedAt,
-		})
+		count, err = r.q.CountActivePaymentSubscriptionsAll(
+			ctx,
+			paymentsqlc.CountActivePaymentSubscriptionsAllParams{
+				AppID:          params.AppID,
+				PlatformID:     params.PlatformID,
+				PlatformUserID: params.PlatformUserID,
+				WorkspaceID:    workspaceID,
+				EndedAt:        endedAt,
+			},
+		)
 	}
 	if err != nil {
 		return false, err

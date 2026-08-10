@@ -55,12 +55,21 @@ type ClaimResult struct {
 }
 
 type PartnerProvider interface {
-	ListPartnerTasks(ctx context.Context, params PartnerListProviderParams) ([]PartnerExternalTask, error)
-	CheckPartnerTask(ctx context.Context, params PartnerCheckProviderParams) (PartnerCheckResult, error)
+	ListPartnerTasks(
+		ctx context.Context,
+		params PartnerListProviderParams,
+	) ([]PartnerExternalTask, error)
+	CheckPartnerTask(
+		ctx context.Context,
+		params PartnerCheckProviderParams,
+	) (PartnerCheckResult, error)
 }
 
 type PartnerStarter interface {
-	StartPartnerTask(ctx context.Context, params PartnerStartProviderParams) (PartnerStartResult, error)
+	StartPartnerTask(
+		ctx context.Context,
+		params PartnerStartProviderParams,
+	) (PartnerStartResult, error)
 }
 
 type PartnerListParams struct {

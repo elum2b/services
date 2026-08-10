@@ -18,7 +18,10 @@ type CompleteResult struct {
 	AlreadyDone bool                 `json:"already_done"`
 }
 
-func (a *Admin) Complete(ctx context.Context, params CompleteParams) (CompleteResult, error) {
+func (a *Admin) Complete(
+	ctx context.Context,
+	params CompleteParams,
+) (CompleteResult, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()

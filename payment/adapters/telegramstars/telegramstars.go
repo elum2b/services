@@ -5,12 +5,11 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-resty/resty/v2"
+
 	"github.com/elum2b/services/internal/utils/contextutil"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-
 	"github.com/elum2b/services/payment/repository"
-
-	"github.com/go-resty/resty/v2"
 )
 
 const (
@@ -34,8 +33,16 @@ func New(ctx context.Context, db *sqlwrap.Client) *TelegramStars {
 	return NewWithOptions(ctx, db, repository.Options{})
 }
 
-func NewWithOptions(ctx context.Context, db *sqlwrap.Client, options repository.Options) *TelegramStars {
-	repo, err := repository.NewPreparedPaymentRepositoryWithOptions(context.Background(), db, options)
+func NewWithOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options repository.Options,
+) *TelegramStars {
+	repo, err := repository.NewPreparedPaymentRepositoryWithOptions(
+		context.Background(),
+		db,
+		options,
+	)
 	if err != nil {
 		repo = repository.NewPaymentRepositoryWithOptions(db, options)
 	}
@@ -49,7 +56,9 @@ func (a *TelegramStars) Close() error {
 	return a.repository.Close()
 }
 
-func (a *TelegramStars) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (a *TelegramStars) withContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	return contextutil.Merge(a.rootCtx, ctx)
 }
 

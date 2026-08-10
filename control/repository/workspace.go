@@ -3,9 +3,10 @@ package repository
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	controlmodel "github.com/elum2b/services/control/model"
 	controlsqlc "github.com/elum2b/services/control/sqlc"
-	"github.com/google/uuid"
 )
 
 func (r *Repository) CreateWorkspace(
@@ -15,10 +16,10 @@ func (r *Repository) CreateWorkspace(
 	slug string,
 	title string,
 ) (Workspace, error) {
-
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return Workspace{}, err
 	}
+
 	if err := required(actorID, slug, title); err != nil {
 		return Workspace{}, err
 	}
@@ -30,21 +31,28 @@ func (r *Repository) CreateWorkspace(
 		if err != nil {
 			return noRows(err, ErrForbidden)
 		}
+
 		if !allowed(bundle.Allowed) {
 			return ErrForbidden
 		}
+
 		if bundle.OwnedWorkspaceCount >= int64(bundle.WorkspaceLimit) {
 			return ErrWorkspaceLimit
 		}
-		created, err := q.CreateWorkspace(ctx, controlsqlc.CreateWorkspaceParams{
-			ID:        workspaceID,
-			Slug:      slug,
-			Title:     title,
-			CreatedBy: actorID,
-		})
+
+		created, err := q.CreateWorkspace(
+			ctx,
+			controlsqlc.CreateWorkspaceParams{
+				ID:        workspaceID,
+				Slug:      slug,
+				Title:     title,
+				CreatedBy: actorID,
+			},
+		)
 		if err != nil {
 			return writeConflict(err)
 		}
+
 		result = mapWorkspace(created)
 
 		return q.AddWorkspaceMember(ctx, controlsqlc.AddWorkspaceMemberParams{
@@ -57,18 +65,18 @@ func (r *Repository) CreateWorkspace(
 	}
 
 	return result, nil
-
 }
 
-func (r *Repository) GetWorkspace(ctx context.Context, workspaceID string) (Workspace, error) {
-
+func (r *Repository) GetWorkspace(
+	ctx context.Context,
+	workspaceID string,
+) (Workspace, error) {
 	row, err := r.q.GetWorkspace(ctx, workspaceID)
 	if err != nil {
 		return Workspace{}, noRows(err, ErrWorkspaceNotFound)
 	}
 
 	return mapWorkspace(row), nil
-
 }
 
 func (r *Repository) ListWorkspaces(
@@ -77,7 +85,6 @@ func (r *Repository) ListWorkspaces(
 	cursor Cursor,
 	limit int32,
 ) ([]Workspace, error) {
-
 	rows, err := r.q.ListWorkspacesForAccount(
 		ctx,
 		controlsqlc.ListWorkspacesForAccountParams{
@@ -97,7 +104,6 @@ func (r *Repository) ListWorkspaces(
 	}
 
 	return result, nil
-
 }
 
 func (r *Repository) UpdateWorkspace(
@@ -105,12 +111,12 @@ func (r *Repository) UpdateWorkspace(
 	actorID string,
 	value Workspace,
 ) (int64, error) {
-
 	if err := required(actorID, value.ID, value.Slug, value.Title); err != nil {
 		return 0, err
 	}
 
 	var affected int64
+
 	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		if err := requireWorkspaceAuthorization(
 			ctx,
@@ -128,13 +134,13 @@ func (r *Repository) UpdateWorkspace(
 			Title: value.Title,
 			ID:    value.ID,
 		})
+
 		affected = rows
 
 		return writeConflict(err)
 	})
 
 	return affected, err
-
 }
 
 func (r *Repository) ArchiveWorkspace(
@@ -142,8 +148,8 @@ func (r *Repository) ArchiveWorkspace(
 	actorID string,
 	workspaceID string,
 ) (int64, error) {
-
 	var affected int64
+
 	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		bundle, err := q.GetWorkspaceAuthorizationForUpdate(
 			ctx,
@@ -157,6 +163,7 @@ func (r *Repository) ArchiveWorkspace(
 		if err != nil {
 			return noRows(err, ErrWorkspaceNotFound)
 		}
+
 		if !bundle.ActorIsOwner {
 			return ErrForbidden
 		}
@@ -165,6 +172,7 @@ func (r *Repository) ArchiveWorkspace(
 		if err != nil {
 			return err
 		}
+
 		if affected != 1 {
 			return ErrWorkspaceNotFound
 		}
@@ -178,7 +186,6 @@ func (r *Repository) ArchiveWorkspace(
 	})
 
 	return affected, err
-
 }
 
 func (r *Repository) TransferWorkspaceOwnership(
@@ -187,7 +194,6 @@ func (r *Repository) TransferWorkspaceOwnership(
 	workspaceID string,
 	targetAccountID string,
 ) error {
-
 	return r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		bundle, err := q.GetWorkspaceAuthorizationForUpdate(
 			ctx,
@@ -201,14 +207,20 @@ func (r *Repository) TransferWorkspaceOwnership(
 		if err != nil {
 			return noRows(err, ErrWorkspaceNotFound)
 		}
-		if !bundle.ActorIsOwner || !bundle.TargetIsActive || actorID == targetAccountID {
+
+		if !bundle.ActorIsOwner || !bundle.TargetIsActive ||
+			actorID == targetAccountID {
 			return ErrOwnershipTransfer
 		}
 
-		capacity, err := q.GetWorkspaceOwnershipCapacityForUpdate(ctx, targetAccountID)
+		capacity, err := q.GetWorkspaceOwnershipCapacityForUpdate(
+			ctx,
+			targetAccountID,
+		)
 		if err != nil {
 			return noRows(err, ErrOwnershipTransfer)
 		}
+
 		if capacity.OwnedWorkspaceCount >= int64(capacity.WorkspaceLimit) {
 			return ErrWorkspaceLimit
 		}
@@ -224,13 +236,13 @@ func (r *Repository) TransferWorkspaceOwnership(
 		if err != nil {
 			return err
 		}
+
 		if rows != 1 {
 			return ErrOwnershipTransfer
 		}
 
 		return nil
 	})
-
 }
 
 func (r *Repository) ListMembers(
@@ -239,7 +251,6 @@ func (r *Repository) ListMembers(
 	cursor Cursor,
 	limit int32,
 ) ([]Member, error) {
-
 	rows, err := r.q.ListWorkspaceMembers(
 		ctx,
 		controlsqlc.ListWorkspaceMembersParams{
@@ -257,6 +268,7 @@ func (r *Repository) ListMembers(
 	for _, row := range rows {
 		accountIDs = append(accountIDs, row.AccountID)
 	}
+
 	roleRows, err := r.q.ListWorkspaceMemberRoles(
 		ctx,
 		controlsqlc.ListWorkspaceMemberRolesParams{
@@ -287,7 +299,6 @@ func (r *Repository) ListMembers(
 	}
 
 	return result, nil
-
 }
 
 func (r *Repository) RemoveMember(
@@ -296,8 +307,8 @@ func (r *Repository) RemoveMember(
 	workspaceID string,
 	accountID string,
 ) (int64, error) {
-
 	var affected int64
+
 	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		bundle, err := q.GetWorkspaceAuthorizationForUpdate(
 			ctx,
@@ -311,20 +322,26 @@ func (r *Repository) RemoveMember(
 		if err != nil {
 			return noRows(err, ErrWorkspaceNotFound)
 		}
-		if !allowed(bundle.Allowed) || !bundle.TargetIsActive || bundle.TargetPosition == 0 {
+
+		if !allowed(bundle.Allowed) || !bundle.TargetIsActive ||
+			bundle.TargetPosition == 0 {
 			return ErrForbidden
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		targetPosition, err := position(bundle.TargetPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, targetPosition); err != nil {
 			return err
 		}
+
 		if _, err := q.RemoveWorkspaceMemberRoles(
 			ctx,
 			controlsqlc.RemoveWorkspaceMemberRolesParams{
@@ -334,6 +351,7 @@ func (r *Repository) RemoveMember(
 		); err != nil {
 			return err
 		}
+
 		if _, err := q.RevokePendingWorkspaceInvitesByCreator(
 			ctx,
 			controlsqlc.RevokePendingWorkspaceInvitesByCreatorParams{
@@ -356,7 +374,6 @@ func (r *Repository) RemoveMember(
 	})
 
 	return affected, err
-
 }
 
 func (r *Repository) CreateWorkspaceRole(
@@ -364,11 +381,17 @@ func (r *Repository) CreateWorkspaceRole(
 	actorID string,
 	role Role,
 ) (Role, error) {
-
 	if role.ID == "" {
 		role.ID = uuid.NewString()
 	}
-	if err := required(actorID, role.ID, role.WorkspaceID, role.Code, role.Title); err != nil {
+
+	if err := required(
+		actorID,
+		role.ID,
+		role.WorkspaceID,
+		role.Code,
+		role.Title,
+	); err != nil {
 		return Role{}, err
 	}
 
@@ -384,22 +407,27 @@ func (r *Repository) CreateWorkspaceRole(
 		if err != nil {
 			return err
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, role.Position); err != nil {
 			return err
 		}
 
-		created, err := q.CreateWorkspaceRole(ctx, controlsqlc.CreateWorkspaceRoleParams{
-			ID:          role.ID,
-			WorkspaceID: role.WorkspaceID,
-			Code:        role.Code,
-			Title:       role.Title,
-			Description: role.Description,
-			Position:    role.Position,
-		})
+		created, err := q.CreateWorkspaceRole(
+			ctx,
+			controlsqlc.CreateWorkspaceRoleParams{
+				ID:          role.ID,
+				WorkspaceID: role.WorkspaceID,
+				Code:        role.Code,
+				Title:       role.Title,
+				Description: role.Description,
+				Position:    role.Position,
+			},
+		)
 		if err != nil {
 			return writeConflict(err)
 		}
@@ -419,11 +447,12 @@ func (r *Repository) CreateWorkspaceRole(
 	})
 
 	return role, err
-
 }
 
-func (r *Repository) ListWorkspaceRoles(ctx context.Context, workspaceID string) ([]Role, error) {
-
+func (r *Repository) ListWorkspaceRoles(
+	ctx context.Context,
+	workspaceID string,
+) ([]Role, error) {
 	rows, err := r.q.ListWorkspaceRoles(ctx, workspaceID)
 	if err != nil {
 		return nil, err
@@ -435,7 +464,6 @@ func (r *Repository) ListWorkspaceRoles(ctx context.Context, workspaceID string)
 	}
 
 	return result, nil
-
 }
 
 func (r *Repository) GetWorkspaceRole(
@@ -443,7 +471,6 @@ func (r *Repository) GetWorkspaceRole(
 	workspaceID string,
 	roleID string,
 ) (Role, error) {
-
 	row, err := r.q.GetWorkspaceRole(ctx, controlsqlc.GetWorkspaceRoleParams{
 		ID:          roleID,
 		WorkspaceID: workspaceID,
@@ -462,7 +489,6 @@ func (r *Repository) GetWorkspaceRole(
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}, nil
-
 }
 
 func (r *Repository) UpdateWorkspaceRole(
@@ -470,12 +496,17 @@ func (r *Repository) UpdateWorkspaceRole(
 	actorID string,
 	role Role,
 ) (int64, error) {
-
-	if err := required(actorID, role.ID, role.WorkspaceID, role.Title); err != nil {
+	if err := required(
+		actorID,
+		role.ID,
+		role.WorkspaceID,
+		role.Title,
+	); err != nil {
 		return 0, err
 	}
 
 	var affected int64
+
 	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		bundle, err := workspaceAuthorization(
 			ctx,
@@ -488,37 +519,46 @@ func (r *Repository) UpdateWorkspaceRole(
 		if err != nil {
 			return err
 		}
-		current, err := q.GetWorkspaceRole(ctx, controlsqlc.GetWorkspaceRoleParams{
-			ID:          role.ID,
-			WorkspaceID: role.WorkspaceID,
-		})
+
+		current, err := q.GetWorkspaceRole(
+			ctx,
+			controlsqlc.GetWorkspaceRoleParams{
+				ID:          role.ID,
+				WorkspaceID: role.WorkspaceID,
+			},
+		)
 		if err != nil {
 			return noRows(err, ErrRoleNotFound)
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, current.Position); err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, role.Position); err != nil {
 			return err
 		}
 
-		affected, err = q.UpdateWorkspaceRole(ctx, controlsqlc.UpdateWorkspaceRoleParams{
-			Title:       role.Title,
-			Description: role.Description,
-			Position:    role.Position,
-			ID:          role.ID,
-			WorkspaceID: role.WorkspaceID,
-		})
+		affected, err = q.UpdateWorkspaceRole(
+			ctx,
+			controlsqlc.UpdateWorkspaceRoleParams{
+				Title:       role.Title,
+				Description: role.Description,
+				Position:    role.Position,
+				ID:          role.ID,
+				WorkspaceID: role.WorkspaceID,
+			},
+		)
 
 		return err
 	})
 
 	return affected, err
-
 }
 
 func (r *Repository) DeleteWorkspaceRole(
@@ -527,8 +567,8 @@ func (r *Repository) DeleteWorkspaceRole(
 	workspaceID string,
 	roleID string,
 ) (int64, error) {
-
 	var affected int64
+
 	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		bundle, err := workspaceAuthorization(
 			ctx,
@@ -541,6 +581,7 @@ func (r *Repository) DeleteWorkspaceRole(
 		if err != nil {
 			return err
 		}
+
 		role, err := q.GetWorkspaceRole(ctx, controlsqlc.GetWorkspaceRoleParams{
 			ID:          roleID,
 			WorkspaceID: workspaceID,
@@ -548,13 +589,16 @@ func (r *Repository) DeleteWorkspaceRole(
 		if err != nil {
 			return noRows(err, ErrRoleNotFound)
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, role.Position); err != nil {
 			return err
 		}
+
 		if _, err := q.DeleteWorkspaceInviteRoleReferences(
 			ctx,
 			controlsqlc.DeleteWorkspaceInviteRoleReferencesParams{
@@ -577,7 +621,6 @@ func (r *Repository) DeleteWorkspaceRole(
 	})
 
 	return affected, err
-
 }
 
 func (r *Repository) AssignWorkspaceRole(
@@ -587,7 +630,6 @@ func (r *Repository) AssignWorkspaceRole(
 	accountID string,
 	roleID string,
 ) error {
-
 	return r.changeWorkspaceRoleMember(
 		ctx,
 		actorID,
@@ -596,7 +638,6 @@ func (r *Repository) AssignWorkspaceRole(
 		roleID,
 		true,
 	)
-
 }
 
 func (r *Repository) RemoveWorkspaceRole(
@@ -606,7 +647,6 @@ func (r *Repository) RemoveWorkspaceRole(
 	accountID string,
 	roleID string,
 ) error {
-
 	return r.changeWorkspaceRoleMember(
 		ctx,
 		actorID,
@@ -615,7 +655,6 @@ func (r *Repository) RemoveWorkspaceRole(
 		roleID,
 		false,
 	)
-
 }
 
 func (r *Repository) changeWorkspaceRoleMember(
@@ -626,7 +665,6 @@ func (r *Repository) changeWorkspaceRoleMember(
 	roleID string,
 	assign bool,
 ) error {
-
 	methodKey := "control.workspace.role.member.remove"
 	if assign {
 		methodKey = "control.workspace.role.member.assign"
@@ -644,9 +682,11 @@ func (r *Repository) changeWorkspaceRoleMember(
 		if err != nil {
 			return err
 		}
+
 		if !bundle.TargetIsActive || bundle.TargetPosition == 0 {
 			return ErrForbidden
 		}
+
 		role, err := q.GetWorkspaceRole(ctx, controlsqlc.GetWorkspaceRoleParams{
 			ID:          roleID,
 			WorkspaceID: workspaceID,
@@ -654,17 +694,21 @@ func (r *Repository) changeWorkspaceRoleMember(
 		if err != nil {
 			return noRows(err, ErrRoleNotFound)
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		targetPosition, err := position(bundle.TargetPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, targetPosition); err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, role.Position); err != nil {
 			return err
 		}
@@ -693,7 +737,6 @@ func (r *Repository) changeWorkspaceRoleMember(
 
 		return err
 	})
-
 }
 
 func (r *Repository) ReplaceWorkspaceRolePermissions(
@@ -703,7 +746,6 @@ func (r *Repository) ReplaceWorkspaceRolePermissions(
 	roleID string,
 	methodKeys []string,
 ) error {
-
 	methodKeys = uniqueStrings(methodKeys)
 
 	return r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
@@ -718,6 +760,7 @@ func (r *Repository) ReplaceWorkspaceRolePermissions(
 		if err != nil {
 			return err
 		}
+
 		role, err := q.GetWorkspaceRole(ctx, controlsqlc.GetWorkspaceRoleParams{
 			ID:          roleID,
 			WorkspaceID: workspaceID,
@@ -725,23 +768,31 @@ func (r *Repository) ReplaceWorkspaceRolePermissions(
 		if err != nil {
 			return noRows(err, ErrRoleNotFound)
 		}
+
 		actorPosition, err := position(bundle.ActorPosition)
 		if err != nil {
 			return err
 		}
+
 		if err := requireHigher(actorPosition, role.Position); err != nil {
 			return err
 		}
-		count, err := q.CountMethodsByScope(ctx, controlsqlc.CountMethodsByScopeParams{
-			Scope:      string(ScopeWorkspace),
-			MethodKeys: methodKeys,
-		})
+
+		count, err := q.CountMethodsByScope(
+			ctx,
+			controlsqlc.CountMethodsByScopeParams{
+				Scope:      string(ScopeWorkspace),
+				MethodKeys: methodKeys,
+			},
+		)
 		if err != nil {
 			return err
 		}
+
 		if count != int64(len(methodKeys)) {
 			return ErrMethodNotFound
 		}
+
 		if !bundle.ActorIsOwner {
 			methods, err := q.ListAuthorizedWorkspaceMethods(
 				ctx,
@@ -753,10 +804,12 @@ func (r *Repository) ReplaceWorkspaceRolePermissions(
 			if err != nil {
 				return err
 			}
+
 			allowedMethods := make(map[string]struct{}, len(methods))
 			for _, method := range methods {
 				allowedMethods[method.MethodKey] = struct{}{}
 			}
+
 			if !methodSubset(methodKeys, allowedMethods) {
 				return ErrForbidden
 			}
@@ -771,7 +824,6 @@ func (r *Repository) ReplaceWorkspaceRolePermissions(
 			},
 		)
 	})
-
 }
 
 func (r *Repository) ListWorkspaceRolePermissions(
@@ -779,7 +831,6 @@ func (r *Repository) ListWorkspaceRolePermissions(
 	workspaceID string,
 	roleID string,
 ) ([]string, error) {
-
 	return r.q.ListWorkspaceRolePermissions(
 		ctx,
 		controlsqlc.ListWorkspaceRolePermissionsParams{
@@ -787,7 +838,6 @@ func (r *Repository) ListWorkspaceRolePermissions(
 			RoleID:      roleID,
 		},
 	)
-
 }
 
 func workspaceAuthorization(
@@ -798,7 +848,6 @@ func workspaceAuthorization(
 	targetAccountID string,
 	methodKey string,
 ) (controlsqlc.GetWorkspaceAuthorizationForUpdateRow, error) {
-
 	bundle, err := q.GetWorkspaceAuthorizationForUpdate(
 		ctx,
 		controlsqlc.GetWorkspaceAuthorizationForUpdateParams{
@@ -814,12 +863,12 @@ func workspaceAuthorization(
 			ErrWorkspaceNotFound,
 		)
 	}
+
 	if !bundle.ActorIsActive || !allowed(bundle.Allowed) {
 		return controlsqlc.GetWorkspaceAuthorizationForUpdateRow{}, ErrForbidden
 	}
 
 	return bundle, nil
-
 }
 
 func requireWorkspaceAuthorization(
@@ -830,7 +879,6 @@ func requireWorkspaceAuthorization(
 	targetAccountID string,
 	methodKey string,
 ) error {
-
 	_, err := workspaceAuthorization(
 		ctx,
 		q,
@@ -841,11 +889,9 @@ func requireWorkspaceAuthorization(
 	)
 
 	return err
-
 }
 
 func mapWorkspace(value controlsqlc.ControlWorkspace) Workspace {
-
 	return Workspace{
 		ID:             value.ID,
 		Slug:           value.Slug,
@@ -857,11 +903,9 @@ func mapWorkspace(value controlsqlc.ControlWorkspace) Workspace {
 		CreatedAt:      value.CreatedAt,
 		UpdatedAt:      value.UpdatedAt,
 	}
-
 }
 
 func mapWorkspaceRole(value controlsqlc.ListWorkspaceRolesRow) Role {
-
 	return Role{
 		ID:          value.ID,
 		WorkspaceID: value.WorkspaceID,
@@ -873,5 +917,4 @@ func mapWorkspaceRole(value controlsqlc.ListWorkspaceRolesRow) Role {
 		CreatedAt:   value.CreatedAt,
 		UpdatedAt:   value.UpdatedAt,
 	}
-
 }

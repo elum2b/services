@@ -16,19 +16,28 @@ type PartnerScriptModel struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
-func (i *Internal) SavePartnerScript(ctx context.Context, params PartnerScriptModel) error {
+func (i *Internal) SavePartnerScript(
+	ctx context.Context,
+	params PartnerScriptModel,
+) error {
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
-	return i.repository.SavePartnerScript(mergedCtx, repository.SavePartnerScriptParams{
-		Provider:  params.Provider,
-		IsEnabled: params.IsEnabled,
-		Version:   params.Version,
-		Source:    params.Source,
-	})
+	return i.repository.SavePartnerScript(
+		mergedCtx,
+		repository.SavePartnerScriptParams{
+			Provider:  params.Provider,
+			IsEnabled: params.IsEnabled,
+			Version:   params.Version,
+			Source:    params.Source,
+		},
+	)
 }
 
-func (i *Internal) GetPartnerScript(ctx context.Context, provider string) (PartnerScriptModel, bool, error) {
+func (i *Internal) GetPartnerScript(
+	ctx context.Context,
+	provider string,
+) (PartnerScriptModel, bool, error) {
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 
@@ -40,7 +49,10 @@ func (i *Internal) GetPartnerScript(ctx context.Context, provider string) (Partn
 	return mapPartnerScript(script), true, nil
 }
 
-func (i *Internal) ListPartnerScripts(ctx context.Context, limit, offset int32) ([]PartnerScriptModel, error) {
+func (i *Internal) ListPartnerScripts(
+	ctx context.Context,
+	limit, offset int32,
+) ([]PartnerScriptModel, error) {
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 

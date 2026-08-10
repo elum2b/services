@@ -82,11 +82,18 @@ func (p FlyerProvider) ListPartnerTasks(
 		externalType := firstNonEmpty(task.TaskType, task.Type, "task")
 		title := firstNonEmpty(task.Title, task.Name)
 		publicPayload := partnerMarshal(map[string]any{
-			"signature": task.Signature, "link": link, "title": title,
-			"button_text": firstNonEmpty(task.ButtonText, flyerButtonText(externalType)),
-			"flyer_type":  externalType,
+			"signature": task.Signature,
+			"link":      link,
+			"title":     title,
+			"button_text": firstNonEmpty(
+				task.ButtonText,
+				flyerButtonText(externalType),
+			),
+			"flyer_type": externalType,
 		})
-		privatePayload := partnerMarshal(map[string]any{"signature": task.Signature})
+		privatePayload := partnerMarshal(
+			map[string]any{"signature": task.Signature},
+		)
 		result = append(result, PartnerExternalTask{
 			ExternalID: task.Signature, ExternalType: externalType,
 			PublicPayload: publicPayload, PrivatePayload: privatePayload,
@@ -102,10 +109,19 @@ func (p FlyerProvider) CheckPartnerTask(
 	var private struct {
 		Signature string `json:"signature"`
 	}
-	if err := json.Unmarshal(params.Issue.PrivatePayload, &private); err != nil {
-		return PartnerCheckResult{}, fmt.Errorf("flyer private payload decode failed: %w", err)
+	if err := json.Unmarshal(
+		params.Issue.PrivatePayload,
+		&private,
+	); err != nil {
+		return PartnerCheckResult{}, fmt.Errorf(
+			"flyer private payload decode failed: %w",
+			err,
+		)
 	}
-	body := map[string]any{"key": partnerSecret(params.Config.Secret), "signature": private.Signature}
+	body := map[string]any{
+		"key":       partnerSecret(params.Config.Secret),
+		"signature": private.Signature,
+	}
 	addPartnerIdentity(body, params.Identity)
 	path := "/check_task"
 	if params.Config.Platform == "max" {
@@ -131,7 +147,11 @@ func (p FlyerProvider) CheckPartnerTask(
 	payload := partnerMarshal(map[string]any{
 		"provider": "flyer", "status": status, "completed": completed,
 	})
-	return PartnerCheckResult{Completed: completed, Status: status, Payload: payload}, nil
+	return PartnerCheckResult{
+		Completed: completed,
+		Status:    status,
+		Payload:   payload,
+	}, nil
 }
 
 func (p FlyerProvider) client() partnerHTTPClient {
@@ -139,7 +159,11 @@ func (p FlyerProvider) client() partnerHTTPClient {
 	if baseURL == "" {
 		baseURL = defaultFlyerBaseURL
 	}
-	return partnerHTTPClient{client: p.Client, timeout: p.Timeout, baseURL: baseURL}
+	return partnerHTTPClient{
+		client:  p.Client,
+		timeout: p.Timeout,
+		baseURL: baseURL,
+	}
 }
 
 func flyerButtonText(externalType string) string {

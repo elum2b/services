@@ -7,7 +7,26 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
 	"github.com/elum-utils/sign/vkmashop"
+	json "github.com/goccy/go-json"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/xssnick/tonutils-go/address"
+
 	services "github.com/elum2b/services"
 	"github.com/elum2b/services/internal/testsupport"
 	utils "github.com/elum2b/services/internal/utils"
@@ -29,60 +48,133 @@ import (
 	"github.com/elum2b/services/payment/service/user"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
 	"github.com/elum2b/services/payment/tonconnect"
-	json "github.com/goccy/go-json"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/xssnick/tonutils-go/address"
-	"io"
-	"math"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
-	"os"
-	"path/filepath"
-	"reflect"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"testing"
-	"time"
 )
 
 func TestPaymentProviderAdaptersNilReceiverReturnsNotInitialized(t *testing.T) {
 	t.Run("platega", func(t *testing.T) {
 		var adapter *platega.Platega
 
-		if _, err := adapter.CreatePayment(context.Background(), platega.CreatePaymentParams{}); !errors.Is(err, platega.ErrNotInitialized) {
-			t.Fatalf("CreatePayment error = %v, want %v", err, platega.ErrNotInitialized)
+		if _, err := adapter.CreatePayment(
+			context.Background(),
+			platega.CreatePaymentParams{},
+		); !errors.Is(
+			err,
+			platega.ErrNotInitialized,
+		) {
+			t.Fatalf(
+				"CreatePayment error = %v, want %v",
+				err,
+				platega.ErrNotInitialized,
+			)
 		}
-		if _, err := adapter.HandleWebhook(context.Background(), platega.WebhookRequest{}); !errors.Is(err, platega.ErrNotInitialized) {
-			t.Fatalf("HandleWebhook error = %v, want %v", err, platega.ErrNotInitialized)
+		if _, err := adapter.HandleWebhook(
+			context.Background(),
+			platega.WebhookRequest{},
+		); !errors.Is(
+			err,
+			platega.ErrNotInitialized,
+		) {
+			t.Fatalf(
+				"HandleWebhook error = %v, want %v",
+				err,
+				platega.ErrNotInitialized,
+			)
 		}
-		if _, err := adapter.SyncPayment(context.Background(), platega.SyncPaymentParams{}); !errors.Is(err, platega.ErrNotInitialized) {
-			t.Fatalf("SyncPayment error = %v, want %v", err, platega.ErrNotInitialized)
+		if _, err := adapter.SyncPayment(
+			context.Background(),
+			platega.SyncPaymentParams{},
+		); !errors.Is(
+			err,
+			platega.ErrNotInitialized,
+		) {
+			t.Fatalf(
+				"SyncPayment error = %v, want %v",
+				err,
+				platega.ErrNotInitialized,
+			)
 		}
-		if _, err := adapter.GetH2H(context.Background(), platega.GetH2HParams{}); !errors.Is(err, platega.ErrNotInitialized) {
-			t.Fatalf("GetH2H error = %v, want %v", err, platega.ErrNotInitialized)
+		if _, err := adapter.GetH2H(
+			context.Background(),
+			platega.GetH2HParams{},
+		); !errors.Is(
+			err,
+			platega.ErrNotInitialized,
+		) {
+			t.Fatalf(
+				"GetH2H error = %v, want %v",
+				err,
+				platega.ErrNotInitialized,
+			)
 		}
-		if _, err := adapter.Execute(context.Background(), platega.RefundParams{}); !errors.Is(err, platega.ErrNotInitialized) {
-			t.Fatalf("Execute error = %v, want %v", err, platega.ErrNotInitialized)
+		if _, err := adapter.Execute(
+			context.Background(),
+			platega.RefundParams{},
+		); !errors.Is(
+			err,
+			platega.ErrNotInitialized,
+		) {
+			t.Fatalf(
+				"Execute error = %v, want %v",
+				err,
+				platega.ErrNotInitialized,
+			)
 		}
 	})
 
 	t.Run("yookassa", func(t *testing.T) {
 		var adapter *yookassa.YooKassa
 
-		if _, err := adapter.CreatePayment(context.Background(), yookassa.CreatePaymentParams{}); !errors.Is(err, yookassa.ErrNotInitialized) {
-			t.Fatalf("CreatePayment error = %v, want %v", err, yookassa.ErrNotInitialized)
+		if _, err := adapter.CreatePayment(
+			context.Background(),
+			yookassa.CreatePaymentParams{},
+		); !errors.Is(
+			err,
+			yookassa.ErrNotInitialized,
+		) {
+			t.Fatalf(
+				"CreatePayment error = %v, want %v",
+				err,
+				yookassa.ErrNotInitialized,
+			)
 		}
-		if _, err := adapter.HandleWebhook(context.Background(), yookassa.WebhookRequest{}); !errors.Is(err, yookassa.ErrNotInitialized) {
-			t.Fatalf("HandleWebhook error = %v, want %v", err, yookassa.ErrNotInitialized)
+		if _, err := adapter.HandleWebhook(
+			context.Background(),
+			yookassa.WebhookRequest{},
+		); !errors.Is(
+			err,
+			yookassa.ErrNotInitialized,
+		) {
+			t.Fatalf(
+				"HandleWebhook error = %v, want %v",
+				err,
+				yookassa.ErrNotInitialized,
+			)
 		}
-		if _, err := adapter.SyncPayment(context.Background(), yookassa.SyncPaymentParams{}); !errors.Is(err, yookassa.ErrNotInitialized) {
-			t.Fatalf("SyncPayment error = %v, want %v", err, yookassa.ErrNotInitialized)
+		if _, err := adapter.SyncPayment(
+			context.Background(),
+			yookassa.SyncPaymentParams{},
+		); !errors.Is(
+			err,
+			yookassa.ErrNotInitialized,
+		) {
+			t.Fatalf(
+				"SyncPayment error = %v, want %v",
+				err,
+				yookassa.ErrNotInitialized,
+			)
 		}
-		if _, err := adapter.Execute(context.Background(), yookassa.RefundParams{}); !errors.Is(err, yookassa.ErrNotInitialized) {
-			t.Fatalf("Execute error = %v, want %v", err, yookassa.ErrNotInitialized)
+		if _, err := adapter.Execute(
+			context.Background(),
+			yookassa.RefundParams{},
+		); !errors.Is(
+			err,
+			yookassa.ErrNotInitialized,
+		) {
+			t.Fatalf(
+				"Execute error = %v, want %v",
+				err,
+				yookassa.ErrNotInitialized,
+			)
 		}
 	})
 }
@@ -91,16 +183,20 @@ func TestPaymentYooKassaGetPaymentClientContract(t *testing.T) {
 	var receivedPath string
 	var receivedUsername string
 	var receivedPassword string
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		receivedPath = request.URL.Path
-		receivedUsername, receivedPassword, _ = request.BasicAuth()
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(writer, `{
+	server := httptest.NewServer(
+		http.HandlerFunc(
+			func(writer http.ResponseWriter, request *http.Request) {
+				receivedPath = request.URL.Path
+				receivedUsername, receivedPassword, _ = request.BasicAuth()
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(writer, `{
 			"id":"payment-1",
 			"status":"pending",
 			"amount":{"value":"10.00","currency":"RUB"}
 		}`)
-	}))
+			},
+		),
+	)
 	t.Cleanup(server.Close)
 
 	client := yookassa.NewClient(yookassa.Credentials{
@@ -109,19 +205,32 @@ func TestPaymentYooKassaGetPaymentClientContract(t *testing.T) {
 		APIBaseURL: server.URL,
 		HTTPClient: server.Client(),
 	})
-	if _, err := client.GetPayment(context.Background(), "payment-1"); err != nil {
+	if _, err := client.GetPayment(
+		context.Background(),
+		"payment-1",
+	); err != nil {
 		t.Fatalf("get YooKassa payment: %v", err)
 	}
 	if receivedPath != "/v3/payments/payment-1" {
 		t.Fatalf("request path = %q", receivedPath)
 	}
 	if receivedUsername != "shop-id" || receivedPassword != "secret-key" {
-		t.Fatalf("basic auth username=%q password=%q", receivedUsername, receivedPassword)
+		t.Fatalf(
+			"basic auth username=%q password=%q",
+			receivedUsername,
+			receivedPassword,
+		)
 	}
 
-	failedServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		http.Error(writer, "provider rejected request", http.StatusBadRequest)
-	}))
+	failedServer := httptest.NewServer(
+		http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			http.Error(
+				writer,
+				"provider rejected request",
+				http.StatusBadRequest,
+			)
+		}),
+	)
 	t.Cleanup(failedServer.Close)
 	failedClient := yookassa.NewClient(yookassa.Credentials{
 		ShopID:     "shop-id",
@@ -142,40 +251,61 @@ func TestPaymentYooKassaGetPaymentClientContract(t *testing.T) {
 func TestPaymentTONAdapterValidationAndRefundExecutor(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 
-	if _, err := env.api.Adapters.TON.StartSubscriber(env.ctx, paymentton.SubscriberParams{
-		WorkspaceID:   "invalid-workspace",
-		Network:       "mainnet",
-		WalletAddress: "wallet",
-	}); err == nil {
+	if _, err := env.api.Adapters.TON.StartSubscriber(
+		env.ctx,
+		paymentton.SubscriberParams{
+			WorkspaceID:   "invalid-workspace",
+			Network:       "mainnet",
+			WalletAddress: "wallet",
+		},
+	); err == nil {
 		t.Fatal("invalid subscriber workspace must fail")
 	}
-	if _, err := env.api.Adapters.TON.StartSubscriber(env.ctx, paymentton.SubscriberParams{
-		WorkspaceID: testWorkspaceID,
-		Network:     "mainnet",
-	}); !errors.Is(err, paymentton.ErrWalletAddressRequired) {
+	if _, err := env.api.Adapters.TON.StartSubscriber(
+		env.ctx,
+		paymentton.SubscriberParams{
+			WorkspaceID: testWorkspaceID,
+			Network:     "mainnet",
+		},
+	); !errors.Is(
+		err,
+		paymentton.ErrWalletAddressRequired,
+	) {
 		t.Fatalf("empty subscriber wallet error = %v", err)
 	}
 
-	if _, err := env.api.Adapters.TON.Execute(env.ctx, paymentton.RefundParams{}); !errors.Is(err, paymentton.ErrRefundUnsupported) {
+	if _, err := env.api.Adapters.TON.Execute(
+		env.ctx,
+		paymentton.RefundParams{},
+	); !errors.Is(
+		err,
+		paymentton.ErrRefundUnsupported,
+	) {
 		t.Fatalf("refund without executor error = %v", err)
 	}
-	result, err := env.api.Adapters.TON.Execute(env.ctx, paymentton.RefundParams{
-		IdempotencyKey: "refund-key",
-		Executor: func(_ context.Context, params paymentton.RefundParams) (paymentton.RefundResult, error) {
-			if params.IdempotencyKey != "refund-key" {
-				return paymentton.RefundResult{}, errors.New("unexpected idempotency key")
-			}
+	result, err := env.api.Adapters.TON.Execute(
+		env.ctx,
+		paymentton.RefundParams{
+			IdempotencyKey: "refund-key",
+			Executor: func(_ context.Context, params paymentton.RefundParams) (paymentton.RefundResult, error) {
+				if params.IdempotencyKey != "refund-key" {
+					return paymentton.RefundResult{}, errors.New(
+						"unexpected idempotency key",
+					)
+				}
 
-			return paymentton.RefundResult{
-				ProviderRefundID: "ton-refund-id",
-				Status:           "succeeded",
-			}, nil
+				return paymentton.RefundResult{
+					ProviderRefundID: "ton-refund-id",
+					Status:           "succeeded",
+				}, nil
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("execute TON refund: %v", err)
 	}
-	if result.ProviderRefundID != "ton-refund-id" || result.Status != "succeeded" {
+	if result.ProviderRefundID != "ton-refund-id" ||
+		result.Status != "succeeded" {
 		t.Fatalf("unexpected TON refund result: %#v", result)
 	}
 }
@@ -184,37 +314,51 @@ func TestPaymentSubscriptionProviderIDIsScopedByWorkspace(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 	workspaceA := testsupport.WorkspaceID("subscription-owner-a")
 	workspaceB := testsupport.WorkspaceID("subscription-owner-b")
-	productA := createPaymentProduct(t, env, testProductOptions{WorkspaceID: workspaceA})
-	productB := createPaymentProduct(t, env, testProductOptions{WorkspaceID: workspaceB})
+	productA := createPaymentProduct(
+		t,
+		env,
+		testProductOptions{WorkspaceID: workspaceA},
+	)
+	productB := createPaymentProduct(
+		t,
+		env,
+		testProductOptions{WorkspaceID: workspaceB},
+	)
 	providerSubscriptionID := uniquePaymentID("workspace-subscription")
 	startedAt := time.Now().UTC()
 
-	firstID, err := env.api.Admin.UpsertSubscription(env.ctx, admin.SubscriptionUpsertParams{
-		WorkspaceID:            workspaceA,
-		ProviderCode:           "yookassa",
-		ProviderSubscriptionID: providerSubscriptionID,
-		AppID:                  1,
-		PlatformID:             1,
-		PlatformUserID:         "user-a",
-		ProductID:              productA,
-		Status:                 "active",
-		StartedAt:              startedAt,
-	})
+	firstID, err := env.api.Admin.UpsertSubscription(
+		env.ctx,
+		admin.SubscriptionUpsertParams{
+			WorkspaceID:            workspaceA,
+			ProviderCode:           "yookassa",
+			ProviderSubscriptionID: providerSubscriptionID,
+			AppID:                  1,
+			PlatformID:             1,
+			PlatformUserID:         "user-a",
+			ProductID:              productA,
+			Status:                 "active",
+			StartedAt:              startedAt,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create workspace A subscription: %v", err)
 	}
 
-	secondID, err := env.api.Admin.UpsertSubscription(env.ctx, admin.SubscriptionUpsertParams{
-		WorkspaceID:            workspaceB,
-		ProviderCode:           "yookassa",
-		ProviderSubscriptionID: providerSubscriptionID,
-		AppID:                  2,
-		PlatformID:             1,
-		PlatformUserID:         "user-b",
-		ProductID:              productB,
-		Status:                 "active",
-		StartedAt:              startedAt,
-	})
+	secondID, err := env.api.Admin.UpsertSubscription(
+		env.ctx,
+		admin.SubscriptionUpsertParams{
+			WorkspaceID:            workspaceB,
+			ProviderCode:           "yookassa",
+			ProviderSubscriptionID: providerSubscriptionID,
+			AppID:                  2,
+			PlatformID:             1,
+			PlatformUserID:         "user-b",
+			ProductID:              productB,
+			Status:                 "active",
+			StartedAt:              startedAt,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create workspace B subscription: %v", err)
 	}
@@ -231,7 +375,11 @@ func TestPaymentSubscriptionProviderIDIsScopedByWorkspace(t *testing.T) {
 		t.Fatalf("read subscription owner: %v", err)
 	}
 	if workspaceID != workspaceA {
-		t.Fatalf("subscription workspace = %s, want %s", workspaceID, workspaceA)
+		t.Fatalf(
+			"subscription workspace = %s, want %s",
+			workspaceID,
+			workspaceA,
+		)
 	}
 }
 
@@ -279,7 +427,10 @@ func TestPaymentCreateOrderRejectsItemSnapshotOverflow(t *testing.T) {
 		Locale:    "ru",
 	})
 	if !errors.Is(err, repository.ErrPaymentAmountOverflow) {
-		t.Fatalf("item snapshot overflow error = %v, want ErrPaymentAmountOverflow", err)
+		t.Fatalf(
+			"item snapshot overflow error = %v, want ErrPaymentAmountOverflow",
+			err,
+		)
 	}
 
 	var count int
@@ -296,7 +447,9 @@ func TestPaymentCreateOrderRejectsItemSnapshotOverflow(t *testing.T) {
 	}
 }
 
-func TestPaymentPublicServiceContractsDoNotExposePersistenceTypes(t *testing.T) {
+func TestPaymentPublicServiceContractsDoNotExposePersistenceTypes(
+	t *testing.T,
+) {
 	serviceTypes := []reflect.Type{
 		reflect.TypeOf((*admin.Admin)(nil)),
 		reflect.TypeOf((*paymentasset.Asset)(nil)),
@@ -308,7 +461,12 @@ func TestPaymentPublicServiceContractsDoNotExposePersistenceTypes(t *testing.T) 
 	for _, serviceType := range serviceTypes {
 		for index := 0; index < serviceType.NumMethod(); index++ {
 			method := serviceType.Method(index)
-			assertNoPaymentPersistenceType(t, serviceType.String()+"."+method.Name, method.Type, map[reflect.Type]bool{})
+			assertNoPaymentPersistenceType(
+				t,
+				serviceType.String()+"."+method.Name,
+				method.Type,
+				map[reflect.Type]bool{},
+			)
 		}
 	}
 
@@ -320,7 +478,10 @@ func TestPaymentPublicServiceContractsDoNotExposePersistenceTypes(t *testing.T) 
 		t.Fatalf("marshal public admin model: %v", err)
 	}
 	if !strings.Contains(string(encoded), `"network_config_url":null`) {
-		t.Fatalf("nullable persistence value leaked into public JSON: %s", encoded)
+		t.Fatalf(
+			"nullable persistence value leaked into public JSON: %s",
+			encoded,
+		)
 	}
 }
 
@@ -338,7 +499,11 @@ func assertNoPaymentPersistenceType(
 
 	if typeValue.PkgPath() == "github.com/elum2b/services/payment/sqlc" ||
 		typeValue.PkgPath() == "database/sql" {
-		t.Fatalf("public payment contract %s exposes persistence type %s", path, typeValue)
+		t.Fatalf(
+			"public payment contract %s exposes persistence type %s",
+			path,
+			typeValue,
+		)
 	}
 
 	switch typeValue.Kind() {
@@ -355,33 +520,47 @@ func assertNoPaymentPersistenceType(
 			assertNoPaymentPersistenceType(t, path, typeValue.Out(index), seen)
 		}
 	case reflect.Struct:
-		if !strings.HasPrefix(typeValue.PkgPath(), "github.com/elum2b/services/payment") {
+		if !strings.HasPrefix(
+			typeValue.PkgPath(),
+			"github.com/elum2b/services/payment",
+		) {
 			return
 		}
 		for index := 0; index < typeValue.NumField(); index++ {
 			field := typeValue.Field(index)
-			assertNoPaymentPersistenceType(t, path+"."+field.Name, field.Type, seen)
+			assertNoPaymentPersistenceType(
+				t,
+				path+"."+field.Name,
+				field.Type,
+				seen,
+			)
 		}
 	}
 }
 
-func TestFetchDexScreenerPricesBatchesAddressesAndSelectsLiquidity(t *testing.T) {
-	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path != "/tokens/v1/ton/token-a,token-b" {
-			t.Fatalf("unexpected request path: %s", r.URL.Path)
-		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body: io.NopCloser(strings.NewReader(`[
+func TestFetchDexScreenerPricesBatchesAddressesAndSelectsLiquidity(
+	t *testing.T,
+) {
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Path != "/tokens/v1/ton/token-a,token-b" {
+				t.Fatalf("unexpected request path: %s", r.URL.Path)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`[
 			{"baseToken":{"address":"token-a"},"priceUsd":"1.25","liquidity":{"usd":100}},
 			{"baseToken":{"address":"token-a"},"priceUsd":"1.30","liquidity":{"usd":500}},
 			{"baseToken":{"address":"token-b"},"priceUsd":"0.004","liquidity":{"usd":250}},
 			{"baseToken":{"address":"unexpected"},"priceUsd":"999","liquidity":{"usd":999999}}
 		]`)),
-			Request: r,
-		}, nil
-	})}
+				Request: r,
+			}, nil
+		}),
+	}
 
 	prices, err := fetchDexScreenerPrices(
 		context.Background(),
@@ -389,9 +568,21 @@ func TestFetchDexScreenerPricesBatchesAddressesAndSelectsLiquidity(t *testing.T)
 		"https://dex.example",
 		"ton",
 		[]repository.DueAssetRateUpdate{
-			{AssetCode: "token-a", AssetKind: "crypto_jetton", SourceTokenAddress: "token-a"},
-			{AssetCode: "token-b", AssetKind: "crypto_jetton", SourceTokenAddress: "token-b"},
-			{AssetCode: "token-a", AssetKind: "crypto_jetton", SourceTokenAddress: "token-a"},
+			{
+				AssetCode:          "token-a",
+				AssetKind:          "crypto_jetton",
+				SourceTokenAddress: "token-a",
+			},
+			{
+				AssetCode:          "token-b",
+				AssetKind:          "crypto_jetton",
+				SourceTokenAddress: "token-b",
+			},
+			{
+				AssetCode:          "token-a",
+				AssetKind:          "crypto_jetton",
+				SourceTokenAddress: "token-a",
+			},
 		},
 	)
 	if err != nil {
@@ -411,14 +602,17 @@ func TestFetchDexScreenerPricesBatchesAddressesAndSelectsLiquidity(t *testing.T)
 func TestFetchDexScreenerPricesCalculatesNativeTONFromUSDTPair(t *testing.T) {
 	const usdtAddress = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
 
-	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path != "/tokens/v1/ton/"+usdtAddress {
-			t.Fatalf("unexpected request path: %s", r.URL.Path)
-		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body: io.NopCloser(strings.NewReader(`[
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Path != "/tokens/v1/ton/"+usdtAddress {
+				t.Fatalf("unexpected request path: %s", r.URL.Path)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`[
 				{
 					"baseToken":{"address":"` + usdtAddress + `"},
 					"quoteToken":{"address":"` + tonNativeDexScreenerAddress + `"},
@@ -427,9 +621,10 @@ func TestFetchDexScreenerPricesCalculatesNativeTONFromUSDTPair(t *testing.T) {
 					"liquidity":{"usd":6152967.9}
 				}
 			]`)),
-			Request: r,
-		}, nil
-	})}
+				Request: r,
+			}, nil
+		}),
+	}
 
 	prices, err := fetchDexScreenerPrices(
 		context.Background(),
@@ -449,13 +644,18 @@ func TestFetchDexScreenerPricesCalculatesNativeTONFromUSDTPair(t *testing.T) {
 		t.Fatalf("fetch native TON price: %v", err)
 	}
 	if prices["TON"] != 1_512_957 {
-		t.Fatalf("native TON price = %d, want 1512957 micro-USDT", prices["TON"])
+		t.Fatalf(
+			"native TON price = %d, want 1512957 micro-USDT",
+			prices["TON"],
+		)
 	}
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
-func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+func (f roundTripFunc) RoundTrip(
+	request *http.Request,
+) (*http.Response, error) {
 	return f(request)
 }
 
@@ -530,7 +730,13 @@ func TestIsReady(t *testing.T) {
 	if service.IsReady() {
 		t.Fatal("uninitialized payment must not be ready")
 	}
-	if _, err := service.User.ListUSDTPrices(context.Background(), user.ListUSDTPricesParams{}); !errors.Is(err, sqlwrap.ErrServiceNotReady) {
+	if _, err := service.User.ListUSDTPrices(
+		context.Background(),
+		user.ListUSDTPricesParams{},
+	); !errors.Is(
+		err,
+		sqlwrap.ErrServiceNotReady,
+	) {
 		t.Fatalf("unready payment user error = %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -586,7 +792,10 @@ func TestBootstrapRealPostgres(t *testing.T) {
 	}
 
 	repo := repository.NewPaymentRepository(db)
-	if err := repo.Bootstrap(ctx, filepath.Join("sqlc", "schema.sql")); err != nil {
+	if err := repo.Bootstrap(
+		ctx,
+		filepath.Join("sqlc", "schema.sql"),
+	); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
 	payments, err := NewWithDatabase(ctx, appDB, paymentTestOptions())
@@ -664,7 +873,10 @@ func TestRunCreatesDatabaseSchemaAndCallbackTable(t *testing.T) {
 		t.Fatalf("recreate test database: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = adminDB.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+quoteIdentifier(database))
+		_, _ = adminDB.ExecContext(
+			context.Background(),
+			"DROP DATABASE IF EXISTS "+quoteIdentifier(database),
+		)
 	})
 	appDB, err := openPaymentPostgres(database)
 	if err != nil {
@@ -704,7 +916,11 @@ WHERE table_schema = 'public'
 		}
 		if time.Now().After(deadline) {
 			stop()
-			t.Fatalf("Run did not complete payment bootstrap: tables=%d err=%v", tableCount, err)
+			t.Fatalf(
+				"Run did not complete payment bootstrap: tables=%d err=%v",
+				tableCount,
+				err,
+			)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -759,23 +975,29 @@ func createCompletedPaymentFixture(
 	}
 
 	providerPaymentID := uniquePaymentID(suffix)
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(order),
-		OrderID:           order.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(order),
+			OrderID:           order.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create attempt: %v", err)
 	}
-	if _, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testWorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      attempt.ProviderCode,
-		ProviderPaymentID: &providerPaymentID,
-		AmountMinor:       attempt.AmountMinor,
-		AssetCode:         attempt.AssetCode,
-	}); err != nil {
+	if _, err := env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID:       testWorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      attempt.ProviderCode,
+			ProviderPaymentID: &providerPaymentID,
+			AmountMinor:       attempt.AmountMinor,
+			AssetCode:         attempt.AssetCode,
+		},
+	); err != nil {
 		t.Fatalf("complete attempt: %v", err)
 	}
 
@@ -794,16 +1016,22 @@ func TestPaymentCompleteAttemptRejectsMismatchedReplay(t *testing.T) {
 	fixture := createCompletedPaymentFixture(t, env, 7001, "replay-mismatch")
 	wrongProviderPaymentID := fixture.ProviderPaymentID + "-forged"
 
-	_, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testWorkspaceID,
-		AttemptID:         fixture.AttemptID,
-		ProviderCode:      "platega",
-		ProviderPaymentID: &wrongProviderPaymentID,
-		AmountMinor:       fixture.AmountMinor + 1,
-		AssetCode:         "VOTE",
-	})
+	_, err := env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID:       testWorkspaceID,
+			AttemptID:         fixture.AttemptID,
+			ProviderCode:      "platega",
+			ProviderPaymentID: &wrongProviderPaymentID,
+			AmountMinor:       fixture.AmountMinor + 1,
+			AssetCode:         "VOTE",
+		},
+	)
 	if !errors.Is(err, repository.ErrPaymentMismatch) {
-		t.Fatalf("completed replay with forged fields must be rejected, got %v", err)
+		t.Fatalf(
+			"completed replay with forged fields must be rejected, got %v",
+			err,
+		)
 	}
 }
 
@@ -814,7 +1042,12 @@ func TestPaymentCompleteAttemptRejectsAnotherWorkspace(t *testing.T) {
 		ListAmountMinor: 1000,
 	})
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 7002, 1, "workspace-scope"),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			7002,
+			1,
+			"workspace-scope",
+		),
 		ProductID: productID,
 		AssetCode: "RUB",
 		Locale:    "ru",
@@ -823,26 +1056,37 @@ func TestPaymentCompleteAttemptRejectsAnotherWorkspace(t *testing.T) {
 		t.Fatalf("create scoped order: %v", err)
 	}
 	providerPaymentID := uniquePaymentID("workspace-scope")
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(order),
-		OrderID:           order.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(order),
+			OrderID:           order.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create scoped attempt: %v", err)
 	}
 
-	_, err = env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testsupport.WorkspaceID("another-payment-workspace"),
-		AttemptID:         attempt.ID,
-		ProviderCode:      attempt.ProviderCode,
-		ProviderPaymentID: &providerPaymentID,
-		AmountMinor:       attempt.AmountMinor,
-		AssetCode:         attempt.AssetCode,
-	})
+	_, err = env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID: testsupport.WorkspaceID(
+				"another-payment-workspace",
+			),
+			AttemptID:         attempt.ID,
+			ProviderCode:      attempt.ProviderCode,
+			ProviderPaymentID: &providerPaymentID,
+			AmountMinor:       attempt.AmountMinor,
+			AssetCode:         attempt.AssetCode,
+		},
+	)
 	if !errors.Is(err, repository.ErrPaymentMismatch) {
-		t.Fatalf("cross-workspace completion error = %v, want payment mismatch", err)
+		t.Fatalf(
+			"cross-workspace completion error = %v, want payment mismatch",
+			err,
+		)
 	}
 	assertOrderStatus(t, env.ctx, env.db, order.ID, "pending_payment")
 	assertAttemptStatus(t, env.ctx, env.db, attempt.ID, "pending")
@@ -867,7 +1111,12 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 
 	foreignPaymentID := uniquePaymentID("foreign-attempt")
 	_, err = env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentTestIdentity(testWorkspaceID, 7010, 1, "another-user"),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			7010,
+			1,
+			"another-user",
+		),
 		OrderID:           order.ID,
 		ProviderCode:      "yookassa",
 		ProviderPaymentID: &foreignPaymentID,
@@ -877,12 +1126,15 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 	}
 
 	ownerPaymentID := uniquePaymentID("owner-attempt")
-	if _, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          owner,
-		OrderID:           order.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &ownerPaymentID,
-	}); err != nil {
+	if _, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          owner,
+			OrderID:           order.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &ownerPaymentID,
+		},
+	); err != nil {
 		t.Fatalf("owner attempt: %v", err)
 	}
 
@@ -893,35 +1145,51 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 		PlatformID:     1,
 		PlatformUserID: "gift-payer",
 	}
-	giftOrder, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity: recipient,
-		Payer: &services.Actor{
-			PlatformID:     payer.PlatformID,
-			PlatformUserID: payer.PlatformUserID,
+	giftOrder, err := env.api.User.CreateOrder(
+		env.ctx,
+		checkout.CreateOrderParams{
+			Identity: recipient,
+			Payer: &services.Actor{
+				PlatformID:     payer.PlatformID,
+				PlatformUserID: payer.PlatformUserID,
+			},
+			ProductID: productID,
+			AssetCode: "RUB",
+			Locale:    "ru",
 		},
-		ProductID: productID,
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	)
 	if err != nil {
 		t.Fatalf("create direct gift order: %v", err)
 	}
 	if giftOrder.PlatformUserID != recipient.PlatformUserID {
-		t.Fatalf("gift recipient = %q, want %q", giftOrder.PlatformUserID, recipient.PlatformUserID)
+		t.Fatalf(
+			"gift recipient = %q, want %q",
+			giftOrder.PlatformUserID,
+			recipient.PlatformUserID,
+		)
 	}
-	if giftOrder.PayerPlatformUserID == nil || *giftOrder.PayerPlatformUserID != payer.PlatformUserID {
-		t.Fatalf("gift payer = %v, want %q", giftOrder.PayerPlatformUserID, payer.PlatformUserID)
+	if giftOrder.PayerPlatformUserID == nil ||
+		*giftOrder.PayerPlatformUserID != payer.PlatformUserID {
+		t.Fatalf(
+			"gift payer = %v, want %q",
+			giftOrder.PayerPlatformUserID,
+			payer.PlatformUserID,
+		)
 	}
 
-	giftReport, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
-		WorkspaceID:  testWorkspaceID,
-		Identity:     &payer,
-		IdentityRole: admin.PaymentIdentityRoleInitiator,
-	})
+	giftReport, err := env.api.Admin.GetPaymentReport(
+		env.ctx,
+		admin.PaymentReportParams{
+			WorkspaceID:  testWorkspaceID,
+			Identity:     &payer,
+			IdentityRole: admin.PaymentIdentityRoleInitiator,
+		},
+	)
 	if err != nil {
 		t.Fatalf("get gift payment report: %v", err)
 	}
-	if len(giftReport.Payments) != 1 || giftReport.Payments[0].ID != giftOrder.ID {
+	if len(giftReport.Payments) != 1 ||
+		giftReport.Payments[0].ID != giftOrder.ID {
 		t.Fatalf("unexpected gift payment report: %#v", giftReport.Payments)
 	}
 	if giftReport.Payments[0].Initiator != payer ||
@@ -934,25 +1202,36 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 	}
 
 	giftPaymentID := uniquePaymentID("direct-gift-attempt")
-	if _, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          payer,
-		OrderID:           giftOrder.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &giftPaymentID,
-	}); err != nil {
+	if _, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          payer,
+			OrderID:           giftOrder.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &giftPaymentID,
+		},
+	); err != nil {
 		t.Fatalf("gift payer attempt: %v", err)
 	}
 }
 
 func TestPaymentAdminRejectsTerminalLifecycleRegression(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
-	fixture := createCompletedPaymentFixture(t, env, 7011, "terminal-regression")
+	fixture := createCompletedPaymentFixture(
+		t,
+		env,
+		7011,
+		"terminal-regression",
+	)
 
-	err := env.api.Admin.UpdatePaymentAttemptStatus(env.ctx, admin.AttemptStatusParams{
-		WorkspaceID: testWorkspaceID,
-		ID:          fixture.AttemptID,
-		Status:      "pending",
-	})
+	err := env.api.Admin.UpdatePaymentAttemptStatus(
+		env.ctx,
+		admin.AttemptStatusParams{
+			WorkspaceID: testWorkspaceID,
+			ID:          fixture.AttemptID,
+			Status:      "pending",
+		},
+	)
 	if !errors.Is(err, repository.ErrAttemptStateInvalid) {
 		t.Fatalf("succeeded attempt regression must be rejected, got %v", err)
 	}
@@ -977,14 +1256,20 @@ func TestPaymentAdminRejectsTerminalLifecycleRegression(t *testing.T) {
 	).Scan(&fulfillmentID); err != nil {
 		t.Fatalf("read fulfillment: %v", err)
 	}
-	_, err = env.api.Admin.UpdateFulfillmentStatus(env.ctx, admin.FulfillmentStatusParams{
-		WorkspaceID: testWorkspaceID,
-		ID:          fulfillmentID,
-		Status:      "failed",
-		Message:     "must not overwrite success",
-	})
+	_, err = env.api.Admin.UpdateFulfillmentStatus(
+		env.ctx,
+		admin.FulfillmentStatusParams{
+			WorkspaceID: testWorkspaceID,
+			ID:          fulfillmentID,
+			Status:      "failed",
+			Message:     "must not overwrite success",
+		},
+	)
 	if !errors.Is(err, repository.ErrFulfillmentStateInvalid) {
-		t.Fatalf("succeeded fulfillment regression must be rejected, got %v", err)
+		t.Fatalf(
+			"succeeded fulfillment regression must be rejected, got %v",
+			err,
+		)
 	}
 
 	var fulfillmentStatus string
@@ -1006,7 +1291,12 @@ func TestPaymentAdminCannotBypassOperationalCompletion(t *testing.T) {
 		AssetCode:       "RUB",
 		ListAmountMinor: 1000,
 	})
-	owner := paymentTestIdentity(testWorkspaceID, 7012, 1, "admin-completion-owner")
+	owner := paymentTestIdentity(
+		testWorkspaceID,
+		7012,
+		1,
+		"admin-completion-owner",
+	)
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
 		Identity:  owner,
 		ProductID: productID,
@@ -1017,21 +1307,27 @@ func TestPaymentAdminCannotBypassOperationalCompletion(t *testing.T) {
 		t.Fatalf("create order: %v", err)
 	}
 	paymentID := uniquePaymentID("admin-completion")
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          owner,
-		OrderID:           order.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &paymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          owner,
+			OrderID:           order.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &paymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create attempt: %v", err)
 	}
 
-	err = env.api.Admin.UpdatePaymentAttemptStatus(env.ctx, admin.AttemptStatusParams{
-		WorkspaceID: testWorkspaceID,
-		ID:          attempt.ID,
-		Status:      "succeeded",
-	})
+	err = env.api.Admin.UpdatePaymentAttemptStatus(
+		env.ctx,
+		admin.AttemptStatusParams{
+			WorkspaceID: testWorkspaceID,
+			ID:          attempt.ID,
+			Status:      "succeeded",
+		},
+	)
 	if !errors.Is(err, repository.ErrAttemptStateInvalid) {
 		t.Fatalf("admin completion bypass must be rejected, got %v", err)
 	}
@@ -1057,7 +1353,10 @@ func TestPaymentAdminCannotBypassOperationalCompletion(t *testing.T) {
 		t.Fatalf("count fulfillments: %v", err)
 	}
 	if fulfillmentCount != 0 {
-		t.Fatalf("admin status update created %d fulfillments", fulfillmentCount)
+		t.Fatalf(
+			"admin status update created %d fulfillments",
+			fulfillmentCount,
+		)
 	}
 }
 
@@ -1099,7 +1398,11 @@ func TestPaymentRefundRejectsCumulativeAmountAbovePayment(t *testing.T) {
 		}
 	}
 	if succeeded != 1 || rejected != 1 {
-		t.Fatalf("concurrent full refunds: succeeded=%d rejected=%d", succeeded, rejected)
+		t.Fatalf(
+			"concurrent full refunds: succeeded=%d rejected=%d",
+			succeeded,
+			rejected,
+		)
 	}
 }
 
@@ -1112,33 +1415,42 @@ func TestPaymentProviderRefundIDCannotMoveBetweenOrders(t *testing.T) {
 	firstEventID := uniquePaymentID("first-refund-event")
 	secondEventID := uniquePaymentID("second-refund-event")
 
-	if _, err := repo.ApplyProviderRefund(env.ctx, repository.ProviderRefundParams{
-		WorkspaceID:       testWorkspaceID,
-		ProviderCode:      first.ProviderCode,
-		ProviderPaymentID: first.ProviderPaymentID,
-		ProviderRefundID:  providerRefundID,
-		Event: repository.EventCreateParams{
-			ProviderCode:    first.ProviderCode,
-			ProviderEventID: &firstEventID,
-			EventType:       "refund.succeeded",
-			PayloadHash:     sha256Hex(firstEventID),
+	if _, err := repo.ApplyProviderRefund(
+		env.ctx,
+		repository.ProviderRefundParams{
+			WorkspaceID:       testWorkspaceID,
+			ProviderCode:      first.ProviderCode,
+			ProviderPaymentID: first.ProviderPaymentID,
+			ProviderRefundID:  providerRefundID,
+			Event: repository.EventCreateParams{
+				ProviderCode:    first.ProviderCode,
+				ProviderEventID: &firstEventID,
+				EventType:       "refund.succeeded",
+				PayloadHash:     sha256Hex(firstEventID),
+			},
 		},
-	}); err != nil {
+	); err != nil {
 		t.Fatalf("apply first provider refund: %v", err)
 	}
 
-	if _, err := repo.ApplyProviderRefund(env.ctx, repository.ProviderRefundParams{
-		WorkspaceID:       testWorkspaceID,
-		ProviderCode:      second.ProviderCode,
-		ProviderPaymentID: second.ProviderPaymentID,
-		ProviderRefundID:  providerRefundID,
-		Event: repository.EventCreateParams{
-			ProviderCode:    second.ProviderCode,
-			ProviderEventID: &secondEventID,
-			EventType:       "refund.succeeded",
-			PayloadHash:     sha256Hex(secondEventID),
+	if _, err := repo.ApplyProviderRefund(
+		env.ctx,
+		repository.ProviderRefundParams{
+			WorkspaceID:       testWorkspaceID,
+			ProviderCode:      second.ProviderCode,
+			ProviderPaymentID: second.ProviderPaymentID,
+			ProviderRefundID:  providerRefundID,
+			Event: repository.EventCreateParams{
+				ProviderCode:    second.ProviderCode,
+				ProviderEventID: &secondEventID,
+				EventType:       "refund.succeeded",
+				PayloadHash:     sha256Hex(secondEventID),
+			},
 		},
-	}); !errors.Is(err, repository.ErrPaymentMismatch) {
+	); !errors.Is(
+		err,
+		repository.ErrPaymentMismatch,
+	) {
 		t.Fatalf("provider refund id moved to another order: %v", err)
 	}
 
@@ -1162,42 +1474,59 @@ func TestPaymentProviderRefundIDCannotMoveBetweenOrders(t *testing.T) {
 func TestPaymentRefundedOrderRejectsDifferentProviderRefundID(t *testing.T) {
 
 	env := setupPaymentIntegrationTest(t)
-	fixture := createCompletedPaymentFixture(t, env, 7015, "refund-id-immutable")
+	fixture := createCompletedPaymentFixture(
+		t,
+		env,
+		7015,
+		"refund-id-immutable",
+	)
 	repo := repository.NewPaymentRepository(env.client)
 	firstRefundID := uniquePaymentID("provider-refund-first")
 	firstEventID := uniquePaymentID("provider-refund-first-event")
 
-	first, err := repo.ApplyProviderRefund(env.ctx, repository.ProviderRefundParams{
-		WorkspaceID:       testWorkspaceID,
-		ProviderCode:      fixture.ProviderCode,
-		ProviderPaymentID: fixture.ProviderPaymentID,
-		ProviderRefundID:  firstRefundID,
-		Event: repository.EventCreateParams{
-			ProviderCode:    fixture.ProviderCode,
-			ProviderEventID: &firstEventID,
-			EventType:       "refund.succeeded",
-			PayloadHash:     sha256Hex(firstEventID),
+	first, err := repo.ApplyProviderRefund(
+		env.ctx,
+		repository.ProviderRefundParams{
+			WorkspaceID:       testWorkspaceID,
+			ProviderCode:      fixture.ProviderCode,
+			ProviderPaymentID: fixture.ProviderPaymentID,
+			ProviderRefundID:  firstRefundID,
+			Event: repository.EventCreateParams{
+				ProviderCode:    fixture.ProviderCode,
+				ProviderEventID: &firstEventID,
+				EventType:       "refund.succeeded",
+				PayloadHash:     sha256Hex(firstEventID),
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("apply first provider refund: %v", err)
 	}
 
 	secondRefundID := uniquePaymentID("provider-refund-second")
 	secondEventID := uniquePaymentID("provider-refund-second-event")
-	if _, err := repo.ApplyProviderRefund(env.ctx, repository.ProviderRefundParams{
-		WorkspaceID:       testWorkspaceID,
-		ProviderCode:      fixture.ProviderCode,
-		ProviderPaymentID: fixture.ProviderPaymentID,
-		ProviderRefundID:  secondRefundID,
-		Event: repository.EventCreateParams{
-			ProviderCode:    fixture.ProviderCode,
-			ProviderEventID: &secondEventID,
-			EventType:       "refund.succeeded",
-			PayloadHash:     sha256Hex(secondEventID),
+	if _, err := repo.ApplyProviderRefund(
+		env.ctx,
+		repository.ProviderRefundParams{
+			WorkspaceID:       testWorkspaceID,
+			ProviderCode:      fixture.ProviderCode,
+			ProviderPaymentID: fixture.ProviderPaymentID,
+			ProviderRefundID:  secondRefundID,
+			Event: repository.EventCreateParams{
+				ProviderCode:    fixture.ProviderCode,
+				ProviderEventID: &secondEventID,
+				EventType:       "refund.succeeded",
+				PayloadHash:     sha256Hex(secondEventID),
+			},
 		},
-	}); !errors.Is(err, repository.ErrPaymentMismatch) {
-		t.Fatalf("changed provider refund id error = %v, want ErrPaymentMismatch", err)
+	); !errors.Is(
+		err,
+		repository.ErrPaymentMismatch,
+	) {
+		t.Fatalf(
+			"changed provider refund id error = %v, want ErrPaymentMismatch",
+			err,
+		)
 	}
 
 	var refundCount int
@@ -1225,7 +1554,12 @@ WHERE workspace_id = $1 AND order_id = $2
 
 func TestPaymentOrderRejectsTerminalStatusRegression(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
-	fixture := createCompletedPaymentFixture(t, env, 7003, "terminal-regression")
+	fixture := createCompletedPaymentFixture(
+		t,
+		env,
+		7003,
+		"terminal-regression",
+	)
 
 	for _, status := range []string{"canceled", "expired", "failed", "refunded", "chargebacked"} {
 		if _, err := env.api.Admin.UpdateOrderStatus(
@@ -1234,7 +1568,11 @@ func TestPaymentOrderRejectsTerminalStatusRegression(t *testing.T) {
 			fixture.OrderID,
 			status,
 		); !errors.Is(err, repository.ErrOrderStateInvalid) {
-			t.Fatalf("fulfilled order must not transition directly to %s, got %v", status, err)
+			t.Fatalf(
+				"fulfilled order must not transition directly to %s, got %v",
+				status,
+				err,
+			)
 		}
 	}
 	assertOrderStatus(t, env.ctx, env.db, fixture.OrderID, "fulfilled")
@@ -1242,18 +1580,27 @@ func TestPaymentOrderRejectsTerminalStatusRegression(t *testing.T) {
 
 func TestPaymentSuccessfulAdminRefundRevokesFulfillment(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
-	fixture := createCompletedPaymentFixture(t, env, 7004, "refund-compensation")
-	refundService := paymentrefund.New(env.ctx, env.client, map[string]paymentrefund.ProviderRefundFunc{
-		"yookassa": func(
-			_ context.Context,
-			_ paymentrefund.ProviderRefundParams,
-		) (paymentrefund.ProviderRefundResult, error) {
-			return paymentrefund.ProviderRefundResult{
-				ProviderRefundID: uniquePaymentID("provider-refund"),
-				Status:           "succeeded",
-			}, nil
+	fixture := createCompletedPaymentFixture(
+		t,
+		env,
+		7004,
+		"refund-compensation",
+	)
+	refundService := paymentrefund.New(
+		env.ctx,
+		env.client,
+		map[string]paymentrefund.ProviderRefundFunc{
+			"yookassa": func(
+				_ context.Context,
+				_ paymentrefund.ProviderRefundParams,
+			) (paymentrefund.ProviderRefundResult, error) {
+				return paymentrefund.ProviderRefundResult{
+					ProviderRefundID: uniquePaymentID("provider-refund"),
+					Status:           "succeeded",
+				}, nil
+			},
 		},
-	})
+	)
 	t.Cleanup(func() { _ = refundService.Close() })
 
 	if _, err := refundService.Execute(env.ctx, paymentrefund.Params{
@@ -1275,7 +1622,10 @@ func TestPaymentSuccessfulAdminRefundRevokesFulfillment(t *testing.T) {
 		t.Fatalf("read fulfillment: %v", err)
 	}
 	if fulfillmentStatus != "revoked" {
-		t.Fatalf("successful refund left fulfillment active: %s", fulfillmentStatus)
+		t.Fatalf(
+			"successful refund left fulfillment active: %s",
+			fulfillmentStatus,
+		)
 	}
 
 	var callbacks int
@@ -1293,25 +1643,36 @@ func TestPaymentSuccessfulAdminRefundRevokesFulfillment(t *testing.T) {
 
 func TestPaymentAdminRefundStatusUsesCompensationFlow(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
-	fixture := createCompletedPaymentFixture(t, env, 7006, "refund-status-compensation")
-	refundID, err := env.api.Admin.CreateRefund(env.ctx, admin.RefundCreateParams{
-		WorkspaceID:  testWorkspaceID,
-		OrderID:      fixture.OrderID,
-		AttemptID:    fixture.AttemptID,
-		ProviderCode: fixture.ProviderCode,
-		AmountMinor:  fixture.AmountMinor,
-		AssetCode:    fixture.AssetCode,
-		Status:       "pending",
-	})
+	fixture := createCompletedPaymentFixture(
+		t,
+		env,
+		7006,
+		"refund-status-compensation",
+	)
+	refundID, err := env.api.Admin.CreateRefund(
+		env.ctx,
+		admin.RefundCreateParams{
+			WorkspaceID:  testWorkspaceID,
+			OrderID:      fixture.OrderID,
+			AttemptID:    fixture.AttemptID,
+			ProviderCode: fixture.ProviderCode,
+			AmountMinor:  fixture.AmountMinor,
+			AssetCode:    fixture.AssetCode,
+			Status:       "pending",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create pending refund: %v", err)
 	}
-	if _, err := env.api.Admin.UpdateRefundStatus(env.ctx, admin.RefundStatusParams{
-		WorkspaceID: testWorkspaceID,
-		ID:          refundID,
-		Status:      "succeeded",
-		Reason:      "manual provider confirmation",
-	}); err != nil {
+	if _, err := env.api.Admin.UpdateRefundStatus(
+		env.ctx,
+		admin.RefundStatusParams{
+			WorkspaceID: testWorkspaceID,
+			ID:          refundID,
+			Status:      "succeeded",
+			Reason:      "manual provider confirmation",
+		},
+	); err != nil {
 		t.Fatalf("finalize admin refund: %v", err)
 	}
 
@@ -1325,13 +1686,22 @@ func TestPaymentAdminRefundStatusUsesCompensationFlow(t *testing.T) {
 		t.Fatalf("read fulfillment: %v", err)
 	}
 	if fulfillmentStatus != "revoked" {
-		t.Fatalf("manual refund status left fulfillment active: %s", fulfillmentStatus)
+		t.Fatalf(
+			"manual refund status left fulfillment active: %s",
+			fulfillmentStatus,
+		)
 	}
-	if _, err := env.api.Admin.UpdateRefundStatus(env.ctx, admin.RefundStatusParams{
-		WorkspaceID: testWorkspaceID,
-		ID:          refundID,
-		Status:      "failed",
-	}); !errors.Is(err, repository.ErrOrderStateInvalid) {
+	if _, err := env.api.Admin.UpdateRefundStatus(
+		env.ctx,
+		admin.RefundStatusParams{
+			WorkspaceID: testWorkspaceID,
+			ID:          refundID,
+			Status:      "failed",
+		},
+	); !errors.Is(
+		err,
+		repository.ErrOrderStateInvalid,
+	) {
 		t.Fatalf("succeeded refund must not regress to failed, got %v", err)
 	}
 }
@@ -1339,15 +1709,18 @@ func TestPaymentAdminRefundStatusUsesCompensationFlow(t *testing.T) {
 func TestPaymentFinalizeRefundLocksAttemptBeforeRefund(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 	fixture := createCompletedPaymentFixture(t, env, 7007, "refund-lock-order")
-	refundID, err := env.api.Admin.CreateRefund(env.ctx, admin.RefundCreateParams{
-		WorkspaceID:  testWorkspaceID,
-		OrderID:      fixture.OrderID,
-		AttemptID:    fixture.AttemptID,
-		ProviderCode: fixture.ProviderCode,
-		AmountMinor:  fixture.AmountMinor,
-		AssetCode:    fixture.AssetCode,
-		Status:       "pending",
-	})
+	refundID, err := env.api.Admin.CreateRefund(
+		env.ctx,
+		admin.RefundCreateParams{
+			WorkspaceID:  testWorkspaceID,
+			OrderID:      fixture.OrderID,
+			AttemptID:    fixture.AttemptID,
+			ProviderCode: fixture.ProviderCode,
+			AmountMinor:  fixture.AmountMinor,
+			AssetCode:    fixture.AssetCode,
+			Status:       "pending",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create pending refund: %v", err)
 	}
@@ -1368,12 +1741,15 @@ func TestPaymentFinalizeRefundLocksAttemptBeforeRefund(t *testing.T) {
 
 	finalizeResult := make(chan error, 1)
 	go func() {
-		_, err := env.api.Admin.UpdateRefundStatus(env.ctx, admin.RefundStatusParams{
-			WorkspaceID: testWorkspaceID,
-			ID:          refundID,
-			Status:      "succeeded",
-			Reason:      "lock order test",
-		})
+		_, err := env.api.Admin.UpdateRefundStatus(
+			env.ctx,
+			admin.RefundStatusParams{
+				WorkspaceID: testWorkspaceID,
+				ID:          refundID,
+				Status:      "succeeded",
+				Reason:      "lock order test",
+			},
+		)
 		finalizeResult <- err
 	}()
 
@@ -1401,15 +1777,19 @@ func TestPaymentAdminRefundRequiresWorkspaceScope(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 	fixture := createCompletedPaymentFixture(t, env, 7005, "refund-scope")
 	providerCalled := false
-	refundService := paymentrefund.New(env.ctx, env.client, map[string]paymentrefund.ProviderRefundFunc{
-		"yookassa": func(
-			_ context.Context,
-			_ paymentrefund.ProviderRefundParams,
-		) (paymentrefund.ProviderRefundResult, error) {
-			providerCalled = true
-			return paymentrefund.ProviderRefundResult{}, nil
+	refundService := paymentrefund.New(
+		env.ctx,
+		env.client,
+		map[string]paymentrefund.ProviderRefundFunc{
+			"yookassa": func(
+				_ context.Context,
+				_ paymentrefund.ProviderRefundParams,
+			) (paymentrefund.ProviderRefundResult, error) {
+				providerCalled = true
+				return paymentrefund.ProviderRefundResult{}, nil
+			},
 		},
-	})
+	)
 	t.Cleanup(func() { _ = refundService.Close() })
 
 	if _, err := refundService.Execute(env.ctx, paymentrefund.Params{
@@ -1417,7 +1797,10 @@ func TestPaymentAdminRefundRequiresWorkspaceScope(t *testing.T) {
 		AttemptID: fixture.AttemptID,
 		Reason:    "regression test",
 	}); !errors.Is(err, services.ErrIdentityWorkspaceRequired) {
-		t.Fatalf("refund with empty workspace must fail validation, got %v", err)
+		t.Fatalf(
+			"refund with empty workspace must fail validation, got %v",
+			err,
+		)
 	}
 	if providerCalled {
 		t.Fatal("refund provider called before workspace validation")
@@ -1456,11 +1839,22 @@ func paymentTestDSN(t interface{ Helper() }) string {
 	return ""
 }
 
-func recreatePaymentTestDatabase(ctx context.Context, db *sql.DB, dbName string) error {
-	if _, err := db.ExecContext(ctx, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1", dbName); err != nil {
+func recreatePaymentTestDatabase(
+	ctx context.Context,
+	db *sql.DB,
+	dbName string,
+) error {
+	if _, err := db.ExecContext(
+		ctx,
+		"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
+		dbName,
+	); err != nil {
 		return err
 	}
-	if _, err := db.ExecContext(ctx, "DROP DATABASE IF EXISTS "+quoteIdentifier(dbName)); err != nil {
+	if _, err := db.ExecContext(
+		ctx,
+		"DROP DATABASE IF EXISTS "+quoteIdentifier(dbName),
+	); err != nil {
 		return err
 	}
 	_, err := db.ExecContext(ctx, "CREATE DATABASE "+quoteIdentifier(dbName))
@@ -1471,7 +1865,12 @@ func quoteIdentifier(value string) string {
 	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
 }
 
-func paymentTestIdentity(workspaceID string, appID int64, platformID int64, platformUserID string) services.Identity {
+func paymentTestIdentity(
+	workspaceID string,
+	appID int64,
+	platformID int64,
+	platformUserID string,
+) services.Identity {
 	return services.Identity{
 		WorkspaceID:    workspaceID,
 		AppID:          appID,
@@ -1504,46 +1903,64 @@ func TestPaymentAssetCRUD(t *testing.T) {
 	contract := "EQ_TEST_ASSET_CRUD"
 	minAmount := int64(1)
 
-	if err := env.api.Operational.UpsertAsset(env.ctx, operational.AssetUpsertParams{
-		Code:            "CRUD_TON",
-		Title:           "CRUD Token",
-		AssetKind:       string(paymentsqlc.PaymentAssetAssetKindCryptoJetton),
-		Scale:           9,
-		Chain:           &chain,
-		Network:         &network,
-		ContractAddress: &contract,
-		IsActive:        true,
-	}); err != nil {
+	if err := env.api.Operational.UpsertAsset(
+		env.ctx,
+		operational.AssetUpsertParams{
+			Code:  "CRUD_TON",
+			Title: "CRUD Token",
+			AssetKind: string(
+				paymentsqlc.PaymentAssetAssetKindCryptoJetton,
+			),
+			Scale:           9,
+			Chain:           &chain,
+			Network:         &network,
+			ContractAddress: &contract,
+			IsActive:        true,
+		},
+	); err != nil {
 		t.Fatalf("upsert asset: %v", err)
 	}
 
-	if err := env.api.Operational.UpsertProviderAsset(env.ctx, operational.ProviderAssetUpsertParams{
-		ProviderCode:   "ton",
-		AssetCode:      "CRUD_TON",
-		MinAmountMinor: &minAmount,
-		IsActive:       true,
-	}); err != nil {
+	if err := env.api.Operational.UpsertProviderAsset(
+		env.ctx,
+		operational.ProviderAssetUpsertParams{
+			ProviderCode:   "ton",
+			AssetCode:      "CRUD_TON",
+			MinAmountMinor: &minAmount,
+			IsActive:       true,
+		},
+	); err != nil {
 		t.Fatalf("upsert provider asset: %v", err)
 	}
 
-	providerAsset, err := env.api.Admin.GetProviderAsset(env.ctx, "ton", "CRUD_TON")
+	providerAsset, err := env.api.Admin.GetProviderAsset(
+		env.ctx,
+		"ton",
+		"CRUD_TON",
+	)
 	if err != nil {
 		t.Fatalf("get provider asset: %v", err)
 	}
-	if !providerAsset.IsActive || !providerAsset.MinAmountMinor.Valid || providerAsset.MinAmountMinor.Int64 != minAmount {
+	if !providerAsset.IsActive || !providerAsset.MinAmountMinor.Valid ||
+		providerAsset.MinAmountMinor.Int64 != minAmount {
 		t.Fatalf("unexpected provider asset: %#v", providerAsset)
 	}
 
-	if err := env.api.Operational.UpsertAsset(env.ctx, operational.AssetUpsertParams{
-		Code:            "CRUD_TON",
-		Title:           "CRUD Token Updated",
-		AssetKind:       string(paymentsqlc.PaymentAssetAssetKindCryptoJetton),
-		Scale:           6,
-		Chain:           &chain,
-		Network:         &network,
-		ContractAddress: &contract,
-		IsActive:        true,
-	}); err != nil {
+	if err := env.api.Operational.UpsertAsset(
+		env.ctx,
+		operational.AssetUpsertParams{
+			Code:  "CRUD_TON",
+			Title: "CRUD Token Updated",
+			AssetKind: string(
+				paymentsqlc.PaymentAssetAssetKindCryptoJetton,
+			),
+			Scale:           6,
+			Chain:           &chain,
+			Network:         &network,
+			ContractAddress: &contract,
+			IsActive:        true,
+		},
+	); err != nil {
 		t.Fatalf("update asset: %v", err)
 	}
 
@@ -1562,10 +1979,19 @@ func TestPaymentAssetCRUD(t *testing.T) {
 		t.Fatal("expected updated CRUD_TON asset in list")
 	}
 
-	if rows, err := env.api.Operational.DeleteProviderAsset(env.ctx, "ton", "CRUD_TON"); err != nil || rows != 1 {
+	if rows, err := env.api.Operational.DeleteProviderAsset(
+		env.ctx,
+		"ton",
+		"CRUD_TON",
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("delete provider asset rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.Operational.DeleteAsset(env.ctx, "CRUD_TON"); err != nil || rows != 1 {
+	if rows, err := env.api.Operational.DeleteAsset(
+		env.ctx,
+		"CRUD_TON",
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("delete asset rows=%d err=%v", rows, err)
 	}
 }
@@ -1611,10 +2037,13 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 		t.Fatalf("asset code = %q, want RUB", asset.Code)
 	}
 
-	providerAssets, err := env.api.Admin.ListProviderAssets(env.ctx, admin.ProviderAssetListParams{
-		ProviderCode: "ton",
-		AssetCode:    "TON",
-	})
+	providerAssets, err := env.api.Admin.ListProviderAssets(
+		env.ctx,
+		admin.ProviderAssetListParams{
+			ProviderCode: "ton",
+			AssetCode:    "TON",
+		},
+	)
 	if err != nil {
 		t.Fatalf("list provider assets: %v", err)
 	}
@@ -1622,22 +2051,28 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 		t.Fatalf("provider asset count = %d, want 1", len(providerAssets))
 	}
 
-	if _, err := env.api.Operational.UpdateAssetRate(env.ctx, operational.UpdateAssetRateParams{
-		AssetCode:              "TON",
-		ReferenceAssetCode:     "RUB",
-		ReferencePerAssetMinor: 12500,
-		Source:                 "test",
-		ObservedAt:             now,
-	}); err != nil {
+	if _, err := env.api.Operational.UpdateAssetRate(
+		env.ctx,
+		operational.UpdateAssetRateParams{
+			AssetCode:              "TON",
+			ReferenceAssetCode:     "RUB",
+			ReferencePerAssetMinor: 12500,
+			Source:                 "test",
+			ObservedAt:             now,
+		},
+	); err != nil {
 		t.Fatalf("update asset rate: %v", err)
 	}
-	if err := env.api.Operational.ConfigureAssetRateAutoUpdate(env.ctx, operational.ConfigureAssetRateAutoUpdateParams{
-		AssetCode:          "TON",
-		ReferenceAssetCode: "RUB",
-		Enabled:            true,
-		Source:             operational.AssetRateSourceDexScreener,
-		SourceChainID:      "ton",
-	}); err != nil {
+	if err := env.api.Operational.ConfigureAssetRateAutoUpdate(
+		env.ctx,
+		operational.ConfigureAssetRateAutoUpdateParams{
+			AssetCode:          "TON",
+			ReferenceAssetCode: "RUB",
+			Enabled:            true,
+			Source:             operational.AssetRateSourceDexScreener,
+			SourceChainID:      "ton",
+		},
+	); err != nil {
 		t.Fatalf("configure asset rate auto update: %v", err)
 	}
 	rate, err := env.api.Admin.GetAssetRate(env.ctx, "TON", "RUB")
@@ -1647,10 +2082,13 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if rate.ReferencePerAssetMinor != 12500 || !rate.AutoUpdateEnabled {
 		t.Fatalf("unexpected asset rate: %#v", rate)
 	}
-	rates, err := env.api.Admin.ListAssetRates(env.ctx, admin.AssetRateListParams{
-		AssetCode:          "TON",
-		ReferenceAssetCode: "RUB",
-	})
+	rates, err := env.api.Admin.ListAssetRates(
+		env.ctx,
+		admin.AssetRateListParams{
+			AssetCode:          "TON",
+			ReferenceAssetCode: "RUB",
+		},
+	)
 	if err != nil {
 		t.Fatalf("list asset rates: %v", err)
 	}
@@ -1658,26 +2096,36 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 		t.Fatalf("asset rate count = %d, want 1", len(rates))
 	}
 
-	if err := env.api.Admin.UpsertProductGroup(env.ctx, admin.ProductGroupUpsertParams{
-		WorkspaceID:    testWorkspaceID,
-		Code:           groupCode,
-		TitleKey:       utils.Ref(groupCode + ".title"),
-		DescriptionKey: utils.Ref(groupCode + ".description"),
-		Position:       10,
-		IsActive:       true,
-	}); err != nil {
+	if err := env.api.Admin.UpsertProductGroup(
+		env.ctx,
+		admin.ProductGroupUpsertParams{
+			WorkspaceID:    testWorkspaceID,
+			Code:           groupCode,
+			TitleKey:       utils.Ref(groupCode + ".title"),
+			DescriptionKey: utils.Ref(groupCode + ".description"),
+			Position:       10,
+			IsActive:       true,
+		},
+	); err != nil {
 		t.Fatalf("upsert product group: %v", err)
 	}
-	group, err := env.api.Admin.GetProductGroup(env.ctx, testWorkspaceID, groupCode)
+	group, err := env.api.Admin.GetProductGroup(
+		env.ctx,
+		testWorkspaceID,
+		groupCode,
+	)
 	if err != nil {
 		t.Fatalf("get product group: %v", err)
 	}
 	if group.Code != groupCode || group.Position != 10 {
 		t.Fatalf("unexpected product group: %#v", group)
 	}
-	groups, err := env.api.Admin.ListProductGroups(env.ctx, admin.ProductGroupListParams{
-		WorkspaceID: testWorkspaceID,
-	})
+	groups, err := env.api.Admin.ListProductGroups(
+		env.ctx,
+		admin.ProductGroupListParams{
+			WorkspaceID: testWorkspaceID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list product groups: %v", err)
 	}
@@ -1685,25 +2133,36 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 		t.Fatalf("product group count = %d, want 1", len(groups))
 	}
 
-	if err := env.api.Admin.UpsertLocalization(env.ctx, admin.LocalizationUpsertParams{
-		WorkspaceID:     testWorkspaceID,
-		Locale:          "ru",
-		LocalizationKey: titleKey,
-		Value:           "Административный товар",
-	}); err != nil {
+	if err := env.api.Admin.UpsertLocalization(
+		env.ctx,
+		admin.LocalizationUpsertParams{
+			WorkspaceID:     testWorkspaceID,
+			Locale:          "ru",
+			LocalizationKey: titleKey,
+			Value:           "Административный товар",
+		},
+	); err != nil {
 		t.Fatalf("upsert localization: %v", err)
 	}
-	localization, err := env.api.Admin.GetLocalization(env.ctx, testWorkspaceID, "ru", titleKey)
+	localization, err := env.api.Admin.GetLocalization(
+		env.ctx,
+		testWorkspaceID,
+		"ru",
+		titleKey,
+	)
 	if err != nil {
 		t.Fatalf("get localization: %v", err)
 	}
 	if localization.Value != "Административный товар" {
 		t.Fatalf("localization value = %q", localization.Value)
 	}
-	localizations, err := env.api.Admin.ListLocalizations(env.ctx, admin.LocalizationListParams{
-		WorkspaceID: testWorkspaceID,
-		Locale:      "ru",
-	})
+	localizations, err := env.api.Admin.ListLocalizations(
+		env.ctx,
+		admin.LocalizationListParams{
+			WorkspaceID: testWorkspaceID,
+			Locale:      "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("list localizations: %v", err)
 	}
@@ -1727,17 +2186,24 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert product: %v", err)
 	}
-	productValue, err := env.api.Admin.GetProduct(env.ctx, testWorkspaceID, productID)
+	productValue, err := env.api.Admin.GetProduct(
+		env.ctx,
+		testWorkspaceID,
+		productID,
+	)
 	if err != nil {
 		t.Fatalf("get product: %v", err)
 	}
 	if productValue.ID != productID || productValue.Position != 20 {
 		t.Fatalf("unexpected product: %#v", productValue)
 	}
-	products, err := env.api.Admin.ListProducts(env.ctx, admin.ProductListParams{
-		WorkspaceID: testWorkspaceID,
-		GroupCode:   groupCode,
-	})
+	products, err := env.api.Admin.ListProducts(
+		env.ctx,
+		admin.ProductListParams{
+			WorkspaceID: testWorkspaceID,
+			GroupCode:   groupCode,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list products: %v", err)
 	}
@@ -1745,30 +2211,42 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 		t.Fatalf("product count = %d, want 1", len(products))
 	}
 
-	if err := env.api.Admin.UpsertProductItem(env.ctx, admin.ProductItemUpsertParams{
-		WorkspaceID: testWorkspaceID,
-		ProductID:   productID,
-		ItemID:      itemID,
-		RewardType:  "quantity",
-		Quantity:    100,
-		Scale:       2,
-	}); err != nil {
+	if err := env.api.Admin.UpsertProductItem(
+		env.ctx,
+		admin.ProductItemUpsertParams{
+			WorkspaceID: testWorkspaceID,
+			ProductID:   productID,
+			ItemID:      itemID,
+			RewardType:  "quantity",
+			Quantity:    100,
+			Scale:       2,
+		},
+	); err != nil {
 		t.Fatalf("upsert product item: %v", err)
 	}
-	if err := env.api.Admin.UpsertProductItem(env.ctx, admin.ProductItemUpsertParams{
-		WorkspaceID: testWorkspaceID,
-		ProductID:   productID,
-		ItemID:      itemID,
-		RewardType:  "quantity",
-		Quantity:    0,
-	}); !errors.Is(err, repository.ErrInvalidItemQuantity) {
+	if err := env.api.Admin.UpsertProductItem(
+		env.ctx,
+		admin.ProductItemUpsertParams{
+			WorkspaceID: testWorkspaceID,
+			ProductID:   productID,
+			ItemID:      itemID,
+			RewardType:  "quantity",
+			Quantity:    0,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrInvalidItemQuantity,
+	) {
 		t.Fatalf("zero quantity error = %v, want ErrInvalidItemQuantity", err)
 	}
-	items, err := env.api.Admin.ListProductItems(env.ctx, admin.ProductItemListParams{
-		WorkspaceID: testWorkspaceID,
-		ProductID:   productID,
-		ItemID:      itemID,
-	})
+	items, err := env.api.Admin.ListProductItems(
+		env.ctx,
+		admin.ProductItemListParams{
+			WorkspaceID: testWorkspaceID,
+			ProductID:   productID,
+			ItemID:      itemID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list product items: %v", err)
 	}
@@ -1776,16 +2254,19 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 		t.Fatalf("unexpected product items: %#v", items)
 	}
 
-	priceID, err := env.api.Admin.CreatePrice(env.ctx, admin.ProductPriceCreateParams{
-		WorkspaceID:         testWorkspaceID,
-		ProductID:           productID,
-		AssetCode:           "RUB",
-		ListAmountMinor:     1000,
-		DiscountAmountMinor: 100,
-		IsPromotion:         true,
-		StartsAt:            &startsAt,
-		EndsAt:              &endsAt,
-	})
+	priceID, err := env.api.Admin.CreatePrice(
+		env.ctx,
+		admin.ProductPriceCreateParams{
+			WorkspaceID:         testWorkspaceID,
+			ProductID:           productID,
+			AssetCode:           "RUB",
+			ListAmountMinor:     1000,
+			DiscountAmountMinor: 100,
+			IsPromotion:         true,
+			StartsAt:            &startsAt,
+			EndsAt:              &endsAt,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create price: %v", err)
 	}
@@ -1796,16 +2277,19 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if price.ListAmountMinor != 1000 {
 		t.Fatalf("price amount = %d, want 1000", price.ListAmountMinor)
 	}
-	rows, err := env.api.Admin.UpdatePrice(env.ctx, admin.ProductPriceUpdateParams{
-		ID:                  priceID,
-		WorkspaceID:         testWorkspaceID,
-		AssetCode:           "RUB",
-		ListAmountMinor:     1200,
-		DiscountAmountMinor: 200,
-		IsPromotion:         true,
-		StartsAt:            &startsAt,
-		EndsAt:              &endsAt,
-	})
+	rows, err := env.api.Admin.UpdatePrice(
+		env.ctx,
+		admin.ProductPriceUpdateParams{
+			ID:                  priceID,
+			WorkspaceID:         testWorkspaceID,
+			AssetCode:           "RUB",
+			ListAmountMinor:     1200,
+			DiscountAmountMinor: 200,
+			IsPromotion:         true,
+			StartsAt:            &startsAt,
+			EndsAt:              &endsAt,
+		},
+	)
 	if err != nil || rows != 1 {
 		t.Fatalf("update price rows=%d err=%v", rows, err)
 	}
@@ -1821,22 +2305,53 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 		t.Fatalf("unexpected prices: %#v", prices)
 	}
 
-	if _, err := env.api.Admin.GetProduct(env.ctx, testsupport.WorkspaceID("payment-catalog-other"), productID); err == nil {
+	if _, err := env.api.Admin.GetProduct(
+		env.ctx,
+		testsupport.WorkspaceID("payment-catalog-other"),
+		productID,
+	); err == nil {
 		t.Fatal("cross-workspace product read must fail")
 	}
-	if rows, err := env.api.Admin.DeletePrice(env.ctx, testWorkspaceID, priceID); err != nil || rows != 1 {
+	if rows, err := env.api.Admin.DeletePrice(
+		env.ctx,
+		testWorkspaceID,
+		priceID,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("delete price rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.Admin.DeleteProductItem(env.ctx, testWorkspaceID, productID, itemID); err != nil || rows != 1 {
+	if rows, err := env.api.Admin.DeleteProductItem(
+		env.ctx,
+		testWorkspaceID,
+		productID,
+		itemID,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("delete product item rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.Admin.DeleteProduct(env.ctx, testWorkspaceID, productID); err != nil || rows != 1 {
+	if rows, err := env.api.Admin.DeleteProduct(
+		env.ctx,
+		testWorkspaceID,
+		productID,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("delete product rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.Admin.DeleteLocalization(env.ctx, testWorkspaceID, "ru", titleKey); err != nil || rows != 1 {
+	if rows, err := env.api.Admin.DeleteLocalization(
+		env.ctx,
+		testWorkspaceID,
+		"ru",
+		titleKey,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("delete localization rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.Admin.DeleteProductGroup(env.ctx, testWorkspaceID, groupCode); err != nil || rows != 1 {
+	if rows, err := env.api.Admin.DeleteProductGroup(
+		env.ctx,
+		testWorkspaceID,
+		groupCode,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("delete product group rows=%d err=%v", rows, err)
 	}
 }
@@ -1855,15 +2370,22 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if uint64(order.ID) != fixture.OrderID || order.Status != "fulfilled" {
 		t.Fatalf("unexpected order: %#v", order)
 	}
-	orderByPublicID, err := env.api.Admin.GetOrderByPublicID(env.ctx, admin.OrderPublicRefParams{
-		WorkspaceID: testWorkspaceID,
-		PublicID:    order.PublicID,
-	})
+	orderByPublicID, err := env.api.Admin.GetOrderByPublicID(
+		env.ctx,
+		admin.OrderPublicRefParams{
+			WorkspaceID: testWorkspaceID,
+			PublicID:    order.PublicID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("get order by public id: %v", err)
 	}
 	if orderByPublicID.ID != order.ID {
-		t.Fatalf("order by public id = %d, want %d", orderByPublicID.ID, order.ID)
+		t.Fatalf(
+			"order by public id = %d, want %d",
+			orderByPublicID.ID,
+			order.ID,
+		)
 	}
 	if _, err := env.api.Admin.GetOrder(env.ctx, admin.OrderRefParams{
 		WorkspaceID: testsupport.WorkspaceID("payment-commerce-other"),
@@ -1872,21 +2394,28 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 		t.Fatal("cross-workspace order read must fail")
 	}
 
-	attempt, err := env.api.Admin.GetPaymentAttempt(env.ctx, admin.AttemptRefParams{
-		WorkspaceID: testWorkspaceID,
-		ID:          fixture.AttemptID,
-	})
+	attempt, err := env.api.Admin.GetPaymentAttempt(
+		env.ctx,
+		admin.AttemptRefParams{
+			WorkspaceID: testWorkspaceID,
+			ID:          fixture.AttemptID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("get payment attempt: %v", err)
 	}
-	if uint64(attempt.ID) != fixture.AttemptID || attempt.Status != "succeeded" {
+	if uint64(attempt.ID) != fixture.AttemptID ||
+		attempt.Status != "succeeded" {
 		t.Fatalf("unexpected payment attempt: %#v", attempt)
 	}
 
-	fulfillments, err := env.api.Admin.ListFulfillments(env.ctx, admin.FulfillmentListParams{
-		WorkspaceID: testWorkspaceID,
-		OrderID:     fixture.OrderID,
-	})
+	fulfillments, err := env.api.Admin.ListFulfillments(
+		env.ctx,
+		admin.FulfillmentListParams{
+			WorkspaceID: testWorkspaceID,
+			OrderID:     fixture.OrderID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list fulfillments: %v", err)
 	}
@@ -1894,20 +2423,26 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 		t.Fatalf("fulfillment count = %d, want 1", len(fulfillments))
 	}
 	fulfillmentID := uint64(fulfillments[0].ID)
-	fulfillment, err := env.api.Admin.GetFulfillment(env.ctx, admin.FulfillmentRefParams{
-		WorkspaceID: testWorkspaceID,
-		ID:          fulfillmentID,
-	})
+	fulfillment, err := env.api.Admin.GetFulfillment(
+		env.ctx,
+		admin.FulfillmentRefParams{
+			WorkspaceID: testWorkspaceID,
+			ID:          fulfillmentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("get fulfillment: %v", err)
 	}
 	if fulfillment.Status != "succeeded" {
 		t.Fatalf("fulfillment status = %q, want succeeded", fulfillment.Status)
 	}
-	fulfillmentItems, err := env.api.Admin.ListFulfillmentItems(env.ctx, admin.FulfillmentItemListParams{
-		WorkspaceID:   testWorkspaceID,
-		FulfillmentID: fulfillmentID,
-	})
+	fulfillmentItems, err := env.api.Admin.ListFulfillmentItems(
+		env.ctx,
+		admin.FulfillmentItemListParams{
+			WorkspaceID:   testWorkspaceID,
+			FulfillmentID: fulfillmentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list fulfillment items: %v", err)
 	}
@@ -1915,34 +2450,44 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 		t.Fatalf("unexpected fulfillment items: %#v", fulfillmentItems)
 	}
 
-	key, err := env.api.Admin.CreateProductKey(env.ctx, admin.CreateProductKeyParams{
-		WorkspaceID:    testWorkspaceID,
-		AppID:          7301,
-		PlatformID:     1,
-		PlatformUserID: "admin-key-owner",
-		ProductID:      order.ProductID,
-		MaxUses:        2,
-	})
+	key, err := env.api.Admin.CreateProductKey(
+		env.ctx,
+		admin.CreateProductKeyParams{
+			WorkspaceID:    testWorkspaceID,
+			AppID:          7301,
+			PlatformID:     1,
+			PlatformUserID: "admin-key-owner",
+			ProductID:      order.ProductID,
+			MaxUses:        2,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create purchase key: %v", err)
 	}
 	if key == "" {
 		t.Fatal("expected non-empty purchase key")
 	}
-	keys, err := env.api.Admin.ListPurchaseKeys(env.ctx, admin.PurchaseKeyListParams{
-		WorkspaceID:    testWorkspaceID,
-		AppID:          7301,
-		ProductID:      order.ProductID,
-		PlatformID:     1,
-		PlatformUserID: "admin-key-owner",
-	})
+	keys, err := env.api.Admin.ListPurchaseKeys(
+		env.ctx,
+		admin.PurchaseKeyListParams{
+			WorkspaceID:    testWorkspaceID,
+			AppID:          7301,
+			ProductID:      order.ProductID,
+			PlatformID:     1,
+			PlatformUserID: "admin-key-owner",
+		},
+	)
 	if err != nil {
 		t.Fatalf("list purchase keys: %v", err)
 	}
 	if len(keys) != 1 {
 		t.Fatalf("purchase key count = %d, want 1", len(keys))
 	}
-	purchaseKey, err := env.api.Admin.GetPurchaseKey(env.ctx, testWorkspaceID, uint64(keys[0].ID))
+	purchaseKey, err := env.api.Admin.GetPurchaseKey(
+		env.ctx,
+		testWorkspaceID,
+		uint64(keys[0].ID),
+	)
 	if err != nil {
 		t.Fatalf("get purchase key: %v", err)
 	}
@@ -1962,39 +2507,52 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	providerSubscriptionID := uniquePaymentID("admin-subscription")
 	orderID := int64(fixture.OrderID)
 	attemptID := int64(fixture.AttemptID)
-	subscriptionID, err := env.api.Admin.UpsertSubscription(env.ctx, admin.SubscriptionUpsertParams{
-		WorkspaceID:            testWorkspaceID,
-		ProviderCode:           fixture.ProviderCode,
-		ProviderSubscriptionID: providerSubscriptionID,
-		AppID:                  7301,
-		PlatformID:             1,
-		PlatformUserID:         "admin-subscription-owner",
-		ProductID:              order.ProductID,
-		OrderID:                &orderID,
-		AttemptID:              &attemptID,
-		Status:                 "active",
-		StartedAt:              time.Now().UTC(),
-	})
+	subscriptionID, err := env.api.Admin.UpsertSubscription(
+		env.ctx,
+		admin.SubscriptionUpsertParams{
+			WorkspaceID:            testWorkspaceID,
+			ProviderCode:           fixture.ProviderCode,
+			ProviderSubscriptionID: providerSubscriptionID,
+			AppID:                  7301,
+			PlatformID:             1,
+			PlatformUserID:         "admin-subscription-owner",
+			ProductID:              order.ProductID,
+			OrderID:                &orderID,
+			AttemptID:              &attemptID,
+			Status:                 "active",
+			StartedAt:              time.Now().UTC(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("upsert subscription: %v", err)
 	}
-	subscriptions, err := env.api.Admin.ListSubscriptions(env.ctx, admin.SubscriptionListParams{
-		WorkspaceID:  testWorkspaceID,
-		ProviderCode: fixture.ProviderCode,
-		ProductID:    order.ProductID,
-	})
+	subscriptions, err := env.api.Admin.ListSubscriptions(
+		env.ctx,
+		admin.SubscriptionListParams{
+			WorkspaceID:  testWorkspaceID,
+			ProviderCode: fixture.ProviderCode,
+			ProductID:    order.ProductID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list subscriptions: %v", err)
 	}
 	if len(subscriptions) != 1 {
 		t.Fatalf("subscription count = %d, want 1", len(subscriptions))
 	}
-	subscriptionValue, err := env.api.Admin.GetSubscription(env.ctx, testWorkspaceID, subscriptionID)
+	subscriptionValue, err := env.api.Admin.GetSubscription(
+		env.ctx,
+		testWorkspaceID,
+		subscriptionID,
+	)
 	if err != nil {
 		t.Fatalf("get subscription: %v", err)
 	}
 	if subscriptionValue.ProviderSubscriptionID != providerSubscriptionID {
-		t.Fatalf("provider subscription id = %q", subscriptionValue.ProviderSubscriptionID)
+		t.Fatalf(
+			"provider subscription id = %q",
+			subscriptionValue.ProviderSubscriptionID,
+		)
 	}
 	subscriptionByProvider, err := env.api.Admin.GetSubscriptionByProviderID(
 		env.ctx,
@@ -2008,18 +2566,25 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 		t.Fatalf("get subscription by provider id: %v", err)
 	}
 	if subscriptionByProvider.ID != subscriptionValue.ID {
-		t.Fatalf("subscription by provider = %d, want %d", subscriptionByProvider.ID, subscriptionValue.ID)
+		t.Fatalf(
+			"subscription by provider = %d, want %d",
+			subscriptionByProvider.ID,
+			subscriptionValue.ID,
+		)
 	}
 
-	refundID, err := env.api.Admin.CreateRefund(env.ctx, admin.RefundCreateParams{
-		WorkspaceID:  testWorkspaceID,
-		OrderID:      fixture.OrderID,
-		AttemptID:    fixture.AttemptID,
-		ProviderCode: fixture.ProviderCode,
-		AmountMinor:  1,
-		AssetCode:    fixture.AssetCode,
-		Status:       "created",
-	})
+	refundID, err := env.api.Admin.CreateRefund(
+		env.ctx,
+		admin.RefundCreateParams{
+			WorkspaceID:  testWorkspaceID,
+			OrderID:      fixture.OrderID,
+			AttemptID:    fixture.AttemptID,
+			ProviderCode: fixture.ProviderCode,
+			AmountMinor:  1,
+			AssetCode:    fixture.AssetCode,
+			Status:       "created",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create refund: %v", err)
 	}
@@ -2045,14 +2610,17 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 		t.Fatalf("refund amount = %d, want 1", refundValue.AmountMinor)
 	}
 
-	eventID, err := env.api.Operational.CreateEvent(env.ctx, checkout.CreateEventParams{
-		WorkspaceID:  testWorkspaceID,
-		ProviderCode: fixture.ProviderCode,
-		AttemptID:    &attemptID,
-		OrderID:      &orderID,
-		EventType:    "admin_test",
-		PayloadHash:  uniquePaymentID("event-hash"),
-	})
+	eventID, err := env.api.Operational.CreateEvent(
+		env.ctx,
+		checkout.CreateEventParams{
+			WorkspaceID:  testWorkspaceID,
+			ProviderCode: fixture.ProviderCode,
+			AttemptID:    &attemptID,
+			OrderID:      &orderID,
+			EventType:    "admin_test",
+			PayloadHash:  uniquePaymentID("event-hash"),
+		},
+	)
 	if err != nil {
 		t.Fatalf("create payment event: %v", err)
 	}
@@ -2066,11 +2634,14 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if event.ProcessingStatus != "new" {
 		t.Fatalf("payment event status = %q, want new", event.ProcessingStatus)
 	}
-	if err := env.api.Admin.UpdatePaymentEventProcessingStatus(env.ctx, admin.EventStatusParams{
-		WorkspaceID: testWorkspaceID,
-		ID:          eventID,
-		Status:      "processed",
-	}); err != nil {
+	if err := env.api.Admin.UpdatePaymentEventProcessingStatus(
+		env.ctx,
+		admin.EventStatusParams{
+			WorkspaceID: testWorkspaceID,
+			ID:          eventID,
+			Status:      "processed",
+		},
+	); err != nil {
 		t.Fatalf("update payment event status: %v", err)
 	}
 }
@@ -2084,10 +2655,30 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	})
 
 	identities := map[string]services.Identity{
-		"base":           paymentTestIdentity(testWorkspaceID, 9100, 10, "shared-user"),
-		"other_app":      paymentTestIdentity(testWorkspaceID, 9101, 10, "shared-user"),
-		"other_platform": paymentTestIdentity(testWorkspaceID, 9100, 11, "shared-user"),
-		"other_user":     paymentTestIdentity(testWorkspaceID, 9100, 10, "other-user"),
+		"base": paymentTestIdentity(
+			testWorkspaceID,
+			9100,
+			10,
+			"shared-user",
+		),
+		"other_app": paymentTestIdentity(
+			testWorkspaceID,
+			9101,
+			10,
+			"shared-user",
+		),
+		"other_platform": paymentTestIdentity(
+			testWorkspaceID,
+			9100,
+			11,
+			"shared-user",
+		),
+		"other_user": paymentTestIdentity(
+			testWorkspaceID,
+			9100,
+			10,
+			"other-user",
+		),
 	}
 	createOrder := func(identity services.Identity, payer *services.Identity) *checkout.Order {
 		t.Helper()
@@ -2105,7 +2696,11 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		}
 		order, err := env.api.User.CreateOrder(env.ctx, params)
 		if err != nil {
-			t.Fatalf("create identity collision order for %#v: %v", identity, err)
+			t.Fatalf(
+				"create identity collision order for %#v: %v",
+				identity,
+				err,
+			)
 		}
 		return order
 	}
@@ -2114,7 +2709,10 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	for name, identity := range identities {
 		orderIDs[name] = createOrder(identity, nil).ID
 	}
-	giftOrder := createOrder(identities["base"], utils.Ref(identities["other_user"]))
+	giftOrder := createOrder(
+		identities["base"],
+		utils.Ref(identities["other_user"]),
+	)
 
 	assertOrderIDs := func(label string, orders []admin.OrderModel, want ...uint64) {
 		t.Helper()
@@ -2123,7 +2721,13 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			got[uint64(order.ID)] = struct{}{}
 		}
 		if len(got) != len(want) {
-			t.Fatalf("%s order count = %d, want %d: %#v", label, len(got), len(want), orders)
+			t.Fatalf(
+				"%s order count = %d, want %d: %#v",
+				label,
+				len(got),
+				len(want),
+				orders,
+			)
 		}
 		for _, id := range want {
 			if _, ok := got[id]; !ok {
@@ -2137,7 +2741,8 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		for _, payment := range report.Payments {
 			got[payment.ID] = struct{}{}
 		}
-		if len(got) != len(want) || report.Stats.TotalOrders != uint64(len(want)) {
+		if len(got) != len(want) ||
+			report.Stats.TotalOrders != uint64(len(want)) {
 			t.Fatalf(
 				"%s payment count=%d stats=%d, want %d: %#v",
 				label,
@@ -2149,7 +2754,12 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		}
 		for _, id := range want {
 			if _, ok := got[id]; !ok {
-				t.Fatalf("%s does not contain payment %d: %#v", label, id, report.Payments)
+				t.Fatalf(
+					"%s does not contain payment %d: %#v",
+					label,
+					id,
+					report.Payments,
+				)
 			}
 		}
 	}
@@ -2190,24 +2800,33 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	for _, expectation := range expectations {
 		identity := identities[expectation.name]
 		t.Run("orders_"+expectation.name, func(t *testing.T) {
-			userOrders, err := env.api.Admin.ListUserOrders(env.ctx, admin.UserOrderListParams{
-				Identity: identity,
-			})
+			userOrders, err := env.api.Admin.ListUserOrders(
+				env.ctx,
+				admin.UserOrderListParams{
+					Identity: identity,
+				},
+			)
 			if err != nil {
 				t.Fatalf("list user orders: %v", err)
 			}
 			assertOrderIDs("user orders", userOrders, expectation.recipient...)
 
-			filteredOrders, err := env.api.Admin.ListOrders(env.ctx, admin.OrderListParams{
-				WorkspaceID:    identity.WorkspaceID,
-				AppID:          identity.AppID,
-				PlatformID:     identity.PlatformID,
-				PlatformUserID: identity.PlatformUserID,
-			})
+			filteredOrders, err := env.api.Admin.ListOrders(
+				env.ctx,
+				admin.OrderListParams{
+					WorkspaceID:    identity.WorkspaceID,
+					AppID:          identity.AppID,
+					PlatformID:     identity.PlatformID,
+					PlatformUserID: identity.PlatformUserID,
+				},
+			)
 			if err != nil {
 				t.Fatalf("list filtered orders: %v", err)
 			}
-			assertOrderIDs("filtered orders", filteredOrders, expectation.recipient...)
+			assertOrderIDs(
+				"filtered orders",
+				filteredOrders,
+				expectation.recipient...)
 		})
 
 		for _, role := range []struct {
@@ -2220,48 +2839,65 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			{name: "either", role: admin.PaymentIdentityRoleEither, want: expectation.either},
 		} {
 			t.Run("report_"+expectation.name+"_"+role.name, func(t *testing.T) {
-				report, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
-					WorkspaceID:  identity.WorkspaceID,
-					Identity:     &identity,
-					IdentityRole: role.role,
-				})
+				report, err := env.api.Admin.GetPaymentReport(
+					env.ctx,
+					admin.PaymentReportParams{
+						WorkspaceID:  identity.WorkspaceID,
+						Identity:     &identity,
+						IdentityRole: role.role,
+					},
+				)
 				if err != nil {
 					t.Fatalf("get identity payment report: %v", err)
 				}
-				assertPaymentIDs("identity payment report", report, role.want...)
+				assertPaymentIDs(
+					"identity payment report",
+					report,
+					role.want...)
 			})
 		}
 
 		t.Run("raw_report_filter_"+expectation.name, func(t *testing.T) {
-			report, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
-				WorkspaceID:    identity.WorkspaceID,
-				AppID:          identity.AppID,
-				PlatformID:     identity.PlatformID,
-				PlatformUserID: identity.PlatformUserID,
-			})
+			report, err := env.api.Admin.GetPaymentReport(
+				env.ctx,
+				admin.PaymentReportParams{
+					WorkspaceID:    identity.WorkspaceID,
+					AppID:          identity.AppID,
+					PlatformID:     identity.PlatformID,
+					PlatformUserID: identity.PlatformUserID,
+				},
+			)
 			if err != nil {
 				t.Fatalf("get raw identity payment report: %v", err)
 			}
-			assertPaymentIDs("raw identity payment report", report, expectation.recipient...)
+			assertPaymentIDs(
+				"raw identity payment report",
+				report,
+				expectation.recipient...)
 		})
 	}
 
-	baseReport, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
-		WorkspaceID:  testWorkspaceID,
-		Identity:     utils.Ref(identities["base"]),
-		IdentityRole: admin.PaymentIdentityRoleEither,
-	})
+	baseReport, err := env.api.Admin.GetPaymentReport(
+		env.ctx,
+		admin.PaymentReportParams{
+			WorkspaceID:  testWorkspaceID,
+			Identity:     utils.Ref(identities["base"]),
+			IdentityRole: admin.PaymentIdentityRoleEither,
+		},
+	)
 	if err != nil {
 		t.Fatalf("get base identity report: %v", err)
 	}
 	for _, payment := range baseReport.Payments {
 		switch payment.ID {
 		case orderIDs["base"]:
-			if payment.Initiator != identities["base"] || payment.Recipient != identities["base"] {
+			if payment.Initiator != identities["base"] ||
+				payment.Recipient != identities["base"] {
 				t.Fatalf("self-payment identity mismatch: %#v", payment)
 			}
 		case giftOrder.ID:
-			if payment.Initiator != identities["other_user"] || payment.Recipient != identities["base"] {
+			if payment.Initiator != identities["other_user"] ||
+				payment.Recipient != identities["base"] {
 				t.Fatalf("gift identity mismatch: %#v", payment)
 			}
 		default:
@@ -2269,7 +2905,9 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		}
 	}
 
-	otherWorkspaceID := testsupport.WorkspaceID("payment-identity-collision-other")
+	otherWorkspaceID := testsupport.WorkspaceID(
+		"payment-identity-collision-other",
+	)
 	createPaymentProduct(t, env, testProductOptions{
 		WorkspaceID:     otherWorkspaceID,
 		ProductID:       productID,
@@ -2282,29 +2920,47 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		identities["base"].PlatformID,
 		identities["base"].PlatformUserID,
 	)
-	otherWorkspaceOrder, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  otherWorkspaceIdentity,
-		ProductID: productID,
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	otherWorkspaceOrder, err := env.api.User.CreateOrder(
+		env.ctx,
+		checkout.CreateOrderParams{
+			Identity:  otherWorkspaceIdentity,
+			ProductID: productID,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create same identity tuple in another workspace: %v", err)
 	}
-	otherWorkspaceOrders, err := env.api.Admin.ListUserOrders(env.ctx, admin.UserOrderListParams{
-		Identity: otherWorkspaceIdentity,
-	})
+	otherWorkspaceOrders, err := env.api.Admin.ListUserOrders(
+		env.ctx,
+		admin.UserOrderListParams{
+			Identity: otherWorkspaceIdentity,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list another workspace identity orders: %v", err)
 	}
-	assertOrderIDs("another workspace orders", otherWorkspaceOrders, otherWorkspaceOrder.ID)
-	baseOrders, err := env.api.Admin.ListUserOrders(env.ctx, admin.UserOrderListParams{
-		Identity: identities["base"],
-	})
+	assertOrderIDs(
+		"another workspace orders",
+		otherWorkspaceOrders,
+		otherWorkspaceOrder.ID,
+	)
+	baseOrders, err := env.api.Admin.ListUserOrders(
+		env.ctx,
+		admin.UserOrderListParams{
+			Identity: identities["base"],
+		},
+	)
 	if err != nil {
 		t.Fatalf("list base orders after another workspace order: %v", err)
 	}
-	assertOrderIDs("base workspace orders", baseOrders, orderIDs["base"], giftOrder.ID)
+	assertOrderIDs(
+		"base workspace orders",
+		baseOrders,
+		orderIDs["base"],
+		giftOrder.ID,
+	)
 
 	for _, invalidFilter := range []struct {
 		name string
@@ -2358,33 +3014,49 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			},
 		},
 	} {
-		t.Run("reject_partial_identity_"+invalidFilter.name, func(t *testing.T) {
-			if err := invalidFilter.run(); !errors.Is(err, repository.ErrPaymentReportInvalid) {
-				t.Fatalf("partial identity filter error = %v, want %v", err, repository.ErrPaymentReportInvalid)
-			}
-		})
+		t.Run(
+			"reject_partial_identity_"+invalidFilter.name,
+			func(t *testing.T) {
+				if err := invalidFilter.run(); !errors.Is(
+					err,
+					repository.ErrPaymentReportInvalid,
+				) {
+					t.Fatalf(
+						"partial identity filter error = %v, want %v",
+						err,
+						repository.ErrPaymentReportInvalid,
+					)
+				}
+			},
+		)
 	}
 
 	for name, identity := range identities {
-		if _, err := env.api.Admin.CreateProductKey(env.ctx, admin.CreateProductKeyParams{
-			WorkspaceID:    identity.WorkspaceID,
-			AppID:          identity.AppID,
-			PlatformID:     identity.PlatformID,
-			PlatformUserID: identity.PlatformUserID,
-			ProductID:      productID,
-			MaxUses:        1,
-		}); err != nil {
+		if _, err := env.api.Admin.CreateProductKey(
+			env.ctx,
+			admin.CreateProductKeyParams{
+				WorkspaceID:    identity.WorkspaceID,
+				AppID:          identity.AppID,
+				PlatformID:     identity.PlatformID,
+				PlatformUserID: identity.PlatformUserID,
+				ProductID:      productID,
+				MaxUses:        1,
+			},
+		); err != nil {
 			t.Fatalf("create %s purchase key: %v", name, err)
 		}
 	}
 	for name, identity := range identities {
-		keys, err := env.api.Admin.ListPurchaseKeys(env.ctx, admin.PurchaseKeyListParams{
-			WorkspaceID:    identity.WorkspaceID,
-			AppID:          identity.AppID,
-			PlatformID:     identity.PlatformID,
-			PlatformUserID: identity.PlatformUserID,
-			ProductID:      productID,
-		})
+		keys, err := env.api.Admin.ListPurchaseKeys(
+			env.ctx,
+			admin.PurchaseKeyListParams{
+				WorkspaceID:    identity.WorkspaceID,
+				AppID:          identity.AppID,
+				PlatformID:     identity.PlatformID,
+				PlatformUserID: identity.PlatformUserID,
+				ProductID:      productID,
+			},
+		)
 		if err != nil {
 			t.Fatalf("list %s purchase keys: %v", name, err)
 		}
@@ -2403,28 +3075,36 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		"other_user":     "expired",
 	}
 	for name, identity := range identities {
-		if _, err := env.api.Admin.UpsertSubscription(env.ctx, admin.SubscriptionUpsertParams{
-			WorkspaceID:            identity.WorkspaceID,
-			ProviderCode:           "yookassa",
-			ProviderSubscriptionID: uniquePaymentID("identity-subscription-" + name),
-			AppID:                  identity.AppID,
-			PlatformID:             identity.PlatformID,
-			PlatformUserID:         identity.PlatformUserID,
-			ProductID:              productID,
-			Status:                 subscriptionStatuses[name],
-			StartedAt:              time.Now().UTC(),
-		}); err != nil {
+		if _, err := env.api.Admin.UpsertSubscription(
+			env.ctx,
+			admin.SubscriptionUpsertParams{
+				WorkspaceID:  identity.WorkspaceID,
+				ProviderCode: "yookassa",
+				ProviderSubscriptionID: uniquePaymentID(
+					"identity-subscription-" + name,
+				),
+				AppID:          identity.AppID,
+				PlatformID:     identity.PlatformID,
+				PlatformUserID: identity.PlatformUserID,
+				ProductID:      productID,
+				Status:         subscriptionStatuses[name],
+				StartedAt:      time.Now().UTC(),
+			},
+		); err != nil {
 			t.Fatalf("upsert %s subscription: %v", name, err)
 		}
 	}
 	for name, identity := range identities {
-		subscriptions, err := env.api.Admin.ListSubscriptions(env.ctx, admin.SubscriptionListParams{
-			WorkspaceID:    identity.WorkspaceID,
-			AppID:          identity.AppID,
-			PlatformID:     identity.PlatformID,
-			PlatformUserID: identity.PlatformUserID,
-			ProductID:      productID,
-		})
+		subscriptions, err := env.api.Admin.ListSubscriptions(
+			env.ctx,
+			admin.SubscriptionListParams{
+				WorkspaceID:    identity.WorkspaceID,
+				AppID:          identity.AppID,
+				PlatformID:     identity.PlatformID,
+				PlatformUserID: identity.PlatformUserID,
+				ProductID:      productID,
+			},
+		)
 		if err != nil {
 			t.Fatalf("list %s subscriptions: %v", name, err)
 		}
@@ -2436,16 +3116,24 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			t.Fatalf("%s subscriptions collided: %#v", name, subscriptions)
 		}
 
-		active, err := env.api.User.IsSubscriptionActive(env.ctx, subscription.IsActiveParams{
-			Identity:     identity,
-			ProductID:    productID,
-			ProviderCode: "yookassa",
-		})
+		active, err := env.api.User.IsSubscriptionActive(
+			env.ctx,
+			subscription.IsActiveParams{
+				Identity:     identity,
+				ProductID:    productID,
+				ProviderCode: "yookassa",
+			},
+		)
 		if err != nil {
 			t.Fatalf("check %s subscription: %v", name, err)
 		}
 		if active != (name == "base") {
-			t.Fatalf("%s subscription active=%t, want %t", name, active, name == "base")
+			t.Fatalf(
+				"%s subscription active=%t, want %t",
+				name,
+				active,
+				name == "base",
+			)
 		}
 	}
 
@@ -2457,33 +3145,42 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		UserInterval:      "ONCE",
 		UserIntervalCount: 1,
 	})
-	limitedOrder, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  identities["base"],
-		ProductID: limitedProductID,
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	limitedOrder, err := env.api.User.CreateOrder(
+		env.ctx,
+		checkout.CreateOrderParams{
+			Identity:  identities["base"],
+			ProductID: limitedProductID,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create base limited order: %v", err)
 	}
 	providerPaymentID := uniquePaymentID("identity-limit-base")
-	limitedAttempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          identities["base"],
-		OrderID:           limitedOrder.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-	})
+	limitedAttempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          identities["base"],
+			OrderID:           limitedOrder.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create base limited attempt: %v", err)
 	}
-	if _, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testWorkspaceID,
-		AttemptID:         limitedAttempt.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-		AmountMinor:       limitedAttempt.AmountMinor,
-		AssetCode:         "RUB",
-	}); err != nil {
+	if _, err := env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID:       testWorkspaceID,
+			AttemptID:         limitedAttempt.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+			AmountMinor:       limitedAttempt.AmountMinor,
+			AssetCode:         "RUB",
+		},
+	); err != nil {
 		t.Fatalf("complete base limited attempt: %v", err)
 	}
 
@@ -2516,12 +3213,15 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	}
 	for _, name := range []string{"other_app", "other_platform", "other_user"} {
 		identity := identities[name]
-		if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-			Identity:  identity,
-			ProductID: limitedProductID,
-			AssetCode: "RUB",
-			Locale:    "ru",
-		}); err != nil {
+		if _, err := env.api.User.CreateOrder(
+			env.ctx,
+			checkout.CreateOrderParams{
+				Identity:  identity,
+				ProductID: limitedProductID,
+				AssetCode: "RUB",
+				Locale:    "ru",
+			},
+		); err != nil {
 			t.Fatalf("%s identity collided with user limit: %v", name, err)
 		}
 	}
@@ -2545,11 +3245,20 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			counters[0].PlatformUserID != identity.PlatformUserID {
 			t.Fatalf("%s limit counters collided: %#v", name, counters)
 		}
-		if name == "base" && (counters[0].PaidCount != 1 || counters[0].ReservedCount != 0) {
-			t.Fatalf("base limit counter = %#v, want paid=1 reserved=0", counters[0])
+		if name == "base" &&
+			(counters[0].PaidCount != 1 || counters[0].ReservedCount != 0) {
+			t.Fatalf(
+				"base limit counter = %#v, want paid=1 reserved=0",
+				counters[0],
+			)
 		}
-		if name != "base" && (counters[0].PaidCount != 0 || counters[0].ReservedCount != 1) {
-			t.Fatalf("%s limit counter = %#v, want paid=0 reserved=1", name, counters[0])
+		if name != "base" &&
+			(counters[0].PaidCount != 0 || counters[0].ReservedCount != 1) {
+			t.Fatalf(
+				"%s limit counter = %#v, want paid=0 reserved=1",
+				name,
+				counters[0],
+			)
 		}
 	}
 }
@@ -2559,14 +3268,19 @@ func TestPaymentAdminCallbackControls(t *testing.T) {
 	createEvent := func(suffix string) uint64 {
 		t.Helper()
 
-		id, err := env.api.callbacks.CreateEvent(env.ctx, callbackutil.CreateParams{
-			WorkspaceID:    testWorkspaceID,
-			SourceService:  "payment",
-			EventType:      "payment.test",
-			EventKey:       uniquePaymentID("callback-" + suffix),
-			IdempotencyKey: uniquePaymentID("callback-idempotency-" + suffix),
-			Payload:        []byte(`{"ok":true}`),
-		})
+		id, err := env.api.callbacks.CreateEvent(
+			env.ctx,
+			callbackutil.CreateParams{
+				WorkspaceID:   testWorkspaceID,
+				SourceService: "payment",
+				EventType:     "payment.test",
+				EventKey:      uniquePaymentID("callback-" + suffix),
+				IdempotencyKey: uniquePaymentID(
+					"callback-idempotency-" + suffix,
+				),
+				Payload: []byte(`{"ok":true}`),
+			},
+		)
 		if err != nil {
 			t.Fatalf("create callback event %s: %v", suffix, err)
 		}
@@ -2579,31 +3293,54 @@ func TestPaymentAdminCallbackControls(t *testing.T) {
 	rejectID := createEvent("reject")
 	expiredID := createEvent("expired")
 
-	events, err := env.api.Admin.ListCallbackEvents(env.ctx, admin.CallbackEventListParams{
-		WorkspaceID:   testWorkspaceID,
-		SourceService: "payment",
-		EventType:     "payment.test",
-	})
+	events, err := env.api.Admin.ListCallbackEvents(
+		env.ctx,
+		admin.CallbackEventListParams{
+			WorkspaceID:   testWorkspaceID,
+			SourceService: "payment",
+			EventType:     "payment.test",
+		},
+	)
 	if err != nil {
 		t.Fatalf("list callback events: %v", err)
 	}
 	if len(events) != 4 {
 		t.Fatalf("callback event count = %d, want 4", len(events))
 	}
-	event, err := env.api.Admin.GetCallbackEvent(env.ctx, testWorkspaceID, retryID)
+	event, err := env.api.Admin.GetCallbackEvent(
+		env.ctx,
+		testWorkspaceID,
+		retryID,
+	)
 	if err != nil {
 		t.Fatalf("get callback event: %v", err)
 	}
 	if event.ID != retryID {
 		t.Fatalf("callback event id = %d, want %d", event.ID, retryID)
 	}
-	if rows, err := env.api.Admin.RetryCallbackEventNow(env.ctx, testWorkspaceID, retryID); err != nil || rows != 1 {
+	if rows, err := env.api.Admin.RetryCallbackEventNow(
+		env.ctx,
+		testWorkspaceID,
+		retryID,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("retry callback rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.Admin.MarkCallbackEventOK(env.ctx, testWorkspaceID, okID); err != nil || rows != 1 {
+	if rows, err := env.api.Admin.MarkCallbackEventOK(
+		env.ctx,
+		testWorkspaceID,
+		okID,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("mark callback ok rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.Admin.MarkCallbackEventReject(env.ctx, testWorkspaceID, rejectID, "test rejection"); err != nil || rows != 1 {
+	if rows, err := env.api.Admin.MarkCallbackEventReject(
+		env.ctx,
+		testWorkspaceID,
+		rejectID,
+		"test rejection",
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("mark callback reject rows=%d err=%v", rows, err)
 	}
 
@@ -2616,7 +3353,11 @@ func TestPaymentAdminCallbackControls(t *testing.T) {
 	`, expiredID); err != nil {
 		t.Fatalf("prepare expired callback lease: %v", err)
 	}
-	if rows, err := env.api.Admin.ResetExpiredCallbackProcessing(env.ctx, testWorkspaceID); err != nil || rows != 1 {
+	if rows, err := env.api.Admin.ResetExpiredCallbackProcessing(
+		env.ctx,
+		testWorkspaceID,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("reset expired callback rows=%d err=%v", rows, err)
 	}
 	if _, err := env.api.Admin.GetCallbackEvent(
@@ -2633,29 +3374,41 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 	sourceKey := uniquePaymentID("provider-source")
 	externalTransactionID := uniquePaymentID("provider-transaction")
 
-	rows, err := env.api.Admin.UpsertProviderCursor(env.ctx, admin.ProviderCursorUpsertParams{
-		WorkspaceID:    testWorkspaceID,
-		ProviderCode:   "ton",
-		Network:        "mainnet",
-		SourceKey:      sourceKey,
-		CursorValue:    "100",
-		CursorSequence: 100,
-	})
+	rows, err := env.api.Admin.UpsertProviderCursor(
+		env.ctx,
+		admin.ProviderCursorUpsertParams{
+			WorkspaceID:    testWorkspaceID,
+			ProviderCode:   "ton",
+			Network:        "mainnet",
+			SourceKey:      sourceKey,
+			CursorValue:    "100",
+			CursorSequence: 100,
+		},
+	)
 	if err != nil || rows != 1 {
 		t.Fatalf("upsert provider cursor rows=%d err=%v", rows, err)
 	}
-	cursor, err := env.api.Admin.GetProviderCursor(env.ctx, testWorkspaceID, "ton", "mainnet", sourceKey)
+	cursor, err := env.api.Admin.GetProviderCursor(
+		env.ctx,
+		testWorkspaceID,
+		"ton",
+		"mainnet",
+		sourceKey,
+	)
 	if err != nil {
 		t.Fatalf("get provider cursor: %v", err)
 	}
 	if cursor.CursorSequence != 100 {
 		t.Fatalf("cursor sequence = %d, want 100", cursor.CursorSequence)
 	}
-	cursors, err := env.api.Admin.ListProviderCursors(env.ctx, admin.ProviderCursorListParams{
-		WorkspaceID:  testWorkspaceID,
-		ProviderCode: "ton",
-		Network:      "mainnet",
-	})
+	cursors, err := env.api.Admin.ListProviderCursors(
+		env.ctx,
+		admin.ProviderCursorListParams{
+			WorkspaceID:  testWorkspaceID,
+			ProviderCode: "ton",
+			Network:      "mainnet",
+		},
+	)
 	if err != nil {
 		t.Fatalf("list provider cursors: %v", err)
 	}
@@ -2665,42 +3418,55 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 
 	repo := repository.NewPaymentRepository(env.client)
 	t.Cleanup(func() { _ = repo.Close() })
-	transactionID, err := repo.CreateProviderTransaction(env.ctx, paymentsqlc.CreateProviderTransactionParams{
-		WorkspaceID:           testWorkspaceID,
-		ProviderCode:          "ton",
-		Network:               "mainnet",
-		SourceKey:             sourceKey,
-		AssetCode:             "TON",
-		ExternalTransactionID: externalTransactionID,
-		SequenceNumber:        101,
-		SourceAddress:         "source-wallet",
-		DestinationAddress:    "destination-wallet",
-		AmountMinor:           1000,
-		PaymentReference:      "payment-reference",
-		Status:                paymentsqlc.PaymentProviderTransactionStatusNew,
-		OccurredAt:            time.Now().UTC(),
-	})
+	transactionID, err := repo.CreateProviderTransaction(
+		env.ctx,
+		paymentsqlc.CreateProviderTransactionParams{
+			WorkspaceID:           testWorkspaceID,
+			ProviderCode:          "ton",
+			Network:               "mainnet",
+			SourceKey:             sourceKey,
+			AssetCode:             "TON",
+			ExternalTransactionID: externalTransactionID,
+			SequenceNumber:        101,
+			SourceAddress:         "source-wallet",
+			DestinationAddress:    "destination-wallet",
+			AmountMinor:           1000,
+			PaymentReference:      "payment-reference",
+			Status:                paymentsqlc.PaymentProviderTransactionStatusNew,
+			OccurredAt:            time.Now().UTC(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("create provider transaction: %v", err)
 	}
-	transactions, err := env.api.Admin.ListProviderTransactions(env.ctx, admin.ProviderTransactionListParams{
-		WorkspaceID:  testWorkspaceID,
-		ProviderCode: "ton",
-		Network:      "mainnet",
-		SourceKey:    sourceKey,
-	})
+	transactions, err := env.api.Admin.ListProviderTransactions(
+		env.ctx,
+		admin.ProviderTransactionListParams{
+			WorkspaceID:  testWorkspaceID,
+			ProviderCode: "ton",
+			Network:      "mainnet",
+			SourceKey:    sourceKey,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list provider transactions: %v", err)
 	}
 	if len(transactions) != 1 {
 		t.Fatalf("provider transaction count = %d, want 1", len(transactions))
 	}
-	transaction, err := env.api.Admin.GetProviderTransaction(env.ctx, testWorkspaceID, transactionID)
+	transaction, err := env.api.Admin.GetProviderTransaction(
+		env.ctx,
+		testWorkspaceID,
+		transactionID,
+	)
 	if err != nil {
 		t.Fatalf("get provider transaction: %v", err)
 	}
 	if transaction.ExternalTransactionID != externalTransactionID {
-		t.Fatalf("external transaction id = %q", transaction.ExternalTransactionID)
+		t.Fatalf(
+			"external transaction id = %q",
+			transaction.ExternalTransactionID,
+		)
 	}
 	transactionByExternalID, err := env.api.Admin.GetProviderTransactionByExternalID(
 		env.ctx,
@@ -2714,7 +3480,11 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 		t.Fatalf("get provider transaction by external id: %v", err)
 	}
 	if transactionByExternalID.ID != transaction.ID {
-		t.Fatalf("provider transaction by external id = %d, want %d", transactionByExternalID.ID, transaction.ID)
+		t.Fatalf(
+			"provider transaction by external id = %d, want %d",
+			transactionByExternalID.ID,
+			transaction.ID,
+		)
 	}
 	rows, err = env.api.Admin.UpdateProviderTransactionStatus(
 		env.ctx,
@@ -2751,7 +3521,12 @@ func TestPaymentAdminProductLimitCounterSurface(t *testing.T) {
 		UserInterval:      "DAY",
 		UserIntervalCount: 1,
 	})
-	identity := paymentTestIdentity(testWorkspaceID, 7401, 1, "limit-counter-user")
+	identity := paymentTestIdentity(
+		testWorkspaceID,
+		7401,
+		1,
+		"limit-counter-user",
+	)
 
 	if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
 		Identity:  identity,
@@ -2762,13 +3537,16 @@ func TestPaymentAdminProductLimitCounterSurface(t *testing.T) {
 		t.Fatalf("create limited order: %v", err)
 	}
 
-	counters, err := env.api.Admin.ListProductLimitCounters(env.ctx, admin.ProductLimitCounterListParams{
-		WorkspaceID:    testWorkspaceID,
-		AppID:          identity.AppID,
-		ProductID:      productID,
-		PlatformID:     identity.PlatformID,
-		PlatformUserID: identity.PlatformUserID,
-	})
+	counters, err := env.api.Admin.ListProductLimitCounters(
+		env.ctx,
+		admin.ProductLimitCounterListParams{
+			WorkspaceID:    testWorkspaceID,
+			AppID:          identity.AppID,
+			ProductID:      productID,
+			PlatformID:     identity.PlatformID,
+			PlatformUserID: identity.PlatformUserID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list product limit counters: %v", err)
 	}
@@ -2779,23 +3557,29 @@ func TestPaymentAdminProductLimitCounterSurface(t *testing.T) {
 		t.Fatalf("unexpected product limit counter: %#v", counters[0])
 	}
 
-	rows, err := env.api.Admin.DeleteProductLimitCounter(env.ctx, admin.ProductLimitCounterDeleteParams{
-		WorkspaceID:    counters[0].WorkspaceID,
-		AppID:          counters[0].AppID,
-		PlatformID:     counters[0].PlatformID,
-		ProductID:      counters[0].ProductID,
-		CounterScope:   counters[0].CounterScope,
-		PlatformUserID: counters[0].PlatformUserID,
-		WindowStart:    counters[0].WindowStart,
-		WindowEnd:      counters[0].WindowEnd,
-	})
+	rows, err := env.api.Admin.DeleteProductLimitCounter(
+		env.ctx,
+		admin.ProductLimitCounterDeleteParams{
+			WorkspaceID:    counters[0].WorkspaceID,
+			AppID:          counters[0].AppID,
+			PlatformID:     counters[0].PlatformID,
+			ProductID:      counters[0].ProductID,
+			CounterScope:   counters[0].CounterScope,
+			PlatformUserID: counters[0].PlatformUserID,
+			WindowStart:    counters[0].WindowStart,
+			WindowEnd:      counters[0].WindowEnd,
+		},
+	)
 	if err != nil || rows != 1 {
 		t.Fatalf("delete product limit counter rows=%d err=%v", rows, err)
 	}
-	counters, err = env.api.Admin.ListProductLimitCounters(env.ctx, admin.ProductLimitCounterListParams{
-		WorkspaceID: testWorkspaceID,
-		ProductID:   productID,
-	})
+	counters, err = env.api.Admin.ListProductLimitCounters(
+		env.ctx,
+		admin.ProductLimitCounterListParams{
+			WorkspaceID: testWorkspaceID,
+			ProductID:   productID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list product limit counters after delete: %v", err)
 	}
@@ -2809,16 +3593,19 @@ func TestPaymentOperationalAndLegacyCatalogServices(t *testing.T) {
 	providerCode := uniquePaymentID("lp")
 	assetCode := strings.ToUpper(uniquePaymentID("la"))
 
-	if err := env.api.Operational.UpsertProvider(env.ctx, operational.ProviderUpsertParams{
-		Code:             providerCode,
-		Title:            "Legacy provider",
-		ProviderKind:     "fiat_gateway",
-		SupportsCreate:   true,
-		SupportsRedirect: true,
-		SupportsWebhook:  true,
-		SupportsRefund:   true,
-		IsActive:         true,
-	}); err != nil {
+	if err := env.api.Operational.UpsertProvider(
+		env.ctx,
+		operational.ProviderUpsertParams{
+			Code:             providerCode,
+			Title:            "Legacy provider",
+			ProviderKind:     "fiat_gateway",
+			SupportsCreate:   true,
+			SupportsRedirect: true,
+			SupportsWebhook:  true,
+			SupportsRefund:   true,
+			IsActive:         true,
+		},
+	); err != nil {
 		t.Fatalf("operational upsert provider: %v", err)
 	}
 	provider, err := env.api.Admin.GetProvider(env.ctx, providerCode)
@@ -2838,37 +3625,61 @@ func TestPaymentOperationalAndLegacyCatalogServices(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("legacy asset upsert: %v", err)
 	}
-	if err := env.api.asset.UpsertProvider(env.ctx, paymentasset.ProviderUpsertParams{
-		ProviderCode: providerCode,
-		AssetCode:    assetCode,
-		IsActive:     true,
-	}); err != nil {
+	if err := env.api.asset.UpsertProvider(
+		env.ctx,
+		paymentasset.ProviderUpsertParams{
+			ProviderCode: providerCode,
+			AssetCode:    assetCode,
+			IsActive:     true,
+		},
+	); err != nil {
 		t.Fatalf("legacy provider asset upsert: %v", err)
 	}
-	providerAsset, err := env.api.asset.GetProvider(env.ctx, providerCode, assetCode)
+	providerAsset, err := env.api.asset.GetProvider(
+		env.ctx,
+		providerCode,
+		assetCode,
+	)
 	if err != nil {
 		t.Fatalf("legacy get provider asset: %v", err)
 	}
-	if providerAsset.ProviderCode != providerCode || providerAsset.AssetCode != assetCode {
+	if providerAsset.ProviderCode != providerCode ||
+		providerAsset.AssetCode != assetCode {
 		t.Fatalf("unexpected legacy provider asset: %#v", providerAsset)
 	}
-	if rows, err := env.api.asset.DeleteProvider(env.ctx, providerCode, assetCode); err != nil || rows != 1 {
+	if rows, err := env.api.asset.DeleteProvider(
+		env.ctx,
+		providerCode,
+		assetCode,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("legacy delete provider asset rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.asset.Delete(env.ctx, assetCode); err != nil || rows != 1 {
+	if rows, err := env.api.asset.Delete(
+		env.ctx,
+		assetCode,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("legacy delete asset rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.Operational.DeleteProvider(env.ctx, providerCode); err != nil || rows != 1 {
+	if rows, err := env.api.Operational.DeleteProvider(
+		env.ctx,
+		providerCode,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("operational delete provider rows=%d err=%v", rows, err)
 	}
 
-	if _, err := env.api.Operational.UpdateAssetRate(env.ctx, operational.UpdateAssetRateParams{
-		AssetCode:              "TON",
-		ReferenceAssetCode:     repository.USDTAssetCode,
-		ReferencePerAssetMinor: 5_000_000,
-		Source:                 "test",
-		ObservedAt:             time.Now().UTC(),
-	}); err != nil {
+	if _, err := env.api.Operational.UpdateAssetRate(
+		env.ctx,
+		operational.UpdateAssetRateParams{
+			AssetCode:              "TON",
+			ReferenceAssetCode:     repository.USDTAssetCode,
+			ReferencePerAssetMinor: 5_000_000,
+			Source:                 "test",
+			ObservedAt:             time.Now().UTC(),
+		},
+	); err != nil {
 		t.Fatalf("update USDT rate: %v", err)
 	}
 	assetRates, err := env.api.asset.ListUSDTPrices(env.ctx)
@@ -2878,7 +3689,10 @@ func TestPaymentOperationalAndLegacyCatalogServices(t *testing.T) {
 	if len(assetRates) != 1 || assetRates[0].AssetCode != "TON" {
 		t.Fatalf("unexpected legacy USDT prices: %#v", assetRates)
 	}
-	userRates, err := env.api.User.ListUSDTPrices(env.ctx, user.ListUSDTPricesParams{})
+	userRates, err := env.api.User.ListUSDTPrices(
+		env.ctx,
+		user.ListUSDTPricesParams{},
+	)
 	if err != nil {
 		t.Fatalf("user list USDT prices: %v", err)
 	}
@@ -2919,12 +3733,15 @@ func TestPaymentLegacyProductDeleteSurface(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("legacy create product: %v", err)
 	}
-	if err := env.api.product.UpsertLocalization(env.ctx, product.UpsertLocalizationParams{
-		WorkspaceID:     testWorkspaceID,
-		Locale:          "ru",
-		LocalizationKey: localizationKey,
-		Value:           "Legacy product",
-	}); err != nil {
+	if err := env.api.product.UpsertLocalization(
+		env.ctx,
+		product.UpsertLocalizationParams{
+			WorkspaceID:     testWorkspaceID,
+			Locale:          "ru",
+			LocalizationKey: localizationKey,
+			Value:           "Legacy product",
+		},
+	); err != nil {
 		t.Fatalf("legacy upsert localization: %v", err)
 	}
 	if err := env.api.product.AddItem(env.ctx, product.AddItemParams{
@@ -2935,31 +3752,61 @@ func TestPaymentLegacyProductDeleteSurface(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("legacy add item: %v", err)
 	}
-	priceID, err := env.api.product.CreatePrice(env.ctx, product.CreatePriceParams{
-		WorkspaceID:     testWorkspaceID,
-		ProductID:       productID,
-		AssetCode:       "RUB",
-		ListAmountMinor: 100,
-		StartsAt:        &startsAt,
-		EndsAt:          &endsAt,
-	})
+	priceID, err := env.api.product.CreatePrice(
+		env.ctx,
+		product.CreatePriceParams{
+			WorkspaceID:     testWorkspaceID,
+			ProductID:       productID,
+			AssetCode:       "RUB",
+			ListAmountMinor: 100,
+			StartsAt:        &startsAt,
+			EndsAt:          &endsAt,
+		},
+	)
 	if err != nil {
 		t.Fatalf("legacy create price: %v", err)
 	}
 
-	if rows, err := env.api.product.DeletePrice(env.ctx, testWorkspaceID, priceID); err != nil || rows != 1 {
+	if rows, err := env.api.product.DeletePrice(
+		env.ctx,
+		testWorkspaceID,
+		priceID,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("legacy delete price rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.product.RemoveItem(env.ctx, testWorkspaceID, productID, itemID); err != nil || rows != 1 {
+	if rows, err := env.api.product.RemoveItem(
+		env.ctx,
+		testWorkspaceID,
+		productID,
+		itemID,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("legacy remove item rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.product.DeleteLocalization(env.ctx, testWorkspaceID, "ru", localizationKey); err != nil || rows != 1 {
+	if rows, err := env.api.product.DeleteLocalization(
+		env.ctx,
+		testWorkspaceID,
+		"ru",
+		localizationKey,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("legacy delete localization rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.product.Delete(env.ctx, testWorkspaceID, productID); err != nil || rows != 1 {
+	if rows, err := env.api.product.Delete(
+		env.ctx,
+		testWorkspaceID,
+		productID,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("legacy delete product rows=%d err=%v", rows, err)
 	}
-	if rows, err := env.api.product.DeleteGroup(env.ctx, testWorkspaceID, groupCode); err != nil || rows != 1 {
+	if rows, err := env.api.product.DeleteGroup(
+		env.ctx,
+		testWorkspaceID,
+		groupCode,
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("legacy delete group rows=%d err=%v", rows, err)
 	}
 }
@@ -2975,11 +3822,17 @@ type paymentTestStorage struct {
 	values map[string][]byte
 }
 
-func (s *paymentTestStorage) GetWithTTL(key string) ([]byte, time.Duration, error) {
+func (s *paymentTestStorage) GetWithTTL(
+	key string,
+) ([]byte, time.Duration, error) {
 	return s.values[key], time.Minute, nil
 }
 
-func (s *paymentTestStorage) Set(key string, value []byte, _ time.Duration) error {
+func (s *paymentTestStorage) Set(
+	key string,
+	value []byte,
+	_ time.Duration,
+) error {
 	s.values[key] = append([]byte(nil), value...)
 	return nil
 }
@@ -3034,7 +3887,11 @@ func TestPaymentOptionsDelegateCacheMutexAndCodec(t *testing.T) {
 		Mutex:        mutex,
 	})
 
-	if err := options.Cache.Set("key", []byte("value"), time.Minute); err != nil {
+	if err := options.Cache.Set(
+		"key",
+		[]byte("value"),
+		time.Minute,
+	); err != nil {
 		t.Fatalf("cache set: %v", err)
 	}
 	value, ttl, err := options.Cache.GetWithTTL("key")
@@ -3047,7 +3904,11 @@ func TestPaymentOptionsDelegateCacheMutexAndCodec(t *testing.T) {
 	if err := options.Cache.Delete("key"); err != nil {
 		t.Fatalf("cache delete: %v", err)
 	}
-	if err := options.Cache.Set("key", []byte("value"), time.Minute); err != nil {
+	if err := options.Cache.Set(
+		"key",
+		[]byte("value"),
+		time.Minute,
+	); err != nil {
 		t.Fatalf("cache set before reset: %v", err)
 	}
 	if err := options.Cache.Reset(); err != nil {
@@ -3085,7 +3946,10 @@ func TestPaymentOptionsDelegateCacheMutexAndCodec(t *testing.T) {
 
 func TestPaymentOptionAdaptersAreNilSafe(t *testing.T) {
 	storage := wrapStorage{}
-	if value, ttl, err := storage.GetWithTTL("key"); err != nil || value != nil || ttl != 0 {
+	if value, ttl, err := storage.GetWithTTL(
+		"key",
+	); err != nil || value != nil ||
+		ttl != 0 {
 		t.Fatalf("nil storage get value=%v ttl=%s err=%v", value, ttl, err)
 	}
 	if err := storage.Set("key", []byte("value"), time.Minute); err != nil {
@@ -3223,15 +4087,48 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	// Add product and item translations for the locales used by checkout.
 	// Verify product previews resolve localized titles and descriptions.
 	localizations := []product.UpsertLocalizationParams{
-		{WorkspaceID: testWorkspaceID, Locale: "ru", LocalizationKey: productTitleKey, Value: "Тестовый товар"},
-		{WorkspaceID: testWorkspaceID, Locale: "ru", LocalizationKey: productDescriptionKey, Value: "Описание тестового товара"},
-		{WorkspaceID: testWorkspaceID, Locale: "ru", LocalizationKey: itemTitleKey, Value: "Премиум"},
-		{WorkspaceID: testWorkspaceID, Locale: "ru", LocalizationKey: itemDescriptionKey, Value: "Премиум описание"},
-		{WorkspaceID: testWorkspaceID, Locale: "en", LocalizationKey: productTitleKey, Value: "Test product"},
+		{
+			WorkspaceID:     testWorkspaceID,
+			Locale:          "ru",
+			LocalizationKey: productTitleKey,
+			Value:           "Тестовый товар",
+		},
+		{
+			WorkspaceID:     testWorkspaceID,
+			Locale:          "ru",
+			LocalizationKey: productDescriptionKey,
+			Value:           "Описание тестового товара",
+		},
+		{
+			WorkspaceID:     testWorkspaceID,
+			Locale:          "ru",
+			LocalizationKey: itemTitleKey,
+			Value:           "Премиум",
+		},
+		{
+			WorkspaceID:     testWorkspaceID,
+			Locale:          "ru",
+			LocalizationKey: itemDescriptionKey,
+			Value:           "Премиум описание",
+		},
+		{
+			WorkspaceID:     testWorkspaceID,
+			Locale:          "en",
+			LocalizationKey: productTitleKey,
+			Value:           "Test product",
+		},
 	}
 	for _, localization := range localizations {
-		if err := env.api.Admin.SaveLocalization(env.ctx, localization); err != nil {
-			t.Fatalf("upsert localization %s/%s: %v", localization.Locale, localization.LocalizationKey, err)
+		if err := env.api.Admin.SaveLocalization(
+			env.ctx,
+			localization,
+		); err != nil {
+			t.Fatalf(
+				"upsert localization %s/%s: %v",
+				localization.Locale,
+				localization.LocalizationKey,
+				err,
+			)
 		}
 	}
 	// Item and price setup.
@@ -3255,15 +4152,18 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 		t.Fatalf("add item to product: %v", err)
 	}
 
-	priceID, err := env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
-		WorkspaceID:         testWorkspaceID,
-		ProductID:           productID,
-		AssetCode:           "RUB",
-		ListAmountMinor:     1000,
-		DiscountAmountMinor: 100,
-		StartsAt:            &priceStartsAt,
-		EndsAt:              &priceEndsAt,
-	})
+	priceID, err := env.api.Admin.CreateCatalogPrice(
+		env.ctx,
+		product.CreatePriceParams{
+			WorkspaceID:         testWorkspaceID,
+			ProductID:           productID,
+			AssetCode:           "RUB",
+			ListAmountMinor:     1000,
+			DiscountAmountMinor: 100,
+			StartsAt:            &priceStartsAt,
+			EndsAt:              &priceEndsAt,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create product price: %v", err)
 	}
@@ -3271,15 +4171,18 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 		t.Fatal("expected created price id")
 	}
 
-	updatedRows, err := env.api.Admin.UpdateCatalogPrice(env.ctx, product.UpdatePriceParams{
-		ID:                  priceID,
-		WorkspaceID:         testWorkspaceID,
-		AssetCode:           "RUB",
-		ListAmountMinor:     1100,
-		DiscountAmountMinor: 200,
-		StartsAt:            &priceStartsAt,
-		EndsAt:              &priceEndsAt,
-	})
+	updatedRows, err := env.api.Admin.UpdateCatalogPrice(
+		env.ctx,
+		product.UpdatePriceParams{
+			ID:                  priceID,
+			WorkspaceID:         testWorkspaceID,
+			AssetCode:           "RUB",
+			ListAmountMinor:     1100,
+			DiscountAmountMinor: 200,
+			StartsAt:            &priceStartsAt,
+			EndsAt:              &priceEndsAt,
+		},
+	)
 	if err != nil {
 		t.Fatalf("update product price: %v", err)
 	}
@@ -3290,7 +4193,12 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	// Create an order, payment attempt, provider event, and complete fulfillment.
 	// Verify a normal purchase becomes fulfilled and completion is idempotent.
 	item, err := env.api.User.GetProduct(env.ctx, product.GetParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 1001, 1, "buyer-regular"),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			1001,
+			1,
+			"buyer-regular",
+		),
 		ProductID: productID,
 		AssetCode: "RUB",
 		Locale:    "ru",
@@ -3306,7 +4214,12 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	}
 
 	products, err := env.api.User.ListProducts(env.ctx, user.ListProductsParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 1001, 1, "buyer-regular"),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			1001,
+			1,
+			"buyer-regular",
+		),
 		AssetCode: "RUB",
 		Locale:    "ru",
 	})
@@ -3323,30 +4236,47 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if listedProduct == nil {
 		t.Fatalf("created product %q is missing from user catalog", productID)
 	}
-	if listedProduct.Title != "Тестовый товар" || listedProduct.Price.PayableAmountMinor != 900 {
+	if listedProduct.Title != "Тестовый товар" ||
+		listedProduct.Price.PayableAmountMinor != 900 {
 		t.Fatalf("unexpected listed product: %#v", listedProduct)
 	}
 	if len(listedProduct.Items) != 1 || listedProduct.Items[0].Quantity != 2 {
 		t.Fatalf("unexpected listed product items: %#v", listedProduct.Items)
 	}
-	groupProducts, err := env.api.User.ListProducts(env.ctx, user.ListProductsParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 1001, 1, "buyer-regular"),
-		GroupCode: groupCode,
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	groupProducts, err := env.api.User.ListProducts(
+		env.ctx,
+		user.ListProductsParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				1001,
+				1,
+				"buyer-regular",
+			),
+			GroupCode: groupCode,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("list user products by group: %v", err)
 	}
 	if len(groupProducts) != 1 || groupProducts[0].ID != productID {
 		t.Fatalf("unexpected grouped products: %#v", groupProducts)
 	}
-	missingGroupProducts, err := env.api.User.ListProducts(env.ctx, user.ListProductsParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 1001, 1, "buyer-regular"),
-		GroupCode: "missing_group",
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	missingGroupProducts, err := env.api.User.ListProducts(
+		env.ctx,
+		user.ListProductsParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				1001,
+				1,
+				"buyer-regular",
+			),
+			GroupCode: "missing_group",
+			AssetCode: "RUB",
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("list user products by missing group: %v", err)
 	}
@@ -3356,7 +4286,12 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 
 	internalUserID := int64(501)
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:       paymentTestIdentity(testWorkspaceID, 1001, 1, "buyer-regular"),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			1001,
+			1,
+			"buyer-regular",
+		),
 		InternalUserID: &internalUserID,
 		ProductID:      productID,
 		AssetCode:      "RUB",
@@ -3370,88 +4305,138 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	}
 
 	providerPaymentID := uniquePaymentID("regular")
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(order),
-		OrderID:           order.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(order),
+			OrderID:           order.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create attempt: %v", err)
 	}
 	if attempt.AmountMinor != order.PayableAmountMinor {
-		t.Fatalf("attempt amount mismatch: got %d want %d", attempt.AmountMinor, order.PayableAmountMinor)
+		t.Fatalf(
+			"attempt amount mismatch: got %d want %d",
+			attempt.AmountMinor,
+			order.PayableAmountMinor,
+		)
 	}
 
 	eventID := fmt.Sprintf("evt_%s", providerPaymentID)
-	if _, err := env.api.Operational.CreateEvent(env.ctx, checkout.CreateEventParams{
-		WorkspaceID:       testWorkspaceID,
-		ProviderCode:      "yookassa",
-		AttemptID:         utils.Ref(int64(attempt.ID)),
-		OrderID:           utils.Ref(int64(order.ID)),
-		ProviderEventID:   &eventID,
-		ProviderPaymentID: &providerPaymentID,
-		EventType:         "succeeded",
-		EventStatus:       utils.Ref("succeeded"),
-		PayloadHash:       sha256Hex(providerPaymentID),
-		SignatureValid:    utils.Ref(true),
-	}); err != nil {
+	if _, err := env.api.Operational.CreateEvent(
+		env.ctx,
+		checkout.CreateEventParams{
+			WorkspaceID:       testWorkspaceID,
+			ProviderCode:      "yookassa",
+			AttemptID:         utils.Ref(int64(attempt.ID)),
+			OrderID:           utils.Ref(int64(order.ID)),
+			ProviderEventID:   &eventID,
+			ProviderPaymentID: &providerPaymentID,
+			EventType:         "succeeded",
+			EventStatus:       utils.Ref("succeeded"),
+			PayloadHash:       sha256Hex(providerPaymentID),
+			SignatureValid:    utils.Ref(true),
+		},
+	); err != nil {
 		t.Fatalf("create event: %v", err)
 	}
 
-	completed, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testWorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-		AmountMinor:       attempt.AmountMinor,
-		AssetCode:         "RUB",
-	})
+	completed, err := env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID:       testWorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+			AmountMinor:       attempt.AmountMinor,
+			AssetCode:         "RUB",
+		},
+	)
 	if err != nil {
 		t.Fatalf("complete attempt: %v", err)
 	}
 	if completed.FulfillmentID == nil {
 		t.Fatal("expected fulfillment id")
 	}
-	if rows, err := env.api.Admin.UpdateFulfillmentStatus(env.ctx, admin.FulfillmentStatusParams{
-		WorkspaceID: testWorkspaceID,
-		ID:          *completed.FulfillmentID,
-		Status:      "succeeded",
-	}); err != nil || rows != 1 {
+	if rows, err := env.api.Admin.UpdateFulfillmentStatus(
+		env.ctx,
+		admin.FulfillmentStatusParams{
+			WorkspaceID: testWorkspaceID,
+			ID:          *completed.FulfillmentID,
+			Status:      "succeeded",
+		},
+	); err != nil ||
+		rows != 1 {
 		t.Fatalf("update fulfillment status: rows=%d err=%v", rows, err)
 	}
 
 	assertOrderStatus(t, env.ctx, env.db, order.ID, "fulfilled")
 	assertAttemptStatus(t, env.ctx, env.db, attempt.ID, "succeeded")
 	assertFulfillmentItemCount(t, env.ctx, env.db, *completed.FulfillmentID, 2)
-	assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderFulfilled, order.ID, 1)
-	assertOnCallbackSuccessful(t, env, order, attempt, *completed.FulfillmentID, providerPaymentID, itemID)
+	assertCallbackEvent(
+		t,
+		env.ctx,
+		env.db,
+		CallbackEventPaymentOrderFulfilled,
+		order.ID,
+		1,
+	)
+	assertOnCallbackSuccessful(
+		t,
+		env,
+		order,
+		attempt,
+		*completed.FulfillmentID,
+		providerPaymentID,
+		itemID,
+	)
 	assertAdminPaymentReadMethods(t, env, productID, order.ID, attempt.ID)
 	assertPaymentPurchaseStats(t, env, productID, 1, 1, 1, 900)
 
-	again, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testWorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-		AmountMinor:       attempt.AmountMinor,
-		AssetCode:         "RUB",
-	})
+	again, err := env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID:       testWorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+			AmountMinor:       attempt.AmountMinor,
+			AssetCode:         "RUB",
+		},
+	)
 	if err != nil {
 		t.Fatalf("complete attempt again: %v", err)
 	}
 	if !again.AlreadyDone {
 		t.Fatal("expected second completion to be idempotent")
 	}
-	if again.FulfillmentID == nil || *again.FulfillmentID != *completed.FulfillmentID {
+	if again.FulfillmentID == nil ||
+		*again.FulfillmentID != *completed.FulfillmentID {
 		t.Fatalf(
 			"expected idempotent completion to return fulfillment %d, got %v",
 			*completed.FulfillmentID,
 			again.FulfillmentID,
 		)
 	}
-	assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderFulfilled, order.ID, 1)
-	assertCallbackStatus(t, env.ctx, env.db, CallbackEventPaymentOrderFulfilled, order.ID, "ok")
+	assertCallbackEvent(
+		t,
+		env.ctx,
+		env.db,
+		CallbackEventPaymentOrderFulfilled,
+		order.ID,
+		1,
+	)
+	assertCallbackStatus(
+		t,
+		env.ctx,
+		env.db,
+		CallbackEventPaymentOrderFulfilled,
+		order.ID,
+		"ok",
+	)
 	assertPaymentPurchaseStats(t, env, productID, 1, 1, 1, 900)
 	// Gift payment flow.
 	// Create a hidden recipient key and let another user pay for that product.
@@ -3470,11 +4455,14 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 		t.Fatalf("create purchase key: %v", err)
 	}
 
-	giftProduct, err := env.api.User.GetProductByKey(env.ctx, product.GetByKeyParams{
-		Key:       key,
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	giftProduct, err := env.api.User.GetProductByKey(
+		env.ctx,
+		product.GetByKeyParams{
+			Key:       key,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("get product by key: %v", err)
 	}
@@ -3482,51 +4470,70 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 		t.Fatalf("unexpected keyed product: %s", giftProduct.ID)
 	}
 	if giftProduct.Price.AssetCode != "RUB" {
-		t.Fatalf("unexpected keyed product asset: %s", giftProduct.Price.AssetCode)
+		t.Fatalf(
+			"unexpected keyed product asset: %s",
+			giftProduct.Price.AssetCode,
+		)
 	}
 
 	payerPlatformID := int64(1)
 	payerPlatformUserID := "payer-visible"
 	payerInternalID := int64(702)
-	giftOrder, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
-		Key: key,
-		Payer: &user.Actor{
-			PlatformID:     payerPlatformID,
-			PlatformUserID: payerPlatformUserID,
-			InternalUserID: &payerInternalID,
+	giftOrder, err := env.api.User.CreateOrderByKey(
+		env.ctx,
+		checkout.CreateOrderByKeyParams{
+			Key: key,
+			Payer: &user.Actor{
+				PlatformID:     payerPlatformID,
+				PlatformUserID: payerPlatformUserID,
+				InternalUserID: &payerInternalID,
+			},
+			AssetCode: "RUB",
+			Locale:    "ru",
 		},
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	)
 	if err != nil {
 		t.Fatalf("create order by key: %v", err)
 	}
 	if giftOrder.PlatformUserID != "recipient-hidden" {
-		t.Fatalf("expected hidden recipient on order, got %s", giftOrder.PlatformUserID)
+		t.Fatalf(
+			"expected hidden recipient on order, got %s",
+			giftOrder.PlatformUserID,
+		)
 	}
-	if giftOrder.PayerPlatformUserID == nil || *giftOrder.PayerPlatformUserID != payerPlatformUserID {
-		t.Fatalf("expected payer on order, got %#v", giftOrder.PayerPlatformUserID)
+	if giftOrder.PayerPlatformUserID == nil ||
+		*giftOrder.PayerPlatformUserID != payerPlatformUserID {
+		t.Fatalf(
+			"expected payer on order, got %#v",
+			giftOrder.PayerPlatformUserID,
+		)
 	}
 
 	giftProviderPaymentID := uniquePaymentID("gift")
-	giftAttempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(giftOrder),
-		OrderID:           giftOrder.ID,
-		ProviderCode:      "platega",
-		ProviderPaymentID: &giftProviderPaymentID,
-	})
+	giftAttempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(giftOrder),
+			OrderID:           giftOrder.ID,
+			ProviderCode:      "platega",
+			ProviderPaymentID: &giftProviderPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create gift attempt: %v", err)
 	}
 
-	giftCompleted, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testWorkspaceID,
-		AttemptID:         giftAttempt.ID,
-		ProviderCode:      "platega",
-		ProviderPaymentID: &giftProviderPaymentID,
-		AmountMinor:       giftAttempt.AmountMinor,
-		AssetCode:         "RUB",
-	})
+	giftCompleted, err := env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID:       testWorkspaceID,
+			AttemptID:         giftAttempt.ID,
+			ProviderCode:      "platega",
+			ProviderPaymentID: &giftProviderPaymentID,
+			AmountMinor:       giftAttempt.AmountMinor,
+			AssetCode:         "RUB",
+		},
+	)
 	if err != nil {
 		t.Fatalf("complete gift attempt: %v", err)
 	}
@@ -3536,21 +4543,30 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 
 	assertOrderStatus(t, env.ctx, env.db, giftOrder.ID, "fulfilled")
 	assertPurchaseKeyUsed(t, env.ctx, env.db, key)
-	assertFulfillmentItemCount(t, env.ctx, env.db, *giftCompleted.FulfillmentID, 2)
+	assertFulfillmentItemCount(
+		t,
+		env.ctx,
+		env.db,
+		*giftCompleted.FulfillmentID,
+		2,
+	)
 	assertPaymentPurchaseStats(t, env, productID, 2, 2, 2, 1800)
 
 	for index, status := range []string{"canceled", "expired", "failed"} {
-		statusOrder, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-			Identity: paymentTestIdentity(
-				testWorkspaceID,
-				int64(1100+index),
-				1,
-				fmt.Sprintf("status-%s", status),
-			),
-			ProductID: productID,
-			AssetCode: "RUB",
-			Locale:    "ru",
-		})
+		statusOrder, err := env.api.User.CreateOrder(
+			env.ctx,
+			checkout.CreateOrderParams{
+				Identity: paymentTestIdentity(
+					testWorkspaceID,
+					int64(1100+index),
+					1,
+					fmt.Sprintf("status-%s", status),
+				),
+				ProductID: productID,
+				AssetCode: "RUB",
+				Locale:    "ru",
+			},
+		)
 		if err != nil {
 			t.Fatalf("create order for %s stats: %v", status, err)
 		}
@@ -3561,10 +4577,18 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 			status,
 		)
 		if err != nil {
-			t.Fatalf("update draft order to %s for daily stats: %v", status, err)
+			t.Fatalf(
+				"update draft order to %s for daily stats: %v",
+				status,
+				err,
+			)
 		}
 		if updated != 1 {
-			t.Fatalf("expected one order updated to %s, got %d", status, updated)
+			t.Fatalf(
+				"expected one order updated to %s, got %d",
+				status,
+				updated,
+			)
 		}
 	}
 	overview, err := env.api.Admin.ListDailyOverview(
@@ -3587,7 +4611,10 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 		today.RefundedOrders != 0 ||
 		today.ChargebackedOrders != 0 ||
 		today.FailedOrders != 1 {
-		t.Fatalf("daily overview does not contain every order status: %#v", today)
+		t.Fatalf(
+			"daily overview does not contain every order status: %#v",
+			today,
+		)
 	}
 }
 
@@ -3610,22 +4637,39 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	priceEndsAt := now.Add(time.Hour)
 	walletAddress := "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ"
 	walletConfigURL := "https://example.com/payment-ton.config.json"
-	expectedWalletAddress, err := paymentton.NormalizeWalletAddress(walletAddress, paymentton.NetworkMainnet)
+	expectedWalletAddress, err := paymentton.NormalizeWalletAddress(
+		walletAddress,
+		paymentton.NetworkMainnet,
+	)
 	if err != nil {
 		t.Fatalf("normalize wallet: %v", err)
 	}
 
 	if err := env.api.Admin.SaveProductGroup(env.ctx, product.UpsertGroupParams{
-		WorkspaceID: sourceWorkspace, Code: groupCode, TitleKey: utils.Ref(groupCode + ".title"),
-		DescriptionKey: utils.Ref(groupCode + ".description"), Position: 1, IsActive: true,
+		WorkspaceID: sourceWorkspace,
+		Code:        groupCode,
+		TitleKey:    utils.Ref(groupCode + ".title"),
+		DescriptionKey: utils.Ref(
+			groupCode + ".description",
+		),
+		Position: 1,
+		IsActive: true,
 	}); err != nil {
 		t.Fatalf("upsert product group: %v", err)
 	}
 	if err := env.api.Admin.SaveProduct(env.ctx, product.UpsertParams{
-		WorkspaceID: sourceWorkspace, ID: productID, GroupCode: utils.Ref(groupCode),
-		TitleKey: productTitleKey, DescriptionKey: utils.Ref(productDescriptionKey),
-		QuantityMode: "fixed", Position: 1, GlobalInterval: "UNLIMITED", UserInterval: "UNLIMITED",
-		AvailableFrom: &availableFrom, AvailableUntil: &availableUntil, IsVisible: true,
+		WorkspaceID:    sourceWorkspace,
+		ID:             productID,
+		GroupCode:      utils.Ref(groupCode),
+		TitleKey:       productTitleKey,
+		DescriptionKey: utils.Ref(productDescriptionKey),
+		QuantityMode:   "fixed",
+		Position:       1,
+		GlobalInterval: "UNLIMITED",
+		UserInterval:   "UNLIMITED",
+		AvailableFrom:  &availableFrom,
+		AvailableUntil: &availableUntil,
+		IsVisible:      true,
 	}); err != nil {
 		t.Fatalf("upsert product: %v", err)
 	}
@@ -3637,19 +4681,34 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		{WorkspaceID: sourceWorkspace, Locale: "ru", LocalizationKey: itemTitleKey, Value: "Награда"},
 		{WorkspaceID: sourceWorkspace, Locale: "ru", LocalizationKey: itemDescriptionKey, Value: "Описание награды"},
 	} {
-		if err := env.api.Admin.SaveLocalization(env.ctx, localization); err != nil {
+		if err := env.api.Admin.SaveLocalization(
+			env.ctx,
+			localization,
+		); err != nil {
 			t.Fatalf("upsert localization: %v", err)
 		}
 	}
 	if err := env.api.Admin.AttachProductItem(env.ctx, product.AddItemParams{
-		WorkspaceID: sourceWorkspace, ProductID: productID, ItemID: itemID, Quantity: 25, Scale: 2,
+		WorkspaceID: sourceWorkspace,
+		ProductID:   productID,
+		ItemID:      itemID,
+		Quantity:    25,
+		Scale:       2,
 	}); err != nil {
 		t.Fatalf("attach product item: %v", err)
 	}
-	if _, err := env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
-		WorkspaceID: sourceWorkspace, ProductID: productID, AssetCode: "RUB",
-		ListAmountMinor: 1000, DiscountAmountMinor: 100, StartsAt: &priceStartsAt, EndsAt: &priceEndsAt,
-	}); err != nil {
+	if _, err := env.api.Admin.CreateCatalogPrice(
+		env.ctx,
+		product.CreatePriceParams{
+			WorkspaceID:         sourceWorkspace,
+			ProductID:           productID,
+			AssetCode:           "RUB",
+			ListAmountMinor:     1000,
+			DiscountAmountMinor: 100,
+			StartsAt:            &priceStartsAt,
+			EndsAt:              &priceEndsAt,
+		},
+	); err != nil {
 		t.Fatalf("create price: %v", err)
 	}
 	if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
@@ -3663,7 +4722,11 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		t.Fatalf("save ton wallet: %v", err)
 	}
 
-	pkg, err := env.api.Admin.Export(env.ctx, sourceWorkspace, admin.ExportRequest{})
+	pkg, err := env.api.Admin.Export(
+		env.ctx,
+		sourceWorkspace,
+		admin.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
@@ -3673,20 +4736,40 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		*pkg.TONWallets[0].Manifest != testTONConnectManifest() {
 		t.Fatalf("unexpected exported ton wallets: %+v", pkg.TONWallets)
 	}
-	if _, err := env.api.Adapters.TON.GetManifest(env.ctx, targetWorkspace); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("warm missing target manifest error = %v, want %v", err, sql.ErrNoRows)
+	if _, err := env.api.Adapters.TON.GetManifest(
+		env.ctx,
+		targetWorkspace,
+	); !errors.Is(
+		err,
+		sql.ErrNoRows,
+	) {
+		t.Fatalf(
+			"warm missing target manifest error = %v, want %v",
+			err,
+			sql.ErrNoRows,
+		)
 	}
-	if _, err := env.api.Admin.Import(env.ctx, targetWorkspace, admin.ImportRequest{
-		Package: pkg, ConflictStrategy: repository.ImportConflictUpdate,
-	}); err != nil {
+	if _, err := env.api.Admin.Import(
+		env.ctx,
+		targetWorkspace,
+		admin.ImportRequest{
+			Package: pkg, ConflictStrategy: repository.ImportConflictUpdate,
+		},
+	); err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	imported, err := env.api.Admin.Export(env.ctx, targetWorkspace, admin.ExportRequest{})
+	imported, err := env.api.Admin.Export(
+		env.ctx,
+		targetWorkspace,
+		admin.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export imported: %v", err)
 	}
 	if len(imported.Groups) != 1 || len(imported.Groups[0].Products) != 1 ||
-		len(imported.Groups[0].Products[0].Items) != 1 || len(imported.Groups[0].Products[0].Prices) != 1 ||
+		len(
+			imported.Groups[0].Products[0].Items,
+		) != 1 || len(imported.Groups[0].Products[0].Prices) != 1 ||
 		imported.Groups[0].Products[0].Items[0].Scale != 2 || len(imported.TONWallets) != 1 {
 		t.Fatalf("unexpected imported package: %+v", imported)
 	}
@@ -3695,22 +4778,39 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		t.Fatalf("get imported ton wallet: %v", err)
 	}
 	if importedWallet.Manifest != testTONConnectManifest() {
-		t.Fatalf("unexpected imported ton connect manifest: %+v", importedWallet.Manifest)
+		t.Fatalf(
+			"unexpected imported ton connect manifest: %+v",
+			importedWallet.Manifest,
+		)
 	}
-	importedManifest, err := env.api.Adapters.TON.GetManifest(env.ctx, targetWorkspace)
+	importedManifest, err := env.api.Adapters.TON.GetManifest(
+		env.ctx,
+		targetWorkspace,
+	)
 	if err != nil {
 		t.Fatalf("get imported public ton connect manifest: %v", err)
 	}
 	if importedManifest != testTONConnectManifest() {
-		t.Fatalf("unexpected imported public ton connect manifest: %+v", importedManifest)
+		t.Fatalf(
+			"unexpected imported public ton connect manifest: %+v",
+			importedManifest,
+		)
 	}
-	if importedWallet.Network != paymentton.NetworkMainnet || importedWallet.WalletAddress != expectedWalletAddress ||
-		!importedWallet.NetworkConfigUrl.Valid || importedWallet.NetworkConfigUrl.String != walletConfigURL || !importedWallet.IsEnabled {
+	if importedWallet.Network != paymentton.NetworkMainnet ||
+		importedWallet.WalletAddress != expectedWalletAddress ||
+		!importedWallet.NetworkConfigUrl.Valid ||
+		importedWallet.NetworkConfigUrl.String != walletConfigURL ||
+		!importedWallet.IsEnabled {
 		t.Fatalf("unexpected imported ton wallet: %+v", importedWallet)
 	}
 
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(targetWorkspace, 7007, 2, "import-update-user"),
+		Identity: paymentTestIdentity(
+			targetWorkspace,
+			7007,
+			2,
+			"import-update-user",
+		),
 		ProductID: productID,
 		Quantity:  1,
 		AssetCode: "RUB",
@@ -3728,10 +4828,14 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		t.Fatalf("get original imported order price id: %v", err)
 	}
 	pkg.Groups[0].Products[0].Prices[0].ListAmountMinor = 1200
-	if _, err := env.api.Admin.Import(env.ctx, targetWorkspace, admin.ImportRequest{
-		Package:          pkg,
-		ConflictStrategy: repository.ImportConflictUpdate,
-	}); err != nil {
+	if _, err := env.api.Admin.Import(
+		env.ctx,
+		targetWorkspace,
+		admin.ImportRequest{
+			Package:          pkg,
+			ConflictStrategy: repository.ImportConflictUpdate,
+		},
+	); err != nil {
 		t.Fatalf("update imported price referenced by order: %v", err)
 	}
 	var updatedPriceID uint64
@@ -3754,20 +4858,32 @@ WHERE payment_order.id = $1`,
 			originalPriceID,
 		)
 	}
-	if _, err := env.db.ExecContext(env.ctx, "DELETE FROM payment_order WHERE id = $1", order.ID); err == nil {
+	if _, err := env.db.ExecContext(
+		env.ctx,
+		"DELETE FROM payment_order WHERE id = $1",
+		order.ID,
+	); err == nil {
 		t.Fatal("payment order deletion must be rejected")
 	}
 
 	pkg.Groups[0].Localization = nil
 	pkg.Groups[0].Products[0].Localization = nil
 	pkg.Groups[0].Products[0].Items = nil
-	if _, err := env.api.Admin.Import(env.ctx, targetWorkspace, admin.ImportRequest{
-		Package:          pkg,
-		ConflictStrategy: repository.ImportConflictUpdate,
-	}); err != nil {
+	if _, err := env.api.Admin.Import(
+		env.ctx,
+		targetWorkspace,
+		admin.ImportRequest{
+			Package:          pkg,
+			ConflictStrategy: repository.ImportConflictUpdate,
+		},
+	); err != nil {
 		t.Fatalf("replace imported payment catalog: %v", err)
 	}
-	replaced, err := env.api.Admin.Export(env.ctx, targetWorkspace, admin.ExportRequest{})
+	replaced, err := env.api.Admin.Export(
+		env.ctx,
+		targetWorkspace,
+		admin.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export replaced payment catalog: %v", err)
 	}
@@ -3777,7 +4893,10 @@ WHERE payment_order.id = $1`,
 		len(replaced.Groups[0].Products[0].Localization) != 0 ||
 		len(replaced.Groups[0].Products[0].Items) != 0 ||
 		len(replaced.Groups[0].Products[0].Prices) != 1 {
-		t.Fatalf("update_existing kept removed payment children: %+v", replaced.Groups)
+		t.Fatalf(
+			"update_existing kept removed payment children: %+v",
+			replaced.Groups,
+		)
 	}
 }
 
@@ -3785,7 +4904,10 @@ func setupPaymentIntegrationTest(t testing.TB) paymentTestEnv {
 	return setupPaymentIntegrationTestWithOptions(t, paymentTestOptions())
 }
 
-func setupPaymentIntegrationTestWithOptions(t testing.TB, options Options) paymentTestEnv {
+func setupPaymentIntegrationTestWithOptions(
+	t testing.TB,
+	options Options,
+) paymentTestEnv {
 	t.Helper()
 
 	dsn := paymentTestDSN(t)
@@ -3815,7 +4937,10 @@ func setupPaymentIntegrationTestWithOptions(t testing.TB, options Options) payme
 	}
 
 	repo := repository.NewPaymentRepository(client)
-	if err := repo.Bootstrap(ctx, filepath.Join("sqlc", "schema.sql")); err != nil {
+	if err := repo.Bootstrap(
+		ctx,
+		filepath.Join("sqlc", "schema.sql"),
+	); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
 	api, err := NewWithDatabase(ctx, appDB, options)
@@ -3882,10 +5007,17 @@ func paymentTestOptions() Options {
 	}
 }
 
-func assertOrderStatus(t *testing.T, ctx context.Context, db *sql.DB, orderID uint64, want string) {
+func assertOrderStatus(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	orderID uint64,
+	want string,
+) {
 	t.Helper()
 	var got string
-	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_order WHERE id = $1", orderID).Scan(&got); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_order WHERE id = $1", orderID).
+		Scan(&got); err != nil {
 		t.Fatalf("select order status: %v", err)
 	}
 	if got != want {
@@ -3893,10 +5025,17 @@ func assertOrderStatus(t *testing.T, ctx context.Context, db *sql.DB, orderID ui
 	}
 }
 
-func assertAttemptStatus(t *testing.T, ctx context.Context, db *sql.DB, attemptID uint64, want string) {
+func assertAttemptStatus(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	attemptID uint64,
+	want string,
+) {
 	t.Helper()
 	var got string
-	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_attempt WHERE id = $1", attemptID).Scan(&got); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_attempt WHERE id = $1", attemptID).
+		Scan(&got); err != nil {
 		t.Fatalf("select attempt status: %v", err)
 	}
 	if got != want {
@@ -3904,10 +5043,17 @@ func assertAttemptStatus(t *testing.T, ctx context.Context, db *sql.DB, attemptI
 	}
 }
 
-func assertFulfillmentItemCount(t *testing.T, ctx context.Context, db *sql.DB, fulfillmentID uint64, want int) {
+func assertFulfillmentItemCount(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	fulfillmentID uint64,
+	want int,
+) {
 	t.Helper()
 	var got int
-	if err := db.QueryRowContext(ctx, "SELECT COALESCE(SUM(quantity), 0) FROM payment_fulfillment_item WHERE fulfillment_id = $1", fulfillmentID).Scan(&got); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT COALESCE(SUM(quantity), 0) FROM payment_fulfillment_item WHERE fulfillment_id = $1", fulfillmentID).
+		Scan(&got); err != nil {
 		t.Fatalf("select fulfillment item count: %v", err)
 	}
 	if got != want {
@@ -3915,7 +5061,14 @@ func assertFulfillmentItemCount(t *testing.T, ctx context.Context, db *sql.DB, f
 	}
 }
 
-func assertCallbackEvent(t *testing.T, ctx context.Context, db *sql.DB, eventType string, orderID uint64, want int) {
+func assertCallbackEvent(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	eventType string,
+	orderID uint64,
+	want int,
+) {
 	t.Helper()
 	var got int
 	var idempotencyKey string
@@ -3932,7 +5085,11 @@ WHERE source_service = 'payment' AND event_type = $1 AND event_key = $2`,
 		t.Fatalf("unexpected callback event count: got %d want %d", got, want)
 	}
 	if want > 0 && idempotencyKey != eventKey {
-		t.Fatalf("unexpected callback idempotency key: got %s want %s", idempotencyKey, eventKey)
+		t.Fatalf(
+			"unexpected callback idempotency key: got %s want %s",
+			idempotencyKey,
+			eventKey,
+		)
 	}
 }
 
@@ -3951,13 +5108,25 @@ func assertOnCallbackSuccessful(
 	err := env.api.OnCallback(ctx, func(callback Context) error {
 		handled++
 		if callback.EventType != CallbackEventPaymentOrderFulfilled {
-			t.Fatalf("unexpected callback event type: got %s want %s", callback.EventType, CallbackEventPaymentOrderFulfilled)
+			t.Fatalf(
+				"unexpected callback event type: got %s want %s",
+				callback.EventType,
+				CallbackEventPaymentOrderFulfilled,
+			)
 		}
-		if callback.EventKey != fmt.Sprintf("%s:%d", CallbackEventPaymentOrderFulfilled, order.ID) {
+		if callback.EventKey != fmt.Sprintf(
+			"%s:%d",
+			CallbackEventPaymentOrderFulfilled,
+			order.ID,
+		) {
 			t.Fatalf("unexpected callback event key: %s", callback.EventKey)
 		}
 		if callback.IdempotencyKey != callback.EventKey {
-			t.Fatalf("unexpected callback idempotency key: got %s want %s", callback.IdempotencyKey, callback.EventKey)
+			t.Fatalf(
+				"unexpected callback idempotency key: got %s want %s",
+				callback.IdempotencyKey,
+				callback.EventKey,
+			)
 		}
 		if callback.PaymentFulfilled == nil {
 			t.Fatal("expected payment fulfilled callback payload")
@@ -3999,11 +5168,19 @@ func assertOnCallbackSuccessful(
 	}
 }
 
-func assertCallbackStatus(t *testing.T, ctx context.Context, db *sql.DB, eventType string, orderID uint64, want string) {
+func assertCallbackStatus(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	eventType string,
+	orderID uint64,
+	want string,
+) {
 	t.Helper()
 	var got string
 	eventKey := fmt.Sprintf("%s:%d", eventType, orderID)
-	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_clb_event WHERE source_service = 'payment' AND event_type = $1 AND event_key = $2", eventType, eventKey).Scan(&got); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_clb_event WHERE source_service = 'payment' AND event_type = $1 AND event_key = $2", eventType, eventKey).
+		Scan(&got); err != nil {
 		t.Fatalf("select callback status: %v", err)
 	}
 	if got != want {
@@ -4011,11 +5188,19 @@ func assertCallbackStatus(t *testing.T, ctx context.Context, db *sql.DB, eventTy
 	}
 }
 
-func assertPaymentPurchaseStats(t *testing.T, env paymentTestEnv, productID string, purchaseCount, purchaseQuantity, uniqueBuyers, grossAmount uint64) {
+func assertPaymentPurchaseStats(
+	t *testing.T,
+	env paymentTestEnv,
+	productID string,
+	purchaseCount, purchaseQuantity, uniqueBuyers, grossAmount uint64,
+) {
 	t.Helper()
-	report, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
-		WorkspaceID: testWorkspaceID,
-	})
+	report, err := env.api.Admin.GetPaymentReport(
+		env.ctx,
+		admin.PaymentReportParams{
+			WorkspaceID: testWorkspaceID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("get payment report: %v", err)
 	}
@@ -4024,15 +5209,19 @@ func assertPaymentPurchaseStats(t *testing.T, env paymentTestEnv, productID stri
 		report.Stats.UniqueBuyers != uniqueBuyers {
 		t.Fatalf("unexpected payment report stats: %#v", report.Stats)
 	}
-	if len(report.Stats.Assets) != 1 || report.Stats.Assets[0].AssetCode != "RUB" ||
+	if len(report.Stats.Assets) != 1 ||
+		report.Stats.Assets[0].AssetCode != "RUB" ||
 		report.Stats.Assets[0].GrossAmountMinor != grossAmount {
 		t.Fatalf("unexpected payment asset stats: %#v", report.Stats.Assets)
 	}
 
-	productReport, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
-		WorkspaceID: testWorkspaceID,
-		ProductID:   productID,
-	})
+	productReport, err := env.api.Admin.GetPaymentReport(
+		env.ctx,
+		admin.PaymentReportParams{
+			WorkspaceID: testWorkspaceID,
+			ProductID:   productID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("get payment product report: %v", err)
 	}
@@ -4042,11 +5231,20 @@ func assertPaymentPurchaseStats(t *testing.T, env paymentTestEnv, productID stri
 	}
 
 	now := time.Now()
-	if err := env.api.Admin.RefreshDailyStats(env.ctx, testWorkspaceID, now.Add(-24*time.Hour), now.Add(24*time.Hour)); err != nil {
+	if err := env.api.Admin.RefreshDailyStats(
+		env.ctx,
+		testWorkspaceID,
+		now.Add(-24*time.Hour),
+		now.Add(24*time.Hour),
+	); err != nil {
 		t.Fatalf("refresh payment daily stats: %v", err)
 	}
 	daily, err := env.api.Admin.ListDailyStats(
-		env.ctx, testWorkspaceID, productID, now.Add(-24*time.Hour), now.Add(24*time.Hour),
+		env.ctx,
+		testWorkspaceID,
+		productID,
+		now.Add(-24*time.Hour),
+		now.Add(24*time.Hour),
 	)
 	if err != nil {
 		t.Fatalf("list payment daily stats: %v", err)
@@ -4073,11 +5271,20 @@ func assertPaymentPurchaseStats(t *testing.T, env paymentTestEnv, productID stri
 	}
 }
 
-func assertAdminPaymentReadMethods(t *testing.T, env paymentTestEnv, productID string, orderID uint64, attemptID uint64) {
+func assertAdminPaymentReadMethods(
+	t *testing.T,
+	env paymentTestEnv,
+	productID string,
+	orderID uint64,
+	attemptID uint64,
+) {
 	t.Helper()
-	products, err := env.api.Admin.ListProducts(env.ctx, admin.ProductListParams{
-		WorkspaceID: testWorkspaceID,
-	})
+	products, err := env.api.Admin.ListProducts(
+		env.ctx,
+		admin.ProductListParams{
+			WorkspaceID: testWorkspaceID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("admin list products: %v", err)
 	}
@@ -4096,10 +5303,18 @@ func assertAdminPaymentReadMethods(t *testing.T, env paymentTestEnv, productID s
 		t.Fatalf("unexpected admin orders: %#v", orders)
 	}
 
-	userOrders, err := env.api.Admin.ListUserOrders(env.ctx, admin.UserOrderListParams{
-		Identity: paymentTestIdentity(testWorkspaceID, 1001, 1, "buyer-regular"),
-		Status:   "fulfilled",
-	})
+	userOrders, err := env.api.Admin.ListUserOrders(
+		env.ctx,
+		admin.UserOrderListParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				1001,
+				1,
+				"buyer-regular",
+			),
+			Status: "fulfilled",
+		},
+	)
 	if err != nil {
 		t.Fatalf("admin list user orders: %v", err)
 	}
@@ -4107,9 +5322,17 @@ func assertAdminPaymentReadMethods(t *testing.T, env paymentTestEnv, productID s
 		t.Fatalf("unexpected user orders: %#v", userOrders)
 	}
 
-	otherAppOrders, err := env.api.Admin.ListUserOrders(env.ctx, admin.UserOrderListParams{
-		Identity: paymentTestIdentity(testWorkspaceID, 1002, 1, "buyer-regular"),
-	})
+	otherAppOrders, err := env.api.Admin.ListUserOrders(
+		env.ctx,
+		admin.UserOrderListParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				1002,
+				1,
+				"buyer-regular",
+			),
+		},
+	)
 	if err != nil {
 		t.Fatalf("admin list other app user orders: %v", err)
 	}
@@ -4117,20 +5340,23 @@ func assertAdminPaymentReadMethods(t *testing.T, env paymentTestEnv, productID s
 		t.Fatalf("unexpected other app user orders: %#v", otherAppOrders)
 	}
 
-	report, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
-		WorkspaceID: testWorkspaceID,
-		Identity: utils.Ref(paymentTestIdentity(
-			testWorkspaceID,
-			1001,
-			1,
-			"buyer-regular",
-		)),
-		IdentityRole: admin.PaymentIdentityRoleEither,
-		Status:       "fulfilled",
-		Sort:         admin.PaymentSortAmount,
-		Direction:    admin.SortDescending,
-		Page:         admin.PageParams{Limit: 1},
-	})
+	report, err := env.api.Admin.GetPaymentReport(
+		env.ctx,
+		admin.PaymentReportParams{
+			WorkspaceID: testWorkspaceID,
+			Identity: utils.Ref(paymentTestIdentity(
+				testWorkspaceID,
+				1001,
+				1,
+				"buyer-regular",
+			)),
+			IdentityRole: admin.PaymentIdentityRoleEither,
+			Status:       "fulfilled",
+			Sort:         admin.PaymentSortAmount,
+			Direction:    admin.SortDescending,
+			Page:         admin.PageParams{Limit: 1},
+		},
+	)
 	if err != nil {
 		t.Fatalf("admin get payment report: %v", err)
 	}
@@ -4166,10 +5392,13 @@ func assertAdminPaymentReadMethods(t *testing.T, env paymentTestEnv, productID s
 		t.Fatal("expected incomplete payment report identity error")
 	}
 
-	attempts, err := env.api.Admin.ListPaymentAttempts(env.ctx, admin.AttemptListParams{
-		WorkspaceID: testWorkspaceID,
-		OrderID:     orderID,
-	})
+	attempts, err := env.api.Admin.ListPaymentAttempts(
+		env.ctx,
+		admin.AttemptListParams{
+			WorkspaceID: testWorkspaceID,
+			OrderID:     orderID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("admin list attempts: %v", err)
 	}
@@ -4177,9 +5406,12 @@ func assertAdminPaymentReadMethods(t *testing.T, env paymentTestEnv, productID s
 		t.Fatalf("unexpected admin attempts: %#v", attempts)
 	}
 
-	events, err := env.api.Admin.ListPaymentEvents(env.ctx, admin.EventListParams{
-		WorkspaceID: testWorkspaceID,
-	})
+	events, err := env.api.Admin.ListPaymentEvents(
+		env.ctx,
+		admin.EventListParams{
+			WorkspaceID: testWorkspaceID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("admin list payment events: %v", err)
 	}
@@ -4187,10 +5419,13 @@ func assertAdminPaymentReadMethods(t *testing.T, env paymentTestEnv, productID s
 		t.Fatal("expected admin payment events")
 	}
 
-	callbacks, err := env.api.Admin.ListCallbackEvents(env.ctx, admin.CallbackEventListParams{
-		WorkspaceID:   testWorkspaceID,
-		SourceService: "payment",
-	})
+	callbacks, err := env.api.Admin.ListCallbackEvents(
+		env.ctx,
+		admin.CallbackEventListParams{
+			WorkspaceID:   testWorkspaceID,
+			SourceService: "payment",
+		},
+	)
 	if err != nil {
 		t.Fatalf("admin list callback events: %v", err)
 	}
@@ -4199,15 +5434,25 @@ func assertAdminPaymentReadMethods(t *testing.T, env paymentTestEnv, productID s
 	}
 }
 
-func assertPurchaseKeyUsed(t *testing.T, ctx context.Context, db *sql.DB, key string) {
+func assertPurchaseKeyUsed(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	key string,
+) {
 	t.Helper()
 	var status string
 	var usedCount int
-	if err := db.QueryRowContext(ctx, "SELECT status, used_count FROM payment_purchase_key WHERE key_hash = $1", sha256Hex(key)).Scan(&status, &usedCount); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT status, used_count FROM payment_purchase_key WHERE key_hash = $1", sha256Hex(key)).
+		Scan(&status, &usedCount); err != nil {
 		t.Fatalf("select purchase key: %v", err)
 	}
 	if status != "used" || usedCount != 1 {
-		t.Fatalf("unexpected purchase key state: status=%s used=%d", status, usedCount)
+		t.Fatalf(
+			"unexpected purchase key state: status=%s used=%d",
+			status,
+			usedCount,
+		)
 	}
 }
 
@@ -4239,13 +5484,16 @@ func TestPaymentGlobalDynamicPricingAcrossWorkspaces(t *testing.T) {
 		ListAmountMinor: 1_000_000_000,
 	})
 
-	if _, err := env.api.Operational.UpdateAssetRate(env.ctx, operational.UpdateAssetRateParams{
-		AssetCode:              "TON",
-		ReferenceAssetCode:     repository.USDTAssetCode,
-		ReferencePerAssetMinor: 2_000_000,
-		Source:                 "integration-test",
-		ObservedAt:             now,
-	}); err != nil {
+	if _, err := env.api.Operational.UpdateAssetRate(
+		env.ctx,
+		operational.UpdateAssetRateParams{
+			AssetCode:              "TON",
+			ReferenceAssetCode:     repository.USDTAssetCode,
+			ReferencePerAssetMinor: 2_000_000,
+			Source:                 "integration-test",
+			ObservedAt:             now,
+		},
+	); err != nil {
 		t.Fatalf("seed global TON rate: %v", err)
 	}
 
@@ -4259,33 +5507,40 @@ func TestPaymentGlobalDynamicPricingAcrossWorkspaces(t *testing.T) {
 		testWorkspaceID:   firstProductID,
 		secondWorkspaceID: secondProductID,
 	} {
-		if _, err := env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
-			WorkspaceID:                  workspaceID,
-			ProductID:                    productID,
-			AssetCode:                    "TON",
-			PricingMode:                  repository.PricingModeDynamic,
-			ReferenceAssetCode:           &referenceAsset,
-			ReferenceListAmountMinor:     &referenceList,
-			ReferenceDiscountAmountMinor: &referenceDiscount,
-			Coefficient:                  &coefficient,
-			StartsAt:                     &startsAt,
-			EndsAt:                       &endsAt,
-		}); err != nil {
+		if _, err := env.api.Admin.CreateCatalogPrice(
+			env.ctx,
+			product.CreatePriceParams{
+				WorkspaceID:                  workspaceID,
+				ProductID:                    productID,
+				AssetCode:                    "TON",
+				PricingMode:                  repository.PricingModeDynamic,
+				ReferenceAssetCode:           &referenceAsset,
+				ReferenceListAmountMinor:     &referenceList,
+				ReferenceDiscountAmountMinor: &referenceDiscount,
+				Coefficient:                  &coefficient,
+				StartsAt:                     &startsAt,
+				EndsAt:                       &endsAt,
+			},
+		); err != nil {
 			t.Fatalf("create dynamic TON price for %s: %v", workspaceID, err)
 		}
 	}
 
-	result, err := env.api.Operational.UpdateAssetRate(env.ctx, operational.UpdateAssetRateParams{
-		AssetCode:              "TON",
-		ReferenceAssetCode:     repository.USDTAssetCode,
-		ReferencePerAssetMinor: 4_000_000,
-		Source:                 "integration-test",
-		ObservedAt:             now.Add(time.Minute),
-	})
+	result, err := env.api.Operational.UpdateAssetRate(
+		env.ctx,
+		operational.UpdateAssetRateParams{
+			AssetCode:              "TON",
+			ReferenceAssetCode:     repository.USDTAssetCode,
+			ReferencePerAssetMinor: 4_000_000,
+			Source:                 "integration-test",
+			ObservedAt:             now.Add(time.Minute),
+		},
+	)
 	if err != nil {
 		t.Fatalf("update global TON rate: %v", err)
 	}
-	if result.UpdatedPrices != 2 || result.AffectedProducts != 2 || result.AffectedWorkspaces != 2 {
+	if result.UpdatedPrices != 2 || result.AffectedProducts != 2 ||
+		result.AffectedWorkspaces != 2 {
 		t.Fatalf("unexpected global update result: %#v", result)
 	}
 
@@ -4294,7 +5549,12 @@ func TestPaymentGlobalDynamicPricingAcrossWorkspaces(t *testing.T) {
 		secondWorkspaceID: secondProductID,
 	} {
 		item, err := env.api.User.GetProduct(env.ctx, user.GetProductParams{
-			Identity:  paymentTestIdentity(workspaceID, 1001, 1, "dynamic-user"),
+			Identity: paymentTestIdentity(
+				workspaceID,
+				1001,
+				1,
+				"dynamic-user",
+			),
 			ProductID: productID,
 			AssetCode: "TON",
 			Locale:    "ru",
@@ -4303,7 +5563,11 @@ func TestPaymentGlobalDynamicPricingAcrossWorkspaces(t *testing.T) {
 			t.Fatalf("get dynamic product for %s: %v", workspaceID, err)
 		}
 		if item.Price.PayableAmountMinor != 250_000_000 {
-			t.Fatalf("unexpected dynamic price for %s: %d", workspaceID, item.Price.PayableAmountMinor)
+			t.Fatalf(
+				"unexpected dynamic price for %s: %d",
+				workspaceID,
+				item.Price.PayableAmountMinor,
+			)
 		}
 	}
 
@@ -4320,7 +5584,10 @@ func TestPaymentGlobalDynamicPricingAcrossWorkspaces(t *testing.T) {
 		t.Fatalf("fixed TON price changed: %d", fixed.Price.PayableAmountMinor)
 	}
 
-	rate, err := env.api.User.GetUSDTPrice(env.ctx, user.GetUSDTPriceParams{AssetCode: "TON"})
+	rate, err := env.api.User.GetUSDTPrice(
+		env.ctx,
+		user.GetUSDTPriceParams{AssetCode: "TON"},
+	)
 	if err != nil {
 		t.Fatalf("get global TON rate: %v", err)
 	}
@@ -4334,35 +5601,46 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 	if err := env.api.Close(); err != nil {
 		t.Fatalf("close initial payment service: %v", err)
 	}
-	if _, err := env.db.ExecContext(env.ctx, "DELETE FROM payment_asset_rate"); err != nil {
+	if _, err := env.db.ExecContext(
+		env.ctx,
+		"DELETE FROM payment_asset_rate",
+	); err != nil {
 		t.Fatalf("clear asset rates: %v", err)
 	}
 
 	var requests atomic.Int32
-	httpClient := &http.Client{Transport: paymentTestRateRoundTrip(func(request *http.Request) (*http.Response, error) {
-		requests.Add(1)
-		tokenPath := request.URL.EscapedPath()
-		tokenPath = tokenPath[strings.LastIndex(tokenPath, "/")+1:]
-		tokenPath, _ = url.PathUnescape(tokenPath)
-		addresses := strings.Split(tokenPath, ",")
-		var body strings.Builder
-		body.WriteByte('[')
-		for index, address := range addresses {
-			if index > 0 {
-				body.WriteByte(',')
-			}
-			body.WriteString(`{"baseToken":{"address":`)
-			body.WriteString(strconv.Quote(address))
-			body.WriteString(`},"quoteToken":{"address":"EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c"},"priceNative":"2","priceUsd":"2","liquidity":{"usd":1000000}}`)
-		}
-		body.WriteByte(']')
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(body.String())),
-			Request:    request,
-		}, nil
-	})}
+	httpClient := &http.Client{
+		Transport: paymentTestRateRoundTrip(
+			func(request *http.Request) (*http.Response, error) {
+				requests.Add(1)
+				tokenPath := request.URL.EscapedPath()
+				tokenPath = tokenPath[strings.LastIndex(tokenPath, "/")+1:]
+				tokenPath, _ = url.PathUnescape(tokenPath)
+				addresses := strings.Split(tokenPath, ",")
+				var body strings.Builder
+				body.WriteByte('[')
+				for index, address := range addresses {
+					if index > 0 {
+						body.WriteByte(',')
+					}
+					body.WriteString(`{"baseToken":{"address":`)
+					body.WriteString(strconv.Quote(address))
+					body.WriteString(
+						`},"quoteToken":{"address":"EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c"},"priceNative":"2","priceUsd":"2","liquidity":{"usd":1000000}}`,
+					)
+				}
+				body.WriteByte(']')
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+					},
+					Body:    io.NopCloser(strings.NewReader(body.String())),
+					Request: request,
+				}, nil
+			},
+		),
+	}
 	service, err := NewWithDatabase(env.ctx, env.db, Options{
 		PriceUpdateHTTPClient: httpClient,
 		PriceUpdateInterval:   10 * time.Millisecond,
@@ -4380,31 +5658,51 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	for {
-		rate, rateErr := service.User.GetUSDTPrice(env.ctx, user.GetUSDTPriceParams{AssetCode: "DOGS_TON"})
+		rate, rateErr := service.User.GetUSDTPrice(
+			env.ctx,
+			user.GetUSDTPriceParams{AssetCode: "DOGS_TON"},
+		)
 		if rateErr == nil && rate.USDTPerAssetMinor == 2_000_000 {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("automatic DOGS_TON rate was not stored: rate=%#v err=%v", rate, rateErr)
+			t.Fatalf(
+				"automatic DOGS_TON rate was not stored: rate=%#v err=%v",
+				rate,
+				rateErr,
+			)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	for {
-		rate, rateErr := service.User.GetUSDTPrice(env.ctx, user.GetUSDTPriceParams{AssetCode: "TON"})
+		rate, rateErr := service.User.GetUSDTPrice(
+			env.ctx,
+			user.GetUSDTPriceParams{AssetCode: "TON"},
+		)
 		if rateErr == nil && rate.USDTPerAssetMinor == 1_000_000 {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("automatic native TON rate was not stored: rate=%#v err=%v", rate, rateErr)
+			t.Fatalf(
+				"automatic native TON rate was not stored: rate=%#v err=%v",
+				rate,
+				rateErr,
+			)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	usdtRate, err := service.User.GetUSDTPrice(env.ctx, user.GetUSDTPriceParams{AssetCode: repository.USDTAssetCode})
+	usdtRate, err := service.User.GetUSDTPrice(
+		env.ctx,
+		user.GetUSDTPriceParams{AssetCode: repository.USDTAssetCode},
+	)
 	if err != nil {
 		t.Fatalf("get automatic USDT rate: %v", err)
 	}
 	if usdtRate.USDTPerAssetMinor != 1_000_000 {
-		t.Fatalf("unexpected automatic USDT rate: %d", usdtRate.USDTPerAssetMinor)
+		t.Fatalf(
+			"unexpected automatic USDT rate: %d",
+			usdtRate.USDTPerAssetMinor,
+		)
 	}
 	if err := service.Close(); err != nil {
 		t.Fatalf("close payment service: %v", err)
@@ -4412,13 +5710,19 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 	requestCount := requests.Load()
 	time.Sleep(50 * time.Millisecond)
 	if requests.Load() != requestCount {
-		t.Fatalf("price updater continued after Close: before=%d after=%d", requestCount, requests.Load())
+		t.Fatalf(
+			"price updater continued after Close: before=%d after=%d",
+			requestCount,
+			requests.Load(),
+		)
 	}
 }
 
 type paymentTestRateRoundTrip func(*http.Request) (*http.Response, error)
 
-func (f paymentTestRateRoundTrip) RoundTrip(request *http.Request) (*http.Response, error) {
+func (f paymentTestRateRoundTrip) RoundTrip(
+	request *http.Request,
+) (*http.Response, error) {
 	return f(request)
 }
 
@@ -4434,18 +5738,25 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 		"MAJOR_TON": 1_000_000,
 		"UTYA_TON":  1_000_000,
 	} {
-		if _, err := env.api.Operational.UpdateAssetRate(env.ctx, operational.UpdateAssetRateParams{
-			AssetCode:              assetCode,
-			ReferenceAssetCode:     repository.USDTAssetCode,
-			ReferencePerAssetMinor: referencePerAssetMinor,
-			Source:                 "integration-test",
-			ObservedAt:             now,
-		}); err != nil {
+		if _, err := env.api.Operational.UpdateAssetRate(
+			env.ctx,
+			operational.UpdateAssetRateParams{
+				AssetCode:              assetCode,
+				ReferenceAssetCode:     repository.USDTAssetCode,
+				ReferencePerAssetMinor: referencePerAssetMinor,
+				Source:                 "integration-test",
+				ObservedAt:             now,
+			},
+		); err != nil {
 			t.Fatalf("seed %s rate: %v", assetCode, err)
 		}
 	}
 
-	preview, err := env.api.Admin.PreviewImport(env.ctx, testWorkspaceID, req.Package)
+	preview, err := env.api.Admin.PreviewImport(
+		env.ctx,
+		testWorkspaceID,
+		req.Package,
+	)
 	if err != nil {
 		t.Fatalf("preview import: %v", err)
 	}
@@ -4463,7 +5774,11 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 		t.Fatalf("unexpected import counts: %+v", result.Imported)
 	}
 
-	exported, err := env.api.Admin.Export(env.ctx, testWorkspaceID, repository.ExportRequest{})
+	exported, err := env.api.Admin.Export(
+		env.ctx,
+		testWorkspaceID,
+		repository.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export after import: %v", err)
 	}
@@ -4483,37 +5798,62 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	}
 	if product.GlobalLimit != 0 || product.UserLimit != 0 ||
 		product.GlobalInterval != "UNLIMITED" || product.UserInterval != "UNLIMITED" {
-		t.Fatalf("unexpected limits: global=%d/%s user=%d/%s",
-			product.GlobalLimit, product.GlobalInterval, product.UserLimit, product.UserInterval)
+		t.Fatalf(
+			"unexpected limits: global=%d/%s user=%d/%s",
+			product.GlobalLimit,
+			product.GlobalInterval,
+			product.UserLimit,
+			product.UserInterval,
+		)
 	}
 	if len(product.Items) != 1 {
 		t.Fatalf("expected one product item, got %d", len(product.Items))
 	}
-	if product.Items[0].ItemID != "stars" || product.Items[0].Quantity != 100 || product.Items[0].Scale != 2 {
+	if product.Items[0].ItemID != "stars" || product.Items[0].Quantity != 100 ||
+		product.Items[0].Scale != 2 {
 		t.Fatalf("unexpected product item: %+v", product.Items[0])
 	}
 
-	usdtOrder, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 7007, 2, "dynamic-usdt-user"),
-		ProductID: "topup.stars.flexible",
-		Quantity:  10,
-		AssetCode: repository.USDTAssetCode,
-		Locale:    "ru",
-	})
+	usdtOrder, err := env.api.User.CreateOrder(
+		env.ctx,
+		checkout.CreateOrderParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				7007,
+				2,
+				"dynamic-usdt-user",
+			),
+			ProductID: "topup.stars.flexible",
+			Quantity:  10,
+			AssetCode: repository.USDTAssetCode,
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create USDT order: %v", err)
 	}
 	if usdtOrder.PayableAmountMinor != 150_000 {
-		t.Fatalf("USDT amount = %d, want 150000 micro-USDT", usdtOrder.PayableAmountMinor)
+		t.Fatalf(
+			"USDT amount = %d, want 150000 micro-USDT",
+			usdtOrder.PayableAmountMinor,
+		)
 	}
 
-	tonOrder, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 7007, 2, "dynamic-ton-user"),
-		ProductID: "topup.stars.flexible",
-		Quantity:  10,
-		AssetCode: "TON",
-		Locale:    "ru",
-	})
+	tonOrder, err := env.api.User.CreateOrder(
+		env.ctx,
+		checkout.CreateOrderParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				7007,
+				2,
+				"dynamic-ton-user",
+			),
+			ProductID: "topup.stars.flexible",
+			Quantity:  10,
+			AssetCode: "TON",
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create dynamic TON order: %v", err)
 	}
@@ -4540,14 +5880,21 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 		t.Fatalf("unmarshal exported package: %v", err)
 	}
 	if _, ok := exportedRoot["items"]; ok {
-		t.Fatalf("payment export must not expose root items, got: %#v", exportedRoot["items"])
+		t.Fatalf(
+			"payment export must not expose root items, got: %#v",
+			exportedRoot["items"],
+		)
 	}
 	if _, ok := exportedRoot["references"]; ok {
 		t.Fatal("payment export must not expose root references")
 	}
 	exportedContent := string(exportedJSON)
-	if strings.Contains(exportedContent, "title_key") || strings.Contains(exportedContent, "description_key") {
-		t.Fatalf("payment export must not expose localization keys: %s", exportedContent)
+	if strings.Contains(exportedContent, "title_key") ||
+		strings.Contains(exportedContent, "description_key") {
+		t.Fatalf(
+			"payment export must not expose localization keys: %s",
+			exportedContent,
+		)
 	}
 
 	var localItemTable *string
@@ -4558,11 +5905,19 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 		t.Fatalf("inspect local payment item table: %v", err)
 	}
 	if localItemTable != nil {
-		t.Fatalf("payment must not own local item catalog, found table %q", *localItemTable)
+		t.Fatalf(
+			"payment must not own local item catalog, found table %q",
+			*localItemTable,
+		)
 	}
 
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 7007, 2, "opaque-item-user"),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			7007,
+			2,
+			"opaque-item-user",
+		),
 		ProductID: "topup.stars.flexible",
 		Quantity:  3,
 		AssetCode: "XTR",
@@ -4572,23 +5927,29 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 		t.Fatalf("create order with opaque reward key: %v", err)
 	}
 	providerPaymentID := "opaque-item-payment"
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(order),
-		OrderID:           order.ID,
-		ProviderCode:      "telegram_stars",
-		ProviderPaymentID: &providerPaymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(order),
+			OrderID:           order.ID,
+			ProviderCode:      "telegram_stars",
+			ProviderPaymentID: &providerPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create attempt with opaque reward key: %v", err)
 	}
-	completed, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testWorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      attempt.ProviderCode,
-		ProviderPaymentID: &providerPaymentID,
-		AmountMinor:       attempt.AmountMinor,
-		AssetCode:         attempt.AssetCode,
-	})
+	completed, err := env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID:       testWorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      attempt.ProviderCode,
+			ProviderPaymentID: &providerPaymentID,
+			AmountMinor:       attempt.AmountMinor,
+			AssetCode:         attempt.AssetCode,
+		},
+	)
 	if err != nil {
 		t.Fatalf("complete attempt with opaque reward key: %v", err)
 	}
@@ -4607,7 +5968,11 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 		t.Fatalf("read opaque fulfillment reward: %v", err)
 	}
 	if quantity != 300 || scale != 2 {
-		t.Fatalf("unexpected opaque fulfillment reward: quantity=%d scale=%d", quantity, scale)
+		t.Fatalf(
+			"unexpected opaque fulfillment reward: quantity=%d scale=%d",
+			quantity,
+			scale,
+		)
 	}
 }
 
@@ -4634,11 +5999,18 @@ ON CONFLICT (asset_code, reference_asset_code) DO UPDATE SET
 
 	_, err := env.api.Admin.Import(env.ctx, testWorkspaceID, req)
 	if !errors.Is(err, repository.ErrAssetRateNotFound) {
-		t.Fatalf("import error = %v, want %v", err, repository.ErrAssetRateNotFound)
+		t.Fatalf(
+			"import error = %v, want %v",
+			err,
+			repository.ErrAssetRateNotFound,
+		)
 	}
 }
 
-func loadPaymentImportExample(t *testing.T, name string) repository.ImportRequest {
+func loadPaymentImportExample(
+	t *testing.T,
+	name string,
+) repository.ImportRequest {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("examples", name))
 	if err != nil {
@@ -4659,7 +6031,8 @@ func loadPaymentImportExample(t *testing.T, name string) repository.ImportReques
 		t.Fatalf("payment example %s must not contain root references", name)
 	}
 	content := string(data)
-	if strings.Contains(content, "title_key") || strings.Contains(content, "description_key") {
+	if strings.Contains(content, "title_key") ||
+		strings.Contains(content, "description_key") {
 		t.Fatalf("payment example %s must not expose localization keys", name)
 	}
 	var req repository.ImportRequest
@@ -4669,7 +6042,11 @@ func loadPaymentImportExample(t *testing.T, name string) repository.ImportReques
 	return req
 }
 
-func findExportGroup(t *testing.T, pkg repository.ExportPackage, code string) repository.ExportProductGroup {
+func findExportGroup(
+	t *testing.T,
+	pkg repository.ExportPackage,
+	code string,
+) repository.ExportProductGroup {
 	t.Helper()
 	for _, group := range pkg.Groups {
 		if group.Code == code {
@@ -4680,7 +6057,9 @@ func findExportGroup(t *testing.T, pkg repository.ExportPackage, code string) re
 	return repository.ExportProductGroup{}
 }
 
-func indexExportPrices(prices []repository.ExportPrice) map[string]repository.ExportPrice {
+func indexExportPrices(
+	prices []repository.ExportPrice,
+) map[string]repository.ExportPrice {
 	result := make(map[string]repository.ExportPrice, len(prices))
 	for _, price := range prices {
 		result[price.AssetCode] = price
@@ -4688,21 +6067,37 @@ func indexExportPrices(prices []repository.ExportPrice) map[string]repository.Ex
 	return result
 }
 
-func assertFixedExamplePrice(t *testing.T, price repository.ExportPrice, assetCode string, amount uint64) {
+func assertFixedExamplePrice(
+	t *testing.T,
+	price repository.ExportPrice,
+	assetCode string,
+	amount uint64,
+) {
 	t.Helper()
 	if price.AssetCode != assetCode {
 		t.Fatalf("price for %s not found", assetCode)
 	}
-	if price.PricingMode != "fixed" || price.ListAmountMinor != amount || price.DiscountAmountMinor != 0 {
+	if price.PricingMode != "fixed" || price.ListAmountMinor != amount ||
+		price.DiscountAmountMinor != 0 {
 		t.Fatalf("unexpected fixed price for %s: %+v", assetCode, price)
 	}
-	if price.ReferenceAssetCode != nil || price.ReferenceListAmountMinor != nil ||
-		price.ReferenceDiscountAmountMinor != nil || price.Coefficient != nil {
-		t.Fatalf("fixed price %s must not have reference fields: %+v", assetCode, price)
+	if price.ReferenceAssetCode != nil ||
+		price.ReferenceListAmountMinor != nil ||
+		price.ReferenceDiscountAmountMinor != nil ||
+		price.Coefficient != nil {
+		t.Fatalf(
+			"fixed price %s must not have reference fields: %+v",
+			assetCode,
+			price,
+		)
 	}
 }
 
-func assertDynamicExamplePrice(t *testing.T, price repository.ExportPrice, assetCode string) {
+func assertDynamicExamplePrice(
+	t *testing.T,
+	price repository.ExportPrice,
+	assetCode string,
+) {
 	t.Helper()
 	if price.AssetCode != assetCode {
 		t.Fatalf("price for %s not found", assetCode)
@@ -4710,17 +6105,36 @@ func assertDynamicExamplePrice(t *testing.T, price repository.ExportPrice, asset
 	if price.PricingMode != "dynamic" {
 		t.Fatalf("unexpected pricing mode for %s: %+v", assetCode, price)
 	}
-	if price.ReferenceAssetCode == nil || *price.ReferenceAssetCode != "USDT_TON" {
-		t.Fatalf("unexpected reference asset for %s: %+v", assetCode, price.ReferenceAssetCode)
+	if price.ReferenceAssetCode == nil ||
+		*price.ReferenceAssetCode != "USDT_TON" {
+		t.Fatalf(
+			"unexpected reference asset for %s: %+v",
+			assetCode,
+			price.ReferenceAssetCode,
+		)
 	}
-	if price.ReferenceListAmountMinor == nil || *price.ReferenceListAmountMinor != 15000 {
-		t.Fatalf("unexpected reference list amount for %s: %+v", assetCode, price.ReferenceListAmountMinor)
+	if price.ReferenceListAmountMinor == nil ||
+		*price.ReferenceListAmountMinor != 15000 {
+		t.Fatalf(
+			"unexpected reference list amount for %s: %+v",
+			assetCode,
+			price.ReferenceListAmountMinor,
+		)
 	}
-	if price.ReferenceDiscountAmountMinor == nil || *price.ReferenceDiscountAmountMinor != 0 {
-		t.Fatalf("unexpected reference discount amount for %s: %+v", assetCode, price.ReferenceDiscountAmountMinor)
+	if price.ReferenceDiscountAmountMinor == nil ||
+		*price.ReferenceDiscountAmountMinor != 0 {
+		t.Fatalf(
+			"unexpected reference discount amount for %s: %+v",
+			assetCode,
+			price.ReferenceDiscountAmountMinor,
+		)
 	}
 	if price.Coefficient == nil || *price.Coefficient != "1.000000000000" {
-		t.Fatalf("unexpected coefficient for %s: %+v", assetCode, price.Coefficient)
+		t.Fatalf(
+			"unexpected coefficient for %s: %+v",
+			assetCode,
+			price.Coefficient,
+		)
 	}
 }
 
@@ -4734,48 +6148,60 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 
 	var createPayload plategaTestCreateTransactionPayload
 	var createPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-MerchantId") != "merchant-1" || r.Header.Get("X-Secret") != "secret-1" {
-			t.Fatalf("unexpected platega auth headers: merchant=%q secret=%q", r.Header.Get("X-MerchantId"), r.Header.Get("X-Secret"))
-		}
-		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/transaction/process":
-			createPath = r.URL.Path
-			if err := json.NewDecoder(r.Body).Decode(&createPayload); err != nil {
-				t.Fatalf("decode platega create payload: %v", err)
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("X-MerchantId") != "merchant-1" ||
+				r.Header.Get("X-Secret") != "secret-1" {
+				t.Fatalf(
+					"unexpected platega auth headers: merchant=%q secret=%q",
+					r.Header.Get("X-MerchantId"),
+					r.Header.Get("X-Secret"),
+				)
 			}
-			writeJSON(t, w, map[string]any{
-				"paymentMethod":  "SBPQR",
-				"transactionId":  "platega-tx-1",
-				"redirect":       "https://pay.platega.io?qrsbp",
-				"return":         "https://example.com/success",
-				"paymentDetails": "12.99 RUB",
-				"status":         "PENDING",
-				"expiresIn":      "00:15:00",
-				"merchantId":     "merchant-1",
-				"usdtRate":       90.5,
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/h2h/platega-tx-1":
-			writeJSON(t, w, map[string]any{
-				"amount": 12.99,
-				"qr":     "https://qr.nspk.ru/test",
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/transaction/platega-tx-1":
-			writeJSON(t, w, map[string]any{
-				"id":     "platega-tx-1",
-				"status": "CONFIRMED",
-				"paymentDetails": map[string]any{
-					"amount":   12.99,
-					"currency": "RUB",
-				},
-				"paymentMethod": "SBPQR",
-				"payload":       createPayload.Payload,
-				"description":   createPayload.Description,
-			})
-		default:
-			t.Fatalf("unexpected platega api request: %s %s", r.Method, r.URL.Path)
-		}
-	}))
+			switch {
+			case r.Method == http.MethodPost && r.URL.Path == "/transaction/process":
+				createPath = r.URL.Path
+				if err := json.NewDecoder(r.Body).
+					Decode(&createPayload); err != nil {
+					t.Fatalf("decode platega create payload: %v", err)
+				}
+				writeJSON(t, w, map[string]any{
+					"paymentMethod":  "SBPQR",
+					"transactionId":  "platega-tx-1",
+					"redirect":       "https://pay.platega.io?qrsbp",
+					"return":         "https://example.com/success",
+					"paymentDetails": "12.99 RUB",
+					"status":         "PENDING",
+					"expiresIn":      "00:15:00",
+					"merchantId":     "merchant-1",
+					"usdtRate":       90.5,
+				})
+			case r.Method == http.MethodGet && r.URL.Path == "/h2h/platega-tx-1":
+				writeJSON(t, w, map[string]any{
+					"amount": 12.99,
+					"qr":     "https://qr.nspk.ru/test",
+				})
+			case r.Method == http.MethodGet && r.URL.Path == "/transaction/platega-tx-1":
+				writeJSON(t, w, map[string]any{
+					"id":     "platega-tx-1",
+					"status": "CONFIRMED",
+					"paymentDetails": map[string]any{
+						"amount":   12.99,
+						"currency": "RUB",
+					},
+					"paymentMethod": "SBPQR",
+					"payload":       createPayload.Payload,
+					"description":   createPayload.Description,
+				})
+			default:
+				t.Fatalf(
+					"unexpected platega api request: %s %s",
+					r.Method,
+					r.URL.Path,
+				)
+			}
+		}),
+	)
 	defer server.Close()
 
 	credentials := platega.Credentials{
@@ -4784,36 +6210,48 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 		APIBaseURL: server.URL,
 	}
 
-	payment, err := env.api.Adapters.Platega.CreatePayment(env.ctx, platega.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          8008,
-		PlatformID:     3,
-		PlatformUserID: "platega-user",
-		ProductID:      productID,
-		Locale:         "ru",
-		Description:    "Platega product",
-		ReturnURL:      "https://example.com/success",
-		FailedURL:      "https://example.com/fail",
-		PaymentMethod:  platega.PaymentMethodSBPQR,
-		IdempotencyKey: "platega-full-cycle",
-	})
+	payment, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		platega.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          8008,
+			PlatformID:     3,
+			PlatformUserID: "platega-user",
+			ProductID:      productID,
+			Locale:         "ru",
+			Description:    "Platega product",
+			ReturnURL:      "https://example.com/success",
+			FailedURL:      "https://example.com/fail",
+			PaymentMethod:  platega.PaymentMethodSBPQR,
+			IdempotencyKey: "platega-full-cycle",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create platega payment: %v", err)
 	}
 	if createPath != "/transaction/process" {
 		t.Fatalf("expected method-specific create path, got %s", createPath)
 	}
-	if createPayload.PaymentMethod == nil || *createPayload.PaymentMethod != int(platega.PaymentMethodSBPQR) {
+	if createPayload.PaymentMethod == nil ||
+		*createPayload.PaymentMethod != int(platega.PaymentMethodSBPQR) {
 		t.Fatalf("unexpected payment method payload: %#v", createPayload)
 	}
-	if createPayload.PaymentDetails.Amount.String() != "12.99" || createPayload.PaymentDetails.Currency != "RUB" {
-		t.Fatalf("unexpected payment details: %#v", createPayload.PaymentDetails)
+	if createPayload.PaymentDetails.Amount.String() != "12.99" ||
+		createPayload.PaymentDetails.Currency != "RUB" {
+		t.Fatalf(
+			"unexpected payment details: %#v",
+			createPayload.PaymentDetails,
+		)
 	}
 	if createPayload.Payload != payment.OrderPublicID {
-		t.Fatalf("expected order public id as payload, got %q", createPayload.Payload)
+		t.Fatalf(
+			"expected order public id as payload, got %q",
+			createPayload.Payload,
+		)
 	}
-	if payment.TransactionID != "platega-tx-1" || payment.PaymentURL == "" || payment.AmountMinor != 1299 {
+	if payment.TransactionID != "platega-tx-1" || payment.PaymentURL == "" ||
+		payment.AmountMinor != 1299 {
 		t.Fatalf("unexpected platega payment response: %#v", payment)
 	}
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "pending_payment")
@@ -4830,30 +6268,39 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 		t.Fatalf("unexpected h2h response: %#v", h2h)
 	}
 
-	raw := []byte(`{"id":"platega-tx-1","amount":12.99,"currency":"RUB","status":"CONFIRMED","paymentMethod":2}`)
+	raw := []byte(
+		`{"id":"platega-tx-1","amount":12.99,"currency":"RUB","status":"CONFIRMED","paymentMethod":2}`,
+	)
 	headers := http.Header{}
 	headers.Set("X-MerchantId", "merchant-1")
 	headers.Set("X-Secret", "secret-1")
-	result, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, platega.WebhookRequest{
-		Credentials: credentials,
-		WorkspaceID: testWorkspaceID,
-		Raw:         raw,
-		Headers:     headers,
-	})
+	result, err := env.api.Adapters.Platega.HandleWebhook(
+		env.ctx,
+		platega.WebhookRequest{
+			Credentials: credentials,
+			WorkspaceID: testWorkspaceID,
+			Raw:         raw,
+			Headers:     headers,
+		},
+	)
 	if err != nil {
 		t.Fatalf("handle platega webhook: %v", err)
 	}
-	if result.OrderID != payment.OrderID || result.AttemptID != payment.AttemptID {
+	if result.OrderID != payment.OrderID ||
+		result.AttemptID != payment.AttemptID {
 		t.Fatalf("unexpected platega webhook result: %#v", result)
 	}
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "fulfilled")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "succeeded")
 
-	again, err := env.api.Adapters.Platega.SyncPayment(env.ctx, platega.SyncPaymentParams{
-		Credentials:   credentials,
-		WorkspaceID:   testWorkspaceID,
-		TransactionID: payment.TransactionID,
-	})
+	again, err := env.api.Adapters.Platega.SyncPayment(
+		env.ctx,
+		platega.SyncPaymentParams{
+			Credentials:   credentials,
+			WorkspaceID:   testWorkspaceID,
+			TransactionID: payment.TransactionID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("sync platega payment: %v", err)
 	}
@@ -4873,11 +6320,14 @@ func TestPlategaAdapterRejectsInvalidWebhookCredentials(t *testing.T) {
 	headers := http.Header{}
 	headers.Set("X-MerchantId", "merchant-1")
 	headers.Set("X-Secret", "wrong-secret")
-	_, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, platega.WebhookRequest{
-		Credentials: credentials,
-		Raw:         []byte(`{"id":"tx"}`),
-		Headers:     headers,
-	})
+	_, err := env.api.Adapters.Platega.HandleWebhook(
+		env.ctx,
+		platega.WebhookRequest{
+			Credentials: credentials,
+			Raw:         []byte(`{"id":"tx"}`),
+			Headers:     headers,
+		},
+	)
 	if err == nil {
 		t.Fatal("expected invalid platega webhook credentials error")
 	}
@@ -4893,56 +6343,71 @@ func TestPlategaUsesExactMonetaryAmounts(t *testing.T) {
 	})
 
 	var receivedAmount json.Number
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var payload plategaTestCreateTransactionPayload
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode exact platega amount: %v", err)
-		}
-		receivedAmount = payload.PaymentDetails.Amount
-		writeJSON(t, w, map[string]any{
-			"transactionId": "platega-exact-amount",
-			"status":        "PENDING",
-			"url":           "https://pay.example/exact",
-		})
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var payload plategaTestCreateTransactionPayload
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode exact platega amount: %v", err)
+			}
+			receivedAmount = payload.PaymentDetails.Amount
+			writeJSON(t, w, map[string]any{
+				"transactionId": "platega-exact-amount",
+				"status":        "PENDING",
+				"url":           "https://pay.example/exact",
+			})
+		}),
+	)
 	defer server.Close()
 	credentials := platega.Credentials{
 		MerchantID: "merchant-exact",
 		Secret:     "secret-exact",
 		APIBaseURL: server.URL,
 	}
-	payment, err := env.api.Adapters.Platega.CreatePayment(env.ctx, platega.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          8100,
-		PlatformID:     3,
-		PlatformUserID: "exact-amount-user",
-		ProductID:      productID,
-		IdempotencyKey: "platega-exact-amount-key",
-	})
+	payment, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		platega.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          8100,
+			PlatformID:     3,
+			PlatformUserID: "exact-amount-user",
+			ProductID:      productID,
+			IdempotencyKey: "platega-exact-amount-key",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create exact platega payment: %v", err)
 	}
 	if receivedAmount.String() != "90071992547409.93" {
-		t.Fatalf("provider amount = %q, want exact decimal", receivedAmount.String())
+		t.Fatalf(
+			"provider amount = %q, want exact decimal",
+			receivedAmount.String(),
+		)
 	}
 
 	headers := http.Header{}
 	headers.Set("X-MerchantId", credentials.MerchantID)
 	headers.Set("X-Secret", credentials.Secret)
-	result, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, platega.WebhookRequest{
-		Credentials: credentials,
-		WorkspaceID: testWorkspaceID,
-		Raw: []byte(
-			`{"id":"platega-exact-amount","amount":90071992547409.93,"currency":"RUB","status":"CONFIRMED","paymentMethod":2}`,
-		),
-		Headers: headers,
-	})
+	result, err := env.api.Adapters.Platega.HandleWebhook(
+		env.ctx,
+		platega.WebhookRequest{
+			Credentials: credentials,
+			WorkspaceID: testWorkspaceID,
+			Raw: []byte(
+				`{"id":"platega-exact-amount","amount":90071992547409.93,"currency":"RUB","status":"CONFIRMED","paymentMethod":2}`,
+			),
+			Headers: headers,
+		},
+	)
 	if err != nil {
 		t.Fatalf("complete exact platega payment: %v", err)
 	}
 	if result.FulfilledID == nil || payment.AmountMinor != amountMinor {
-		t.Fatalf("exact platega result: payment=%+v result=%+v", payment, result)
+		t.Fatalf(
+			"exact platega result: payment=%+v result=%+v",
+			payment,
+			result,
+		)
 	}
 }
 
@@ -4956,12 +6421,17 @@ func TestPlategaRejectsFractionalMinorUnits(t *testing.T) {
 	headers.Set("X-MerchantId", credentials.MerchantID)
 	headers.Set("X-Secret", credentials.Secret)
 
-	_, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, platega.WebhookRequest{
-		Credentials: credentials,
-		WorkspaceID: testWorkspaceID,
-		Raw:         []byte(`{"id":"fractional","amount":1.004,"currency":"RUB","status":"CONFIRMED","paymentMethod":2}`),
-		Headers:     headers,
-	})
+	_, err := env.api.Adapters.Platega.HandleWebhook(
+		env.ctx,
+		platega.WebhookRequest{
+			Credentials: credentials,
+			WorkspaceID: testWorkspaceID,
+			Raw: []byte(
+				`{"id":"fractional","amount":1.004,"currency":"RUB","status":"CONFIRMED","paymentMethod":2}`,
+			),
+			Headers: headers,
+		},
+	)
 	if !errors.Is(err, platega.ErrAmountInvalid) {
 		t.Fatalf("fractional minor units error = %v", err)
 	}
@@ -4977,12 +6447,17 @@ func TestPlategaRejectsAmountAboveDatabaseRange(t *testing.T) {
 	headers.Set("X-MerchantId", credentials.MerchantID)
 	headers.Set("X-Secret", credentials.Secret)
 
-	_, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, platega.WebhookRequest{
-		Credentials: credentials,
-		WorkspaceID: testWorkspaceID,
-		Raw:         []byte(`{"id":"overflow","amount":92233720368547758.08,"currency":"RUB","status":"CONFIRMED","paymentMethod":2}`),
-		Headers:     headers,
-	})
+	_, err := env.api.Adapters.Platega.HandleWebhook(
+		env.ctx,
+		platega.WebhookRequest{
+			Credentials: credentials,
+			WorkspaceID: testWorkspaceID,
+			Raw: []byte(
+				`{"id":"overflow","amount":92233720368547758.08,"currency":"RUB","status":"CONFIRMED","paymentMethod":2}`,
+			),
+			Headers: headers,
+		},
+	)
 	if !errors.Is(err, platega.ErrAmountInvalid) {
 		t.Fatalf("amount overflow error = %v", err)
 	}
@@ -5036,12 +6511,15 @@ func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create cache test group: %v", err)
 	}
-	if err := env.api.Admin.SaveLocalization(env.ctx, product.UpsertLocalizationParams{
-		WorkspaceID:     testWorkspaceID,
-		Locale:          "ru",
-		LocalizationKey: titleKey,
-		Value:           "Old title",
-	}); err != nil {
+	if err := env.api.Admin.SaveLocalization(
+		env.ctx,
+		product.UpsertLocalizationParams{
+			WorkspaceID:     testWorkspaceID,
+			Locale:          "ru",
+			LocalizationKey: titleKey,
+			Value:           "Old title",
+		},
+	); err != nil {
 		t.Fatalf("create cache test localization: %v", err)
 	}
 	if err := env.api.Admin.SaveProduct(env.ctx, product.UpsertParams{
@@ -5059,18 +6537,24 @@ func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create cache test product: %v", err)
 	}
-	if _, err := env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
-		WorkspaceID:     testWorkspaceID,
-		ProductID:       productID,
-		AssetCode:       "RUB",
-		ListAmountMinor: 100,
-		StartsAt:        &availableFrom,
-		EndsAt:          &availableUntil,
-	}); err != nil {
+	if _, err := env.api.Admin.CreateCatalogPrice(
+		env.ctx,
+		product.CreatePriceParams{
+			WorkspaceID:     testWorkspaceID,
+			ProductID:       productID,
+			AssetCode:       "RUB",
+			ListAmountMinor: 100,
+			StartsAt:        &availableFrom,
+			EndsAt:          &availableUntil,
+		},
+	); err != nil {
 		t.Fatalf("create cache test price: %v", err)
 	}
 
-	warm, err := nodeB.User.GetProduct(env.ctx, paymentGetProductParams(productID, "cache-user"))
+	warm, err := nodeB.User.GetProduct(
+		env.ctx,
+		paymentGetProductParams(productID, "cache-user"),
+	)
 	if err != nil {
 		t.Fatalf("warm product cache on node B: %v", err)
 	}
@@ -5078,12 +6562,15 @@ func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 		t.Fatalf("unexpected warm product: %+v", warm)
 	}
 
-	if err := env.api.Admin.SaveLocalization(env.ctx, product.UpsertLocalizationParams{
-		WorkspaceID:     testWorkspaceID,
-		Locale:          "ru",
-		LocalizationKey: titleKey,
-		Value:           "New title",
-	}); err != nil {
+	if err := env.api.Admin.SaveLocalization(
+		env.ctx,
+		product.UpsertLocalizationParams{
+			WorkspaceID:     testWorkspaceID,
+			Locale:          "ru",
+			LocalizationKey: titleKey,
+			Value:           "New title",
+		},
+	); err != nil {
 		t.Fatalf("update cache test localization: %v", err)
 	}
 	if err := env.api.Admin.SaveProduct(env.ctx, product.UpsertParams{
@@ -5102,7 +6589,10 @@ func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 		t.Fatalf("update cache test product: %v", err)
 	}
 
-	updated, err := nodeB.User.GetProduct(env.ctx, paymentGetProductParams(productID, "cache-user"))
+	updated, err := nodeB.User.GetProduct(
+		env.ctx,
+		paymentGetProductParams(productID, "cache-user"),
+	)
 	if err != nil {
 		t.Fatalf("read invalidated product on node B: %v", err)
 	}
@@ -5129,19 +6619,30 @@ func TestPaymentImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 		})
 	}
 
-	result, err := env.api.Admin.Import(env.ctx, workspaceID, admin.ImportRequest{
-		Package: admin.ExportPackage{
-			Format:   repository.ExportFormat,
-			Service:  "payment",
-			Products: products,
+	result, err := env.api.Admin.Import(
+		env.ctx,
+		workspaceID,
+		admin.ImportRequest{
+			Package: admin.ExportPackage{
+				Format:   repository.ExportFormat,
+				Service:  "payment",
+				Products: products,
+			},
+			ConflictStrategy: repository.ImportConflictUpdate,
 		},
-		ConflictStrategy: repository.ImportConflictUpdate,
-	})
+	)
 	if err != nil {
-		t.Fatalf("import package larger than PostgreSQL parameter limit: %v", err)
+		t.Fatalf(
+			"import package larger than PostgreSQL parameter limit: %v",
+			err,
+		)
 	}
 	if result.Imported.Products != productCount {
-		t.Fatalf("imported products = %d, want %d", result.Imported.Products, productCount)
+		t.Fatalf(
+			"imported products = %d, want %d",
+			result.Imported.Products,
+			productCount,
+		)
 	}
 
 	var stored int
@@ -5176,16 +6677,20 @@ func TestPaymentImportSerializesWithAdminWrite(t *testing.T) {
 
 	importResult := make(chan error, 1)
 	go func() {
-		_, err := env.api.Admin.Import(env.ctx, workspaceID, admin.ImportRequest{
-			Package: admin.ExportPackage{
-				Format:  repository.ExportFormat,
-				Service: "payment",
-				Products: []repository.ExportProduct{
-					paymentImportTestProduct("concurrent-import-product"),
+		_, err := env.api.Admin.Import(
+			env.ctx,
+			workspaceID,
+			admin.ImportRequest{
+				Package: admin.ExportPackage{
+					Format:  repository.ExportFormat,
+					Service: "payment",
+					Products: []repository.ExportProduct{
+						paymentImportTestProduct("concurrent-import-product"),
+					},
 				},
+				ConflictStrategy: repository.ImportConflictUpdate,
 			},
-			ConflictStrategy: repository.ImportConflictUpdate,
-		})
+		)
 		importResult <- err
 	}()
 
@@ -5234,7 +6739,11 @@ WHERE workspace_id = $1
 	}
 }
 
-func waitForPaymentWorkspaceLock(t *testing.T, env paymentTestEnv, minimum int) {
+func waitForPaymentWorkspaceLock(
+	t *testing.T,
+	env paymentTestEnv,
+	minimum int,
+) {
 	t.Helper()
 
 	deadline := time.Now().Add(3 * time.Second)
@@ -5253,7 +6762,11 @@ WHERE datname = current_database()
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("payment workspace lock waiters = %d, want at least %d", waiting, minimum)
+			t.Fatalf(
+				"payment workspace lock waiters = %d, want at least %d",
+				waiting,
+				minimum,
+			)
 		}
 
 		time.Sleep(10 * time.Millisecond)
@@ -5300,7 +6813,10 @@ func timePointer(value time.Time) *time.Time {
 	return &value
 }
 
-func paymentGetProductParams(productID string, platformUserID string) product.GetParams {
+func paymentGetProductParams(
+	productID string,
+	platformUserID string,
+) product.GetParams {
 	return product.GetParams{
 		Identity: services.Identity{
 			WorkspaceID:    testWorkspaceID,
@@ -5330,7 +6846,9 @@ func newPaymentSharedTestCache() *paymentSharedTestCache {
 	}
 }
 
-func (c *paymentSharedTestCache) GetWithTTL(key string) ([]byte, time.Duration, error) {
+func (c *paymentSharedTestCache) GetWithTTL(
+	key string,
+) ([]byte, time.Duration, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -5346,7 +6864,11 @@ func (c *paymentSharedTestCache) GetWithTTL(key string) ([]byte, time.Duration, 
 	return append([]byte(nil), entry.value...), time.Until(entry.expiresAt), nil
 }
 
-func (c *paymentSharedTestCache) Set(key string, value []byte, expiration time.Duration) error {
+func (c *paymentSharedTestCache) Set(
+	key string,
+	value []byte,
+	expiration time.Duration,
+) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -5383,7 +6905,9 @@ func (c *paymentSharedTestCache) Close() error {
 	return nil
 }
 
-func (c *paymentSharedTestCache) hasEntryTTLAtLeast(minimum time.Duration) bool {
+func (c *paymentSharedTestCache) hasEntryTTLAtLeast(
+	minimum time.Duration,
+) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -5423,8 +6947,14 @@ func TestPaymentWorkspaceIsolation(t *testing.T) {
 	// Create the MySQL database connection and bootstrap the payment schema.
 	// Verify workspace separates catalogs without binding products to AppID.
 	env := setupPaymentIntegrationTest(t)
-	workspaceA := fmt.Sprintf("00000000-0000-0000-0000-%012d", time.Now().UnixNano()%1_000_000_000_000)
-	workspaceB := fmt.Sprintf("11111111-1111-1111-1111-%012d", time.Now().UnixNano()%1_000_000_000_000)
+	workspaceA := fmt.Sprintf(
+		"00000000-0000-0000-0000-%012d",
+		time.Now().UnixNano()%1_000_000_000_000,
+	)
+	workspaceB := fmt.Sprintf(
+		"11111111-1111-1111-1111-%012d",
+		time.Now().UnixNano()%1_000_000_000_000,
+	)
 
 	// Workspace catalog isolation.
 	// Create a product only inside workspace A and fetch it from two workspaces.
@@ -5458,19 +6988,36 @@ func TestPaymentWorkspaceIsolation(t *testing.T) {
 		ListAmountMinor: 2500,
 	})
 	if sameProductID != productID {
-		t.Fatalf("expected duplicate product id across workspaces, got %s", sameProductID)
+		t.Fatalf(
+			"expected duplicate product id across workspaces, got %s",
+			sameProductID,
+		)
 	}
-	workspaceBProduct, err := env.api.User.GetProduct(env.ctx, product.GetParams{
-		Identity:  paymentTestIdentity(workspaceB, 4500, 1, "workspace-user"),
-		ProductID: productID,
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	workspaceBProduct, err := env.api.User.GetProduct(
+		env.ctx,
+		product.GetParams{
+			Identity: paymentTestIdentity(
+				workspaceB,
+				4500,
+				1,
+				"workspace-user",
+			),
+			ProductID: productID,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
-		t.Fatalf("expected workspace B product with duplicate id to be visible, got %v", err)
+		t.Fatalf(
+			"expected workspace B product with duplicate id to be visible, got %v",
+			err,
+		)
 	}
 	if workspaceBProduct.Price.ListAmountMinor != 2500 {
-		t.Fatalf("expected workspace B duplicate product price 2500, got %d", workspaceBProduct.Price.ListAmountMinor)
+		t.Fatalf(
+			"expected workspace B duplicate product price 2500, got %d",
+			workspaceBProduct.Price.ListAmountMinor,
+		)
 	}
 
 	// Workspace checkout isolation.
@@ -5490,7 +7037,10 @@ func TestPaymentWorkspaceIsolation(t *testing.T) {
 		AssetCode: "RUB",
 		Locale:    "ru",
 	}); err != nil {
-		t.Fatalf("expected workspace B order for its duplicate product to be created, got %v", err)
+		t.Fatalf(
+			"expected workspace B order for its duplicate product to be created, got %v",
+			err,
+		)
 	}
 }
 
@@ -5500,7 +7050,15 @@ func TestPaymentLimitsAcrossAllIntervals(t *testing.T) {
 	// Verify limit checks run against real persisted paid orders.
 	env := setupPaymentIntegrationTest(t)
 
-	intervals := []string{"SECOND", "MINUTE", "HOUR", "DAY", "WEEK", "MONTH", "ONCE"}
+	intervals := []string{
+		"SECOND",
+		"MINUTE",
+		"HOUR",
+		"DAY",
+		"WEEK",
+		"MONTH",
+		"ONCE",
+	}
 	for _, interval := range intervals {
 		t.Run("user_"+interval, func(t *testing.T) {
 			intervalCount := stablePaymentTestIntervalCount(interval)
@@ -5517,33 +7075,74 @@ func TestPaymentLimitsAcrossAllIntervals(t *testing.T) {
 				UserIntervalCount:   intervalCount,
 			})
 
-			completeTestPayment(t, env, productID, "limit-user-"+interval, "buyer-a", "yookassa", "RUB")
+			completeTestPayment(
+				t,
+				env,
+				productID,
+				"limit-user-"+interval,
+				"buyer-a",
+				"yookassa",
+				"RUB",
+			)
 
-			if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-				Identity:  paymentTestIdentity(testWorkspaceID, 4100, 1, "buyer-a"),
-				ProductID: productID,
-				AssetCode: "RUB",
-				Locale:    "ru",
-			}); !errors.Is(err, repository.ErrProductLocked) {
+			if _, err := env.api.User.CreateOrder(
+				env.ctx,
+				checkout.CreateOrderParams{
+					Identity: paymentTestIdentity(
+						testWorkspaceID,
+						4100,
+						1,
+						"buyer-a",
+					),
+					ProductID: productID,
+					AssetCode: "RUB",
+					Locale:    "ru",
+				},
+			); !errors.Is(
+				err,
+				repository.ErrProductLocked,
+			) {
 				t.Fatalf("expected user limit lock, got %v", err)
 			}
 
-			if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-				Identity:  paymentTestIdentity(testWorkspaceID, 4101, 1, "buyer-a"),
-				ProductID: productID,
-				AssetCode: "RUB",
-				Locale:    "ru",
-			}); err != nil {
-				t.Fatalf("expected another app identity to bypass user limit, got %v", err)
+			if _, err := env.api.User.CreateOrder(
+				env.ctx,
+				checkout.CreateOrderParams{
+					Identity: paymentTestIdentity(
+						testWorkspaceID,
+						4101,
+						1,
+						"buyer-a",
+					),
+					ProductID: productID,
+					AssetCode: "RUB",
+					Locale:    "ru",
+				},
+			); err != nil {
+				t.Fatalf(
+					"expected another app identity to bypass user limit, got %v",
+					err,
+				)
 			}
 
-			if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-				Identity:  paymentTestIdentity(testWorkspaceID, 4100, 1, "buyer-b"),
-				ProductID: productID,
-				AssetCode: "RUB",
-				Locale:    "ru",
-			}); err != nil {
-				t.Fatalf("expected another user to bypass user limit, got %v", err)
+			if _, err := env.api.User.CreateOrder(
+				env.ctx,
+				checkout.CreateOrderParams{
+					Identity: paymentTestIdentity(
+						testWorkspaceID,
+						4100,
+						1,
+						"buyer-b",
+					),
+					ProductID: productID,
+					AssetCode: "RUB",
+					Locale:    "ru",
+				},
+			); err != nil {
+				t.Fatalf(
+					"expected another user to bypass user limit, got %v",
+					err,
+				)
 			}
 		})
 
@@ -5563,14 +7162,33 @@ func TestPaymentLimitsAcrossAllIntervals(t *testing.T) {
 				DiscountAmountMinor: 0,
 			})
 
-			completeTestPayment(t, env, productID, "limit-global-"+interval, "buyer-a", "yookassa", "RUB")
+			completeTestPayment(
+				t,
+				env,
+				productID,
+				"limit-global-"+interval,
+				"buyer-a",
+				"yookassa",
+				"RUB",
+			)
 
-			if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-				Identity:  paymentTestIdentity(testWorkspaceID, 4101, 1, "buyer-b"),
-				ProductID: productID,
-				AssetCode: "RUB",
-				Locale:    "ru",
-			}); !errors.Is(err, repository.ErrProductLocked) {
+			if _, err := env.api.User.CreateOrder(
+				env.ctx,
+				checkout.CreateOrderParams{
+					Identity: paymentTestIdentity(
+						testWorkspaceID,
+						4101,
+						1,
+						"buyer-b",
+					),
+					ProductID: productID,
+					AssetCode: "RUB",
+					Locale:    "ru",
+				},
+			); !errors.Is(
+				err,
+				repository.ErrProductLocked,
+			) {
 				t.Fatalf("expected global limit lock, got %v", err)
 			}
 		})
@@ -5587,15 +7205,34 @@ func TestPaymentLimitsAcrossAllIntervals(t *testing.T) {
 			GlobalInterval:  "UNLIMITED",
 		})
 
-		completeTestPayment(t, env, productID, "limit-unlimited", "buyer-a", "yookassa", "RUB")
+		completeTestPayment(
+			t,
+			env,
+			productID,
+			"limit-unlimited",
+			"buyer-a",
+			"yookassa",
+			"RUB",
+		)
 
-		if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-			Identity:  paymentTestIdentity(testWorkspaceID, 4100, 1, "buyer-a"),
-			ProductID: productID,
-			AssetCode: "RUB",
-			Locale:    "ru",
-		}); err != nil {
-			t.Fatalf("expected unlimited product to remain available, got %v", err)
+		if _, err := env.api.User.CreateOrder(
+			env.ctx,
+			checkout.CreateOrderParams{
+				Identity: paymentTestIdentity(
+					testWorkspaceID,
+					4100,
+					1,
+					"buyer-a",
+				),
+				ProductID: productID,
+				AssetCode: "RUB",
+				Locale:    "ru",
+			},
+		); err != nil {
+			t.Fatalf(
+				"expected unlimited product to remain available, got %v",
+				err,
+			)
 		}
 	})
 }
@@ -5631,18 +7268,31 @@ func TestPaymentOrderLimitReservationLifecycle(t *testing.T) {
 		GlobalIntervalCount: 1,
 	})
 
-	firstOrder, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 4110, 1, "reservation-owner"),
-		ProductID: productID,
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	firstOrder, err := env.api.User.CreateOrder(
+		env.ctx,
+		checkout.CreateOrderParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				4110,
+				1,
+				"reservation-owner",
+			),
+			ProductID: productID,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create reserved order: %v", err)
 	}
 
 	if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 4110, 2, "reservation-contender"),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			4110,
+			2,
+			"reservation-contender",
+		),
 		ProductID: productID,
 		AssetCode: "RUB",
 		Locale:    "ru",
@@ -5660,7 +7310,12 @@ func TestPaymentOrderLimitReservationLifecycle(t *testing.T) {
 	}
 
 	if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 4110, 2, "reservation-contender"),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			4110,
+			2,
+			"reservation-contender",
+		),
 		ProductID: productID,
 		AssetCode: "RUB",
 		Locale:    "ru",
@@ -5675,22 +7330,33 @@ func TestPaymentOrderLimitReservationLifecycle(t *testing.T) {
 		GlobalInterval:      "ONCE",
 		GlobalIntervalCount: 1,
 	})
-	snapshotOrder, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 4111, 1, "snapshot-owner"),
-		ProductID: snapshotProductID,
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	snapshotOrder, err := env.api.User.CreateOrder(
+		env.ctx,
+		checkout.CreateOrderParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				4111,
+				1,
+				"snapshot-owner",
+			),
+			ProductID: snapshotProductID,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create snapshot order: %v", err)
 	}
 	providerPaymentID := uniquePaymentID("limit-snapshot")
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(snapshotOrder),
-		OrderID:           snapshotOrder.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(snapshotOrder),
+			OrderID:           snapshotOrder.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create snapshot attempt: %v", err)
 	}
@@ -5707,14 +7373,17 @@ WHERE workspace_id = $1
 	); err != nil {
 		t.Fatalf("change product after order creation: %v", err)
 	}
-	if _, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testWorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-		AmountMinor:       attempt.AmountMinor,
-		AssetCode:         "RUB",
-	}); err != nil {
+	if _, err := env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID:       testWorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+			AmountMinor:       attempt.AmountMinor,
+			AssetCode:         "RUB",
+		},
+	); err != nil {
 		t.Fatalf("complete order from limit snapshot: %v", err)
 	}
 	var paidCount int64
@@ -5732,7 +7401,11 @@ WHERE workspace_id = $1
 		t.Fatalf("read consumed snapshot reservation: %v", err)
 	}
 	if paidCount != 1 || reservedCount != 0 {
-		t.Fatalf("unexpected snapshot counter: paid=%d reserved=%d", paidCount, reservedCount)
+		t.Fatalf(
+			"unexpected snapshot counter: paid=%d reserved=%d",
+			paidCount,
+			reservedCount,
+		)
 	}
 }
 
@@ -5758,15 +7431,18 @@ func TestPaymentStaleOrderExpirationReleasesLimitAndPurchaseKey(t *testing.T) {
 		t.Fatalf("create purchase key: %v", err)
 	}
 
-	order, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
-		Key: key,
-		Payer: &services.Actor{
-			PlatformID:     1,
-			PlatformUserID: "stale-payer",
+	order, err := env.api.User.CreateOrderByKey(
+		env.ctx,
+		checkout.CreateOrderByKeyParams{
+			Key: key,
+			Payer: &services.Actor{
+				PlatformID:     1,
+				PlatformUserID: "stale-payer",
+			},
+			AssetCode: "RUB",
+			Locale:    "ru",
 		},
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	)
 	if err != nil {
 		t.Fatalf("create stale order: %v", err)
 	}
@@ -5783,15 +7459,18 @@ func TestPaymentStaleOrderExpirationReleasesLimitAndPurchaseKey(t *testing.T) {
 	}
 
 	assertOrderStatus(t, env.ctx, env.db, order.ID, "expired")
-	if _, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
-		Key: key,
-		Payer: &services.Actor{
-			PlatformID:     2,
-			PlatformUserID: "replacement-payer",
+	if _, err := env.api.User.CreateOrderByKey(
+		env.ctx,
+		checkout.CreateOrderByKeyParams{
+			Key: key,
+			Payer: &services.Actor{
+				PlatformID:     2,
+				PlatformUserID: "replacement-payer",
+			},
+			AssetCode: "RUB",
+			Locale:    "ru",
 		},
-		AssetCode: "RUB",
-		Locale:    "ru",
-	}); err != nil {
+	); err != nil {
 		t.Fatalf("create replacement order after expiration: %v", err)
 	}
 }
@@ -5819,15 +7498,18 @@ func TestPaymentCreateOrderByKeyLocksLimitBeforePurchaseKey(t *testing.T) {
 		t.Fatalf("create purchase key: %v", err)
 	}
 
-	if _, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
-		Key: key,
-		Payer: &services.Actor{
-			PlatformID:     1,
-			PlatformUserID: "first-key-payer",
+	if _, err := env.api.User.CreateOrderByKey(
+		env.ctx,
+		checkout.CreateOrderByKeyParams{
+			Key: key,
+			Payer: &services.Actor{
+				PlatformID:     1,
+				PlatformUserID: "first-key-payer",
+			},
+			AssetCode: "RUB",
+			Locale:    "ru",
 		},
-		AssetCode: "RUB",
-		Locale:    "ru",
-	}); err != nil {
+	); err != nil {
 		t.Fatalf("create first keyed order: %v", err)
 	}
 
@@ -5849,15 +7531,18 @@ FOR UPDATE`, testWorkspaceID, productID); err != nil {
 
 	orderResult := make(chan error, 1)
 	go func() {
-		_, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
-			Key: key,
-			Payer: &services.Actor{
-				PlatformID:     1,
-				PlatformUserID: "second-key-payer",
+		_, err := env.api.User.CreateOrderByKey(
+			env.ctx,
+			checkout.CreateOrderByKeyParams{
+				Key: key,
+				Payer: &services.Actor{
+					PlatformID:     1,
+					PlatformUserID: "second-key-payer",
+				},
+				AssetCode: "RUB",
+				Locale:    "ru",
 			},
-			AssetCode: "RUB",
-			Locale:    "ru",
-		})
+		)
 		orderResult <- err
 	}()
 
@@ -5904,7 +7589,12 @@ func TestPaymentStaleOrderAndActiveAttemptExpireConsistently(t *testing.T) {
 		GlobalIntervalCount: 1,
 	})
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 4121, 1, "delayed-payment"),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			4121,
+			1,
+			"delayed-payment",
+		),
 		ProductID: productID,
 		AssetCode: "RUB",
 		Locale:    "ru",
@@ -5913,12 +7603,15 @@ func TestPaymentStaleOrderAndActiveAttemptExpireConsistently(t *testing.T) {
 		t.Fatalf("create delayed order: %v", err)
 	}
 	providerPaymentID := uniquePaymentID("delayed-payment")
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(order),
-		OrderID:           order.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(order),
+			OrderID:           order.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create delayed attempt: %v", err)
 	}
@@ -5939,12 +7632,20 @@ func TestPaymentStaleOrderAndActiveAttemptExpireConsistently(t *testing.T) {
 	assertOrderStatus(t, env.ctx, env.db, order.ID, "expired")
 	assertAttemptStatus(t, env.ctx, env.db, attempt.ID, "expired")
 
-	replacement, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 4121, 1, "replacement"),
-		ProductID: productID,
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	replacement, err := env.api.User.CreateOrder(
+		env.ctx,
+		checkout.CreateOrderParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				4121,
+				1,
+				"replacement",
+			),
+			ProductID: productID,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create replacement after expiration: %v", err)
 	}
@@ -5961,7 +7662,12 @@ func TestPaymentStaleExpirationLocksAttemptsBeforeOrder(t *testing.T) {
 		ListAmountMinor: 1000,
 	})
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 4123, 1, "expiration-lock-user"),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			4123,
+			1,
+			"expiration-lock-user",
+		),
 		ProductID: productID,
 		AssetCode: "RUB",
 		Locale:    "ru",
@@ -5970,12 +7676,15 @@ func TestPaymentStaleExpirationLocksAttemptsBeforeOrder(t *testing.T) {
 		t.Fatalf("create stale order: %v", err)
 	}
 	providerPaymentID := uniquePaymentID("expiration-lock")
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(order),
-		OrderID:           order.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(order),
+			OrderID:           order.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create stale attempt: %v", err)
 	}
@@ -6040,23 +7749,34 @@ func TestPaymentSubscriptionRejectsMismatchedOrderAndAttempt(t *testing.T) {
 	})
 
 	createOrderAttempt := func(userID string) (uint64, uint64) {
-		order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-			Identity:  paymentTestIdentity(testWorkspaceID, 4130, 1, userID),
-			ProductID: productID,
-			AssetCode: "RUB",
-			Locale:    "ru",
-		})
+		order, err := env.api.User.CreateOrder(
+			env.ctx,
+			checkout.CreateOrderParams{
+				Identity: paymentTestIdentity(
+					testWorkspaceID,
+					4130,
+					1,
+					userID,
+				),
+				ProductID: productID,
+				AssetCode: "RUB",
+				Locale:    "ru",
+			},
+		)
 		if err != nil {
 			t.Fatalf("create order for %s: %v", userID, err)
 		}
 
 		providerPaymentID := uniquePaymentID("subscription-" + userID)
-		attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-			Identity:          paymentAttemptIdentity(order),
-			OrderID:           order.ID,
-			ProviderCode:      "yookassa",
-			ProviderPaymentID: &providerPaymentID,
-		})
+		attempt, err := env.api.User.CreateAttempt(
+			env.ctx,
+			checkout.CreateAttemptParams{
+				Identity:          paymentAttemptIdentity(order),
+				OrderID:           order.ID,
+				ProviderCode:      "yookassa",
+				ProviderPaymentID: &providerPaymentID,
+			},
+		)
 		if err != nil {
 			t.Fatalf("create attempt for %s: %v", userID, err)
 		}
@@ -6066,33 +7786,42 @@ func TestPaymentSubscriptionRejectsMismatchedOrderAndAttempt(t *testing.T) {
 
 	firstOrderID, firstAttemptID := createOrderAttempt("subscription-first")
 	secondOrderID, secondAttemptID := createOrderAttempt("subscription-second")
-	if _, err := env.api.Admin.UpsertSubscription(env.ctx, admin.SubscriptionUpsertParams{
-		WorkspaceID:            testWorkspaceID,
-		ProviderCode:           "yookassa",
-		ProviderSubscriptionID: uniquePaymentID("subscription-valid"),
-		AppID:                  4130,
-		PlatformID:             1,
-		PlatformUserID:         "subscription-first",
-		ProductID:              productID,
-		OrderID:                utils.Ref(int64(firstOrderID)),
-		AttemptID:              utils.Ref(int64(firstAttemptID)),
-		Status:                 "active",
-	}); err != nil {
+	if _, err := env.api.Admin.UpsertSubscription(
+		env.ctx,
+		admin.SubscriptionUpsertParams{
+			WorkspaceID:            testWorkspaceID,
+			ProviderCode:           "yookassa",
+			ProviderSubscriptionID: uniquePaymentID("subscription-valid"),
+			AppID:                  4130,
+			PlatformID:             1,
+			PlatformUserID:         "subscription-first",
+			ProductID:              productID,
+			OrderID:                utils.Ref(int64(firstOrderID)),
+			AttemptID:              utils.Ref(int64(firstAttemptID)),
+			Status:                 "active",
+		},
+	); err != nil {
 		t.Fatalf("upsert valid subscription: %v", err)
 	}
 
-	if _, err := env.api.Admin.UpsertSubscription(env.ctx, admin.SubscriptionUpsertParams{
-		WorkspaceID:            testWorkspaceID,
-		ProviderCode:           "yookassa",
-		ProviderSubscriptionID: uniquePaymentID("subscription-mismatch"),
-		AppID:                  4130,
-		PlatformID:             1,
-		PlatformUserID:         "subscription-first",
-		ProductID:              productID,
-		OrderID:                utils.Ref(int64(firstOrderID)),
-		AttemptID:              utils.Ref(int64(secondAttemptID)),
-		Status:                 "active",
-	}); !errors.Is(err, repository.ErrPaymentMismatch) {
+	if _, err := env.api.Admin.UpsertSubscription(
+		env.ctx,
+		admin.SubscriptionUpsertParams{
+			WorkspaceID:            testWorkspaceID,
+			ProviderCode:           "yookassa",
+			ProviderSubscriptionID: uniquePaymentID("subscription-mismatch"),
+			AppID:                  4130,
+			PlatformID:             1,
+			PlatformUserID:         "subscription-first",
+			ProductID:              productID,
+			OrderID:                utils.Ref(int64(firstOrderID)),
+			AttemptID:              utils.Ref(int64(secondAttemptID)),
+			Status:                 "active",
+		},
+	); !errors.Is(
+		err,
+		repository.ErrPaymentMismatch,
+	) {
 		t.Fatalf(
 			"mismatched subscription must fail: first_order=%d second_order=%d err=%v",
 			firstOrderID,
@@ -6117,15 +7846,36 @@ func TestPaymentCatalogAvailabilityAndPriceSafety(t *testing.T) {
 		opt  testProductOptions
 	}{
 		{name: "hidden", opt: testProductOptions{IsHidden: true}},
-		{name: "closed", opt: testProductOptions{IsVisible: true, IsClosed: true}},
-		{name: "future", opt: testProductOptions{IsVisible: true, AvailableFrom: now.Add(time.Hour), AvailableUntil: now.Add(2 * time.Hour)}},
-		{name: "expired", opt: testProductOptions{IsVisible: true, AvailableFrom: now.Add(-2 * time.Hour), AvailableUntil: now.Add(-time.Hour)}},
+		{
+			name: "closed",
+			opt:  testProductOptions{IsVisible: true, IsClosed: true},
+		},
+		{
+			name: "future",
+			opt: testProductOptions{
+				IsVisible:      true,
+				AvailableFrom:  now.Add(time.Hour),
+				AvailableUntil: now.Add(2 * time.Hour),
+			},
+		},
+		{
+			name: "expired",
+			opt: testProductOptions{
+				IsVisible:      true,
+				AvailableFrom:  now.Add(-2 * time.Hour),
+				AvailableUntil: now.Add(-time.Hour),
+			},
+		},
 	}
 	for _, tc := range unavailable {
-		productID := createPaymentProduct(t, env, mergeProductOptions(testProductOptions{
-			AssetCode:       "RUB",
-			ListAmountMinor: 1000,
-		}, tc.opt))
+		productID := createPaymentProduct(
+			t,
+			env,
+			mergeProductOptions(testProductOptions{
+				AssetCode:       "RUB",
+				ListAmountMinor: 1000,
+			}, tc.opt),
+		)
 		if _, err := env.api.User.GetProduct(env.ctx, product.GetParams{
 			Identity:  paymentTestIdentity(testWorkspaceID, 4200, 1, "buyer"),
 			ProductID: productID,
@@ -6147,27 +7897,33 @@ func TestPaymentCatalogAvailabilityAndPriceSafety(t *testing.T) {
 	priceEndsAt := now.Add(time.Hour)
 	expiredStart := now.Add(-3 * time.Hour)
 	expiredEnd := now.Add(-2 * time.Hour)
-	if _, err := env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
-		WorkspaceID:         testWorkspaceID,
-		ProductID:           productID,
-		AssetCode:           "RUB",
-		ListAmountMinor:     2000,
-		DiscountAmountMinor: 0,
-		StartsAt:            &expiredStart,
-		EndsAt:              &expiredEnd,
-	}); err != nil {
+	if _, err := env.api.Admin.CreateCatalogPrice(
+		env.ctx,
+		product.CreatePriceParams{
+			WorkspaceID:         testWorkspaceID,
+			ProductID:           productID,
+			AssetCode:           "RUB",
+			ListAmountMinor:     2000,
+			DiscountAmountMinor: 0,
+			StartsAt:            &expiredStart,
+			EndsAt:              &expiredEnd,
+		},
+	); err != nil {
 		t.Fatalf("create expired price: %v", err)
 	}
-	if _, err := env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
-		WorkspaceID:         testWorkspaceID,
-		ProductID:           productID,
-		AssetCode:           "RUB",
-		ListAmountMinor:     900,
-		DiscountAmountMinor: 200,
-		IsPromotion:         true,
-		StartsAt:            &priceStartsAt,
-		EndsAt:              &priceEndsAt,
-	}); err != nil {
+	if _, err := env.api.Admin.CreateCatalogPrice(
+		env.ctx,
+		product.CreatePriceParams{
+			WorkspaceID:         testWorkspaceID,
+			ProductID:           productID,
+			AssetCode:           "RUB",
+			ListAmountMinor:     900,
+			DiscountAmountMinor: 200,
+			IsPromotion:         true,
+			StartsAt:            &priceStartsAt,
+			EndsAt:              &priceEndsAt,
+		},
+	); err != nil {
 		t.Fatalf("create promotion price: %v", err)
 	}
 
@@ -6181,35 +7937,52 @@ func TestPaymentCatalogAvailabilityAndPriceSafety(t *testing.T) {
 		t.Fatalf("get product with promo price: %v", err)
 	}
 	if item.Price.PayableAmountMinor != 700 {
-		t.Fatalf("expected promo payable amount 700, got %d", item.Price.PayableAmountMinor)
+		t.Fatalf(
+			"expected promo payable amount 700, got %d",
+			item.Price.PayableAmountMinor,
+		)
 	}
 	if item.Description == "" {
-		t.Fatal("expected localization fallback to keep a non-empty description")
+		t.Fatal(
+			"expected localization fallback to keep a non-empty description",
+		)
 	}
 
 	// Invalid price guard.
 	// Try to create and update prices with discounts greater than the list amount.
 	// Verify catalog writes reject underflow-prone price definitions.
-	if _, err := env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
-		WorkspaceID:         testWorkspaceID,
-		ProductID:           productID,
-		AssetCode:           "RUB",
-		ListAmountMinor:     100,
-		DiscountAmountMinor: 101,
-		StartsAt:            &priceStartsAt,
-		EndsAt:              &priceEndsAt,
-	}); !errors.Is(err, repository.ErrInvalidPrice) {
+	if _, err := env.api.Admin.CreateCatalogPrice(
+		env.ctx,
+		product.CreatePriceParams{
+			WorkspaceID:         testWorkspaceID,
+			ProductID:           productID,
+			AssetCode:           "RUB",
+			ListAmountMinor:     100,
+			DiscountAmountMinor: 101,
+			StartsAt:            &priceStartsAt,
+			EndsAt:              &priceEndsAt,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrInvalidPrice,
+	) {
 		t.Fatalf("expected invalid price create rejection, got %v", err)
 	}
-	if _, err := env.api.Admin.UpdateCatalogPrice(env.ctx, product.UpdatePriceParams{
-		ID:                  item.Price.ID,
-		WorkspaceID:         testWorkspaceID,
-		AssetCode:           "RUB",
-		ListAmountMinor:     100,
-		DiscountAmountMinor: 101,
-		StartsAt:            &priceStartsAt,
-		EndsAt:              &priceEndsAt,
-	}); !errors.Is(err, repository.ErrInvalidPrice) {
+	if _, err := env.api.Admin.UpdateCatalogPrice(
+		env.ctx,
+		product.UpdatePriceParams{
+			ID:                  item.Price.ID,
+			WorkspaceID:         testWorkspaceID,
+			AssetCode:           "RUB",
+			ListAmountMinor:     100,
+			DiscountAmountMinor: 101,
+			StartsAt:            &priceStartsAt,
+			EndsAt:              &priceEndsAt,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrInvalidPrice,
+	) {
 		t.Fatalf("expected invalid price update rejection, got %v", err)
 	}
 }
@@ -6237,12 +8010,15 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 		t.Fatalf("expected initial cached title, got %q", item.Title)
 	}
 
-	if err := env.api.Admin.SaveLocalization(env.ctx, product.UpsertLocalizationParams{
-		WorkspaceID:     testWorkspaceID,
-		Locale:          "ru",
-		LocalizationKey: productID + ".title",
-		Value:           "Updated cached product",
-	}); err != nil {
+	if err := env.api.Admin.SaveLocalization(
+		env.ctx,
+		product.UpsertLocalizationParams{
+			WorkspaceID:     testWorkspaceID,
+			Locale:          "ru",
+			LocalizationKey: productID + ".title",
+			Value:           "Updated cached product",
+		},
+	); err != nil {
 		t.Fatalf("update cached product title: %v", err)
 	}
 	item, err = env.api.User.GetProduct(env.ctx, product.GetParams{
@@ -6260,15 +8036,18 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 
 	priceStart := time.Now().Add(-time.Hour)
 	priceEnd := time.Now().Add(time.Hour)
-	if _, err := env.api.Admin.UpdateCatalogPrice(env.ctx, product.UpdatePriceParams{
-		ID:                  item.Price.ID,
-		WorkspaceID:         testWorkspaceID,
-		AssetCode:           "RUB",
-		ListAmountMinor:     1500,
-		DiscountAmountMinor: 250,
-		StartsAt:            &priceStart,
-		EndsAt:              &priceEnd,
-	}); err != nil {
+	if _, err := env.api.Admin.UpdateCatalogPrice(
+		env.ctx,
+		product.UpdatePriceParams{
+			ID:                  item.Price.ID,
+			WorkspaceID:         testWorkspaceID,
+			AssetCode:           "RUB",
+			ListAmountMinor:     1500,
+			DiscountAmountMinor: 250,
+			StartsAt:            &priceStart,
+			EndsAt:              &priceEnd,
+		},
+	); err != nil {
 		t.Fatalf("update cached product price: %v", err)
 	}
 	item, err = env.api.User.GetProduct(env.ctx, product.GetParams{
@@ -6281,10 +8060,17 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 		t.Fatalf("get product after price update: %v", err)
 	}
 	if item.Price.PayableAmountMinor != 1250 {
-		t.Fatalf("expected updated cached price 1250, got %d", item.Price.PayableAmountMinor)
+		t.Fatalf(
+			"expected updated cached price 1250, got %d",
+			item.Price.PayableAmountMinor,
+		)
 	}
 
-	if _, err := env.db.ExecContext(env.ctx, "DELETE FROM payment_product_cache WHERE workspace_id = $1", testWorkspaceID); err != nil {
+	if _, err := env.db.ExecContext(
+		env.ctx,
+		"DELETE FROM payment_product_cache WHERE workspace_id = $1",
+		testWorkspaceID,
+	); err != nil {
 		t.Fatalf("clear product cache: %v", err)
 	}
 	if err := env.client.ResetCache(); err != nil {
@@ -6303,7 +8089,10 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 	}); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expected empty cache lookup to miss, got %v", err)
 	}
-	if err := env.api.Admin.RebuildProductCache(env.ctx, testWorkspaceID); err != nil {
+	if err := env.api.Admin.RebuildProductCache(
+		env.ctx,
+		testWorkspaceID,
+	); err != nil {
 		t.Fatalf("rebuild workspace product cache: %v", err)
 	}
 	item, err = env.api.User.GetProduct(env.ctx, product.GetParams{
@@ -6315,8 +8104,13 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get product after workspace cache rebuild: %v", err)
 	}
-	if item.Title != "Updated cached product" || item.Price.PayableAmountMinor != 1250 {
-		t.Fatalf("unexpected rebuilt cache product: title=%q price=%d", item.Title, item.Price.PayableAmountMinor)
+	if item.Title != "Updated cached product" ||
+		item.Price.PayableAmountMinor != 1250 {
+		t.Fatalf(
+			"unexpected rebuilt cache product: title=%q price=%d",
+			item.Title,
+			item.Price.PayableAmountMinor,
+		)
 	}
 }
 
@@ -6334,7 +8128,12 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 	// Try to create a VKMA attempt for a RUB order.
 	// Verify providers cannot charge assets they are not configured to support.
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 4300, 1, "buyer-provider"),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			4300,
+			1,
+			"buyer-provider",
+		),
 		ProductID: productID,
 		AssetCode: "RUB",
 		Locale:    "ru",
@@ -6343,12 +8142,18 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 		t.Fatalf("create provider guard order: %v", err)
 	}
 	badProviderPaymentID := uniquePaymentID("bad-provider")
-	if _, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(order),
-		OrderID:           order.ID,
-		ProviderCode:      "vkma",
-		ProviderPaymentID: &badProviderPaymentID,
-	}); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(order),
+			OrderID:           order.ID,
+			ProviderCode:      "vkma",
+			ProviderPaymentID: &badProviderPaymentID,
+		},
+	); !errors.Is(
+		err,
+		sql.ErrNoRows,
+	) {
 		t.Fatalf("expected provider asset rejection, got %v", err)
 	}
 
@@ -6356,12 +8161,15 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 	// Complete the same attempt with wrong provider, amount, asset, and payment id values.
 	// Verify every mismatch is rejected before fulfillment can be created.
 	goodProviderPaymentID := uniquePaymentID("good")
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(order),
-		OrderID:           order.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &goodProviderPaymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(order),
+			OrderID:           order.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &goodProviderPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create mismatch attempt: %v", err)
 	}
@@ -6426,41 +8234,67 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 		},
 	}
 	for _, tc := range mismatchCases {
-		if _, err := env.api.Operational.CompleteAttempt(env.ctx, tc.params); !errors.Is(err, repository.ErrPaymentMismatch) {
+		if _, err := env.api.Operational.CompleteAttempt(
+			env.ctx,
+			tc.params,
+		); !errors.Is(
+			err,
+			repository.ErrPaymentMismatch,
+		) {
 			t.Fatalf("%s mismatch should be rejected, got %v", tc.name, err)
 		}
 	}
 
-	otherOrder, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 4300, 1, "event-mismatch"),
-		ProductID: productID,
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	otherOrder, err := env.api.User.CreateOrder(
+		env.ctx,
+		checkout.CreateOrderParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				4300,
+				1,
+				"event-mismatch",
+			),
+			ProductID: productID,
+			AssetCode: "RUB",
+			Locale:    "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create event mismatch order: %v", err)
 	}
 	mismatchEventID := uniquePaymentID("event-mismatch")
-	if _, err := env.api.Operational.CreateEvent(env.ctx, checkout.CreateEventParams{
-		WorkspaceID:     testWorkspaceID,
-		ProviderCode:    "yookassa",
-		AttemptID:       utils.Ref(int64(attempt.ID)),
-		OrderID:         utils.Ref(int64(otherOrder.ID)),
-		ProviderEventID: &mismatchEventID,
-		EventType:       "succeeded",
-		PayloadHash:     sha256Hex(mismatchEventID),
-	}); !errors.Is(err, repository.ErrPaymentMismatch) {
-		t.Fatalf("expected mismatched attempt and order event to be rejected, got %v", err)
+	if _, err := env.api.Operational.CreateEvent(
+		env.ctx,
+		checkout.CreateEventParams{
+			WorkspaceID:     testWorkspaceID,
+			ProviderCode:    "yookassa",
+			AttemptID:       utils.Ref(int64(attempt.ID)),
+			OrderID:         utils.Ref(int64(otherOrder.ID)),
+			ProviderEventID: &mismatchEventID,
+			EventType:       "succeeded",
+			PayloadHash:     sha256Hex(mismatchEventID),
+		},
+	); !errors.Is(
+		err,
+		repository.ErrPaymentMismatch,
+	) {
+		t.Fatalf(
+			"expected mismatched attempt and order event to be rejected, got %v",
+			err,
+		)
 	}
 
-	completed, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testWorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &goodProviderPaymentID,
-		AmountMinor:       attempt.AmountMinor,
-		AssetCode:         "RUB",
-	})
+	completed, err := env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID:       testWorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &goodProviderPaymentID,
+			AmountMinor:       attempt.AmountMinor,
+			AssetCode:         "RUB",
+		},
+	)
 	if err != nil {
 		t.Fatalf("complete valid attempt after mismatch checks: %v", err)
 	}
@@ -6471,40 +8305,52 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 	// Duplicate and invalid state guards.
 	// Reuse provider ids, event ids, payload hashes, and a fulfilled order.
 	// Verify uniqueness and order-state checks stop replay attempts.
-	if _, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(order),
-		OrderID:           order.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &goodProviderPaymentID,
-	}); !errors.Is(err, repository.ErrOrderStateInvalid) {
+	if _, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(order),
+			OrderID:           order.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &goodProviderPaymentID,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrOrderStateInvalid,
+	) {
 		t.Fatalf("expected fulfilled order to reject new attempt, got %v", err)
 	}
 
 	eventID := uniquePaymentID("event")
-	if _, err := env.api.Operational.CreateEvent(env.ctx, checkout.CreateEventParams{
-		WorkspaceID:       testWorkspaceID,
-		ProviderCode:      "yookassa",
-		AttemptID:         utils.Ref(int64(attempt.ID)),
-		OrderID:           utils.Ref(int64(order.ID)),
-		ProviderEventID:   &eventID,
-		ProviderPaymentID: &goodProviderPaymentID,
-		EventType:         "succeeded",
-		EventStatus:       utils.Ref("succeeded"),
-		PayloadHash:       sha256Hex(eventID),
-	}); err != nil {
+	if _, err := env.api.Operational.CreateEvent(
+		env.ctx,
+		checkout.CreateEventParams{
+			WorkspaceID:       testWorkspaceID,
+			ProviderCode:      "yookassa",
+			AttemptID:         utils.Ref(int64(attempt.ID)),
+			OrderID:           utils.Ref(int64(order.ID)),
+			ProviderEventID:   &eventID,
+			ProviderPaymentID: &goodProviderPaymentID,
+			EventType:         "succeeded",
+			EventStatus:       utils.Ref("succeeded"),
+			PayloadHash:       sha256Hex(eventID),
+		},
+	); err != nil {
 		t.Fatalf("create event: %v", err)
 	}
-	if _, err := env.api.Operational.CreateEvent(env.ctx, checkout.CreateEventParams{
-		WorkspaceID:       testWorkspaceID,
-		ProviderCode:      "yookassa",
-		AttemptID:         utils.Ref(int64(attempt.ID)),
-		OrderID:           utils.Ref(int64(order.ID)),
-		ProviderEventID:   &eventID,
-		ProviderPaymentID: &goodProviderPaymentID,
-		EventType:         "succeeded",
-		EventStatus:       utils.Ref("succeeded"),
-		PayloadHash:       sha256Hex(eventID + "_different"),
-	}); err == nil {
+	if _, err := env.api.Operational.CreateEvent(
+		env.ctx,
+		checkout.CreateEventParams{
+			WorkspaceID:       testWorkspaceID,
+			ProviderCode:      "yookassa",
+			AttemptID:         utils.Ref(int64(attempt.ID)),
+			OrderID:           utils.Ref(int64(order.ID)),
+			ProviderEventID:   &eventID,
+			ProviderPaymentID: &goodProviderPaymentID,
+			EventType:         "succeeded",
+			EventStatus:       utils.Ref("succeeded"),
+			PayloadHash:       sha256Hex(eventID + "_different"),
+		},
+	); err == nil {
 		t.Fatal("expected duplicate provider event id to be rejected")
 	}
 }
@@ -6523,32 +8369,51 @@ func TestPaymentGiftKeyNegativeCases(t *testing.T) {
 	// Create an already expired key and also try a random unknown key.
 	// Verify neither key can reveal or create a payable gift offer.
 	expiredAt := time.Now().Add(-time.Minute)
-	expiredKey, err := env.api.Admin.CreateProductKey(env.ctx, product.CreateKeyParams{
-		WorkspaceID:    testWorkspaceID,
-		AppID:          4400,
-		PlatformID:     1,
-		PlatformUserID: "recipient-expired",
-		ProductID:      productID,
-		MaxUses:        1,
-		ExpiresAt:      &expiredAt,
-	})
+	expiredKey, err := env.api.Admin.CreateProductKey(
+		env.ctx,
+		product.CreateKeyParams{
+			WorkspaceID:    testWorkspaceID,
+			AppID:          4400,
+			PlatformID:     1,
+			PlatformUserID: "recipient-expired",
+			ProductID:      productID,
+			MaxUses:        1,
+			ExpiresAt:      &expiredAt,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create expired key: %v", err)
 	}
 	for _, key := range []string{expiredKey, "not-a-real-key"} {
-		if _, err := env.api.User.GetProductByKey(env.ctx, product.GetByKeyParams{Key: key, AssetCode: "RUB", Locale: "ru"}); !errors.Is(err, sql.ErrNoRows) {
+		if _, err := env.api.User.GetProductByKey(
+			env.ctx,
+			product.GetByKeyParams{Key: key, AssetCode: "RUB", Locale: "ru"},
+		); !errors.Is(
+			err,
+			sql.ErrNoRows,
+		) {
 			t.Fatalf("expected key %q to be hidden, got %v", key, err)
 		}
-		if _, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
-			Key: key,
-			Payer: &services.Actor{
-				PlatformID:     1,
-				PlatformUserID: "payer",
+		if _, err := env.api.User.CreateOrderByKey(
+			env.ctx,
+			checkout.CreateOrderByKeyParams{
+				Key: key,
+				Payer: &services.Actor{
+					PlatformID:     1,
+					PlatformUserID: "payer",
+				},
+				AssetCode: "RUB",
+				Locale:    "ru",
 			},
-			AssetCode: "RUB",
-			Locale:    "ru",
-		}); !errors.Is(err, sql.ErrNoRows) {
-			t.Fatalf("expected key %q to reject order creation, got %v", key, err)
+		); !errors.Is(
+			err,
+			sql.ErrNoRows,
+		) {
+			t.Fatalf(
+				"expected key %q to reject order creation, got %v",
+				key,
+				err,
+			)
 		}
 	}
 
@@ -6568,64 +8433,89 @@ func TestPaymentGiftKeyNegativeCases(t *testing.T) {
 	}
 	payerPlatformID := int64(1)
 	payerUserID := "payer-once"
-	order, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
-		Key: key,
-		Payer: &services.Actor{
-			PlatformID:     payerPlatformID,
-			PlatformUserID: payerUserID,
+	order, err := env.api.User.CreateOrderByKey(
+		env.ctx,
+		checkout.CreateOrderByKeyParams{
+			Key: key,
+			Payer: &services.Actor{
+				PlatformID:     payerPlatformID,
+				PlatformUserID: payerUserID,
+			},
+			AssetCode: "RUB",
+			Locale:    "ru",
 		},
-		AssetCode: "RUB",
-		Locale:    "ru",
-	})
+	)
 	if err != nil {
 		t.Fatalf("create gift order: %v", err)
 	}
-	if _, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
-		Key: key,
-		Payer: &services.Actor{
-			PlatformID:     payerPlatformID,
-			PlatformUserID: "second-payer-before-completion",
+	if _, err := env.api.User.CreateOrderByKey(
+		env.ctx,
+		checkout.CreateOrderByKeyParams{
+			Key: key,
+			Payer: &services.Actor{
+				PlatformID:     payerPlatformID,
+				PlatformUserID: "second-payer-before-completion",
+			},
+			AssetCode: "RUB",
+			Locale:    "ru",
 		},
-		AssetCode: "RUB",
-		Locale:    "ru",
-	}); !errors.Is(err, sql.ErrNoRows) {
+	); !errors.Is(
+		err,
+		sql.ErrNoRows,
+	) {
 		t.Fatalf("pending gift order must reserve max_uses: %v", err)
 	}
 
 	providerPaymentID := uniquePaymentID("gift-once")
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(order),
-		OrderID:           order.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(order),
+			OrderID:           order.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create gift attempt: %v", err)
 	}
-	if _, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testWorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      "yookassa",
-		ProviderPaymentID: &providerPaymentID,
-		AmountMinor:       attempt.AmountMinor,
-		AssetCode:         "RUB",
-	}); err != nil {
+	if _, err := env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID:       testWorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerPaymentID,
+			AmountMinor:       attempt.AmountMinor,
+			AssetCode:         "RUB",
+		},
+	); err != nil {
 		t.Fatalf("complete gift attempt: %v", err)
 	}
-	if _, err := env.api.User.CreateOrderByKey(env.ctx, checkout.CreateOrderByKeyParams{
-		Key: key,
-		Payer: &services.Actor{
-			PlatformID:     payerPlatformID,
-			PlatformUserID: payerUserID,
+	if _, err := env.api.User.CreateOrderByKey(
+		env.ctx,
+		checkout.CreateOrderByKeyParams{
+			Key: key,
+			Payer: &services.Actor{
+				PlatformID:     payerPlatformID,
+				PlatformUserID: payerUserID,
+			},
+			AssetCode: "RUB",
+			Locale:    "ru",
 		},
-		AssetCode: "RUB",
-		Locale:    "ru",
-	}); !errors.Is(err, sql.ErrNoRows) {
+	); !errors.Is(
+		err,
+		sql.ErrNoRows,
+	) {
 		t.Fatalf("expected used gift key to reject another order, got %v", err)
 	}
 }
 
-func createPaymentProduct(t *testing.T, env paymentTestEnv, opt testProductOptions) string {
+func createPaymentProduct(
+	t *testing.T,
+	env paymentTestEnv,
+	opt testProductOptions,
+) string {
 	t.Helper()
 
 	now := time.Now()
@@ -6707,7 +8597,10 @@ func createPaymentProduct(t *testing.T, env paymentTestEnv, opt testProductOptio
 		{Locale: "ru", LocalizationKey: itemDescriptionKey, Value: "Security item description"},
 	} {
 		localization.WorkspaceID = workspaceID
-		if err := env.api.Admin.SaveLocalization(env.ctx, localization); err != nil {
+		if err := env.api.Admin.SaveLocalization(
+			env.ctx,
+			localization,
+		); err != nil {
 			t.Fatalf("upsert test localization: %v", err)
 		}
 	}
@@ -6719,22 +8612,28 @@ func createPaymentProduct(t *testing.T, env paymentTestEnv, opt testProductOptio
 	}); err != nil {
 		t.Fatalf("add test item: %v", err)
 	}
-	if _, err := env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
-		ProductID:           productID,
-		WorkspaceID:         workspaceID,
-		AssetCode:           assetCode,
-		ListAmountMinor:     listAmount,
-		DiscountAmountMinor: opt.DiscountAmountMinor,
-		StartsAt:            &priceStartsAt,
-		EndsAt:              &priceEndsAt,
-	}); err != nil {
+	if _, err := env.api.Admin.CreateCatalogPrice(
+		env.ctx,
+		product.CreatePriceParams{
+			ProductID:           productID,
+			WorkspaceID:         workspaceID,
+			AssetCode:           assetCode,
+			ListAmountMinor:     listAmount,
+			DiscountAmountMinor: opt.DiscountAmountMinor,
+			StartsAt:            &priceStartsAt,
+			EndsAt:              &priceEndsAt,
+		},
+	); err != nil {
 		t.Fatalf("create test price: %v", err)
 	}
 
 	return productID
 }
 
-func mergeProductOptions(base testProductOptions, override testProductOptions) testProductOptions {
+func mergeProductOptions(
+	base testProductOptions,
+	override testProductOptions,
+) testProductOptions {
 	if override.AssetCode != "" {
 		base.AssetCode = override.AssetCode
 	}
@@ -6774,11 +8673,24 @@ func mergeProductOptions(base testProductOptions, override testProductOptions) t
 	return base
 }
 
-func completeTestPayment(t *testing.T, env paymentTestEnv, productID string, prefix string, platformUserID string, providerCode string, assetCode string) {
+func completeTestPayment(
+	t *testing.T,
+	env paymentTestEnv,
+	productID string,
+	prefix string,
+	platformUserID string,
+	providerCode string,
+	assetCode string,
+) {
 	t.Helper()
 
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
-		Identity:  paymentTestIdentity(testWorkspaceID, 4100, 1, platformUserID),
+		Identity: paymentTestIdentity(
+			testWorkspaceID,
+			4100,
+			1,
+			platformUserID,
+		),
 		ProductID: productID,
 		AssetCode: assetCode,
 		Locale:    "ru",
@@ -6787,23 +8699,29 @@ func completeTestPayment(t *testing.T, env paymentTestEnv, productID string, pre
 		t.Fatalf("create order for %s: %v", prefix, err)
 	}
 	providerPaymentID := uniquePaymentID(prefix)
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          paymentAttemptIdentity(order),
-		OrderID:           order.ID,
-		ProviderCode:      providerCode,
-		ProviderPaymentID: &providerPaymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(order),
+			OrderID:           order.ID,
+			ProviderCode:      providerCode,
+			ProviderPaymentID: &providerPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create attempt for %s: %v", prefix, err)
 	}
-	if _, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
-		WorkspaceID:       testWorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      providerCode,
-		ProviderPaymentID: &providerPaymentID,
-		AmountMinor:       attempt.AmountMinor,
-		AssetCode:         assetCode,
-	}); err != nil {
+	if _, err := env.api.Operational.CompleteAttempt(
+		env.ctx,
+		checkout.CompleteAttemptParams{
+			WorkspaceID:       testWorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      providerCode,
+			ProviderPaymentID: &providerPaymentID,
+			AmountMinor:       attempt.AmountMinor,
+			AssetCode:         assetCode,
+		},
+	); err != nil {
 		t.Fatalf("complete attempt for %s: %v", prefix, err)
 	}
 }
@@ -6820,26 +8738,29 @@ func TestTelegramStarsAdapterFullCycle(t *testing.T) {
 	var answeredPreCheckout bool
 	var refundCalled bool
 	var editSubscriptionCalled bool
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/createInvoiceLink"):
-			if err := json.NewDecoder(r.Body).Decode(&createInvoicePayload); err != nil {
-				t.Fatalf("decode createInvoiceLink payload: %v", err)
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/createInvoiceLink"):
+				if err := json.NewDecoder(r.Body).
+					Decode(&createInvoicePayload); err != nil {
+					t.Fatalf("decode createInvoiceLink payload: %v", err)
+				}
+				writeTelegramStarsResult(t, w, "https://t.me/invoice/test-link")
+			case strings.HasSuffix(r.URL.Path, "/answerPreCheckoutQuery"):
+				answeredPreCheckout = true
+				writeTelegramStarsResult(t, w, true)
+			case strings.HasSuffix(r.URL.Path, "/refundStarPayment"):
+				refundCalled = true
+				writeTelegramStarsResult(t, w, true)
+			case strings.HasSuffix(r.URL.Path, "/editUserStarSubscription"):
+				editSubscriptionCalled = true
+				writeTelegramStarsResult(t, w, true)
+			default:
+				t.Fatalf("unexpected telegram bot api path: %s", r.URL.Path)
 			}
-			writeTelegramStarsResult(t, w, "https://t.me/invoice/test-link")
-		case strings.HasSuffix(r.URL.Path, "/answerPreCheckoutQuery"):
-			answeredPreCheckout = true
-			writeTelegramStarsResult(t, w, true)
-		case strings.HasSuffix(r.URL.Path, "/refundStarPayment"):
-			refundCalled = true
-			writeTelegramStarsResult(t, w, true)
-		case strings.HasSuffix(r.URL.Path, "/editUserStarSubscription"):
-			editSubscriptionCalled = true
-			writeTelegramStarsResult(t, w, true)
-		default:
-			t.Fatalf("unexpected telegram bot api path: %s", r.URL.Path)
-		}
-	}))
+		}),
+	)
 	defer server.Close()
 
 	credentials := telegramstars.Credentials{
@@ -6847,29 +8768,42 @@ func TestTelegramStarsAdapterFullCycle(t *testing.T) {
 		APIBaseURL: server.URL,
 	}
 
-	payment, err := env.api.Adapters.TelegramStars.CreatePayment(env.ctx, telegramstars.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          7007,
-		PlatformID:     2,
-		PlatformUserID: "12345",
-		ProductID:      productID,
-		Locale:         "ru",
-		Title:          "Stars product",
-		Description:    "Stars product description",
-		IdempotencyKey: "telegram-stars-full-cycle",
-	})
+	payment, err := env.api.Adapters.TelegramStars.CreatePayment(
+		env.ctx,
+		telegramstars.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          7007,
+			PlatformID:     2,
+			PlatformUserID: "12345",
+			ProductID:      productID,
+			Locale:         "ru",
+			Title:          "Stars product",
+			Description:    "Stars product description",
+			IdempotencyKey: "telegram-stars-full-cycle",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create telegram stars payment: %v", err)
 	}
-	if payment.InvoiceLink != "https://t.me/invoice/test-link" || payment.AmountMinor != 25 {
+	if payment.InvoiceLink != "https://t.me/invoice/test-link" ||
+		payment.AmountMinor != 25 {
 		t.Fatalf("unexpected telegram stars payment: %#v", payment)
 	}
-	if createInvoicePayload.Currency != "XTR" || createInvoicePayload.ProviderToken != "" || len(createInvoicePayload.Prices) != 1 {
-		t.Fatalf("unexpected createInvoiceLink payload: %#v", createInvoicePayload)
+	if createInvoicePayload.Currency != "XTR" ||
+		createInvoicePayload.ProviderToken != "" ||
+		len(createInvoicePayload.Prices) != 1 {
+		t.Fatalf(
+			"unexpected createInvoiceLink payload: %#v",
+			createInvoicePayload,
+		)
 	}
-	if createInvoicePayload.Payload != payment.OrderPublicID || createInvoicePayload.Prices[0].Amount != 25 {
-		t.Fatalf("unexpected invoice payload or amount: %#v", createInvoicePayload)
+	if createInvoicePayload.Payload != payment.OrderPublicID ||
+		createInvoicePayload.Prices[0].Amount != 25 {
+		t.Fatalf(
+			"unexpected invoice payload or amount: %#v",
+			createInvoicePayload,
+		)
 	}
 	var storedInvoiceLink sql.NullString
 	if err := env.db.QueryRowContext(env.ctx, `
@@ -6878,19 +8812,27 @@ FROM payment_attempt
 WHERE id = $1`, payment.AttemptID).Scan(&storedInvoiceLink); err != nil {
 		t.Fatalf("select telegram stars confirmation url: %v", err)
 	}
-	if !storedInvoiceLink.Valid || storedInvoiceLink.String != payment.InvoiceLink {
-		t.Fatalf("stored telegram stars invoice link = %q, want %q", storedInvoiceLink.String, payment.InvoiceLink)
+	if !storedInvoiceLink.Valid ||
+		storedInvoiceLink.String != payment.InvoiceLink {
+		t.Fatalf(
+			"stored telegram stars invoice link = %q, want %q",
+			storedInvoiceLink.String,
+			payment.InvoiceLink,
+		)
 	}
 
-	preCheckout, err := env.api.Adapters.TelegramStars.HandlePreCheckoutQuery(env.ctx, telegramstars.PreCheckoutQuery{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		ID:             "pre-checkout-1",
-		FromID:         12345,
-		Currency:       telegramstars.AssetCode,
-		TotalAmount:    payment.AmountMinor,
-		InvoicePayload: payment.OrderPublicID,
-	})
+	preCheckout, err := env.api.Adapters.TelegramStars.HandlePreCheckoutQuery(
+		env.ctx,
+		telegramstars.PreCheckoutQuery{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			ID:             "pre-checkout-1",
+			FromID:         12345,
+			Currency:       telegramstars.AssetCode,
+			TotalAmount:    payment.AmountMinor,
+			InvoicePayload: payment.OrderPublicID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("handle pre-checkout query: %v", err)
 	}
@@ -6898,17 +8840,21 @@ WHERE id = $1`, payment.AttemptID).Scan(&storedInvoiceLink); err != nil {
 		t.Fatalf("expected accepted pre-checkout, got %#v", preCheckout)
 	}
 
-	success, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(env.ctx, telegramstars.SuccessfulPayment{
-		WorkspaceID:             testWorkspaceID,
-		Currency:                telegramstars.AssetCode,
-		TotalAmount:             payment.AmountMinor,
-		InvoicePayload:          payment.OrderPublicID,
-		TelegramPaymentChargeID: "tg-charge-1",
-	})
+	success, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(
+		env.ctx,
+		telegramstars.SuccessfulPayment{
+			WorkspaceID:             testWorkspaceID,
+			Currency:                telegramstars.AssetCode,
+			TotalAmount:             payment.AmountMinor,
+			InvoicePayload:          payment.OrderPublicID,
+			TelegramPaymentChargeID: "tg-charge-1",
+		},
+	)
 	if err != nil {
 		t.Fatalf("handle successful payment: %v", err)
 	}
-	if success.OrderID != payment.OrderID || success.AttemptID != payment.AttemptID {
+	if success.OrderID != payment.OrderID ||
+		success.AttemptID != payment.AttemptID {
 		t.Fatalf("unexpected successful payment result: %#v", success)
 	}
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "fulfilled")
@@ -6939,19 +8885,24 @@ WHERE id = $1`, payment.AttemptID).Scan(&chargeID); err != nil {
 	if !refundCalled {
 		t.Fatal("expected refundStarPayment call")
 	}
-	if refunded.OrderID != payment.OrderID || refunded.AttemptID != payment.AttemptID || refunded.Status != "succeeded" {
+	if refunded.OrderID != payment.OrderID ||
+		refunded.AttemptID != payment.AttemptID ||
+		refunded.Status != "succeeded" {
 		t.Fatalf("unexpected orchestrated refund result: %#v", refunded)
 	}
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "refunded")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "refunded")
 	assertRefundStatus(t, env.ctx, env.db, refunded.RefundID, "succeeded")
 
-	if err := env.api.Adapters.TelegramStars.EditSubscription(env.ctx, telegramstars.EditSubscriptionParams{
-		Credentials:             credentials,
-		UserID:                  12345,
-		TelegramPaymentChargeID: "tg-charge-1",
-		IsCanceled:              true,
-	}); err != nil {
+	if err := env.api.Adapters.TelegramStars.EditSubscription(
+		env.ctx,
+		telegramstars.EditSubscriptionParams{
+			Credentials:             credentials,
+			UserID:                  12345,
+			TelegramPaymentChargeID: "tg-charge-1",
+			IsCanceled:              true,
+		},
+	); err != nil {
 		t.Fatalf("edit telegram stars subscription: %v", err)
 	}
 	if !editSubscriptionCalled {
@@ -6982,8 +8933,11 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 				}
 
 				return paymentrefund.ProviderRefundResult{
-					ProviderRefundID: fmt.Sprintf("provider-refund-%d", params.RefundID),
-					Status:           "succeeded",
+					ProviderRefundID: fmt.Sprintf(
+						"provider-refund-%d",
+						params.RefundID,
+					),
+					Status: "succeeded",
 				}, nil
 			},
 		},
@@ -7000,11 +8954,27 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 	}
 	missingKey := baseParams
 	missingKey.IdempotencyKey = ""
-	if _, err := refundService.Execute(env.ctx, missingKey); !errors.Is(err, paymentrefund.ErrIdempotencyKeyRequired) {
-		t.Fatalf("missing idempotency error = %v, want %v", err, paymentrefund.ErrIdempotencyKeyRequired)
+	if _, err := refundService.Execute(
+		env.ctx,
+		missingKey,
+	); !errors.Is(
+		err,
+		paymentrefund.ErrIdempotencyKeyRequired,
+	) {
+		t.Fatalf(
+			"missing idempotency error = %v, want %v",
+			err,
+			paymentrefund.ErrIdempotencyKeyRequired,
+		)
 	}
 
-	if _, err := refundService.Execute(env.ctx, baseParams); !errors.Is(err, responseLost) {
+	if _, err := refundService.Execute(
+		env.ctx,
+		baseParams,
+	); !errors.Is(
+		err,
+		responseLost,
+	) {
 		t.Fatalf("first refund error = %v, want response loss", err)
 	}
 
@@ -7019,7 +8989,10 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 		t.Fatalf("read pending refund: %v", err)
 	}
 	if refundStatus != "pending" {
-		t.Fatalf("refund after ambiguous provider error = %q, want pending", refundStatus)
+		t.Fatalf(
+			"refund after ambiguous provider error = %q, want pending",
+			refundStatus,
+		)
 	}
 
 	retried, err := refundService.Execute(env.ctx, baseParams)
@@ -7027,7 +9000,11 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 		t.Fatalf("retry refund: %v", err)
 	}
 	if retried.RefundID != refundID || retried.Status != "succeeded" {
-		t.Fatalf("unexpected retried refund: %+v, original id=%d", retried, refundID)
+		t.Fatalf(
+			"unexpected retried refund: %+v, original id=%d",
+			retried,
+			refundID,
+		)
 	}
 	if providerCalls != 2 || len(appliedRefunds) != 1 {
 		t.Fatalf(
@@ -7042,7 +9019,11 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 		t.Fatalf("replay completed refund: %v", err)
 	}
 	if replayed.RefundID != refundID || providerCalls != 2 {
-		t.Fatalf("completed replay = %+v provider calls=%d", replayed, providerCalls)
+		t.Fatalf(
+			"completed replay = %+v provider calls=%d",
+			replayed,
+			providerCalls,
+		)
 	}
 
 }
@@ -7073,12 +9054,15 @@ func TestTelegramStarsGiftRefundUsesPayer(t *testing.T) {
 	}
 
 	providerPaymentID := order.PublicID
-	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
-		Identity:          payer,
-		OrderID:           order.ID,
-		ProviderCode:      telegramstars.ProviderCode,
-		ProviderPaymentID: &providerPaymentID,
-	})
+	attempt, err := env.api.User.CreateAttempt(
+		env.ctx,
+		checkout.CreateAttemptParams{
+			Identity:          payer,
+			OrderID:           order.ID,
+			ProviderCode:      telegramstars.ProviderCode,
+			ProviderPaymentID: &providerPaymentID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create telegram stars gift attempt: %v", err)
 	}
@@ -7097,16 +9081,18 @@ func TestTelegramStarsGiftRefundUsesPayer(t *testing.T) {
 	}
 
 	var refundedUserID int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		var body struct {
-			UserID int64 `json:"user_id"`
-		}
-		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
-			t.Fatalf("decode telegram refund: %v", err)
-		}
-		refundedUserID = body.UserID
-		writeTelegramStarsResult(t, w, true)
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			var body struct {
+				UserID int64 `json:"user_id"`
+			}
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				t.Fatalf("decode telegram refund: %v", err)
+			}
+			refundedUserID = body.UserID
+			writeTelegramStarsResult(t, w, true)
+		}),
+	)
 	defer server.Close()
 
 	if _, err := env.api.Admin.ExecuteRefund(env.ctx, paymentrefund.Params{
@@ -7128,10 +9114,17 @@ func TestTelegramStarsGiftRefundUsesPayer(t *testing.T) {
 
 }
 
-func assertRefundStatus(t *testing.T, ctx context.Context, db *sql.DB, refundID uint64, want string) {
+func assertRefundStatus(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	refundID uint64,
+	want string,
+) {
 	t.Helper()
 	var got string
-	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_refund WHERE id = $1", refundID).Scan(&got); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_refund WHERE id = $1", refundID).
+		Scan(&got); err != nil {
 		t.Fatalf("select refund status: %v", err)
 	}
 	if got != want {
@@ -7147,9 +9140,15 @@ func TestTelegramStarsAdapterSubscriptionCycle(t *testing.T) {
 		ListAmountMinor: 50,
 	})
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeTelegramStarsResult(t, w, "https://t.me/invoice/subscription-link")
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			writeTelegramStarsResult(
+				t,
+				w,
+				"https://t.me/invoice/subscription-link",
+			)
+		}),
+	)
 	defer server.Close()
 
 	credentials := telegramstars.Credentials{
@@ -7157,46 +9156,61 @@ func TestTelegramStarsAdapterSubscriptionCycle(t *testing.T) {
 		APIBaseURL: server.URL,
 	}
 
-	payment, err := env.api.Adapters.TelegramStars.CreatePayment(env.ctx, telegramstars.CreatePaymentParams{
-		Credentials:        credentials,
-		WorkspaceID:        testWorkspaceID,
-		AppID:              7007,
-		PlatformID:         2,
-		PlatformUserID:     "telegram-sub-user",
-		ProductID:          productID,
-		Locale:             "ru",
-		Title:              "Stars subscription",
-		Description:        "Stars subscription description",
-		IdempotencyKey:     "telegram-stars-subscription",
-		SubscriptionPeriod: 30 * 24 * 60 * 60,
-	})
+	payment, err := env.api.Adapters.TelegramStars.CreatePayment(
+		env.ctx,
+		telegramstars.CreatePaymentParams{
+			Credentials:        credentials,
+			WorkspaceID:        testWorkspaceID,
+			AppID:              7007,
+			PlatformID:         2,
+			PlatformUserID:     "telegram-sub-user",
+			ProductID:          productID,
+			Locale:             "ru",
+			Title:              "Stars subscription",
+			Description:        "Stars subscription description",
+			IdempotencyKey:     "telegram-stars-subscription",
+			SubscriptionPeriod: 30 * 24 * 60 * 60,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create telegram stars subscription payment: %v", err)
 	}
 
 	expiresAt := time.Now().Add(30 * 24 * time.Hour)
-	initial, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(env.ctx, telegramstars.SuccessfulPayment{
-		WorkspaceID:                testWorkspaceID,
-		Currency:                   telegramstars.AssetCode,
-		TotalAmount:                payment.AmountMinor,
-		InvoicePayload:             payment.OrderPublicID,
-		TelegramPaymentChargeID:    "tg-sub-charge-1",
-		SubscriptionExpirationDate: expiresAt.Unix(),
-		IsRecurring:                true,
-		IsFirstRecurring:           true,
-	})
+	initial, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(
+		env.ctx,
+		telegramstars.SuccessfulPayment{
+			WorkspaceID:                testWorkspaceID,
+			Currency:                   telegramstars.AssetCode,
+			TotalAmount:                payment.AmountMinor,
+			InvoicePayload:             payment.OrderPublicID,
+			TelegramPaymentChargeID:    "tg-sub-charge-1",
+			SubscriptionExpirationDate: expiresAt.Unix(),
+			IsRecurring:                true,
+			IsFirstRecurring:           true,
+		},
+	)
 	if err != nil {
 		t.Fatalf("handle successful subscription payment: %v", err)
 	}
-	if initial.FulfillmentID == nil || initial.RenewalID != nil || initial.AlreadyDone {
+	if initial.FulfillmentID == nil || initial.RenewalID != nil ||
+		initial.AlreadyDone {
 		t.Fatalf("unexpected initial subscription result: %+v", initial)
 	}
 
-	active, err := env.api.User.IsSubscriptionActive(env.ctx, subscription.IsActiveParams{
-		Identity:     paymentTestIdentity(testWorkspaceID, 7007, 2, "telegram-sub-user"),
-		ProductID:    productID,
-		ProviderCode: telegramstars.ProviderCode,
-	})
+	active, err := env.api.User.IsSubscriptionActive(
+		env.ctx,
+		subscription.IsActiveParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				7007,
+				2,
+				"telegram-sub-user",
+			),
+			ProductID:    productID,
+			ProviderCode: telegramstars.ProviderCode,
+		},
+	)
 	if err != nil {
 		t.Fatalf("check telegram stars subscription active: %v", err)
 	}
@@ -7204,7 +9218,9 @@ func TestTelegramStarsAdapterSubscriptionCycle(t *testing.T) {
 		t.Fatal("expected telegram stars subscription to be active")
 	}
 
-	renewedUntil := expiresAt.Add(30 * 24 * time.Hour).UTC().Truncate(time.Second)
+	renewedUntil := expiresAt.Add(30 * 24 * time.Hour).
+		UTC().
+		Truncate(time.Second)
 	renewed, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(
 		env.ctx,
 		telegramstars.SuccessfulPayment{
@@ -7221,7 +9237,8 @@ func TestTelegramStarsAdapterSubscriptionCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handle recurring subscription payment: %v", err)
 	}
-	if renewed.RenewalID == nil || renewed.FulfillmentID != nil || renewed.AlreadyDone {
+	if renewed.RenewalID == nil || renewed.FulfillmentID != nil ||
+		renewed.AlreadyDone {
 		t.Fatalf("unexpected recurring result: %+v", renewed)
 	}
 
@@ -7251,7 +9268,8 @@ SELECT
 	); err != nil {
 		t.Fatalf("read recurring payment state: %v", err)
 	}
-	if renewalCount != 1 || subscriptionCount != 1 || renewedCallbackCount != 1 {
+	if renewalCount != 1 || subscriptionCount != 1 ||
+		renewedCallbackCount != 1 {
 		t.Fatalf(
 			"recurring counts renewal=%d subscription=%d callback=%d, want 1/1/1",
 			renewalCount,
@@ -7260,10 +9278,17 @@ SELECT
 		)
 	}
 	if storedAttemptChargeID != "tg-sub-charge-1" {
-		t.Fatalf("attempt subscription charge = %q, want initial charge", storedAttemptChargeID)
+		t.Fatalf(
+			"attempt subscription charge = %q, want initial charge",
+			storedAttemptChargeID,
+		)
 	}
 	if !storedPeriodEnd.Equal(renewedUntil) {
-		t.Fatalf("subscription period end = %s, want %s", storedPeriodEnd, renewedUntil)
+		t.Fatalf(
+			"subscription period end = %s, want %s",
+			storedPeriodEnd,
+			renewedUntil,
+		)
 	}
 
 	replayed, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(
@@ -7296,7 +9321,10 @@ SELECT
 		t.Fatalf("count replayed renewal callbacks: %v", err)
 	}
 	if renewedCallbackCount != 1 {
-		t.Fatalf("renewal callbacks after replay = %d, want 1", renewedCallbackCount)
+		t.Fatalf(
+			"renewal callbacks after replay = %d, want 1",
+			renewedCallbackCount,
+		)
 	}
 
 	callbackCtx, cancel := context.WithCancel(env.ctx)
@@ -7307,8 +9335,11 @@ SELECT
 		func(callback Context) error {
 			if callback.EventType == CallbackEventPaymentSubscriptionRenewed {
 				seenRenewal = true
-				if callback.PaymentSubscriptionRenewed == nil || callback.Payload == nil {
-					return errors.New("missing typed subscription renewal payload")
+				if callback.PaymentSubscriptionRenewed == nil ||
+					callback.Payload == nil {
+					return errors.New(
+						"missing typed subscription renewal payload",
+					)
 				}
 				if callback.PaymentSubscriptionRenewed.RenewalID != *renewed.RenewalID ||
 					callback.PaymentSubscriptionRenewed.ProviderSubscriptionID != "tg-sub-charge-1" ||
@@ -7358,9 +9389,15 @@ func createTelegramStarsSubscriptionFixture(
 		AssetCode:       telegramstars.AssetCode,
 		ListAmountMinor: 50,
 	})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		writeTelegramStarsResult(t, w, "https://t.me/invoice/subscription-link")
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeTelegramStarsResult(
+				t,
+				w,
+				"https://t.me/invoice/subscription-link",
+			)
+		}),
+	)
 	t.Cleanup(server.Close)
 
 	payment, err := env.api.Adapters.TelegramStars.CreatePayment(
@@ -7451,7 +9488,11 @@ func TestTelegramStarsDelayedRenewalDoesNotShortenSubscription(t *testing.T) {
 		t.Fatalf("read subscription end: %v", err)
 	}
 	if !storedEnd.Equal(newerPeriodEnd) {
-		t.Fatalf("subscription end = %s, want monotonic %s", storedEnd, newerPeriodEnd)
+		t.Fatalf(
+			"subscription end = %s, want monotonic %s",
+			storedEnd,
+			newerPeriodEnd,
+		)
 	}
 
 }
@@ -7474,7 +9515,10 @@ func TestTelegramStarsRenewalChargeCannotChangePeriod(t *testing.T) {
 		IsRecurring:                true,
 		IsFirstRecurring:           false,
 	}
-	if _, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(env.ctx, request); err != nil {
+	if _, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(
+		env.ctx,
+		request,
+	); err != nil {
 		t.Fatalf("process first renewal: %v", err)
 	}
 
@@ -7483,7 +9527,10 @@ func TestTelegramStarsRenewalChargeCannotChangePeriod(t *testing.T) {
 		env.ctx,
 		request,
 	); !errors.Is(err, repository.ErrPaymentMismatch) {
-		t.Fatalf("changed renewal period error = %v, want ErrPaymentMismatch", err)
+		t.Fatalf(
+			"changed renewal period error = %v, want ErrPaymentMismatch",
+			err,
+		)
 	}
 
 	var renewalCount int
@@ -7503,7 +9550,11 @@ SELECT
 		t.Fatalf("read renewal idempotency state: %v", err)
 	}
 	if renewalCount != 1 || callbackCount != 1 {
-		t.Fatalf("renewals/callbacks = %d/%d, want 1/1", renewalCount, callbackCount)
+		t.Fatalf(
+			"renewals/callbacks = %d/%d, want 1/1",
+			renewalCount,
+			callbackCount,
+		)
 	}
 	if !storedEnd.Equal(firstPeriodEnd) {
 		t.Fatalf("subscription end = %s, want %s", storedEnd, firstPeriodEnd)
@@ -7511,10 +9562,16 @@ SELECT
 
 }
 
-func TestTelegramStarsRenewalReplayDoesNotReactivateRefundedSubscription(t *testing.T) {
+func TestTelegramStarsRenewalReplayDoesNotReactivateRefundedSubscription(
+	t *testing.T,
+) {
 
 	env := setupPaymentIntegrationTest(t)
-	fixture := createTelegramStarsSubscriptionFixture(t, env, "renewal-replay-refunded")
+	fixture := createTelegramStarsSubscriptionFixture(
+		t,
+		env,
+		"renewal-replay-refunded",
+	)
 	periodEnd := fixture.expiresAt.Add(30 * 24 * time.Hour)
 	request := telegramstars.SuccessfulPayment{
 		WorkspaceID:                testWorkspaceID,
@@ -7527,7 +9584,10 @@ func TestTelegramStarsRenewalReplayDoesNotReactivateRefundedSubscription(t *test
 		IsFirstRecurring:           false,
 	}
 
-	if _, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(env.ctx, request); err != nil {
+	if _, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(
+		env.ctx,
+		request,
+	); err != nil {
 		t.Fatalf("process renewal before refund: %v", err)
 	}
 	if rows, err := env.api.Admin.UpdateSubscriptionStatus(
@@ -7543,7 +9603,10 @@ func TestTelegramStarsRenewalReplayDoesNotReactivateRefundedSubscription(t *test
 		t.Fatalf("mark subscription refunded: rows=%d err=%v", rows, err)
 	}
 
-	replayed, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(env.ctx, request)
+	replayed, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(
+		env.ctx,
+		request,
+	)
 	if err != nil {
 		t.Fatalf("replay renewal after refund: %v", err)
 	}
@@ -7566,15 +9629,24 @@ WHERE workspace_id = $1
 		t.Fatalf("read subscription after renewal replay: %v", err)
 	}
 	if status != "refunded" {
-		t.Fatalf("subscription status after renewal replay = %q, want refunded", status)
+		t.Fatalf(
+			"subscription status after renewal replay = %q, want refunded",
+			status,
+		)
 	}
 
 }
 
-func TestTelegramStarsRenewalCannotReactivateCanceledSubscription(t *testing.T) {
+func TestTelegramStarsRenewalCannotReactivateCanceledSubscription(
+	t *testing.T,
+) {
 
 	env := setupPaymentIntegrationTest(t)
-	fixture := createTelegramStarsSubscriptionFixture(t, env, "renewal-canceled")
+	fixture := createTelegramStarsSubscriptionFixture(
+		t,
+		env,
+		"renewal-canceled",
+	)
 	periodEnd := fixture.expiresAt.Add(30 * 24 * time.Hour)
 	if rows, err := env.api.Admin.UpdateSubscriptionStatus(
 		env.ctx,
@@ -7603,7 +9675,10 @@ func TestTelegramStarsRenewalCannotReactivateCanceledSubscription(t *testing.T) 
 		},
 	)
 	if !errors.Is(err, repository.ErrPaymentMismatch) {
-		t.Fatalf("renew canceled subscription error = %v, want ErrPaymentMismatch", err)
+		t.Fatalf(
+			"renew canceled subscription error = %v, want ErrPaymentMismatch",
+			err,
+		)
 	}
 
 	var status string
@@ -7616,7 +9691,11 @@ SELECT
 		t.Fatalf("read canceled subscription: %v", err)
 	}
 	if status != "canceled" || renewalCount != 0 {
-		t.Fatalf("canceled subscription state = status %q renewals %d", status, renewalCount)
+		t.Fatalf(
+			"canceled subscription state = status %q renewals %d",
+			status,
+			renewalCount,
+		)
 	}
 
 }
@@ -7630,13 +9709,15 @@ func TestTelegramStarsCreatePaymentIsIdempotent(t *testing.T) {
 	})
 
 	var createCalls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasSuffix(r.URL.Path, "/createInvoiceLink") {
-			t.Fatalf("unexpected telegram bot api path: %s", r.URL.Path)
-		}
-		createCalls.Add(1)
-		writeTelegramStarsResult(t, w, "https://t.me/invoice/idempotent")
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !strings.HasSuffix(r.URL.Path, "/createInvoiceLink") {
+				t.Fatalf("unexpected telegram bot api path: %s", r.URL.Path)
+			}
+			createCalls.Add(1)
+			writeTelegramStarsResult(t, w, "https://t.me/invoice/idempotent")
+		}),
+	)
 	defer server.Close()
 
 	params := telegramstars.CreatePaymentParams{
@@ -7664,7 +9745,11 @@ func TestTelegramStarsCreatePaymentIsIdempotent(t *testing.T) {
 	}
 	if first.OrderID != second.OrderID || first.AttemptID != second.AttemptID ||
 		first.InvoiceLink != second.InvoiceLink {
-		t.Fatalf("idempotent responses differ: first=%+v second=%+v", first, second)
+		t.Fatalf(
+			"idempotent responses differ: first=%+v second=%+v",
+			first,
+			second,
+		)
 	}
 	if createCalls.Load() != 1 {
 		t.Fatalf("createInvoiceLink calls = %d, want 1", createCalls.Load())
@@ -7679,7 +9764,11 @@ func TestTelegramStarsCreatePaymentIsIdempotent(t *testing.T) {
 		t.Fatalf("count telegram stars rows: %v", err)
 	}
 	if orders != 1 || attempts != 1 {
-		t.Fatalf("telegram stars rows orders=%d attempts=%d, want 1 and 1", orders, attempts)
+		t.Fatalf(
+			"telegram stars rows orders=%d attempts=%d, want 1 and 1",
+			orders,
+			attempts,
+		)
 	}
 }
 
@@ -7695,40 +9784,55 @@ func TestTelegramStarsDefinitiveCreateFailureReleasesReservation(t *testing.T) {
 	})
 
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if calls.Add(1) == 1 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"invalid invoice"}`))
-			return
-		}
-		writeTelegramStarsResult(t, w, "https://t.me/invoice/retry")
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if calls.Add(1) == 1 {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write(
+					[]byte(
+						`{"ok":false,"error_code":400,"description":"invalid invoice"}`,
+					),
+				)
+				return
+			}
+			writeTelegramStarsResult(t, w, "https://t.me/invoice/retry")
+		}),
+	)
 	defer server.Close()
-	credentials := telegramstars.Credentials{BotToken: "test-token", APIBaseURL: server.URL}
+	credentials := telegramstars.Credentials{
+		BotToken:   "test-token",
+		APIBaseURL: server.URL,
+	}
 
-	_, err := env.api.Adapters.TelegramStars.CreatePayment(env.ctx, telegramstars.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          7200,
-		PlatformID:     2,
-		PlatformUserID: "failed-user",
-		ProductID:      productID,
-		IdempotencyKey: "telegram-stars-failed-key",
-	})
+	_, err := env.api.Adapters.TelegramStars.CreatePayment(
+		env.ctx,
+		telegramstars.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          7200,
+			PlatformID:     2,
+			PlatformUserID: "failed-user",
+			ProductID:      productID,
+			IdempotencyKey: "telegram-stars-failed-key",
+		},
+	)
 	if err == nil {
 		t.Fatal("definitive telegram stars API error was not returned")
 	}
 
-	retry, err := env.api.Adapters.TelegramStars.CreatePayment(env.ctx, telegramstars.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          7200,
-		PlatformID:     2,
-		PlatformUserID: "retry-user",
-		ProductID:      productID,
-		IdempotencyKey: "telegram-stars-retry-key",
-	})
+	retry, err := env.api.Adapters.TelegramStars.CreatePayment(
+		env.ctx,
+		telegramstars.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          7200,
+			PlatformID:     2,
+			PlatformUserID: "retry-user",
+			ProductID:      productID,
+			IdempotencyKey: "telegram-stars-retry-key",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create after released reservation: %v", err)
 	}
@@ -7782,35 +9886,51 @@ func TestTelegramStarsPreCheckoutRejectsTerminalAndExpiredOrders(t *testing.T) {
 				ListAmountMinor: 25,
 			})
 			var answeredOK bool
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				switch {
-				case strings.HasSuffix(r.URL.Path, "/createInvoiceLink"):
-					writeTelegramStarsResult(t, w, "https://t.me/invoice/"+testCase.name)
-				case strings.HasSuffix(r.URL.Path, "/answerPreCheckoutQuery"):
-					var request struct {
-						OK bool `json:"ok"`
+			server := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					switch {
+					case strings.HasSuffix(r.URL.Path, "/createInvoiceLink"):
+						writeTelegramStarsResult(
+							t,
+							w,
+							"https://t.me/invoice/"+testCase.name,
+						)
+					case strings.HasSuffix(r.URL.Path, "/answerPreCheckoutQuery"):
+						var request struct {
+							OK bool `json:"ok"`
+						}
+						if err := json.NewDecoder(r.Body).
+							Decode(&request); err != nil {
+							t.Fatalf("decode precheckout answer: %v", err)
+						}
+						answeredOK = request.OK
+						writeTelegramStarsResult(t, w, true)
+					default:
+						t.Fatalf(
+							"unexpected telegram bot api path: %s",
+							r.URL.Path,
+						)
 					}
-					if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-						t.Fatalf("decode precheckout answer: %v", err)
-					}
-					answeredOK = request.OK
-					writeTelegramStarsResult(t, w, true)
-				default:
-					t.Fatalf("unexpected telegram bot api path: %s", r.URL.Path)
-				}
-			}))
+				}),
+			)
 			defer server.Close()
-			credentials := telegramstars.Credentials{BotToken: "test-token", APIBaseURL: server.URL}
+			credentials := telegramstars.Credentials{
+				BotToken:   "test-token",
+				APIBaseURL: server.URL,
+			}
 
-			payment, err := env.api.Adapters.TelegramStars.CreatePayment(env.ctx, telegramstars.CreatePaymentParams{
-				Credentials:    credentials,
-				WorkspaceID:    testWorkspaceID,
-				AppID:          7300,
-				PlatformID:     2,
-				PlatformUserID: "precheckout-" + testCase.name,
-				ProductID:      productID,
-				IdempotencyKey: "telegram-stars-precheckout-" + testCase.name,
-			})
+			payment, err := env.api.Adapters.TelegramStars.CreatePayment(
+				env.ctx,
+				telegramstars.CreatePaymentParams{
+					Credentials:    credentials,
+					WorkspaceID:    testWorkspaceID,
+					AppID:          7300,
+					PlatformID:     2,
+					PlatformUserID: "precheckout-" + testCase.name,
+					ProductID:      productID,
+					IdempotencyKey: "telegram-stars-precheckout-" + testCase.name,
+				},
+			)
 			if err != nil {
 				t.Fatalf("create telegram stars payment: %v", err)
 			}
@@ -7831,7 +9951,11 @@ func TestTelegramStarsPreCheckoutRejectsTerminalAndExpiredOrders(t *testing.T) {
 				t.Fatalf("handle rejected precheckout: %v", err)
 			}
 			if result.Accepted || answeredOK {
-				t.Fatalf("precheckout accepted terminal/expired payment: result=%+v answer_ok=%t", result, answeredOK)
+				t.Fatalf(
+					"precheckout accepted terminal/expired payment: result=%+v answer_ok=%t",
+					result,
+					answeredOK,
+				)
 			}
 		})
 	}
@@ -7844,27 +9968,35 @@ func TestTelegramStarsAcceptedPreCheckoutProtectsStaleOrder(t *testing.T) {
 		AssetCode:       telegramstars.AssetCode,
 		ListAmountMinor: 25,
 	})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/createInvoiceLink"):
-			writeTelegramStarsResult(t, w, "https://t.me/invoice/protected")
-		case strings.HasSuffix(r.URL.Path, "/answerPreCheckoutQuery"):
-			writeTelegramStarsResult(t, w, true)
-		default:
-			t.Fatalf("unexpected telegram bot api path: %s", r.URL.Path)
-		}
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/createInvoiceLink"):
+				writeTelegramStarsResult(t, w, "https://t.me/invoice/protected")
+			case strings.HasSuffix(r.URL.Path, "/answerPreCheckoutQuery"):
+				writeTelegramStarsResult(t, w, true)
+			default:
+				t.Fatalf("unexpected telegram bot api path: %s", r.URL.Path)
+			}
+		}),
+	)
 	defer server.Close()
-	credentials := telegramstars.Credentials{BotToken: "test-token", APIBaseURL: server.URL}
-	payment, err := env.api.Adapters.TelegramStars.CreatePayment(env.ctx, telegramstars.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          7400,
-		PlatformID:     2,
-		PlatformUserID: "protected-precheckout",
-		ProductID:      productID,
-		IdempotencyKey: "telegram-stars-protected-precheckout",
-	})
+	credentials := telegramstars.Credentials{
+		BotToken:   "test-token",
+		APIBaseURL: server.URL,
+	}
+	payment, err := env.api.Adapters.TelegramStars.CreatePayment(
+		env.ctx,
+		telegramstars.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          7400,
+			PlatformID:     2,
+			PlatformUserID: "protected-precheckout",
+			ProductID:      productID,
+			IdempotencyKey: "telegram-stars-protected-precheckout",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create telegram stars payment: %v", err)
 	}
@@ -7921,22 +10053,27 @@ func TestTelegramStarsStalePendingAttemptExpiresWithOrder(t *testing.T) {
 		AssetCode:       telegramstars.AssetCode,
 		ListAmountMinor: 25,
 	})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeTelegramStarsResult(t, w, "https://t.me/invoice/stale")
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			writeTelegramStarsResult(t, w, "https://t.me/invoice/stale")
+		}),
+	)
 	defer server.Close()
-	payment, err := env.api.Adapters.TelegramStars.CreatePayment(env.ctx, telegramstars.CreatePaymentParams{
-		Credentials: telegramstars.Credentials{
-			BotToken:   "test-token",
-			APIBaseURL: server.URL,
+	payment, err := env.api.Adapters.TelegramStars.CreatePayment(
+		env.ctx,
+		telegramstars.CreatePaymentParams{
+			Credentials: telegramstars.Credentials{
+				BotToken:   "test-token",
+				APIBaseURL: server.URL,
+			},
+			WorkspaceID:    testWorkspaceID,
+			AppID:          7500,
+			PlatformID:     2,
+			PlatformUserID: "stale-telegram-stars",
+			ProductID:      productID,
+			IdempotencyKey: "telegram-stars-stale-attempt",
 		},
-		WorkspaceID:    testWorkspaceID,
-		AppID:          7500,
-		PlatformID:     2,
-		PlatformUserID: "stale-telegram-stars",
-		ProductID:      productID,
-		IdempotencyKey: "telegram-stars-stale-attempt",
-	})
+	)
 	if err != nil {
 		t.Fatalf("create stale telegram stars payment: %v", err)
 	}
@@ -7962,19 +10099,49 @@ func TestTelegramStarsNilReceiverReturnsNotInitialized(t *testing.T) {
 	var adapter *telegramstars.TelegramStars
 	ctx := context.Background()
 
-	if _, err := adapter.CreatePayment(ctx, telegramstars.CreatePaymentParams{}); !errors.Is(err, telegramstars.ErrNotInitialized) {
+	if _, err := adapter.CreatePayment(
+		ctx,
+		telegramstars.CreatePaymentParams{},
+	); !errors.Is(
+		err,
+		telegramstars.ErrNotInitialized,
+	) {
 		t.Fatalf("create payment error = %v", err)
 	}
-	if _, err := adapter.HandlePreCheckoutQuery(ctx, telegramstars.PreCheckoutQuery{}); !errors.Is(err, telegramstars.ErrNotInitialized) {
+	if _, err := adapter.HandlePreCheckoutQuery(
+		ctx,
+		telegramstars.PreCheckoutQuery{},
+	); !errors.Is(
+		err,
+		telegramstars.ErrNotInitialized,
+	) {
 		t.Fatalf("precheckout error = %v", err)
 	}
-	if _, err := adapter.HandleSuccessfulPayment(ctx, telegramstars.SuccessfulPayment{}); !errors.Is(err, telegramstars.ErrNotInitialized) {
+	if _, err := adapter.HandleSuccessfulPayment(
+		ctx,
+		telegramstars.SuccessfulPayment{},
+	); !errors.Is(
+		err,
+		telegramstars.ErrNotInitialized,
+	) {
 		t.Fatalf("successful payment error = %v", err)
 	}
-	if _, err := adapter.Execute(ctx, telegramstars.RefundParams{}); !errors.Is(err, telegramstars.ErrNotInitialized) {
+	if _, err := adapter.Execute(
+		ctx,
+		telegramstars.RefundParams{},
+	); !errors.Is(
+		err,
+		telegramstars.ErrNotInitialized,
+	) {
 		t.Fatalf("refund error = %v", err)
 	}
-	if err := adapter.EditSubscription(ctx, telegramstars.EditSubscriptionParams{}); !errors.Is(err, telegramstars.ErrNotInitialized) {
+	if err := adapter.EditSubscription(
+		ctx,
+		telegramstars.EditSubscriptionParams{},
+	); !errors.Is(
+		err,
+		telegramstars.ErrNotInitialized,
+	) {
 		t.Fatalf("edit subscription error = %v", err)
 	}
 }
@@ -8011,30 +10178,42 @@ func TestTONAdapterFullCycleAndCursor(t *testing.T) {
 		AssetCode:       paymentton.AssetTON,
 		ListAmountMinor: 1_000_000_000,
 	})
-	configureTONWallet(t, env, testWorkspaceID, paymentton.NetworkMainnet, "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c")
+	configureTONWallet(
+		t,
+		env,
+		testWorkspaceID,
+		paymentton.NetworkMainnet,
+		"EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c",
+	)
 
-	payment, err := env.api.Adapters.TON.CreatePayment(env.ctx, paymentton.CreatePaymentParams{
-		WorkspaceID:    testWorkspaceID,
-		AppID:          6006,
-		PlatformID:     1,
-		PlatformUserID: "buyer-ton",
-		ProductID:      productID,
-		AssetCode:      paymentton.AssetTON,
-		Locale:         "ru",
-	})
+	payment, err := env.api.Adapters.TON.CreatePayment(
+		env.ctx,
+		paymentton.CreatePaymentParams{
+			WorkspaceID:    testWorkspaceID,
+			AppID:          6006,
+			PlatformID:     1,
+			PlatformUserID: "buyer-ton",
+			ProductID:      productID,
+			AssetCode:      paymentton.AssetTON,
+			Locale:         "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create ton payment: %v", err)
 	}
 	if payment.Comment == "" || payment.AmountMinor != 1_000_000_000 {
 		t.Fatalf("unexpected ton payment response: %#v", payment)
 	}
-	tx, err := env.api.Adapters.TON.CreateTransaction(env.ctx, paymentton.CreateTransactionParams{
-		AssetCode:   payment.AssetCode,
-		Network:     payment.Network,
-		Destination: payment.WalletAddress,
-		AmountMinor: payment.AmountMinor,
-		Comment:     payment.Comment,
-	})
+	tx, err := env.api.Adapters.TON.CreateTransaction(
+		env.ctx,
+		paymentton.CreateTransactionParams{
+			AssetCode:   payment.AssetCode,
+			Network:     payment.Network,
+			Destination: payment.WalletAddress,
+			AmountMinor: payment.AmountMinor,
+			Comment:     payment.Comment,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create ton transaction: %v", err)
 	}
@@ -8047,22 +10226,26 @@ func TestTONAdapterFullCycleAndCursor(t *testing.T) {
 	// TON transfer processing.
 	// Emulate an incoming TON transfer with the expected comment and amount.
 	// Verify the shared checkout completion path fulfills the order and stores LT.
-	result, err := env.api.Adapters.TON.ProcessTransfer(env.ctx, paymentton.IncomingTransfer{
-		WorkspaceID:        testWorkspaceID,
-		Network:            paymentton.NetworkMainnet,
-		WalletAddress:      payment.WalletAddress,
-		AssetCode:          paymentton.AssetTON,
-		TxHash:             "ton_tx_hash_1",
-		LogicalTime:        uint64(time.Now().UnixNano()),
-		SourceAddress:      "EQ_SOURCE",
-		DestinationAddress: payment.WalletAddress,
-		AmountMinor:        payment.AmountMinor,
-		Comment:            payment.Comment,
-	})
+	result, err := env.api.Adapters.TON.ProcessTransfer(
+		env.ctx,
+		paymentton.IncomingTransfer{
+			WorkspaceID:        testWorkspaceID,
+			Network:            paymentton.NetworkMainnet,
+			WalletAddress:      payment.WalletAddress,
+			AssetCode:          paymentton.AssetTON,
+			TxHash:             "ton_tx_hash_1",
+			LogicalTime:        uint64(time.Now().UnixNano()),
+			SourceAddress:      "EQ_SOURCE",
+			DestinationAddress: payment.WalletAddress,
+			AmountMinor:        payment.AmountMinor,
+			Comment:            payment.Comment,
+		},
+	)
 	if err != nil {
 		t.Fatalf("process ton transfer: %v", err)
 	}
-	if result.Transaction == 0 || result.OrderID != payment.OrderID || result.AttemptID != payment.AttemptID {
+	if result.Transaction == 0 || result.OrderID != payment.OrderID ||
+		result.AttemptID != payment.AttemptID {
 		t.Fatalf("unexpected ton process result: %#v", result)
 	}
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "fulfilled")
@@ -8085,38 +10268,53 @@ WHERE workspace_id = $1
 	// TON transfer idempotency.
 	// Process the same transaction hash again.
 	// Verify duplicate blockchain events do not create another fulfillment.
-	again, err := env.api.Adapters.TON.ProcessTransfer(env.ctx, paymentton.IncomingTransfer{
-		WorkspaceID:        testWorkspaceID,
-		Network:            paymentton.NetworkMainnet,
-		WalletAddress:      payment.WalletAddress,
-		AssetCode:          paymentton.AssetTON,
-		TxHash:             "ton_tx_hash_1",
-		LogicalTime:        lastLT,
-		SourceAddress:      "EQ_SOURCE",
-		DestinationAddress: payment.WalletAddress,
-		AmountMinor:        payment.AmountMinor,
-		Comment:            payment.Comment,
-	})
+	again, err := env.api.Adapters.TON.ProcessTransfer(
+		env.ctx,
+		paymentton.IncomingTransfer{
+			WorkspaceID:        testWorkspaceID,
+			Network:            paymentton.NetworkMainnet,
+			WalletAddress:      payment.WalletAddress,
+			AssetCode:          paymentton.AssetTON,
+			TxHash:             "ton_tx_hash_1",
+			LogicalTime:        lastLT,
+			SourceAddress:      "EQ_SOURCE",
+			DestinationAddress: payment.WalletAddress,
+			AmountMinor:        payment.AmountMinor,
+			Comment:            payment.Comment,
+		},
+	)
 	if err != nil {
 		t.Fatalf("process duplicate ton transfer: %v", err)
 	}
 	if !again.AlreadyDone || again.Transaction != result.Transaction {
-		t.Fatalf("expected duplicate ton transaction to be idempotent: %#v", again)
+		t.Fatalf(
+			"expected duplicate ton transaction to be idempotent: %#v",
+			again,
+		)
 	}
 
-	if _, err := env.api.Adapters.TON.ProcessTransfer(env.ctx, paymentton.IncomingTransfer{
-		WorkspaceID:        testWorkspaceID,
-		Network:            paymentton.NetworkMainnet,
-		WalletAddress:      payment.WalletAddress,
-		AssetCode:          paymentton.AssetTON,
-		TxHash:             "ton_tx_hash_1",
-		LogicalTime:        lastLT,
-		SourceAddress:      "EQ_SOURCE",
-		DestinationAddress: payment.WalletAddress,
-		AmountMinor:        payment.AmountMinor + 1,
-		Comment:            payment.Comment,
-	}); !errors.Is(err, repository.ErrPaymentMismatch) {
-		t.Fatalf("changed duplicate transfer error = %v, want ErrPaymentMismatch", err)
+	if _, err := env.api.Adapters.TON.ProcessTransfer(
+		env.ctx,
+		paymentton.IncomingTransfer{
+			WorkspaceID:        testWorkspaceID,
+			Network:            paymentton.NetworkMainnet,
+			WalletAddress:      payment.WalletAddress,
+			AssetCode:          paymentton.AssetTON,
+			TxHash:             "ton_tx_hash_1",
+			LogicalTime:        lastLT,
+			SourceAddress:      "EQ_SOURCE",
+			DestinationAddress: payment.WalletAddress,
+			AmountMinor:        payment.AmountMinor + 1,
+			Comment:            payment.Comment,
+		},
+	); !errors.Is(
+		err,
+		repository.ErrPaymentMismatch,
+	) {
+		t.Fatalf(
+			"changed duplicate transfer error = %v, want ErrPaymentMismatch",
+			err,
+		)
 	}
 }
 
@@ -8136,15 +10334,18 @@ func TestTONAdapterRetriesTransferAfterLocalCompletionFailure(t *testing.T) {
 		"EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c",
 	)
 
-	payment, err := env.api.Adapters.TON.CreatePayment(env.ctx, paymentton.CreatePaymentParams{
-		WorkspaceID:    testWorkspaceID,
-		AppID:          6007,
-		PlatformID:     1,
-		PlatformUserID: "buyer-ton-retry",
-		ProductID:      productID,
-		AssetCode:      paymentton.AssetTON,
-		Locale:         "ru",
-	})
+	payment, err := env.api.Adapters.TON.CreatePayment(
+		env.ctx,
+		paymentton.CreatePaymentParams{
+			WorkspaceID:    testWorkspaceID,
+			AppID:          6007,
+			PlatformID:     1,
+			PlatformUserID: "buyer-ton-retry",
+			ProductID:      productID,
+			AssetCode:      paymentton.AssetTON,
+			Locale:         "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create ton payment: %v", err)
 	}
@@ -8170,8 +10371,18 @@ func TestTONAdapterRetriesTransferAfterLocalCompletionFailure(t *testing.T) {
 		Comment:            payment.Comment,
 	}
 
-	if _, err := env.api.Adapters.TON.ProcessTransfer(env.ctx, transfer); !errors.Is(err, repository.ErrOrderStateInvalid) {
-		t.Fatalf("first process error = %v, want %v", err, repository.ErrOrderStateInvalid)
+	if _, err := env.api.Adapters.TON.ProcessTransfer(
+		env.ctx,
+		transfer,
+	); !errors.Is(
+		err,
+		repository.ErrOrderStateInvalid,
+	) {
+		t.Fatalf(
+			"first process error = %v, want %v",
+			err,
+			repository.ErrOrderStateInvalid,
+		)
 	}
 
 	var storedTransfers int
@@ -8183,7 +10394,10 @@ func TestTONAdapterRetriesTransferAfterLocalCompletionFailure(t *testing.T) {
 		t.Fatalf("count prematurely stored transfers: %v", err)
 	}
 	if storedTransfers != 0 {
-		t.Fatalf("stored transfers after failed completion = %d, want 0", storedTransfers)
+		t.Fatalf(
+			"stored transfers after failed completion = %d, want 0",
+			storedTransfers,
+		)
 	}
 
 	if _, err := env.db.ExecContext(
@@ -8223,15 +10437,18 @@ func TestTONAdapterRecoversLegacyFailedMatchingTransfer(t *testing.T) {
 		"EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c",
 	)
 
-	payment, err := env.api.Adapters.TON.CreatePayment(env.ctx, paymentton.CreatePaymentParams{
-		WorkspaceID:    testWorkspaceID,
-		AppID:          6008,
-		PlatformID:     1,
-		PlatformUserID: "buyer-ton-legacy-failed",
-		ProductID:      productID,
-		AssetCode:      paymentton.AssetTON,
-		Locale:         "ru",
-	})
+	payment, err := env.api.Adapters.TON.CreatePayment(
+		env.ctx,
+		paymentton.CreatePaymentParams{
+			WorkspaceID:    testWorkspaceID,
+			AppID:          6008,
+			PlatformID:     1,
+			PlatformUserID: "buyer-ton-legacy-failed",
+			ProductID:      productID,
+			AssetCode:      paymentton.AssetTON,
+			Locale:         "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create ton payment: %v", err)
 	}
@@ -8291,7 +10508,8 @@ RETURNING id
 	if err != nil {
 		t.Fatalf("recover failed transfer: %v", err)
 	}
-	if result.Transaction != transactionID || result.AlreadyDone || result.Ignored {
+	if result.Transaction != transactionID || result.AlreadyDone ||
+		result.Ignored {
 		t.Fatalf("unexpected recovered transfer: %+v", result)
 	}
 
@@ -8308,7 +10526,11 @@ SELECT
 		t.Fatalf("read recovered transfer: %v", err)
 	}
 	if status != "matched" || storedTransactionCount != 1 {
-		t.Fatalf("recovered status/count = %s/%d, want matched/1", status, storedTransactionCount)
+		t.Fatalf(
+			"recovered status/count = %s/%d, want matched/1",
+			status,
+			storedTransactionCount,
+		)
 	}
 
 }
@@ -8324,17 +10546,26 @@ func TestTONAdapterJettonTransfer(t *testing.T) {
 		AssetCode:       "USDT_TON",
 		ListAmountMinor: 1_000_000,
 	})
-	configureTONWallet(t, env, testWorkspaceID, paymentton.NetworkMainnet, "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c")
+	configureTONWallet(
+		t,
+		env,
+		testWorkspaceID,
+		paymentton.NetworkMainnet,
+		"EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c",
+	)
 
-	payment, err := env.api.Adapters.TON.CreatePayment(env.ctx, paymentton.CreatePaymentParams{
-		WorkspaceID:    testWorkspaceID,
-		AppID:          6006,
-		PlatformID:     1,
-		PlatformUserID: "buyer-ton-jetton",
-		ProductID:      productID,
-		AssetCode:      "USDT_TON",
-		Locale:         "ru",
-	})
+	payment, err := env.api.Adapters.TON.CreatePayment(
+		env.ctx,
+		paymentton.CreatePaymentParams{
+			WorkspaceID:    testWorkspaceID,
+			AppID:          6006,
+			PlatformID:     1,
+			PlatformUserID: "buyer-ton-jetton",
+			ProductID:      productID,
+			AssetCode:      "USDT_TON",
+			Locale:         "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create ton jetton payment: %v", err)
 	}
@@ -8342,19 +10573,22 @@ func TestTONAdapterJettonTransfer(t *testing.T) {
 		t.Fatalf("expected USDT_TON decimals=6, got %d", payment.Decimals)
 	}
 
-	result, err := env.api.Adapters.TON.ProcessTransfer(env.ctx, paymentton.IncomingTransfer{
-		WorkspaceID:        testWorkspaceID,
-		Network:            paymentton.NetworkMainnet,
-		WalletAddress:      payment.WalletAddress,
-		AssetCode:          "USDT_TON",
-		TxHash:             "ton_jetton_tx_hash_1",
-		LogicalTime:        uint64(time.Now().UnixNano()),
-		SourceAddress:      "JETTON_WALLET",
-		DestinationAddress: payment.WalletAddress,
-		AmountMinor:        payment.AmountMinor,
-		Comment:            payment.Comment,
-		JettonSender:       "EQ_JETTON_SENDER",
-	})
+	result, err := env.api.Adapters.TON.ProcessTransfer(
+		env.ctx,
+		paymentton.IncomingTransfer{
+			WorkspaceID:        testWorkspaceID,
+			Network:            paymentton.NetworkMainnet,
+			WalletAddress:      payment.WalletAddress,
+			AssetCode:          "USDT_TON",
+			TxHash:             "ton_jetton_tx_hash_1",
+			LogicalTime:        uint64(time.Now().UnixNano()),
+			SourceAddress:      "JETTON_WALLET",
+			DestinationAddress: payment.WalletAddress,
+			AmountMinor:        payment.AmountMinor,
+			Comment:            payment.Comment,
+			JettonSender:       "EQ_JETTON_SENDER",
+		},
+	)
 	if err != nil {
 		t.Fatalf("process ton jetton transfer: %v", err)
 	}
@@ -8390,7 +10624,11 @@ func TestTONAdapterResolvesMultipleJettonAssets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse %s master address: %v", tt.code, err)
 		}
-		resolved, err := env.api.Adapters.TON.ResolveJettonAsset(env.ctx, paymentton.NetworkMainnet, master.StringRaw())
+		resolved, err := env.api.Adapters.TON.ResolveJettonAsset(
+			env.ctx,
+			paymentton.NetworkMainnet,
+			master.StringRaw(),
+		)
 		if err != nil {
 			t.Fatalf("resolve %s by raw master address: %v", tt.code, err)
 		}
@@ -8408,26 +10646,41 @@ func TestTONAdapterUsesWorkspaceWalletForPayment(t *testing.T) {
 		ListAmountMinor: 100_000_000,
 	})
 	rawWallet := "0:0000000000000000000000000000000000000000000000000000000000000000"
-	expectedWallet, err := paymentton.NormalizeWalletAddress(rawWallet, paymentton.NetworkMainnet)
+	expectedWallet, err := paymentton.NormalizeWalletAddress(
+		rawWallet,
+		paymentton.NetworkMainnet,
+	)
 	if err != nil {
 		t.Fatalf("normalize test wallet: %v", err)
 	}
-	configureTONWallet(t, env, testWorkspaceID, paymentton.NetworkMainnet, rawWallet)
+	configureTONWallet(
+		t,
+		env,
+		testWorkspaceID,
+		paymentton.NetworkMainnet,
+		rawWallet,
+	)
 
-	payment, err := env.api.Adapters.TON.CreatePayment(env.ctx, paymentton.CreatePaymentParams{
-		WorkspaceID:    testWorkspaceID,
-		AppID:          6006,
-		PlatformID:     1,
-		PlatformUserID: "buyer-ton-configured",
-		ProductID:      productID,
-		AssetCode:      paymentton.AssetTON,
-		Locale:         "ru",
-	})
+	payment, err := env.api.Adapters.TON.CreatePayment(
+		env.ctx,
+		paymentton.CreatePaymentParams{
+			WorkspaceID:    testWorkspaceID,
+			AppID:          6006,
+			PlatformID:     1,
+			PlatformUserID: "buyer-ton-configured",
+			ProductID:      productID,
+			AssetCode:      paymentton.AssetTON,
+			Locale:         "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create ton payment with workspace wallet: %v", err)
 	}
 	if payment.WalletAddress != expectedWallet {
-		t.Fatalf("expected workspace TON wallet in payment response: %#v", payment)
+		t.Fatalf(
+			"expected workspace TON wallet in payment response: %#v",
+			payment,
+		)
 	}
 }
 
@@ -8439,21 +10692,30 @@ func TestTONAdapterRequiresWorkspaceWallet(t *testing.T) {
 		ListAmountMinor: 100_000_000,
 	})
 
-	_, err := env.api.Adapters.TON.CreatePayment(env.ctx, paymentton.CreatePaymentParams{
-		WorkspaceID:    testWorkspaceID,
-		AppID:          6006,
-		PlatformID:     1,
-		PlatformUserID: "buyer-ton-missing-wallet",
-		ProductID:      productID,
-		AssetCode:      paymentton.AssetTON,
-		Locale:         "ru",
-	})
+	_, err := env.api.Adapters.TON.CreatePayment(
+		env.ctx,
+		paymentton.CreatePaymentParams{
+			WorkspaceID:    testWorkspaceID,
+			AppID:          6006,
+			PlatformID:     1,
+			PlatformUserID: "buyer-ton-missing-wallet",
+			ProductID:      productID,
+			AssetCode:      paymentton.AssetTON,
+			Locale:         "ru",
+		},
+	)
 	if err == nil {
 		t.Fatal("expected missing workspace TON wallet to be rejected")
 	}
 }
 
-func configureTONWallet(t *testing.T, env paymentTestEnv, workspaceID string, network string, wallet string) {
+func configureTONWallet(
+	t *testing.T,
+	env paymentTestEnv,
+	workspaceID string,
+	network string,
+	wallet string,
+) {
 	t.Helper()
 	if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
 		WorkspaceID:   workspaceID,
@@ -8470,7 +10732,10 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 	wallet := "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ"
 	customConfigURL := "https://example.com/ton.config.json"
-	expectedWallet, err := paymentton.NormalizeWalletAddress(wallet, paymentton.NetworkMainnet)
+	expectedWallet, err := paymentton.NormalizeWalletAddress(
+		wallet,
+		paymentton.NetworkMainnet,
+	)
 	if err != nil {
 		t.Fatalf("normalize wallet: %v", err)
 	}
@@ -8489,7 +10754,9 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get ton wallet: %v", err)
 	}
-	if got.WalletAddress != expectedWallet || !got.IsEnabled || !got.NetworkConfigUrl.Valid || got.NetworkConfigUrl.String != customConfigURL {
+	if got.WalletAddress != expectedWallet || !got.IsEnabled ||
+		!got.NetworkConfigUrl.Valid ||
+		got.NetworkConfigUrl.String != customConfigURL {
 		t.Fatalf("unexpected ton wallet: %+v", got)
 	}
 	if got.Manifest != testTONConnectManifest() {
@@ -8523,8 +10790,18 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	if got.IsEnabled || got.WalletAddress != expectedWallet {
 		t.Fatalf("unexpected disabled ton wallet: %+v", got)
 	}
-	if _, err := env.api.Adapters.TON.GetManifest(env.ctx, testWorkspaceID); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("disabled wallet manifest error = %v, want %v", err, sql.ErrNoRows)
+	if _, err := env.api.Adapters.TON.GetManifest(
+		env.ctx,
+		testWorkspaceID,
+	); !errors.Is(
+		err,
+		sql.ErrNoRows,
+	) {
+		t.Fatalf(
+			"disabled wallet manifest error = %v, want %v",
+			err,
+			sql.ErrNoRows,
+		)
 	}
 
 	rows, err := env.api.Admin.DeleteTONWallet(env.ctx, testWorkspaceID)
@@ -8536,7 +10813,10 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	}
 
 	replacementWallet := "0:1111111111111111111111111111111111111111111111111111111111111111"
-	expectedReplacementWallet, err := paymentton.NormalizeWalletAddress(replacementWallet, paymentton.NetworkTestnet)
+	expectedReplacementWallet, err := paymentton.NormalizeWalletAddress(
+		replacementWallet,
+		paymentton.NetworkTestnet,
+	)
 	if err != nil {
 		t.Fatalf("normalize replacement wallet: %v", err)
 	}
@@ -8562,7 +10842,8 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get replaced ton wallet: %v", err)
 	}
-	if got.Network != paymentton.NetworkTestnet || got.WalletAddress != expectedReplacementWallet {
+	if got.Network != paymentton.NetworkTestnet ||
+		got.WalletAddress != expectedReplacementWallet {
 		t.Fatalf("expected replaced workspace ton wallet: %+v", got)
 	}
 }
@@ -8590,13 +10871,16 @@ func TestPaymentTONConnectManifestWorkspaceIsolation(t *testing.T) {
 		{workspaceID: firstWorkspaceID, manifest: firstManifest},
 		{workspaceID: secondWorkspaceID, manifest: secondManifest},
 	} {
-		if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
-			WorkspaceID:   config.workspaceID,
-			Network:       paymentton.NetworkMainnet,
-			WalletAddress: wallet,
-			Manifest:      config.manifest,
-			IsEnabled:     true,
-		}); err != nil {
+		if err := env.api.Admin.SaveTONWallet(
+			env.ctx,
+			admin.TONWalletUpsertParams{
+				WorkspaceID:   config.workspaceID,
+				Network:       paymentton.NetworkMainnet,
+				WalletAddress: wallet,
+				Manifest:      config.manifest,
+				IsEnabled:     true,
+			},
+		); err != nil {
 			t.Fatalf("save TON wallet for %s: %v", config.workspaceID, err)
 		}
 	}
@@ -8605,12 +10889,19 @@ func TestPaymentTONConnectManifestWorkspaceIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get first workspace manifest: %v", err)
 	}
-	gotSecond, err := env.api.Adapters.TON.GetManifest(env.ctx, secondWorkspaceID)
+	gotSecond, err := env.api.Adapters.TON.GetManifest(
+		env.ctx,
+		secondWorkspaceID,
+	)
 	if err != nil {
 		t.Fatalf("get second workspace manifest: %v", err)
 	}
 	if gotFirst != firstManifest || gotSecond != secondManifest {
-		t.Fatalf("workspace manifests collided: first=%+v second=%+v", gotFirst, gotSecond)
+		t.Fatalf(
+			"workspace manifests collided: first=%+v second=%+v",
+			gotFirst,
+			gotSecond,
+		)
 	}
 }
 
@@ -8652,7 +10943,9 @@ func TestPaymentTONConnectManifestCacheVersion(t *testing.T) {
 		t.Fatalf("warm manifest = %+v, want %+v", warm, firstManifest)
 	}
 	if !cache.hasEntryTTLAtLeast(55 * time.Minute) {
-		t.Fatal("TON manifest cache entry does not have an approximately one hour TTL")
+		t.Fatal(
+			"TON manifest cache entry does not have an approximately one hour TTL",
+		)
 	}
 
 	if _, err := env.db.ExecContext(
@@ -8690,14 +10983,31 @@ func TestPaymentTONConnectManifestCacheVersion(t *testing.T) {
 		t.Fatalf("read invalidated TON manifest: %v", err)
 	}
 	if updated != secondManifest {
-		t.Fatalf("manifest cache was not invalidated: got %+v want %+v", updated, secondManifest)
+		t.Fatalf(
+			"manifest cache was not invalidated: got %+v want %+v",
+			updated,
+			secondManifest,
+		)
 	}
 
-	if _, err := env.api.Admin.DeleteTONWallet(env.ctx, testWorkspaceID); err != nil {
+	if _, err := env.api.Admin.DeleteTONWallet(
+		env.ctx,
+		testWorkspaceID,
+	); err != nil {
 		t.Fatalf("delete TON wallet: %v", err)
 	}
-	if _, err := nodeB.Adapters.TON.GetManifest(env.ctx, testWorkspaceID); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("deleted wallet manifest error = %v, want %v", err, sql.ErrNoRows)
+	if _, err := nodeB.Adapters.TON.GetManifest(
+		env.ctx,
+		testWorkspaceID,
+	); !errors.Is(
+		err,
+		sql.ErrNoRows,
+	) {
+		t.Fatalf(
+			"deleted wallet manifest error = %v, want %v",
+			err,
+			sql.ErrNoRows,
+		)
 	}
 }
 
@@ -8720,17 +11030,22 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	// VKMA item lookup.
 	// Request product information through the VKMA get_item adapter method.
 	// Verify VK receives the localized title, item id, and VOTE price.
-	item, err := env.api.Adapters.VKMA.GetItemForWorkspace(env.ctx, testWorkspaceID, vkmashop.Params{
-		NotificationType: vkmashop.GetItem,
-		AppID:            3003,
-		UserID:           8001,
-		Item:             productID,
-		Lang:             "ru",
-	})
+	item, err := env.api.Adapters.VKMA.GetItemForWorkspace(
+		env.ctx,
+		testWorkspaceID,
+		vkmashop.Params{
+			NotificationType: vkmashop.GetItem,
+			AppID:            3003,
+			UserID:           8001,
+			Item:             productID,
+			Lang:             "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("vkma get item: %v", err)
 	}
-	if item.ItemID != productID || item.Price != 35 || item.Title != "VKMA подписка" {
+	if item.ItemID != productID || item.Price != 35 ||
+		item.Title != "VKMA подписка" {
 		t.Fatalf("unexpected vkma item response: %#v", item)
 	}
 
@@ -8738,15 +11053,19 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	// Process a chargeable order_status_change notification as a one-time purchase.
 	// Verify the adapter creates and fulfills the payment order.
 	orderPaymentID := int(time.Now().UnixNano() % 1_000_000_000)
-	regular, err := env.api.Adapters.VKMA.ChargeableForWorkspace(env.ctx, testWorkspaceID, vkmashop.Params{
-		NotificationType: vkmashop.OrderStatusChange,
-		Status:           vkmashop.Chargeable,
-		AppID:            3003,
-		UserID:           8001,
-		Item:             productID,
-		OrderID:          orderPaymentID,
-		Lang:             "ru",
-	})
+	regular, err := env.api.Adapters.VKMA.ChargeableForWorkspace(
+		env.ctx,
+		testWorkspaceID,
+		vkmashop.Params{
+			NotificationType: vkmashop.OrderStatusChange,
+			Status:           vkmashop.Chargeable,
+			AppID:            3003,
+			UserID:           8001,
+			Item:             productID,
+			OrderID:          orderPaymentID,
+			Lang:             "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("vkma regular chargeable: %v", err)
 	}
@@ -8754,9 +11073,14 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 		t.Fatalf("unexpected regular vkma response: %#v", regular)
 	}
 	assertOrderStatus(t, env.ctx, env.db, regular.AppOrderID, "fulfilled")
-	if _, err := env.db.ExecContext(env.ctx,
+	if _, err := env.db.ExecContext(
+		env.ctx,
 		"UPDATE payment_clb_event SET status = 'ok', delivered_at = now() WHERE source_service = 'payment' AND event_key = $1",
-		fmt.Sprintf("%s:%d", CallbackEventPaymentOrderFulfilled, regular.AppOrderID),
+		fmt.Sprintf(
+			"%s:%d",
+			CallbackEventPaymentOrderFulfilled,
+			regular.AppOrderID,
+		),
 	); err != nil {
 		t.Fatalf("complete vkma fulfilled callback fixture: %v", err)
 	}
@@ -8775,12 +11099,16 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 			Lang:             "ru",
 		},
 	}
-	refundResponse, err := env.api.Adapters.VKMA.HandleRequest(env.ctx, refundRequest)
+	refundResponse, err := env.api.Adapters.VKMA.HandleRequest(
+		env.ctx,
+		refundRequest,
+	)
 	if err != nil {
 		t.Fatalf("vkma regular refund: %v", err)
 	}
 	refunded, ok := refundResponse.(*paymentvkma.ChargeableResponse)
-	if !ok || refunded.AppOrderID != regular.AppOrderID || refunded.OrderID != orderPaymentID {
+	if !ok || refunded.AppOrderID != regular.AppOrderID ||
+		refunded.OrderID != orderPaymentID {
 		t.Fatalf("unexpected regular vkma refund response: %#v", refundResponse)
 	}
 	assertOrderStatus(t, env.ctx, env.db, regular.AppOrderID, "refunded")
@@ -8792,9 +11120,11 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	var refundID uint64
 	var refundStatus string
 	var refundCount int
-	if err := env.db.QueryRowContext(env.ctx,
+	if err := env.db.QueryRowContext(
+		env.ctx,
 		"SELECT id, status FROM payment_attempt WHERE order_id = $1 AND provider_code = $2",
-		regular.AppOrderID, paymentvkma.ProviderCode,
+		regular.AppOrderID,
+		paymentvkma.ProviderCode,
 	).Scan(&attemptID, &attemptStatus); err != nil {
 		t.Fatalf("select refunded vkma attempt: %v", err)
 	}
@@ -8810,19 +11140,27 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if fulfillmentStatus != "revoked" {
 		t.Fatalf("unexpected vkma fulfillment status: %s", fulfillmentStatus)
 	}
-	if err := env.db.QueryRowContext(env.ctx,
+	if err := env.db.QueryRowContext(
+		env.ctx,
 		"SELECT COUNT(*), MAX(id), MAX(status) FROM payment_refund WHERE order_id = $1",
 		regular.AppOrderID,
 	).Scan(&refundCount, &refundID, &refundStatus); err != nil {
 		t.Fatalf("select vkma refund: %v", err)
 	}
 	if refundCount != 1 || refundStatus != "succeeded" {
-		t.Fatalf("unexpected vkma refund state: count=%d status=%s", refundCount, refundStatus)
+		t.Fatalf(
+			"unexpected vkma refund state: count=%d status=%s",
+			refundCount,
+			refundStatus,
+		)
 	}
-	productReport, err := env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
-		WorkspaceID: testWorkspaceID,
-		ProductID:   productID,
-	})
+	productReport, err := env.api.Admin.GetPaymentReport(
+		env.ctx,
+		admin.PaymentReportParams{
+			WorkspaceID: testWorkspaceID,
+			ProductID:   productID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("get refunded product report: %v", err)
 	}
@@ -8851,7 +11189,10 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 		},
 	})
 
-	if _, err := env.api.Adapters.VKMA.HandleRequest(env.ctx, refundRequest); err != nil {
+	if _, err := env.api.Adapters.VKMA.HandleRequest(
+		env.ctx,
+		refundRequest,
+	); err != nil {
 		t.Fatalf("vkma duplicate regular refund: %v", err)
 	}
 	if err := env.db.QueryRowContext(env.ctx,
@@ -8863,15 +11204,22 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if refundCount != 1 {
 		t.Fatalf("expected one idempotent vkma refund, got %d", refundCount)
 	}
-	productReport, err = env.api.Admin.GetPaymentReport(env.ctx, admin.PaymentReportParams{
-		WorkspaceID: testWorkspaceID,
-		ProductID:   productID,
-	})
+	productReport, err = env.api.Admin.GetPaymentReport(
+		env.ctx,
+		admin.PaymentReportParams{
+			WorkspaceID: testWorkspaceID,
+			ProductID:   productID,
+		},
+	)
 	if err != nil {
 		t.Fatalf("get duplicate refunded product report: %v", err)
 	}
-	if len(productReport.Stats.Assets) != 1 || productReport.Stats.Assets[0].RefundCount != 1 {
-		t.Fatalf("duplicate vkma refund created extra stats: %#v", productReport.Stats.Assets)
+	if len(productReport.Stats.Assets) != 1 ||
+		productReport.Stats.Assets[0].RefundCount != 1 {
+		t.Fatalf(
+			"duplicate vkma refund created extra stats: %#v",
+			productReport.Stats.Assets,
+		)
 	}
 	now := time.Now()
 	overview, err := env.api.Admin.ListDailyOverview(
@@ -8880,25 +11228,33 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list refunded payment daily overview: %v", err)
 	}
-	if len(overview) != 1 || overview[0].RefundedOrders != 1 || overview[0].RefundCount != 1 {
+	if len(overview) != 1 || overview[0].RefundedOrders != 1 ||
+		overview[0].RefundCount != 1 {
 		t.Fatalf("unexpected refunded payment daily overview: %#v", overview)
 	}
 
 	// VKMA subscription lookup.
 	// Request subscription product information through get_subscription.
 	// Verify VK receives the subscription duration as expiration.
-	subscriptionItem, err := env.api.Adapters.VKMA.GetSubscriptionForWorkspace(env.ctx, testWorkspaceID, vkmashop.Params{
-		NotificationType: vkmashop.GetSubscription,
-		AppID:            3003,
-		UserID:           8002,
-		Item:             productID,
-		Lang:             "ru",
-	})
+	subscriptionItem, err := env.api.Adapters.VKMA.GetSubscriptionForWorkspace(
+		env.ctx,
+		testWorkspaceID,
+		vkmashop.Params{
+			NotificationType: vkmashop.GetSubscription,
+			AppID:            3003,
+			UserID:           8002,
+			Item:             productID,
+			Lang:             "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("vkma get subscription: %v", err)
 	}
 	if subscriptionItem.Expiration != 2592000 {
-		t.Fatalf("unexpected subscription expiration: %d", subscriptionItem.Expiration)
+		t.Fatalf(
+			"unexpected subscription expiration: %d",
+			subscriptionItem.Expiration,
+		)
 	}
 
 	// VKMA subscription
@@ -8906,16 +11262,20 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	// Verify the subscription is activated and duplicate callbacks stay idempotent.
 	subscriptionOrderID := orderPaymentID + 1
 	subscriptionID := orderPaymentID + 100
-	created, err := env.api.Adapters.VKMA.ChargeableForWorkspace(env.ctx, testWorkspaceID, vkmashop.Params{
-		NotificationType: vkmashop.SubscriptionStatusChange,
-		Status:           vkmashop.Chargeable,
-		AppID:            3003,
-		UserID:           8002,
-		Item:             productID,
-		OrderID:          subscriptionOrderID,
-		SubscriptionID:   subscriptionID,
-		Lang:             "ru",
-	})
+	created, err := env.api.Adapters.VKMA.ChargeableForWorkspace(
+		env.ctx,
+		testWorkspaceID,
+		vkmashop.Params{
+			NotificationType: vkmashop.SubscriptionStatusChange,
+			Status:           vkmashop.Chargeable,
+			AppID:            3003,
+			UserID:           8002,
+			Item:             productID,
+			OrderID:          subscriptionOrderID,
+			SubscriptionID:   subscriptionID,
+			Lang:             "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("vkma subscription chargeable: %v", err)
 	}
@@ -8924,28 +11284,44 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	}
 	assertOrderStatus(t, env.ctx, env.db, created.AppOrderID, "fulfilled")
 
-	again, err := env.api.Adapters.VKMA.ChargeableForWorkspace(env.ctx, testWorkspaceID, vkmashop.Params{
-		NotificationType: vkmashop.SubscriptionStatusChange,
-		Status:           vkmashop.Chargeable,
-		AppID:            3003,
-		UserID:           8002,
-		Item:             productID,
-		OrderID:          subscriptionOrderID,
-		SubscriptionID:   subscriptionID,
-		Lang:             "ru",
-	})
+	again, err := env.api.Adapters.VKMA.ChargeableForWorkspace(
+		env.ctx,
+		testWorkspaceID,
+		vkmashop.Params{
+			NotificationType: vkmashop.SubscriptionStatusChange,
+			Status:           vkmashop.Chargeable,
+			AppID:            3003,
+			UserID:           8002,
+			Item:             productID,
+			OrderID:          subscriptionOrderID,
+			SubscriptionID:   subscriptionID,
+			Lang:             "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("vkma subscription chargeable again: %v", err)
 	}
 	if again.AppOrderID != created.AppOrderID {
-		t.Fatalf("expected idempotent app order id: got %d want %d", again.AppOrderID, created.AppOrderID)
+		t.Fatalf(
+			"expected idempotent app order id: got %d want %d",
+			again.AppOrderID,
+			created.AppOrderID,
+		)
 	}
 
-	active, err := env.api.User.IsSubscriptionActive(env.ctx, subscription.IsActiveParams{
-		Identity:     paymentTestIdentity(testWorkspaceID, 3003, paymentvkma.PlatformID, "8002"),
-		ProductID:    productID,
-		ProviderCode: paymentvkma.ProviderCode,
-	})
+	active, err := env.api.User.IsSubscriptionActive(
+		env.ctx,
+		subscription.IsActiveParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				3003,
+				paymentvkma.PlatformID,
+				"8002",
+			),
+			ProductID:    productID,
+			ProviderCode: paymentvkma.ProviderCode,
+		},
+	)
 	if err != nil {
 		t.Fatalf("subscription is active: %v", err)
 	}
@@ -8953,11 +11329,19 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 		t.Fatal("expected active subscription after chargeable")
 	}
 
-	otherAppActive, err := env.api.User.IsSubscriptionActive(env.ctx, subscription.IsActiveParams{
-		Identity:     paymentTestIdentity(testWorkspaceID, 3004, paymentvkma.PlatformID, "8002"),
-		ProductID:    productID,
-		ProviderCode: paymentvkma.ProviderCode,
-	})
+	otherAppActive, err := env.api.User.IsSubscriptionActive(
+		env.ctx,
+		subscription.IsActiveParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				3004,
+				paymentvkma.PlatformID,
+				"8002",
+			),
+			ProductID:    productID,
+			ProviderCode: paymentvkma.ProviderCode,
+		},
+	)
 	if err != nil {
 		t.Fatalf("subscription is active for other app: %v", err)
 	}
@@ -8966,46 +11350,73 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	}
 
 	wrongWorkspaceID := "00000000-0000-0000-0000-000000000999"
-	rows, err := env.api.Admin.UpdateSubscriptionStatus(env.ctx, admin.SubscriptionStatusUpdateParams{
-		WorkspaceID:            wrongWorkspaceID,
-		ProviderCode:           paymentvkma.ProviderCode,
-		ProviderSubscriptionID: strconv.Itoa(subscriptionID),
-		Status:                 "canceled",
-	})
+	rows, err := env.api.Admin.UpdateSubscriptionStatus(
+		env.ctx,
+		admin.SubscriptionStatusUpdateParams{
+			WorkspaceID:            wrongWorkspaceID,
+			ProviderCode:           paymentvkma.ProviderCode,
+			ProviderSubscriptionID: strconv.Itoa(subscriptionID),
+			Status:                 "canceled",
+		},
+	)
 	if err != nil {
 		t.Fatalf("update subscription through wrong workspace: %v", err)
 	}
 	if rows != 0 {
 		t.Fatalf("wrong workspace updated %d subscriptions", rows)
 	}
-	active, err = env.api.User.IsSubscriptionActive(env.ctx, subscription.IsActiveParams{
-		Identity:     paymentTestIdentity(testWorkspaceID, 3003, paymentvkma.PlatformID, "8002"),
-		ProductID:    productID,
-		ProviderCode: paymentvkma.ProviderCode,
-	})
+	active, err = env.api.User.IsSubscriptionActive(
+		env.ctx,
+		subscription.IsActiveParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				3003,
+				paymentvkma.PlatformID,
+				"8002",
+			),
+			ProductID:    productID,
+			ProviderCode: paymentvkma.ProviderCode,
+		},
+	)
 	if err != nil || !active {
-		t.Fatalf("wrong workspace changed subscription: active=%t err=%v", active, err)
+		t.Fatalf(
+			"wrong workspace changed subscription: active=%t err=%v",
+			active,
+			err,
+		)
 	}
 
 	// VKMA subscription statuses.
 	// Apply active, canceled, and refunded subscription notifications.
 	// Verify the shared Subscription API reports active and inactive states correctly.
-	if _, err := env.api.Adapters.VKMA.Active(env.ctx, testWorkspaceID, vkmashop.Params{
-		NotificationType: vkmashop.SubscriptionStatusChange,
-		Status:           vkmashop.Active,
-		AppID:            3003,
-		UserID:           8002,
-		SubscriptionID:   subscriptionID,
-		CancelReason:     vkmashop.CancelUserDecision,
-	}); err != nil {
+	if _, err := env.api.Adapters.VKMA.Active(
+		env.ctx,
+		testWorkspaceID,
+		vkmashop.Params{
+			NotificationType: vkmashop.SubscriptionStatusChange,
+			Status:           vkmashop.Active,
+			AppID:            3003,
+			UserID:           8002,
+			SubscriptionID:   subscriptionID,
+			CancelReason:     vkmashop.CancelUserDecision,
+		},
+	); err != nil {
 		t.Fatalf("vkma subscription active status: %v", err)
 	}
 
-	active, err = env.api.User.IsSubscriptionActive(env.ctx, subscription.IsActiveParams{
-		Identity:     paymentTestIdentity(testWorkspaceID, 3003, paymentvkma.PlatformID, "8002"),
-		ProductID:    productID,
-		ProviderCode: paymentvkma.ProviderCode,
-	})
+	active, err = env.api.User.IsSubscriptionActive(
+		env.ctx,
+		subscription.IsActiveParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				3003,
+				paymentvkma.PlatformID,
+				"8002",
+			),
+			ProductID:    productID,
+			ProviderCode: paymentvkma.ProviderCode,
+		},
+	)
 	if err != nil {
 		t.Fatalf("subscription is active after active status: %v", err)
 	}
@@ -9013,22 +11424,34 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 		t.Fatal("expected active subscription after active status")
 	}
 
-	if _, err := env.api.Adapters.VKMA.Canceled(env.ctx, testWorkspaceID, vkmashop.Params{
-		NotificationType: vkmashop.SubscriptionStatusChange,
-		Status:           vkmashop.Canceled,
-		AppID:            3003,
-		UserID:           8002,
-		SubscriptionID:   subscriptionID,
-		CancelReason:     vkmashop.CancelUserDecision,
-	}); err != nil {
+	if _, err := env.api.Adapters.VKMA.Canceled(
+		env.ctx,
+		testWorkspaceID,
+		vkmashop.Params{
+			NotificationType: vkmashop.SubscriptionStatusChange,
+			Status:           vkmashop.Canceled,
+			AppID:            3003,
+			UserID:           8002,
+			SubscriptionID:   subscriptionID,
+			CancelReason:     vkmashop.CancelUserDecision,
+		},
+	); err != nil {
 		t.Fatalf("vkma subscription canceled status: %v", err)
 	}
 
-	active, err = env.api.User.IsSubscriptionActive(env.ctx, subscription.IsActiveParams{
-		Identity:     paymentTestIdentity(testWorkspaceID, 3003, paymentvkma.PlatformID, "8002"),
-		ProductID:    productID,
-		ProviderCode: paymentvkma.ProviderCode,
-	})
+	active, err = env.api.User.IsSubscriptionActive(
+		env.ctx,
+		subscription.IsActiveParams{
+			Identity: paymentTestIdentity(
+				testWorkspaceID,
+				3003,
+				paymentvkma.PlatformID,
+				"8002",
+			),
+			ProductID:    productID,
+			ProviderCode: paymentvkma.ProviderCode,
+		},
+	)
 	if err != nil {
 		t.Fatalf("subscription is active after cancel: %v", err)
 	}
@@ -9036,18 +11459,26 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 		t.Fatal("expected inactive subscription after cancel")
 	}
 
-	if _, err := env.api.Adapters.VKMA.Refunded(env.ctx, testWorkspaceID, vkmashop.Params{
-		NotificationType: vkmashop.SubscriptionStatusChange,
-		Status:           vkmashop.Refunded,
-		AppID:            3003,
-		UserID:           8002,
-		SubscriptionID:   subscriptionID,
-	}); err != nil {
+	if _, err := env.api.Adapters.VKMA.Refunded(
+		env.ctx,
+		testWorkspaceID,
+		vkmashop.Params{
+			NotificationType: vkmashop.SubscriptionStatusChange,
+			Status:           vkmashop.Refunded,
+			AppID:            3003,
+			UserID:           8002,
+			SubscriptionID:   subscriptionID,
+		},
+	); err != nil {
 		t.Fatalf("vkma subscription refunded status: %v", err)
 	}
 }
 
-func assertVKMARefundedCallback(t *testing.T, env paymentTestEnv, want PaymentRefundedCallbackPayload) {
+func assertVKMARefundedCallback(
+	t *testing.T,
+	env paymentTestEnv,
+	want PaymentRefundedCallbackPayload,
+) {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(env.ctx)
@@ -9057,14 +11488,25 @@ func assertVKMARefundedCallback(t *testing.T, env paymentTestEnv, want PaymentRe
 		if callback.EventType != CallbackEventPaymentOrderRefunded {
 			t.Fatalf("unexpected callback event type: %s", callback.EventType)
 		}
-		if callback.EventKey != fmt.Sprintf("%s:%d", CallbackEventPaymentOrderRefunded, want.OrderID) {
-			t.Fatalf("unexpected refunded callback event key: %s", callback.EventKey)
+		if callback.EventKey != fmt.Sprintf(
+			"%s:%d",
+			CallbackEventPaymentOrderRefunded,
+			want.OrderID,
+		) {
+			t.Fatalf(
+				"unexpected refunded callback event key: %s",
+				callback.EventKey,
+			)
 		}
 		if callback.PaymentRefunded == nil {
 			t.Fatal("expected payment refunded callback payload")
 		}
 		if got := *callback.PaymentRefunded; !reflect.DeepEqual(got, want) {
-			t.Fatalf("unexpected payment refunded callback payload: got %#v want %#v", got, want)
+			t.Fatalf(
+				"unexpected payment refunded callback payload: got %#v want %#v",
+				got,
+				want,
+			)
 		}
 		if err := callback.Successful(); err != nil {
 			return err
@@ -9076,7 +11518,10 @@ func assertVKMARefundedCallback(t *testing.T, env paymentTestEnv, want PaymentRe
 		t.Fatalf("on refunded callback: %v", err)
 	}
 	if handled != 1 {
-		t.Fatalf("unexpected refunded callback handled count: got %d want 1", handled)
+		t.Fatalf(
+			"unexpected refunded callback handled count: got %d want 1",
+			handled,
+		)
 	}
 }
 
@@ -9084,16 +11529,19 @@ func TestVKMAAdapterUsesRequestWorkspace(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 	productID, _ := createVKMAProduct(t, env)
 
-	response, err := env.api.Adapters.VKMA.HandleRequest(env.ctx, paymentvkma.Request{
-		WorkspaceID: testWorkspaceID,
-		Params: vkmashop.Params{
-			NotificationType: vkmashop.GetItem,
-			AppID:            3003,
-			UserID:           8001,
-			Item:             productID,
-			Lang:             "ru",
+	response, err := env.api.Adapters.VKMA.HandleRequest(
+		env.ctx,
+		paymentvkma.Request{
+			WorkspaceID: testWorkspaceID,
+			Params: vkmashop.Params{
+				NotificationType: vkmashop.GetItem,
+				AppID:            3003,
+				UserID:           8001,
+				Item:             productID,
+				Lang:             "ru",
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("vkma get item with request workspace: %v", err)
 	}
@@ -9157,7 +11605,10 @@ func createVKMAProduct(t *testing.T, env paymentTestEnv) (string, string) {
 		{WorkspaceID: testWorkspaceID, Locale: "ru", LocalizationKey: itemTitleKey, Value: "VKMA premium"},
 		{WorkspaceID: testWorkspaceID, Locale: "ru", LocalizationKey: itemDescriptionKey, Value: "VKMA premium description"},
 	} {
-		if err := env.api.Admin.SaveLocalization(env.ctx, localization); err != nil {
+		if err := env.api.Admin.SaveLocalization(
+			env.ctx,
+			localization,
+		); err != nil {
 			t.Fatalf("upsert vkma localization: %v", err)
 		}
 	}
@@ -9171,14 +11622,17 @@ func createVKMAProduct(t *testing.T, env paymentTestEnv) (string, string) {
 		t.Fatalf("add vkma product item: %v", err)
 	}
 
-	if _, err := env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
-		WorkspaceID:     testWorkspaceID,
-		ProductID:       productID,
-		AssetCode:       paymentvkma.AssetCode,
-		ListAmountMinor: 35,
-		StartsAt:        &priceStartsAt,
-		EndsAt:          &priceEndsAt,
-	}); err != nil {
+	if _, err := env.api.Admin.CreateCatalogPrice(
+		env.ctx,
+		product.CreatePriceParams{
+			WorkspaceID:     testWorkspaceID,
+			ProductID:       productID,
+			AssetCode:       paymentvkma.AssetCode,
+			ListAmountMinor: 35,
+			StartsAt:        &priceStartsAt,
+			EndsAt:          &priceEndsAt,
+		},
+	); err != nil {
 		t.Fatalf("create vkma product price: %v", err)
 	}
 
@@ -9199,107 +11653,136 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 
 	var requestSeen bool
 	var refundSeen bool
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v3/refunds" {
-			refundSeen = true
-			if r.Header.Get("Idempotence-Key") == "" {
-				t.Fatal("expected yookassa refund idempotence key")
-			}
-			var body struct {
-				PaymentID string `json:"payment_id"`
-				Amount    struct {
-					Value    string `json:"value"`
-					Currency string `json:"currency"`
-				} `json:"amount"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode yookassa refund: %v", err)
-			}
-			if body.PaymentID != "yk_pay_1" || body.Amount.Value != "12.99" || body.Amount.Currency != "RUB" {
-				t.Fatalf("unexpected yookassa refund body: %#v", body)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v3/refunds" {
+				refundSeen = true
+				if r.Header.Get("Idempotence-Key") == "" {
+					t.Fatal("expected yookassa refund idempotence key")
+				}
+				var body struct {
+					PaymentID string `json:"payment_id"`
+					Amount    struct {
+						Value    string `json:"value"`
+						Currency string `json:"currency"`
+					} `json:"amount"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatalf("decode yookassa refund: %v", err)
+				}
+				if body.PaymentID != "yk_pay_1" ||
+					body.Amount.Value != "12.99" ||
+					body.Amount.Currency != "RUB" {
+					t.Fatalf("unexpected yookassa refund body: %#v", body)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{
 				"id": "yk_refund_1",
 				"status": "succeeded",
 				"payment_id": "yk_pay_1",
 				"amount": {"value": "12.99", "currency": "RUB"}
 			}`))
-			return
-		}
-		if r.URL.Path != "/v3/payments" {
-			t.Fatalf("unexpected yookassa path: %s", r.URL.Path)
-		}
-		if r.Method != http.MethodPost {
-			t.Fatalf("unexpected yookassa method: %s", r.Method)
-		}
-		shopID, secret, ok := r.BasicAuth()
-		if !ok || shopID != "shop_1" || secret != "secret_1" {
-			t.Fatalf("unexpected yookassa auth: ok=%v shop=%s secret=%s", ok, shopID, secret)
-		}
-		if r.Header.Get("Idempotence-Key") != "idem-yookassa-1" {
-			t.Fatalf("unexpected idempotence key: %s", r.Header.Get("Idempotence-Key"))
-		}
+				return
+			}
+			if r.URL.Path != "/v3/payments" {
+				t.Fatalf("unexpected yookassa path: %s", r.URL.Path)
+			}
+			if r.Method != http.MethodPost {
+				t.Fatalf("unexpected yookassa method: %s", r.Method)
+			}
+			shopID, secret, ok := r.BasicAuth()
+			if !ok || shopID != "shop_1" || secret != "secret_1" {
+				t.Fatalf(
+					"unexpected yookassa auth: ok=%v shop=%s secret=%s",
+					ok,
+					shopID,
+					secret,
+				)
+			}
+			if r.Header.Get("Idempotence-Key") != "idem-yookassa-1" {
+				t.Fatalf(
+					"unexpected idempotence key: %s",
+					r.Header.Get("Idempotence-Key"),
+				)
+			}
 
-		var body struct {
-			Amount struct {
-				Value    string `json:"value"`
-				Currency string `json:"currency"`
-			} `json:"amount"`
-			Capture      bool `json:"capture"`
-			Confirmation struct {
-				Type      string `json:"type"`
-				ReturnURL string `json:"return_url"`
-			} `json:"confirmation"`
-			PaymentMethodData struct {
-				Type string `json:"type"`
-			} `json:"payment_method_data"`
-			Receipt struct {
-				Customer struct {
-					Email string `json:"email"`
-				} `json:"customer"`
-				Items []struct {
-					Description string `json:"description"`
-					Quantity    string `json:"quantity"`
-					Amount      struct {
-						Value    string `json:"value"`
-						Currency string `json:"currency"`
-					} `json:"amount"`
-					VATCode        int    `json:"vat_code"`
-					PaymentMode    string `json:"payment_mode"`
-					PaymentSubject string `json:"payment_subject"`
-				} `json:"items"`
-			} `json:"receipt"`
-			Metadata map[string]string `json:"metadata"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatalf("decode yookassa request: %v", err)
-		}
-		if body.Amount.Value != "12.99" || body.Amount.Currency != "RUB" {
-			t.Fatalf("unexpected yookassa amount: %#v", body.Amount)
-		}
-		if !body.Capture {
-			t.Fatal("expected yookassa capture=true")
-		}
-		if body.Confirmation.Type != "redirect" || body.Confirmation.ReturnURL != "https://example.com/return" {
-			t.Fatalf("unexpected yookassa confirmation: %#v", body.Confirmation)
-		}
-		if body.PaymentMethodData.Type != string(yookassa.PaymentMethodSBP) {
-			t.Fatalf("unexpected yookassa payment method: %#v", body.PaymentMethodData)
-		}
-		if body.Receipt.Customer.Email != "buyer@example.com" {
-			t.Fatalf("unexpected yookassa receipt customer: %#v", body.Receipt.Customer)
-		}
-		if len(body.Receipt.Items) != 1 || body.Receipt.Items[0].Description != "Elum Love Premium" || body.Receipt.Items[0].Amount.Value != "12.99" {
-			t.Fatalf("unexpected yookassa receipt items: %#v", body.Receipt.Items)
-		}
-		if body.Metadata["product_id"] != productID || body.Metadata["workspace_id"] != testWorkspaceID {
-			t.Fatalf("unexpected yookassa metadata: %#v", body.Metadata)
-		}
+			var body struct {
+				Amount struct {
+					Value    string `json:"value"`
+					Currency string `json:"currency"`
+				} `json:"amount"`
+				Capture      bool `json:"capture"`
+				Confirmation struct {
+					Type      string `json:"type"`
+					ReturnURL string `json:"return_url"`
+				} `json:"confirmation"`
+				PaymentMethodData struct {
+					Type string `json:"type"`
+				} `json:"payment_method_data"`
+				Receipt struct {
+					Customer struct {
+						Email string `json:"email"`
+					} `json:"customer"`
+					Items []struct {
+						Description string `json:"description"`
+						Quantity    string `json:"quantity"`
+						Amount      struct {
+							Value    string `json:"value"`
+							Currency string `json:"currency"`
+						} `json:"amount"`
+						VATCode        int    `json:"vat_code"`
+						PaymentMode    string `json:"payment_mode"`
+						PaymentSubject string `json:"payment_subject"`
+					} `json:"items"`
+				} `json:"receipt"`
+				Metadata map[string]string `json:"metadata"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode yookassa request: %v", err)
+			}
+			if body.Amount.Value != "12.99" || body.Amount.Currency != "RUB" {
+				t.Fatalf("unexpected yookassa amount: %#v", body.Amount)
+			}
+			if !body.Capture {
+				t.Fatal("expected yookassa capture=true")
+			}
+			if body.Confirmation.Type != "redirect" ||
+				body.Confirmation.ReturnURL != "https://example.com/return" {
+				t.Fatalf(
+					"unexpected yookassa confirmation: %#v",
+					body.Confirmation,
+				)
+			}
+			if body.PaymentMethodData.Type != string(
+				yookassa.PaymentMethodSBP,
+			) {
+				t.Fatalf(
+					"unexpected yookassa payment method: %#v",
+					body.PaymentMethodData,
+				)
+			}
+			if body.Receipt.Customer.Email != "buyer@example.com" {
+				t.Fatalf(
+					"unexpected yookassa receipt customer: %#v",
+					body.Receipt.Customer,
+				)
+			}
+			if len(body.Receipt.Items) != 1 ||
+				body.Receipt.Items[0].Description != "Elum Love Premium" ||
+				body.Receipt.Items[0].Amount.Value != "12.99" {
+				t.Fatalf(
+					"unexpected yookassa receipt items: %#v",
+					body.Receipt.Items,
+				)
+			}
+			if body.Metadata["product_id"] != productID ||
+				body.Metadata["workspace_id"] != testWorkspaceID {
+				t.Fatalf("unexpected yookassa metadata: %#v", body.Metadata)
+			}
 
-		requestSeen = true
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
+			requestSeen = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
 			"id": "yk_pay_1",
 			"status": "pending",
 			"paid": false,
@@ -9309,7 +11792,8 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 				"confirmation_url": "https://yookassa.test/confirm/yk_pay_1"
 			}
 		}`))
-	}))
+		}),
+	)
 	defer server.Close()
 
 	credentials := yookassa.Credentials{
@@ -9322,32 +11806,38 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 	// YooKassa payment creation.
 	// Create a local order and remote YooKassa payment with redirect confirmation.
 	// Verify provider identifiers and confirmation URL are stored on the attempt.
-	response, err := env.api.Adapters.YooKassa.CreatePayment(env.ctx, yookassa.CreatePaymentParams{
-		Credentials:       credentials,
-		WorkspaceID:       testWorkspaceID,
-		AppID:             5005,
-		PlatformID:        1,
-		PlatformUserID:    "buyer-yookassa",
-		ProductID:         productID,
-		Locale:            "ru",
-		ReturnURL:         "https://example.com/return",
-		IdempotencyKey:    "idem-yookassa-1",
-		PaymentMethodType: yookassa.PaymentMethodSBP,
-		Description:       "YooKassa adapter test",
-		Receipt: &yookassa.Receipt{
-			Customer: yookassa.ReceiptCustomer{Email: "buyer@example.com"},
-			Items: []yookassa.ReceiptItem{
-				{
-					Description:    "Elum Love Premium",
-					Quantity:       "1.00",
-					Amount:         yookassa.Amount{Value: "12.99", Currency: yookassa.AssetCode},
-					VATCode:        1,
-					PaymentMode:    "full_payment",
-					PaymentSubject: "service",
+	response, err := env.api.Adapters.YooKassa.CreatePayment(
+		env.ctx,
+		yookassa.CreatePaymentParams{
+			Credentials:       credentials,
+			WorkspaceID:       testWorkspaceID,
+			AppID:             5005,
+			PlatformID:        1,
+			PlatformUserID:    "buyer-yookassa",
+			ProductID:         productID,
+			Locale:            "ru",
+			ReturnURL:         "https://example.com/return",
+			IdempotencyKey:    "idem-yookassa-1",
+			PaymentMethodType: yookassa.PaymentMethodSBP,
+			Description:       "YooKassa adapter test",
+			Receipt: &yookassa.Receipt{
+				Customer: yookassa.ReceiptCustomer{Email: "buyer@example.com"},
+				Items: []yookassa.ReceiptItem{
+					{
+						Description: "Elum Love Premium",
+						Quantity:    "1.00",
+						Amount: yookassa.Amount{
+							Value:    "12.99",
+							Currency: yookassa.AssetCode,
+						},
+						VATCode:        1,
+						PaymentMode:    "full_payment",
+						PaymentSubject: "service",
+					},
 				},
 			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("create yookassa payment: %v", err)
 	}
@@ -9379,11 +11869,14 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 			"amount": {"value": "12.99", "currency": "RUB"}
 		}
 	}`)
-	completed, err := env.api.Adapters.YooKassa.HandleWebhook(env.ctx, yookassa.WebhookRequest{
-		WorkspaceID:    testWorkspaceID,
-		Raw:            webhook,
-		SignatureValid: true,
-	})
+	completed, err := env.api.Adapters.YooKassa.HandleWebhook(
+		env.ctx,
+		yookassa.WebhookRequest{
+			WorkspaceID:    testWorkspaceID,
+			Raw:            webhook,
+			SignatureValid: true,
+		},
+	)
 	if err != nil {
 		t.Fatalf("handle yookassa webhook: %v", err)
 	}
@@ -9394,11 +11887,14 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 	assertAttemptStatus(t, env.ctx, env.db, response.AttemptID, "succeeded")
 	assertFulfillmentItemCount(t, env.ctx, env.db, *completed.FulfilledID, 1)
 
-	again, err := env.api.Adapters.YooKassa.HandleWebhook(env.ctx, yookassa.WebhookRequest{
-		WorkspaceID:    testWorkspaceID,
-		Raw:            webhook,
-		SignatureValid: true,
-	})
+	again, err := env.api.Adapters.YooKassa.HandleWebhook(
+		env.ctx,
+		yookassa.WebhookRequest{
+			WorkspaceID:    testWorkspaceID,
+			Raw:            webhook,
+			SignatureValid: true,
+		},
+	)
 	if err != nil {
 		t.Fatalf("handle yookassa webhook again: %v", err)
 	}
@@ -9420,7 +11916,9 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 	if !refundSeen {
 		t.Fatal("expected yookassa refund request")
 	}
-	if refunded.ProviderRefundID == nil || *refunded.ProviderRefundID != "yk_refund_1" || refunded.Status != "succeeded" {
+	if refunded.ProviderRefundID == nil ||
+		*refunded.ProviderRefundID != "yk_refund_1" ||
+		refunded.Status != "succeeded" {
 		t.Fatalf("unexpected yookassa refund result: %#v", refunded)
 	}
 	assertOrderStatus(t, env.ctx, env.db, response.OrderID, "refunded")
@@ -9442,9 +11940,10 @@ func TestYooKassaAdapterRejectsWrongWebhookAmount(t *testing.T) {
 		GlobalInterval:  "ONCE",
 	})
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
 			"id": "yk_pay_wrong_amount",
 			"status": "pending",
 			"paid": false,
@@ -9454,7 +11953,8 @@ func TestYooKassaAdapterRejectsWrongWebhookAmount(t *testing.T) {
 				"confirmation_url": "https://yookassa.test/confirm/yk_pay_wrong_amount"
 			}
 		}`))
-	}))
+		}),
+	)
 	defer server.Close()
 
 	credentials := yookassa.Credentials{
@@ -9464,24 +11964,30 @@ func TestYooKassaAdapterRejectsWrongWebhookAmount(t *testing.T) {
 		HTTPClient: server.Client(),
 	}
 
-	response, err := env.api.Adapters.YooKassa.CreatePayment(env.ctx, yookassa.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          5005,
-		PlatformID:     1,
-		PlatformUserID: "buyer-yookassa-wrong",
-		ProductID:      productID,
-		Locale:         "ru",
-		ReturnURL:      "https://example.com/return",
-		IdempotencyKey: "idem-yookassa-wrong-amount-" + time.Now().Format("150405.000000000"),
-	})
+	response, err := env.api.Adapters.YooKassa.CreatePayment(
+		env.ctx,
+		yookassa.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          5005,
+			PlatformID:     1,
+			PlatformUserID: "buyer-yookassa-wrong",
+			ProductID:      productID,
+			Locale:         "ru",
+			ReturnURL:      "https://example.com/return",
+			IdempotencyKey: "idem-yookassa-wrong-amount-" + time.Now().
+				Format("150405.000000000"),
+		},
+	)
 	if err != nil {
 		t.Fatalf("create yookassa payment: %v", err)
 	}
 
-	_, err = env.api.Adapters.YooKassa.HandleWebhook(env.ctx, yookassa.WebhookRequest{
-		WorkspaceID: testWorkspaceID,
-		Raw: []byte(`{
+	_, err = env.api.Adapters.YooKassa.HandleWebhook(
+		env.ctx,
+		yookassa.WebhookRequest{
+			WorkspaceID: testWorkspaceID,
+			Raw: []byte(`{
 		"type": "notification",
 		"event": "payment.succeeded",
 		"object": {
@@ -9491,16 +11997,19 @@ func TestYooKassaAdapterRejectsWrongWebhookAmount(t *testing.T) {
 			"amount": {"value": "5.01", "currency": "RUB"}
 		}
 	}`),
-		SignatureValid: true,
-	})
+			SignatureValid: true,
+		},
+	)
 	if err == nil {
 		t.Fatal("expected yookassa wrong amount webhook to fail")
 	}
 	assertOrderStatus(t, env.ctx, env.db, response.OrderID, "pending_payment")
 
-	canceled, err := env.api.Adapters.YooKassa.HandleWebhook(env.ctx, yookassa.WebhookRequest{
-		WorkspaceID: testWorkspaceID,
-		Raw: []byte(`{
+	canceled, err := env.api.Adapters.YooKassa.HandleWebhook(
+		env.ctx,
+		yookassa.WebhookRequest{
+			WorkspaceID: testWorkspaceID,
+			Raw: []byte(`{
 		"type": "notification",
 		"event": "payment.canceled",
 		"object": {
@@ -9510,8 +12019,9 @@ func TestYooKassaAdapterRejectsWrongWebhookAmount(t *testing.T) {
 			"amount": {"value": "5.00", "currency": "RUB"}
 		}
 	}`),
-		SignatureValid: true,
-	})
+			SignatureValid: true,
+		},
+	)
 	if err != nil {
 		t.Fatalf("cancel yookassa payment: %v", err)
 	}
@@ -9532,11 +12042,16 @@ func TestYooKassaAdapterRejectsWrongWebhookAmount(t *testing.T) {
 		AssetCode: yookassa.AssetCode,
 		Locale:    "ru",
 	}); err != nil {
-		t.Fatalf("create order after yookassa cancellation released global limit: %v", err)
+		t.Fatalf(
+			"create order after yookassa cancellation released global limit: %v",
+			err,
+		)
 	}
 }
 
-func TestYooKassaCreatePaymentIsIdempotentAndRejectsProductMixing(t *testing.T) {
+func TestYooKassaCreatePaymentIsIdempotentAndRejectsProductMixing(
+	t *testing.T,
+) {
 	env := setupPaymentIntegrationTest(t)
 	firstProductID := createPaymentProduct(t, env, testProductOptions{
 		ProductID:       "yookassa_idempotent_first",
@@ -9550,17 +12065,19 @@ func TestYooKassaCreatePaymentIsIdempotentAndRejectsProductMixing(t *testing.T) 
 	})
 
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		calls.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			calls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
 			"id":"yk-idempotent-payment",
 			"status":"pending",
 			"paid":false,
 			"amount":{"value":"1.00","currency":"RUB"},
 			"confirmation":{"confirmation_url":"https://example.com/pay"}
 		}`))
-	}))
+		}),
+	)
 	defer server.Close()
 
 	params := yookassa.CreatePaymentParams{
@@ -9589,15 +12106,28 @@ func TestYooKassaCreatePaymentIsIdempotentAndRejectsProductMixing(t *testing.T) 
 		t.Fatalf("repeat create payment: %v", err)
 	}
 	if first.OrderID != second.OrderID || first.AttemptID != second.AttemptID {
-		t.Fatalf("idempotent result changed: first=%#v second=%#v", first, second)
+		t.Fatalf(
+			"idempotent result changed: first=%#v second=%#v",
+			first,
+			second,
+		)
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("provider calls = %d, want 1", calls.Load())
 	}
 
 	params.ProductID = secondProductID
-	if _, err := env.api.Adapters.YooKassa.CreatePayment(env.ctx, params); !errors.Is(err, repository.ErrPaymentMismatch) {
-		t.Fatalf("same key with another product error = %v, want ErrPaymentMismatch", err)
+	if _, err := env.api.Adapters.YooKassa.CreatePayment(
+		env.ctx,
+		params,
+	); !errors.Is(
+		err,
+		repository.ErrPaymentMismatch,
+	) {
+		t.Fatalf(
+			"same key with another product error = %v, want ErrPaymentMismatch",
+			err,
+		)
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("provider called for mismatched product: %d", calls.Load())
@@ -9639,15 +12169,17 @@ func TestYooKassaProviderIDsAreScopedByWorkspace(t *testing.T) {
 		ListAmountMinor: 100,
 	})
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
 			"id":"same-provider-payment-id",
 			"status":"pending",
 			"paid":false,
 			"amount":{"value":"1.00","currency":"RUB"}
 		}`))
-	}))
+		}),
+	)
 	defer server.Close()
 	credentials := yookassa.Credentials{
 		ShopID:     "scope-shop",
@@ -9658,15 +12190,18 @@ func TestYooKassaProviderIDsAreScopedByWorkspace(t *testing.T) {
 
 	create := func(workspaceID, productID, userID, key string) *yookassa.CreatePaymentResponse {
 		t.Helper()
-		result, err := env.api.Adapters.YooKassa.CreatePayment(env.ctx, yookassa.CreatePaymentParams{
-			Credentials:    credentials,
-			WorkspaceID:    workspaceID,
-			AppID:          9201,
-			PlatformID:     1,
-			PlatformUserID: userID,
-			ProductID:      productID,
-			IdempotencyKey: key,
-		})
+		result, err := env.api.Adapters.YooKassa.CreatePayment(
+			env.ctx,
+			yookassa.CreatePaymentParams{
+				Credentials:    credentials,
+				WorkspaceID:    workspaceID,
+				AppID:          9201,
+				PlatformID:     1,
+				PlatformUserID: userID,
+				ProductID:      productID,
+				IdempotencyKey: key,
+			},
+		)
 		if err != nil {
 			t.Fatalf("create scoped payment: %v", err)
 		}
@@ -9675,7 +12210,11 @@ func TestYooKassaProviderIDsAreScopedByWorkspace(t *testing.T) {
 	first := create(workspaceA, productA, "scope-user-a", "scope-key-a")
 	second := create(workspaceB, productB, "scope-user-b", "scope-key-b")
 	if first.AttemptID == second.AttemptID || first.OrderID == second.OrderID {
-		t.Fatalf("workspace payments reused local records: first=%#v second=%#v", first, second)
+		t.Fatalf(
+			"workspace payments reused local records: first=%#v second=%#v",
+			first,
+			second,
+		)
 	}
 
 	webhook := []byte(`{
@@ -9688,21 +12227,27 @@ func TestYooKassaProviderIDsAreScopedByWorkspace(t *testing.T) {
 			"amount":{"value":"1.00","currency":"RUB"}
 		}
 	}`)
-	if _, err := env.api.Adapters.YooKassa.HandleWebhook(env.ctx, yookassa.WebhookRequest{
-		WorkspaceID:    workspaceA,
-		Raw:            webhook,
-		SignatureValid: true,
-	}); err != nil {
+	if _, err := env.api.Adapters.YooKassa.HandleWebhook(
+		env.ctx,
+		yookassa.WebhookRequest{
+			WorkspaceID:    workspaceA,
+			Raw:            webhook,
+			SignatureValid: true,
+		},
+	); err != nil {
 		t.Fatalf("handle workspace A webhook: %v", err)
 	}
 	assertOrderStatus(t, env.ctx, env.db, first.OrderID, "fulfilled")
 	assertOrderStatus(t, env.ctx, env.db, second.OrderID, "pending_payment")
 
-	if _, err := env.api.Adapters.YooKassa.HandleWebhook(env.ctx, yookassa.WebhookRequest{
-		WorkspaceID:    workspaceB,
-		Raw:            webhook,
-		SignatureValid: true,
-	}); err != nil {
+	if _, err := env.api.Adapters.YooKassa.HandleWebhook(
+		env.ctx,
+		yookassa.WebhookRequest{
+			WorkspaceID:    workspaceB,
+			Raw:            webhook,
+			SignatureValid: true,
+		},
+	); err != nil {
 		t.Fatalf("handle workspace B webhook: %v", err)
 	}
 	assertOrderStatus(t, env.ctx, env.db, second.OrderID, "fulfilled")
@@ -9716,16 +12261,18 @@ func TestYooKassaConcurrentIdempotencyCreatesOneOrderAndAttempt(t *testing.T) {
 		ListAmountMinor: 100,
 	})
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(20 * time.Millisecond)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			time.Sleep(20 * time.Millisecond)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
 			"id":"yk-concurrent-payment",
 			"status":"pending",
 			"paid":false,
 			"amount":{"value":"1.00","currency":"RUB"}
 		}`))
-	}))
+		}),
+	)
 	defer server.Close()
 
 	params := yookassa.CreatePaymentParams{
@@ -9753,7 +12300,10 @@ func TestYooKassaConcurrentIdempotencyCreatesOneOrderAndAttempt(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			result, err := env.api.Adapters.YooKassa.CreatePayment(env.ctx, params)
+			result, err := env.api.Adapters.YooKassa.CreatePayment(
+				env.ctx,
+				params,
+			)
 			if err != nil {
 				errorsCh <- err
 				return
@@ -9801,7 +12351,9 @@ WHERE pa.workspace_id = $1
 	}
 }
 
-func TestYooKassaDefinitiveProviderErrorFailsAttemptAndReleasesOrder(t *testing.T) {
+func TestYooKassaDefinitiveProviderErrorFailsAttemptAndReleasesOrder(
+	t *testing.T,
+) {
 	env := setupPaymentIntegrationTest(t)
 	productID := createPaymentProduct(t, env, testProductOptions{
 		ProductID:           "yookassa_provider_error",
@@ -9812,25 +12364,30 @@ func TestYooKassaDefinitiveProviderErrorFailsAttemptAndReleasesOrder(t *testing.
 		GlobalIntervalCount: 1,
 	})
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, `{"type":"invalid_request"}`, http.StatusBadRequest)
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, `{"type":"invalid_request"}`, http.StatusBadRequest)
+		}),
+	)
 	defer server.Close()
 	key := "yookassa-definitive-error"
-	_, err := env.api.Adapters.YooKassa.CreatePayment(env.ctx, yookassa.CreatePaymentParams{
-		Credentials: yookassa.Credentials{
-			ShopID:     "error-shop",
-			SecretKey:  "error-secret",
-			APIBaseURL: server.URL,
-			HTTPClient: server.Client(),
+	_, err := env.api.Adapters.YooKassa.CreatePayment(
+		env.ctx,
+		yookassa.CreatePaymentParams{
+			Credentials: yookassa.Credentials{
+				ShopID:     "error-shop",
+				SecretKey:  "error-secret",
+				APIBaseURL: server.URL,
+				HTTPClient: server.Client(),
+			},
+			WorkspaceID:    testWorkspaceID,
+			AppID:          9301,
+			PlatformID:     1,
+			PlatformUserID: "provider-error-user",
+			ProductID:      productID,
+			IdempotencyKey: key,
 		},
-		WorkspaceID:    testWorkspaceID,
-		AppID:          9301,
-		PlatformID:     1,
-		PlatformUserID: "provider-error-user",
-		ProductID:      productID,
-		IdempotencyKey: key,
-	})
+	)
 	if err == nil {
 		t.Fatal("expected provider error")
 	}
@@ -9850,7 +12407,11 @@ WHERE pa.workspace_id = $1
 		t.Fatalf("read failed provider attempt: %v", err)
 	}
 	if attemptStatus != "failed" || orderStatus != "canceled" {
-		t.Fatalf("attempt=%s order=%s, want failed/canceled", attemptStatus, orderStatus)
+		t.Fatalf(
+			"attempt=%s order=%s, want failed/canceled",
+			attemptStatus,
+			orderStatus,
+		)
 	}
 
 	var reserved int64
@@ -9874,20 +12435,26 @@ func TestYooKassaAmbiguousProviderErrorRetriesSameAttempt(t *testing.T) {
 	})
 
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if calls.Add(1) == 1 {
-			http.Error(w, `{"type":"temporary_error"}`, http.StatusInternalServerError)
-			return
-		}
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if calls.Add(1) == 1 {
+				http.Error(
+					w,
+					`{"type":"temporary_error"}`,
+					http.StatusInternalServerError,
+				)
+				return
+			}
 
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
 			"id":"yk-recovered-payment",
 			"status":"pending",
 			"paid":false,
 			"amount":{"value":"1.00","currency":"RUB"}
 		}`))
-	}))
+		}),
+	)
 	defer server.Close()
 
 	key := "yookassa-ambiguous-retry"
@@ -9906,7 +12473,10 @@ func TestYooKassaAmbiguousProviderErrorRetriesSameAttempt(t *testing.T) {
 		IdempotencyKey: key,
 	}
 
-	if _, err := env.api.Adapters.YooKassa.CreatePayment(env.ctx, params); err == nil {
+	if _, err := env.api.Adapters.YooKassa.CreatePayment(
+		env.ctx,
+		params,
+	); err == nil {
 		t.Fatal("expected ambiguous provider error")
 	}
 
@@ -9938,7 +12508,12 @@ WHERE pa.workspace_id = $1
 		t.Fatalf("read recovered payment: %v", err)
 	}
 	if orderCount != 1 || attemptCount != 1 || attemptStatus != "pending" {
-		t.Fatalf("orders=%d attempts=%d status=%s, want 1/1/pending", orderCount, attemptCount, attemptStatus)
+		t.Fatalf(
+			"orders=%d attempts=%d status=%s, want 1/1/pending",
+			orderCount,
+			attemptCount,
+			attemptStatus,
+		)
 	}
 }
 
@@ -9951,10 +12526,12 @@ func TestPlategaUnknownCreationIsNotRetried(t *testing.T) {
 	})
 
 	var calls atomic.Int32
-	httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		calls.Add(1)
-		return nil, errors.New("simulated connection loss")
-	})}
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			calls.Add(1)
+			return nil, errors.New("simulated connection loss")
+		}),
+	}
 	params := platega.CreatePaymentParams{
 		Credentials: platega.Credentials{
 			MerchantID: "unknown-merchant",
@@ -9969,10 +12546,19 @@ func TestPlategaUnknownCreationIsNotRetried(t *testing.T) {
 		ProductID:      productID,
 		IdempotencyKey: "platega-unknown-key",
 	}
-	if _, err := env.api.Adapters.Platega.CreatePayment(env.ctx, params); err == nil {
+	if _, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		params,
+	); err == nil {
 		t.Fatal("expected connection error")
 	}
-	if _, err := env.api.Adapters.Platega.CreatePayment(env.ctx, params); !errors.Is(err, platega.ErrTransactionStateUnknown) {
+	if _, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		params,
+	); !errors.Is(
+		err,
+		platega.ErrTransactionStateUnknown,
+	) {
 		t.Fatalf("retry error = %v, want ErrTransactionStateUnknown", err)
 	}
 	if calls.Load() != 1 {
@@ -9994,7 +12580,11 @@ WHERE pa.workspace_id = $1
 		t.Fatalf("read unknown platega attempt: %v", err)
 	}
 	if attemptStatus != "created" || orderStatus != "pending_payment" {
-		t.Fatalf("attempt=%s order=%s, want created/pending_payment", attemptStatus, orderStatus)
+		t.Fatalf(
+			"attempt=%s order=%s, want created/pending_payment",
+			attemptStatus,
+			orderStatus,
+		)
 	}
 }
 
@@ -10009,54 +12599,71 @@ func TestPlategaWebhookRecoversLostCreateResponse(t *testing.T) {
 	const transactionID = "platega-lost-response"
 	const idempotencyKey = "platega-lost-response-key"
 	var getCalls atomic.Int32
-	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.Method == http.MethodPost {
-			return nil, errors.New("simulated response loss")
-		}
-		if request.Method != http.MethodGet || !strings.HasSuffix(request.URL.Path, "/transaction/"+transactionID) {
-			return nil, fmt.Errorf("unexpected platega request: %s %s", request.Method, request.URL.Path)
-		}
-		getCalls.Add(1)
+	httpClient := &http.Client{
+		Transport: roundTripFunc(
+			func(request *http.Request) (*http.Response, error) {
+				if request.Method == http.MethodPost {
+					return nil, errors.New("simulated response loss")
+				}
+				if request.Method != http.MethodGet ||
+					!strings.HasSuffix(
+						request.URL.Path,
+						"/transaction/"+transactionID,
+					) {
+					return nil, fmt.Errorf(
+						"unexpected platega request: %s %s",
+						request.Method,
+						request.URL.Path,
+					)
+				}
+				getCalls.Add(1)
 
-		var orderPublicID string
-		if err := env.db.QueryRowContext(env.ctx, `
+				var orderPublicID string
+				if err := env.db.QueryRowContext(env.ctx, `
 SELECT po.public_id
 FROM payment_attempt pa
 JOIN payment_order po ON po.id = pa.order_id
 WHERE pa.workspace_id = $1
   AND pa.provider_code = $2
   AND pa.idempotency_key = $3`, testWorkspaceID, platega.ProviderCode, idempotencyKey).Scan(&orderPublicID); err != nil {
-			return nil, err
-		}
-		body := fmt.Sprintf(`{
+					return nil, err
+				}
+				body := fmt.Sprintf(`{
 			"id":%q,
 			"status":"CONFIRMED",
 			"paymentDetails":{"amount":1,"currency":"RUB"},
 			"payload":%q
 		}`, transactionID, orderPublicID)
 
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(body)),
-			Request:    request,
-		}, nil
-	})}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+					},
+					Body:    io.NopCloser(strings.NewReader(body)),
+					Request: request,
+				}, nil
+			},
+		),
+	}
 	credentials := platega.Credentials{
 		MerchantID: "recovery-merchant",
 		Secret:     "recovery-secret",
 		APIBaseURL: "https://platega.test",
 		HTTPClient: httpClient,
 	}
-	if _, err := env.api.Adapters.Platega.CreatePayment(env.ctx, platega.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          9402,
-		PlatformID:     1,
-		PlatformUserID: "platega-recovery-user",
-		ProductID:      productID,
-		IdempotencyKey: idempotencyKey,
-	}); err == nil {
+	if _, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		platega.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          9402,
+			PlatformID:     1,
+			PlatformUserID: "platega-recovery-user",
+			ProductID:      productID,
+			IdempotencyKey: idempotencyKey,
+		},
+	); err == nil {
 		t.Fatal("expected lost create response")
 	}
 
@@ -10086,7 +12693,10 @@ WHERE pa.workspace_id = $1
 		go func() {
 			defer group.Done()
 			<-start
-			result, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, request)
+			result, err := env.api.Adapters.Platega.HandleWebhook(
+				env.ctx,
+				request,
+			)
 			if err != nil {
 				errorsCh <- err
 				return
@@ -10108,8 +12718,13 @@ WHERE pa.workspace_id = $1
 			result = current
 			continue
 		}
-		if current.OrderID != result.OrderID || current.AttemptID != result.AttemptID {
-			t.Fatalf("concurrent recovery mixed records: first=%#v current=%#v", result, current)
+		if current.OrderID != result.OrderID ||
+			current.AttemptID != result.AttemptID {
+			t.Fatalf(
+				"concurrent recovery mixed records: first=%#v current=%#v",
+				result,
+				current,
+			)
 		}
 	}
 	if result == nil {
@@ -10130,10 +12745,18 @@ WHERE pa.workspace_id = $1
 		t.Fatal("repeat recovered callback is not idempotent")
 	}
 	if recoveryCalls == 0 || recoveryCalls > workers {
-		t.Fatalf("transaction recovery GET calls = %d, want 1..%d", recoveryCalls, workers)
+		t.Fatalf(
+			"transaction recovery GET calls = %d, want 1..%d",
+			recoveryCalls,
+			workers,
+		)
 	}
 	if getCalls.Load() != recoveryCalls {
-		t.Fatalf("idempotent callback made another recovery GET: before=%d after=%d", recoveryCalls, getCalls.Load())
+		t.Fatalf(
+			"idempotent callback made another recovery GET: before=%d after=%d",
+			recoveryCalls,
+			getCalls.Load(),
+		)
 	}
 }
 
@@ -10147,38 +12770,47 @@ func TestPlategaWebhookRecoveryRejectsWrongWorkspaceAndAmount(t *testing.T) {
 	const idempotencyKey = "platega-recovery-guards-key"
 
 	var orderPublicID string
-	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.Method == http.MethodPost {
-			return nil, errors.New("simulated response loss")
-		}
-		body := fmt.Sprintf(`{
+	httpClient := &http.Client{
+		Transport: roundTripFunc(
+			func(request *http.Request) (*http.Response, error) {
+				if request.Method == http.MethodPost {
+					return nil, errors.New("simulated response loss")
+				}
+				body := fmt.Sprintf(`{
 			"id":"platega-guard-transaction",
 			"status":"CONFIRMED",
 			"paymentDetails":{"amount":2,"currency":"RUB"},
 			"payload":%q
 		}`, orderPublicID)
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(body)),
-			Request:    request,
-		}, nil
-	})}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+					},
+					Body:    io.NopCloser(strings.NewReader(body)),
+					Request: request,
+				}, nil
+			},
+		),
+	}
 	credentials := platega.Credentials{
 		MerchantID: "guard-merchant",
 		Secret:     "guard-secret",
 		APIBaseURL: "https://platega.test",
 		HTTPClient: httpClient,
 	}
-	if _, err := env.api.Adapters.Platega.CreatePayment(env.ctx, platega.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          9403,
-		PlatformID:     1,
-		PlatformUserID: "platega-guard-user",
-		ProductID:      productID,
-		IdempotencyKey: idempotencyKey,
-	}); err == nil {
+	if _, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		platega.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          9403,
+			PlatformID:     1,
+			PlatformUserID: "platega-guard-user",
+			ProductID:      productID,
+			IdempotencyKey: idempotencyKey,
+		},
+	); err == nil {
 		t.Fatal("expected lost create response")
 	}
 	if err := env.db.QueryRowContext(env.ctx, `
@@ -10205,12 +12837,24 @@ WHERE pa.idempotency_key = $1`, idempotencyKey).Scan(&orderPublicID); err != nil
 		Raw:         callback,
 		Headers:     headers,
 	}
-	if _, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, request); !errors.Is(err, repository.ErrPaymentMismatch) {
+	if _, err := env.api.Adapters.Platega.HandleWebhook(
+		env.ctx,
+		request,
+	); !errors.Is(
+		err,
+		repository.ErrPaymentMismatch,
+	) {
 		t.Fatalf("wrong workspace recovery error = %v", err)
 	}
 
 	request.WorkspaceID = testWorkspaceID
-	if _, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, request); !errors.Is(err, repository.ErrPaymentMismatch) {
+	if _, err := env.api.Adapters.Platega.HandleWebhook(
+		env.ctx,
+		request,
+	); !errors.Is(
+		err,
+		repository.ErrPaymentMismatch,
+	) {
 		t.Fatalf("wrong amount recovery error = %v", err)
 	}
 
@@ -10228,36 +12872,41 @@ func TestPlategaBackgroundReconciliationRecoversWithoutCallback(t *testing.T) {
 	var database atomic.Pointer[sql.DB]
 	var exportCalls atomic.Int32
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch request.URL.Path {
-		case "/v2/transaction/process":
-			http.Error(w, `{"error":"temporary"}`, http.StatusInternalServerError)
-		case "/transaction/export/json":
-			exportCalls.Add(1)
-			db := database.Load()
-			if db == nil {
-				_, _ = w.Write([]byte(`[]`))
-				return
-			}
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch request.URL.Path {
+			case "/v2/transaction/process":
+				http.Error(
+					w,
+					`{"error":"temporary"}`,
+					http.StatusInternalServerError,
+				)
+			case "/transaction/export/json":
+				exportCalls.Add(1)
+				db := database.Load()
+				if db == nil {
+					_, _ = w.Write([]byte(`[]`))
+					return
+				}
 
-			var orderPublicID string
-			err := db.QueryRowContext(context.Background(), `
+				var orderPublicID string
+				err := db.QueryRowContext(context.Background(), `
 SELECT po.public_id
 FROM payment_attempt pa
 JOIN payment_order po ON po.id = pa.order_id
 WHERE pa.provider_code = $1
   AND pa.idempotency_key = $2
   AND pa.status = 'created'`, platega.ProviderCode, idempotencyKey).Scan(&orderPublicID)
-			if errors.Is(err, sql.ErrNoRows) {
-				_, _ = w.Write([]byte(`[]`))
-				return
-			}
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			_, _ = fmt.Fprintf(w, `[{
+				if errors.Is(err, sql.ErrNoRows) {
+					_, _ = w.Write([]byte(`[]`))
+					return
+				}
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				_, _ = fmt.Fprintf(w, `[{
 				"recordId":%q,
 				"amount":1,
 				"currencyCode":"RUB",
@@ -10265,10 +12914,11 @@ WHERE pa.provider_code = $1
 				"paymentMethod":"SBPQR",
 				"payload":%q
 			}]`, transactionID, orderPublicID)
-		default:
-			http.NotFound(w, request)
-		}
-	}))
+			default:
+				http.NotFound(w, request)
+			}
+		}),
+	)
 	defer server.Close()
 
 	credentials := platega.Credentials{
@@ -10282,7 +12932,10 @@ WHERE pa.provider_code = $1
 	options.OrderExpirationAge = time.Millisecond
 	options.PlategaCredentialsResolver = func(_ context.Context, workspaceID string) (platega.Credentials, error) {
 		if workspaceID != testWorkspaceID {
-			return platega.Credentials{}, fmt.Errorf("unexpected workspace %s", workspaceID)
+			return platega.Credentials{}, fmt.Errorf(
+				"unexpected workspace %s",
+				workspaceID,
+			)
 		}
 		return credentials, nil
 	}
@@ -10297,15 +12950,18 @@ WHERE pa.provider_code = $1
 		AssetCode:       platega.AssetCode,
 		ListAmountMinor: 100,
 	})
-	if _, err := env.api.Adapters.Platega.CreatePayment(env.ctx, platega.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          9404,
-		PlatformID:     1,
-		PlatformUserID: "platega-background-user",
-		ProductID:      productID,
-		IdempotencyKey: idempotencyKey,
-	}); err == nil {
+	if _, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		platega.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          9404,
+			PlatformID:     1,
+			PlatformUserID: "platega-background-user",
+			ProductID:      productID,
+			IdempotencyKey: idempotencyKey,
+		},
+	); err == nil {
 		t.Fatal("expected temporary create error")
 	}
 
@@ -10332,7 +12988,11 @@ WHERE pa.idempotency_key = $1`, idempotencyKey).Scan(
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("reconciliation timeout: order=%s attempt=%s", orderStatus, attemptStatus)
+			t.Fatalf(
+				"reconciliation timeout: order=%s attempt=%s",
+				orderStatus,
+				attemptStatus,
+			)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -10352,14 +13012,20 @@ func TestPlategaReconciliationReleasesMissingTransaction(t *testing.T) {
 		GlobalIntervalCount: 1,
 	})
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if request.URL.Path == "/transaction/export/json" {
-			_, _ = w.Write([]byte(`[]`))
-			return
-		}
-		http.Error(w, `{"error":"temporary"}`, http.StatusInternalServerError)
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if request.URL.Path == "/transaction/export/json" {
+				_, _ = w.Write([]byte(`[]`))
+				return
+			}
+			http.Error(
+				w,
+				`{"error":"temporary"}`,
+				http.StatusInternalServerError,
+			)
+		}),
+	)
 	defer server.Close()
 	credentials := platega.Credentials{
 		MerchantID: "missing-merchant",
@@ -10368,15 +13034,18 @@ func TestPlategaReconciliationReleasesMissingTransaction(t *testing.T) {
 		HTTPClient: server.Client(),
 	}
 	const idempotencyKey = "platega-missing-recovery-key"
-	if _, err := env.api.Adapters.Platega.CreatePayment(env.ctx, platega.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          9405,
-		PlatformID:     1,
-		PlatformUserID: "platega-missing-user",
-		ProductID:      productID,
-		IdempotencyKey: idempotencyKey,
-	}); err == nil {
+	if _, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		platega.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          9405,
+			PlatformID:     1,
+			PlatformUserID: "platega-missing-user",
+			ProductID:      productID,
+			IdempotencyKey: idempotencyKey,
+		},
+	); err == nil {
 		t.Fatal("expected temporary create error")
 	}
 	if _, err := env.db.ExecContext(env.ctx, `
@@ -10385,14 +13054,17 @@ SET created_at = now() - INTERVAL '1 hour'
 WHERE idempotency_key = $1`, idempotencyKey); err != nil {
 		t.Fatalf("age missing attempt: %v", err)
 	}
-	reconciled, err := env.api.Adapters.Platega.ReconcilePending(env.ctx, platega.ReconcileParams{
-		ResolveCredentials: func(context.Context, string) (platega.Credentials, error) {
-			return credentials, nil
+	reconciled, err := env.api.Adapters.Platega.ReconcilePending(
+		env.ctx,
+		platega.ReconcileParams{
+			ResolveCredentials: func(context.Context, string) (platega.Credentials, error) {
+				return credentials, nil
+			},
+			CreatedTo:    time.Now().UTC(),
+			Limit:        100,
+			MissingAfter: 30 * time.Minute,
 		},
-		CreatedTo:    time.Now().UTC(),
-		Limit:        100,
-		MissingAfter: 30 * time.Minute,
-	})
+	)
 	if err != nil {
 		t.Fatalf("reconcile missing transaction: %v", err)
 	}
@@ -10410,7 +13082,11 @@ WHERE pa.idempotency_key = $1`, idempotencyKey).Scan(&attemptStatus, &orderStatu
 		t.Fatalf("read released transaction: %v", err)
 	}
 	if attemptStatus != "failed" || orderStatus != "canceled" {
-		t.Fatalf("attempt=%s order=%s, want failed/canceled", attemptStatus, orderStatus)
+		t.Fatalf(
+			"attempt=%s order=%s, want failed/canceled",
+			attemptStatus,
+			orderStatus,
+		)
 	}
 
 	var reserved int64
@@ -10429,20 +13105,25 @@ func TestPlategaTerminalWebhooksReleaseOrderAndLimits(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 
 	var transactionSequence atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/v2/transaction/process" {
-			http.NotFound(w, request)
-			return
-		}
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			if request.URL.Path != "/v2/transaction/process" {
+				http.NotFound(w, request)
+				return
+			}
 
-		transactionID := fmt.Sprintf("platega-terminal-%d", transactionSequence.Add(1))
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{
+			transactionID := fmt.Sprintf(
+				"platega-terminal-%d",
+				transactionSequence.Add(1),
+			)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{
 			"transactionId":%q,
 			"status":"PENDING",
 			"url":"https://pay.example/terminal"
 		}`, transactionID)
-	}))
+		}),
+	)
 	defer server.Close()
 
 	credentials := platega.Credentials{
@@ -10486,15 +13167,24 @@ func TestPlategaTerminalWebhooksReleaseOrderAndLimits(t *testing.T) {
 				GlobalInterval:      "ONCE",
 				GlobalIntervalCount: 1,
 			})
-			created, err := env.api.Adapters.Platega.CreatePayment(env.ctx, platega.CreatePaymentParams{
-				Credentials:    credentials,
-				WorkspaceID:    testWorkspaceID,
-				AppID:          9600 + int64(index),
-				PlatformID:     1,
-				PlatformUserID: fmt.Sprintf("platega-terminal-user-%d", index),
-				ProductID:      productID,
-				IdempotencyKey: fmt.Sprintf("platega-terminal-key-%d", index),
-			})
+			created, err := env.api.Adapters.Platega.CreatePayment(
+				env.ctx,
+				platega.CreatePaymentParams{
+					Credentials: credentials,
+					WorkspaceID: testWorkspaceID,
+					AppID:       9600 + int64(index),
+					PlatformID:  1,
+					PlatformUserID: fmt.Sprintf(
+						"platega-terminal-user-%d",
+						index,
+					),
+					ProductID: productID,
+					IdempotencyKey: fmt.Sprintf(
+						"platega-terminal-key-%d",
+						index,
+					),
+				},
+			)
 			if err != nil {
 				t.Fatalf("create terminal payment: %v", err)
 			}
@@ -10512,15 +13202,33 @@ func TestPlategaTerminalWebhooksReleaseOrderAndLimits(t *testing.T) {
 				Raw:         []byte(callback),
 				Headers:     headers,
 			}
-			if _, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, request); err != nil {
+			if _, err := env.api.Adapters.Platega.HandleWebhook(
+				env.ctx,
+				request,
+			); err != nil {
 				t.Fatalf("handle terminal webhook: %v", err)
 			}
-			if _, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, request); err != nil {
+			if _, err := env.api.Adapters.Platega.HandleWebhook(
+				env.ctx,
+				request,
+			); err != nil {
 				t.Fatalf("repeat terminal webhook: %v", err)
 			}
 
-			assertAttemptStatus(t, env.ctx, env.db, created.AttemptID, testCase.attemptStatus)
-			assertOrderStatus(t, env.ctx, env.db, created.OrderID, testCase.orderStatus)
+			assertAttemptStatus(
+				t,
+				env.ctx,
+				env.db,
+				created.AttemptID,
+				testCase.attemptStatus,
+			)
+			assertOrderStatus(
+				t,
+				env.ctx,
+				env.db,
+				created.OrderID,
+				testCase.orderStatus,
+			)
 
 			var reserved int64
 			if err := env.db.QueryRowContext(env.ctx, `
@@ -10547,14 +13255,16 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 		GlobalIntervalCount: 1,
 	})
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
 			"transactionId":"platega-chargeback-payment",
 			"status":"PENDING",
 			"url":"https://pay.example/chargeback"
 		}`))
-	}))
+		}),
+	)
 	defer server.Close()
 
 	credentials := platega.Credentials{
@@ -10563,15 +13273,18 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 		APIBaseURL: server.URL,
 		HTTPClient: server.Client(),
 	}
-	created, err := env.api.Adapters.Platega.CreatePayment(env.ctx, platega.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          9701,
-		PlatformID:     1,
-		PlatformUserID: "platega-chargeback-user",
-		ProductID:      productID,
-		IdempotencyKey: "platega-chargeback-key",
-	})
+	created, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		platega.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          9701,
+			PlatformID:     1,
+			PlatformUserID: "platega-chargeback-user",
+			ProductID:      productID,
+			IdempotencyKey: "platega-chargeback-key",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create chargeback payment: %v", err)
 	}
@@ -10595,7 +13308,10 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 			Headers:     headers,
 		}
 	}
-	confirmed, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, callback("CONFIRMED", 1))
+	confirmed, err := env.api.Adapters.Platega.HandleWebhook(
+		env.ctx,
+		callback("CONFIRMED", 1),
+	)
 	if err != nil {
 		t.Fatalf("confirm chargeback payment: %v", err)
 	}
@@ -10603,14 +13319,25 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 		t.Fatal("confirmed payment has no fulfillment")
 	}
 
-	chargeback, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, callback("CHARGEBACKED", 1))
+	chargeback, err := env.api.Adapters.Platega.HandleWebhook(
+		env.ctx,
+		callback("CHARGEBACKED", 1),
+	)
 	if err != nil {
 		t.Fatalf("apply chargeback: %v", err)
 	}
-	if chargeback.FulfilledID == nil || *chargeback.FulfilledID != *confirmed.FulfilledID {
-		t.Fatalf("chargeback fulfillment = %#v, want %d", chargeback.FulfilledID, *confirmed.FulfilledID)
+	if chargeback.FulfilledID == nil ||
+		*chargeback.FulfilledID != *confirmed.FulfilledID {
+		t.Fatalf(
+			"chargeback fulfillment = %#v, want %d",
+			chargeback.FulfilledID,
+			*confirmed.FulfilledID,
+		)
 	}
-	duplicate, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, callback("CHARGEBACKED", 1))
+	duplicate, err := env.api.Adapters.Platega.HandleWebhook(
+		env.ctx,
+		callback("CHARGEBACKED", 1),
+	)
 	if err != nil {
 		t.Fatalf("repeat chargeback: %v", err)
 	}
@@ -10621,7 +13348,10 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 		env.ctx,
 		callback("CHARGEBACKED", 2),
 	); !errors.Is(err, repository.ErrPaymentMismatch) {
-		t.Fatalf("conflicting chargeback payload error = %v, want ErrPaymentMismatch", err)
+		t.Fatalf(
+			"conflicting chargeback payload error = %v, want ErrPaymentMismatch",
+			err,
+		)
 	}
 
 	assertAttemptStatus(t, env.ctx, env.db, created.AttemptID, "chargebacked")
@@ -10648,12 +13378,18 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 	}
 
 	var callbackPayloadRaw []byte
-	if err := env.db.QueryRowContext(env.ctx, `
+	if err := env.db.QueryRowContext(
+		env.ctx,
+		`
 SELECT payload
 FROM payment_clb_event
 WHERE event_type = $1 AND event_key = $2`,
 		CallbackEventPaymentOrderChargebacked,
-		fmt.Sprintf("%s:%d", CallbackEventPaymentOrderChargebacked, created.OrderID),
+		fmt.Sprintf(
+			"%s:%d",
+			CallbackEventPaymentOrderChargebacked,
+			created.OrderID,
+		),
 	).Scan(&callbackPayloadRaw); err != nil {
 		t.Fatalf("read chargeback callback: %v", err)
 	}
@@ -10677,7 +13413,8 @@ WHERE event_type = $1 AND event_key = $2`,
 	if err != nil {
 		t.Fatalf("build external chargeback callback context: %v", err)
 	}
-	if callbackContext.PaymentChargebacked == nil || callbackContext.Payload == nil ||
+	if callbackContext.PaymentChargebacked == nil ||
+		callbackContext.Payload == nil ||
 		callbackContext.PaymentChargebacked.OrderID != created.OrderID ||
 		len(callbackContext.Payload.Rewards) != 1 {
 		t.Fatalf("unexpected external chargeback context: %#v", callbackContext)
@@ -10693,17 +13430,18 @@ func TestPlategaReconciliationCompletesBoundPendingPayment(t *testing.T) {
 	})
 
 	var orderPublicID string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch request.URL.Path {
-		case "/v2/transaction/process":
-			_, _ = w.Write([]byte(`{
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch request.URL.Path {
+			case "/v2/transaction/process":
+				_, _ = w.Write([]byte(`{
 				"transactionId":"platega-bound-pending",
 				"status":"PENDING",
 				"url":"https://pay.example/pending"
 			}`))
-		case "/transaction/export/json":
-			_, _ = fmt.Fprintf(w, `[{
+			case "/transaction/export/json":
+				_, _ = fmt.Fprintf(w, `[{
 				"recordId":"platega-bound-pending",
 				"amount":1,
 				"currencyCode":"RUB",
@@ -10711,10 +13449,11 @@ func TestPlategaReconciliationCompletesBoundPendingPayment(t *testing.T) {
 				"paymentMethod":"SBPQR",
 				"payload":%q
 			}]`, orderPublicID)
-		default:
-			http.NotFound(w, request)
-		}
-	}))
+			default:
+				http.NotFound(w, request)
+			}
+		}),
+	)
 	defer server.Close()
 
 	credentials := platega.Credentials{
@@ -10723,27 +13462,33 @@ func TestPlategaReconciliationCompletesBoundPendingPayment(t *testing.T) {
 		APIBaseURL: server.URL,
 		HTTPClient: server.Client(),
 	}
-	created, err := env.api.Adapters.Platega.CreatePayment(env.ctx, platega.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          9702,
-		PlatformID:     1,
-		PlatformUserID: "platega-pending-user",
-		ProductID:      productID,
-		IdempotencyKey: "platega-pending-key",
-	})
+	created, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		platega.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          9702,
+			PlatformID:     1,
+			PlatformUserID: "platega-pending-user",
+			ProductID:      productID,
+			IdempotencyKey: "platega-pending-key",
+		},
+	)
 	if err != nil {
 		t.Fatalf("create bound pending payment: %v", err)
 	}
 	orderPublicID = created.OrderPublicID
 
-	result, err := env.api.Adapters.Platega.ReconcilePending(env.ctx, platega.ReconcileParams{
-		ResolveCredentials: func(context.Context, string) (platega.Credentials, error) {
-			return credentials, nil
+	result, err := env.api.Adapters.Platega.ReconcilePending(
+		env.ctx,
+		platega.ReconcileParams{
+			ResolveCredentials: func(context.Context, string) (platega.Credentials, error) {
+				return credentials, nil
+			},
+			CreatedTo: time.Now().UTC().Add(time.Second),
+			Limit:     100,
 		},
-		CreatedTo: time.Now().UTC().Add(time.Second),
-		Limit:     100,
-	})
+	)
 	if err != nil {
 		t.Fatalf("reconcile bound pending payment: %v", err)
 	}
@@ -10763,15 +13508,17 @@ func TestPlategaCreateReplayPreservesProviderStatus(t *testing.T) {
 	})
 
 	var providerCalls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		providerCalls.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			providerCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
 			"transactionId":"platega-replay-payment",
 			"status":"PENDING",
 			"url":"https://pay.example/replay"
 		}`))
-	}))
+		}),
+	)
 	defer server.Close()
 
 	params := platega.CreatePaymentParams{
@@ -10796,8 +13543,13 @@ func TestPlategaCreateReplayPreservesProviderStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replay payment: %v", err)
 	}
-	if replayed.Status != created.Status || replayed.Status != platega.StatusPending {
-		t.Fatalf("replayed status = %q, original = %q", replayed.Status, created.Status)
+	if replayed.Status != created.Status ||
+		replayed.Status != platega.StatusPending {
+		t.Fatalf(
+			"replayed status = %q, original = %q",
+			replayed.Status,
+			created.Status,
+		)
 	}
 	if providerCalls.Load() != 1 {
 		t.Fatalf("provider calls = %d, want 1", providerCalls.Load())
@@ -10813,25 +13565,33 @@ func TestPlategaExportRejectsUnsafeRedirect(t *testing.T) {
 	})
 
 	var unsafeTargetReached atomic.Bool
-	unsafeTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		unsafeTargetReached.Store(true)
-		_, _ = w.Write([]byte(`[]`))
-	}))
+	unsafeTarget := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			unsafeTargetReached.Store(true)
+			_, _ = w.Write([]byte(`[]`))
+		}),
+	)
 	defer unsafeTarget.Close()
 
 	var providerURL string
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
-		case "/v2/transaction/process":
-			http.Error(w, `{"error":"temporary"}`, http.StatusInternalServerError)
-		case "/transaction/export/json":
-			_, _ = fmt.Fprintf(w, "%q", providerURL+"/download")
-		case "/download":
-			http.Redirect(w, request, unsafeTarget.URL, http.StatusFound)
-		default:
-			http.NotFound(w, request)
-		}
-	}))
+	provider := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			switch request.URL.Path {
+			case "/v2/transaction/process":
+				http.Error(
+					w,
+					`{"error":"temporary"}`,
+					http.StatusInternalServerError,
+				)
+			case "/transaction/export/json":
+				_, _ = fmt.Fprintf(w, "%q", providerURL+"/download")
+			case "/download":
+				http.Redirect(w, request, unsafeTarget.URL, http.StatusFound)
+			default:
+				http.NotFound(w, request)
+			}
+		}),
+	)
 	defer provider.Close()
 	providerURL = provider.URL
 
@@ -10841,25 +13601,31 @@ func TestPlategaExportRejectsUnsafeRedirect(t *testing.T) {
 		APIBaseURL: provider.URL,
 		HTTPClient: provider.Client(),
 	}
-	if _, err := env.api.Adapters.Platega.CreatePayment(env.ctx, platega.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          9704,
-		PlatformID:     1,
-		PlatformUserID: "platega-redirect-user",
-		ProductID:      productID,
-		IdempotencyKey: "platega-redirect-key",
-	}); err == nil {
+	if _, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		platega.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          9704,
+			PlatformID:     1,
+			PlatformUserID: "platega-redirect-user",
+			ProductID:      productID,
+			IdempotencyKey: "platega-redirect-key",
+		},
+	); err == nil {
 		t.Fatal("expected temporary create error")
 	}
 
-	_, err := env.api.Adapters.Platega.ReconcilePending(env.ctx, platega.ReconcileParams{
-		ResolveCredentials: func(context.Context, string) (platega.Credentials, error) {
-			return credentials, nil
+	_, err := env.api.Adapters.Platega.ReconcilePending(
+		env.ctx,
+		platega.ReconcileParams{
+			ResolveCredentials: func(context.Context, string) (platega.Credentials, error) {
+				return credentials, nil
+			},
+			CreatedTo: time.Now().UTC().Add(time.Second),
+			Limit:     100,
 		},
-		CreatedTo: time.Now().UTC().Add(time.Second),
-		Limit:     100,
-	})
+	)
 	if !errors.Is(err, platega.ErrExportURLUnsafe) {
 		t.Fatalf("unsafe redirect error = %v, want ErrExportURLUnsafe", err)
 	}
@@ -10877,17 +13643,27 @@ func TestPlategaExportLimitsInitialResponse(t *testing.T) {
 	})
 
 	largePayload := strings.Repeat("a", (16<<20)+1)
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
-		case "/v2/transaction/process":
-			http.Error(w, `{"error":"temporary"}`, http.StatusInternalServerError)
-		case "/transaction/export/json":
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprintf(w, `[{"recordId":"large","payload":%q}]`, largePayload)
-		default:
-			http.NotFound(w, request)
-		}
-	}))
+	provider := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			switch request.URL.Path {
+			case "/v2/transaction/process":
+				http.Error(
+					w,
+					`{"error":"temporary"}`,
+					http.StatusInternalServerError,
+				)
+			case "/transaction/export/json":
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprintf(
+					w,
+					`[{"recordId":"large","payload":%q}]`,
+					largePayload,
+				)
+			default:
+				http.NotFound(w, request)
+			}
+		}),
+	)
 	defer provider.Close()
 
 	credentials := platega.Credentials{
@@ -10896,25 +13672,31 @@ func TestPlategaExportLimitsInitialResponse(t *testing.T) {
 		APIBaseURL: provider.URL,
 		HTTPClient: provider.Client(),
 	}
-	if _, err := env.api.Adapters.Platega.CreatePayment(env.ctx, platega.CreatePaymentParams{
-		Credentials:    credentials,
-		WorkspaceID:    testWorkspaceID,
-		AppID:          9705,
-		PlatformID:     1,
-		PlatformUserID: "platega-large-user",
-		ProductID:      productID,
-		IdempotencyKey: "platega-large-key",
-	}); err == nil {
+	if _, err := env.api.Adapters.Platega.CreatePayment(
+		env.ctx,
+		platega.CreatePaymentParams{
+			Credentials:    credentials,
+			WorkspaceID:    testWorkspaceID,
+			AppID:          9705,
+			PlatformID:     1,
+			PlatformUserID: "platega-large-user",
+			ProductID:      productID,
+			IdempotencyKey: "platega-large-key",
+		},
+	); err == nil {
 		t.Fatal("expected temporary create error")
 	}
 
-	_, err := env.api.Adapters.Platega.ReconcilePending(env.ctx, platega.ReconcileParams{
-		ResolveCredentials: func(context.Context, string) (platega.Credentials, error) {
-			return credentials, nil
+	_, err := env.api.Adapters.Platega.ReconcilePending(
+		env.ctx,
+		platega.ReconcileParams{
+			ResolveCredentials: func(context.Context, string) (platega.Credentials, error) {
+				return credentials, nil
+			},
+			CreatedTo: time.Now().UTC().Add(time.Second),
+			Limit:     100,
 		},
-		CreatedTo: time.Now().UTC().Add(time.Second),
-		Limit:     100,
-	})
+	)
 	if !errors.Is(err, platega.ErrExportResponseTooLarge) {
 		t.Fatalf("large export error = %v, want ErrExportResponseTooLarge", err)
 	}

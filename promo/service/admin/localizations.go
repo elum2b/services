@@ -15,7 +15,10 @@ type SaveLocalizationParams struct {
 	Description string
 }
 
-func (a *Admin) UpsertLocalization(ctx context.Context, params SaveLocalizationParams) error {
+func (a *Admin) UpsertLocalization(
+	ctx context.Context,
+	params SaveLocalizationParams,
+) error {
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return err
 	}
@@ -25,7 +28,10 @@ func (a *Admin) UpsertLocalization(ctx context.Context, params SaveLocalizationP
 	if params.Locale == "" || params.Title == "" {
 		return ErrLocalizationRequired
 	}
-	return a.repository.UpsertLocalization(mergedCtx, repository.Localization(params))
+	return a.repository.UpsertLocalization(
+		mergedCtx,
+		repository.Localization(params),
+	)
 }
 
 func (a *Admin) GetLocalization(
@@ -40,11 +46,20 @@ func (a *Admin) GetLocalization(
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
-	value, err := a.repository.GetLocalization(mergedCtx, workspaceID, promoID, locale)
+	value, err := a.repository.GetLocalization(
+		mergedCtx,
+		workspaceID,
+		promoID,
+		locale,
+	)
 	if err != nil {
 		return LocalizationModel{}, err
 	}
-	return LocalizationModel{Locale: value.Locale, Title: value.Title, Description: value.Description}, nil
+	return LocalizationModel{
+		Locale:      value.Locale,
+		Title:       value.Title,
+		Description: value.Description,
+	}, nil
 }
 
 func (a *Admin) ListLocalizations(
@@ -58,7 +73,11 @@ func (a *Admin) ListLocalizations(
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
-	values, err := a.repository.ListLocalizations(mergedCtx, workspaceID, promoID)
+	values, err := a.repository.ListLocalizations(
+		mergedCtx,
+		workspaceID,
+		promoID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +85,11 @@ func (a *Admin) ListLocalizations(
 	for _, value := range values {
 		result = append(
 			result,
-			LocalizationModel{Locale: value.Locale, Title: value.Title, Description: value.Description},
+			LocalizationModel{
+				Locale:      value.Locale,
+				Title:       value.Title,
+				Description: value.Description,
+			},
 		)
 	}
 	return result, nil
@@ -84,5 +107,10 @@ func (a *Admin) DeleteLocalization(
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
-	return a.repository.DeleteLocalization(mergedCtx, workspaceID, promoID, locale)
+	return a.repository.DeleteLocalization(
+		mergedCtx,
+		workspaceID,
+		promoID,
+		locale,
+	)
 }

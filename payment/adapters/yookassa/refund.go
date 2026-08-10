@@ -4,7 +4,10 @@ import (
 	"context"
 )
 
-func (a *YooKassa) Execute(ctx context.Context, params RefundParams) (RefundResult, error) {
+func (a *YooKassa) Execute(
+	ctx context.Context,
+	params RefundParams,
+) (RefundResult, error) {
 
 	if a == nil {
 		return RefundResult{}, ErrNotInitialized
@@ -14,7 +17,9 @@ func (a *YooKassa) Execute(ctx context.Context, params RefundParams) (RefundResu
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 
-	result, err := NewClient(params.Credentials).CreateRefund(ctx, createRefundRequest{
+	result, err := NewClient(
+		params.Credentials,
+	).CreateRefund(ctx, createRefundRequest{
 		PaymentID: params.PaymentID,
 		Amount: Amount{
 			Value:    formatRubMinor(params.AmountMinor),

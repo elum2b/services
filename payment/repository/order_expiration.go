@@ -90,7 +90,10 @@ func (r *PaymentRepository) ExpireStaleOrders(
 			}
 
 			if order.PurchaseKeyID.Valid {
-				rows, err := txRepo.q.ReleasePurchaseKeyReservation(ctx, order.PurchaseKeyID.Int64)
+				rows, err := txRepo.q.ReleasePurchaseKeyReservation(
+					ctx,
+					order.PurchaseKeyID.Int64,
+				)
 				if err != nil {
 					return err
 				}
@@ -99,14 +102,17 @@ func (r *PaymentRepository) ExpireStaleOrders(
 				}
 			}
 
-			rows, err := txRepo.q.AdminUpdateOrderStatus(ctx, paymentsqlc.AdminUpdateOrderStatusParams{
-				Status:      paymentsqlc.PaymentOrderStatusExpired,
-				Column2:     string(paymentsqlc.PaymentOrderStatusExpired),
-				Column3:     string(paymentsqlc.PaymentOrderStatusExpired),
-				Column4:     string(paymentsqlc.PaymentOrderStatusExpired),
-				WorkspaceID: order.WorkspaceID,
-				ID:          order.ID,
-			})
+			rows, err := txRepo.q.AdminUpdateOrderStatus(
+				ctx,
+				paymentsqlc.AdminUpdateOrderStatusParams{
+					Status:      paymentsqlc.PaymentOrderStatusExpired,
+					Column2:     string(paymentsqlc.PaymentOrderStatusExpired),
+					Column3:     string(paymentsqlc.PaymentOrderStatusExpired),
+					Column4:     string(paymentsqlc.PaymentOrderStatusExpired),
+					WorkspaceID: order.WorkspaceID,
+					ID:          order.ID,
+				},
+			)
 			if err != nil {
 				return err
 			}

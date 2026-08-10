@@ -2,7 +2,11 @@ package admin
 
 import "context"
 
-func (a *Admin) Export(ctx context.Context, workspaceID string, req ExportRequest) (ExportPackage, error) {
+func (a *Admin) Export(
+	ctx context.Context,
+	workspaceID string,
+	req ExportRequest,
+) (ExportPackage, error) {
 	if a == nil || a.repository == nil {
 		return ExportPackage{}, ErrRepositoryNotConfigured
 	}

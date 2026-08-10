@@ -10,10 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elum2b/services/internal/utils/contextutil"
 	json "github.com/goccy/go-json"
 	lua "github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
+
+	"github.com/elum2b/services/internal/utils/contextutil"
 )
 
 const (
@@ -168,7 +169,11 @@ func (m *Manager) WarmProvider(ctx context.Context, provider string) error {
 	return nil
 }
 
-func (m *Manager) Handle(ctx context.Context, provider string, event Event) (Result, error) {
+func (m *Manager) Handle(
+	ctx context.Context,
+	provider string,
+	event Event,
+) (Result, error) {
 	if m == nil {
 		return nil, ErrClosed
 	}
@@ -186,7 +191,10 @@ func (m *Manager) Handle(ctx context.Context, provider string, event Event) (Res
 		return nil, err
 	}
 	if !ok || strings.TrimSpace(script.Source) == "" {
-		return nil, fmt.Errorf("tasks runtime script %q not configured", provider)
+		return nil, fmt.Errorf(
+			"tasks runtime script %q not configured",
+			provider,
+		)
 	}
 	if event.Provider == "" {
 		event.Provider = provider
@@ -212,7 +220,11 @@ func (m *Manager) Handle(ctx context.Context, provider string, event Event) (Res
 	return out, nil
 }
 
-func (m *Manager) loadScript(ctx context.Context, provider string, force bool) (Script, bool, error) {
+func (m *Manager) loadScript(
+	ctx context.Context,
+	provider string,
+	force bool,
+) (Script, bool, error) {
 	provider = strings.TrimSpace(provider)
 	if provider == "" {
 		return Script{}, false, nil
@@ -259,11 +271,19 @@ func (m *Manager) loadScript(ctx context.Context, provider string, force bool) (
 		delete(m.providers, provider)
 		return Script{}, false, nil
 	}
-	m.providers[provider] = providerState{script: script, loaded: true, checkedAt: now}
+	m.providers[provider] = providerState{
+		script:    script,
+		loaded:    true,
+		checkedAt: now,
+	}
 	return script, true, nil
 }
 
-func (m *Manager) call(L *lua.LState, provider string, event Event) (Result, error) {
+func (m *Manager) call(
+	L *lua.LState,
+	provider string,
+	event Event,
+) (Result, error) {
 	action, err := runtimeActionName(event.Action)
 	if err != nil {
 		return nil, err
@@ -275,32 +295,65 @@ func (m *Manager) call(L *lua.LState, provider string, event Event) (Result, err
 		}
 		handle := L.GetGlobal("__runtime_call_json")
 		if handle == lua.LNil {
-			return nil, fmt.Errorf("tasks runtime script %q has no json handler", provider)
+			return nil, fmt.Errorf(
+				"tasks runtime script %q has no json handler",
+				provider,
+			)
 		}
-		if err := L.CallByParam(lua.P{Fn: handle, NRet: 1, Protect: true}, lua.LString(action), lua.LString(raw)); err != nil {
-			return nil, fmt.Errorf("tasks runtime %s %q failed: %w", action, provider, err)
+		if err := L.CallByParam(
+			lua.P{Fn: handle, NRet: 1, Protect: true},
+			lua.LString(action),
+			lua.LString(raw),
+		); err != nil {
+			return nil, fmt.Errorf(
+				"tasks runtime %s %q failed: %w",
+				action,
+				provider,
+				err,
+			)
 		}
 		value := L.Get(-1)
 		L.Pop(1)
 		var out map[string]any
 		if err := json.Unmarshal([]byte(value.String()), &out); err != nil {
-			return nil, fmt.Errorf("tasks runtime %s %q returned bad json: %w", action, provider, err)
+			return nil, fmt.Errorf(
+				"tasks runtime %s %q returned bad json: %w",
+				action,
+				provider,
+				err,
+			)
 		}
 		return Result(out), nil
 	}
 	handle := L.GetGlobal(action)
 	if handle == lua.LNil {
-		return nil, fmt.Errorf("tasks runtime script %q has no %s(event)", provider, action)
+		return nil, fmt.Errorf(
+			"tasks runtime script %q has no %s(event)",
+			provider,
+			action,
+		)
 	}
 	input := goToLua(L, eventToMap(event))
-	if err := L.CallByParam(lua.P{Fn: handle, NRet: 1, Protect: true}, input); err != nil {
-		return nil, fmt.Errorf("tasks runtime %s %q failed: %w", action, provider, err)
+	if err := L.CallByParam(
+		lua.P{Fn: handle, NRet: 1, Protect: true},
+		input,
+	); err != nil {
+		return nil, fmt.Errorf(
+			"tasks runtime %s %q failed: %w",
+			action,
+			provider,
+			err,
+		)
 	}
 	value := L.Get(-1)
 	L.Pop(1)
 	out, ok := luaToGo(value).(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("tasks runtime %s %q returned non-object", action, provider)
+		return nil, fmt.Errorf(
+			"tasks runtime %s %q returned non-object",
+			action,
+			provider,
+		)
 	}
 	return Result(out), nil
 }
@@ -320,7 +373,11 @@ type runtimeState struct {
 	discard   bool
 }
 
-func (m *Manager) acquireState(ctx context.Context, script Script, proto *lua.FunctionProto) (*runtimeState, bool, error) {
+func (m *Manager) acquireState(
+	ctx context.Context,
+	script Script,
+	proto *lua.FunctionProto,
+) (*runtimeState, bool, error) {
 	key := scriptCacheKey(script)
 	if m.options.StatePoolSize > 0 {
 		pool := m.pool(key)
@@ -340,7 +397,11 @@ func (m *Manager) acquireState(ctx context.Context, script Script, proto *lua.Fu
 	return state, false, err
 }
 
-func (m *Manager) releaseState(script Script, state *runtimeState, pooled bool) {
+func (m *Manager) releaseState(
+	script Script,
+	state *runtimeState,
+	pooled bool,
+) {
 	if state == nil {
 		return
 	}
@@ -363,7 +424,10 @@ func (m *Manager) releaseState(script Script, state *runtimeState, pooled bool) 
 	}
 }
 
-func (m *Manager) currentPool(provider string, key string) (chan *runtimeState, bool) {
+func (m *Manager) currentPool(
+	provider string,
+	key string,
+) (chan *runtimeState, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -425,7 +489,11 @@ func closeRuntimePool(pool chan *runtimeState) {
 	}
 }
 
-func (m *Manager) newState(ctx context.Context, script Script, proto *lua.FunctionProto) (*runtimeState, error) {
+func (m *Manager) newState(
+	ctx context.Context,
+	script Script,
+	proto *lua.FunctionProto,
+) (*runtimeState, error) {
 	state := &runtimeState{}
 	L := lua.NewState(lua.Options{SkipOpenLibs: true})
 	state.L = L
@@ -436,9 +504,15 @@ func (m *Manager) newState(ctx context.Context, script Script, proto *lua.Functi
 	registerUUID(L)
 	registerTime(L)
 	registerHTTP(L, m.http, &state.httpCalls, m.options.MaxHTTPRequests)
-	if err := L.CallByParam(lua.P{Fn: L.NewFunctionFromProto(proto), NRet: 0, Protect: true}); err != nil {
+	if err := L.CallByParam(
+		lua.P{Fn: L.NewFunctionFromProto(proto), NRet: 0, Protect: true},
+	); err != nil {
 		L.Close()
-		return nil, fmt.Errorf("tasks runtime load %q failed: %w", script.Provider, err)
+		return nil, fmt.Errorf(
+			"tasks runtime load %q failed: %w",
+			script.Provider,
+			err,
+		)
 	}
 	if m.options.JSONBoundary {
 		wrapper, err := compileJSONWrapper()
@@ -446,9 +520,15 @@ func (m *Manager) newState(ctx context.Context, script Script, proto *lua.Functi
 			L.Close()
 			return nil, err
 		}
-		if err := L.CallByParam(lua.P{Fn: L.NewFunctionFromProto(wrapper), NRet: 0, Protect: true}); err != nil {
+		if err := L.CallByParam(
+			lua.P{Fn: L.NewFunctionFromProto(wrapper), NRet: 0, Protect: true},
+		); err != nil {
 			L.Close()
-			return nil, fmt.Errorf("tasks runtime json wrapper %q failed: %w", script.Provider, err)
+			return nil, fmt.Errorf(
+				"tasks runtime json wrapper %q failed: %w",
+				script.Provider,
+				err,
+			)
 		}
 	}
 	return state, nil
@@ -464,11 +544,19 @@ func (m *Manager) compile(script Script) (*lua.FunctionProto, error) {
 	}
 	chunk, err := parse.Parse(strings.NewReader(script.Source), script.Provider)
 	if err != nil {
-		return nil, fmt.Errorf("tasks runtime parse %q failed: %w", script.Provider, err)
+		return nil, fmt.Errorf(
+			"tasks runtime parse %q failed: %w",
+			script.Provider,
+			err,
+		)
 	}
 	proto, err = lua.Compile(chunk, script.Provider)
 	if err != nil {
-		return nil, fmt.Errorf("tasks runtime compile %q failed: %w", script.Provider, err)
+		return nil, fmt.Errorf(
+			"tasks runtime compile %q failed: %w",
+			script.Provider,
+			err,
+		)
 	}
 	m.mu.Lock()
 	if existing := m.cache[key]; existing != nil {
@@ -481,7 +569,11 @@ func (m *Manager) compile(script Script) (*lua.FunctionProto, error) {
 }
 
 func scriptCacheKey(script Script) string {
-	hash := sha256.Sum256([]byte(script.Provider + "\x00" + script.Version + "\x00" + script.Source))
+	hash := sha256.Sum256(
+		[]byte(
+			script.Provider + "\x00" + script.Version + "\x00" + script.Source,
+		),
+	)
 	return hex.EncodeToString(hash[:])
 }
 

@@ -11,7 +11,10 @@ import (
 )
 
 type Admin interface {
-	CompleteAuth(ctx context.Context, params admin.AuthIdentityParams) (admin.AuthResult, error)
+	CompleteAuth(
+		ctx context.Context,
+		params admin.AuthIdentityParams,
+	) (admin.AuthResult, error)
 }
 
 type Provider interface {

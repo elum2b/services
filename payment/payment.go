@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	callbackutil "github.com/elum2b/services/internal/utils/callback"
-	goroutinemanager "github.com/elum2b/services/internal/utils/goroutine"
-	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	serviceerrors "github.com/elum2b/services/errors"
+	callbackutil "github.com/elum2b/services/internal/utils/callback"
+	goroutinemanager "github.com/elum2b/services/internal/utils/goroutine"
+	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/payment/adapters/platega"
 	"github.com/elum2b/services/payment/adapters/telegramstars"
 	"github.com/elum2b/services/payment/adapters/ton"
@@ -84,10 +84,18 @@ func New() *Payment {
 	})
 }
 
-func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Payment, error) {
+func NewWithDatabase(
+	ctx context.Context,
+	db *sql.DB,
+	options Options,
+) (*Payment, error) {
 	client, err := sqlwrap.New(db, toSQLWrapOptions(options))
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "payment sql client initialization failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"payment sql client initialization failed",
+			err,
+		)
 	}
 	return newAPI(ctx, client, false, options), nil
 }
@@ -146,27 +154,46 @@ func open(ctx context.Context, params DatabaseParams) (*Payment, error) {
 	}
 	db, err := openPostgres(ctx, params)
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeUnavailable, "payment database connection failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeUnavailable,
+			"payment database connection failed",
+			err,
+		)
 	}
 	client, err := sqlwrap.New(db, toSQLWrapOptions(params.Options))
 	if err != nil {
 		_ = db.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "payment sql client initialization failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"payment sql client initialization failed",
+			err,
+		)
 	}
-	bootstrap := repository.NewPaymentRepositoryWithOptions(client, repository.Options{
-		QueryTimeout:             params.Options.QueryTimeout,
-		CacheL1Delay:             params.Options.CacheL1Delay,
-		CacheL2Delay:             params.Options.CacheL2Delay,
-		OnCacheInvalidationError: params.Options.OnCacheInvalidationError,
-	})
+	bootstrap := repository.NewPaymentRepositoryWithOptions(
+		client,
+		repository.Options{
+			QueryTimeout:             params.Options.QueryTimeout,
+			CacheL1Delay:             params.Options.CacheL1Delay,
+			CacheL2Delay:             params.Options.CacheL2Delay,
+			OnCacheInvalidationError: params.Options.OnCacheInvalidationError,
+		},
+	)
 	if err := bootstrap.Bootstrap(ctx); err != nil {
 		_ = bootstrap.Close()
 		_ = client.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "payment bootstrap failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"payment bootstrap failed",
+			err,
+		)
 	}
 	if err := bootstrap.Close(); err != nil {
 		_ = client.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "payment bootstrap shutdown failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"payment bootstrap shutdown failed",
+			err,
+		)
 	}
 	return newAPI(ctx, client, true, params.Options), nil
 }
@@ -181,8 +208,13 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 		port = 5432
 	}
 	dsn, err := sqlwrap.PostgresDSN(sqlwrap.PostgresParams{
-		User: params.User, Password: params.Password, Database: params.Database,
-		Host: host, Port: port, SSLMode: params.SSLMode, SSLRootCert: params.SSLRootCert,
+		User:        params.User,
+		Password:    params.Password,
+		Database:    params.Database,
+		Host:        host,
+		Port:        port,
+		SSLMode:     params.SSLMode,
+		SSLRootCert: params.SSLRootCert,
 	})
 	if err != nil {
 		return nil, err
@@ -230,7 +262,12 @@ func (a *Payment) adopt(running *Payment) {
 	a.goroutines = running.goroutines
 }
 
-func newAPI(ctx context.Context, db *sqlwrap.Client, ownsClient bool, options Options) *Payment {
+func newAPI(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	ownsClient bool,
+	options Options,
+) *Payment {
 	rootCtx, rootCancel := context.WithCancel(normalizeLifecycleContext(ctx))
 	repositoryOptions := repository.Options{
 		QueryTimeout:             options.QueryTimeout,
@@ -238,7 +275,11 @@ func newAPI(ctx context.Context, db *sqlwrap.Client, ownsClient bool, options Op
 		CacheL2Delay:             options.CacheL2Delay,
 		OnCacheInvalidationError: options.OnCacheInvalidationError,
 	}
-	telegramStarsAPI := telegramstars.NewWithOptions(rootCtx, db, repositoryOptions)
+	telegramStarsAPI := telegramstars.NewWithOptions(
+		rootCtx,
+		db,
+		repositoryOptions,
+	)
 	tonAPI := ton.NewWithOptions(rootCtx, db, repositoryOptions)
 	plategaAPI := platega.NewWithOptions(rootCtx, db, repositoryOptions)
 	vkmaAPI := vkma.NewWithOptions(rootCtx, db, repositoryOptions)
@@ -246,12 +287,37 @@ func newAPI(ctx context.Context, db *sqlwrap.Client, ownsClient bool, options Op
 	assetAPI := asset.NewWithOptions(rootCtx, db, repositoryOptions)
 	productAPI := product.NewWithOptions(rootCtx, db, repositoryOptions)
 	checkoutAPI := checkout.NewWithOptions(rootCtx, db, repositoryOptions)
-	subscriptionAPI := subscription.NewWithOptions(rootCtx, db, repositoryOptions)
-	refundAPI := refund.NewWithOptions(rootCtx, db, refundProviders(telegramStarsAPI, tonAPI, plategaAPI, yooKassaAPI), repositoryOptions)
+	subscriptionAPI := subscription.NewWithOptions(
+		rootCtx,
+		db,
+		repositoryOptions,
+	)
+	refundAPI := refund.NewWithOptions(
+		rootCtx,
+		db,
+		refundProviders(telegramStarsAPI, tonAPI, plategaAPI, yooKassaAPI),
+		repositoryOptions,
+	)
 	payments := &Payment{
-		Admin:        admin.NewWithServices(rootCtx, db, repositoryOptions, productAPI, refundAPI),
-		Operational:  operational.New(rootCtx, db, repositoryOptions, checkoutAPI),
-		User:         user.New(assetAPI, productAPI, checkoutAPI, subscriptionAPI),
+		Admin: admin.NewWithServices(
+			rootCtx,
+			db,
+			repositoryOptions,
+			productAPI,
+			refundAPI,
+		),
+		Operational: operational.New(
+			rootCtx,
+			db,
+			repositoryOptions,
+			checkoutAPI,
+		),
+		User: user.New(
+			assetAPI,
+			productAPI,
+			checkoutAPI,
+			subscriptionAPI,
+		),
 		asset:        assetAPI,
 		product:      productAPI,
 		checkout:     checkoutAPI,
@@ -264,12 +330,18 @@ func newAPI(ctx context.Context, db *sqlwrap.Client, ownsClient bool, options Op
 			VKMA:          vkmaAPI,
 			YooKassa:      yooKassaAPI,
 		},
-		client:                       db,
-		ownsClient:                   ownsClient,
-		callbacks:                    callbackutil.NewWithTable(db.DB(), callbackutil.PaymentTable),
-		rootCtx:                      rootCtx,
-		rootCancel:                   rootCancel,
-		pricing:                      repository.NewPaymentRepositoryWithOptions(db, repositoryOptions),
+		client:     db,
+		ownsClient: ownsClient,
+		callbacks: callbackutil.NewWithTable(
+			db.DB(),
+			callbackutil.PaymentTable,
+		),
+		rootCtx:    rootCtx,
+		rootCancel: rootCancel,
+		pricing: repository.NewPaymentRepositoryWithOptions(
+			db,
+			repositoryOptions,
+		),
 		pricingHTTPClient:            options.PriceUpdateHTTPClient,
 		pricingInterval:              options.PriceUpdateInterval,
 		pricingBaseURL:               options.PriceUpdateBaseURL,
@@ -366,11 +438,17 @@ func (a *Payment) IsReady() bool {
 	}
 	a.lifecycleMu.Lock()
 	defer a.lifecycleMu.Unlock()
-	return a.rootCtx != nil && a.rootCtx.Err() == nil && !a.client.IsUnavailable() &&
-		a.Admin != nil && a.Operational != nil && a.User != nil && a.Adapters != nil
+	return a.rootCtx != nil && a.rootCtx.Err() == nil &&
+		!a.client.IsUnavailable() &&
+		a.Admin != nil &&
+		a.Operational != nil &&
+		a.User != nil &&
+		a.Adapters != nil
 }
 
-func (a *Payment) bindContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (a *Payment) bindContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	if a == nil {
 		return mergeContexts(context.Background(), ctx)
 	}
@@ -392,7 +470,8 @@ func refundProviders(
 			if params.AmountMinor != params.Attempt.AmountMinor {
 				return refund.ProviderRefundResult{}, ErrTelegramStarsFullRefundOnly
 			}
-			if params.Attempt.ProviderChargeID == nil || *params.Attempt.ProviderChargeID == "" {
+			if params.Attempt.ProviderChargeID == nil ||
+				*params.Attempt.ProviderChargeID == "" {
 				return refund.ProviderRefundResult{}, ErrTelegramStarsChargeIDRequired
 			}
 			platformUserID := params.Order.PlatformUserID
@@ -402,13 +481,20 @@ func refundProviders(
 
 			userID, err := strconv.ParseInt(platformUserID, 10, 64)
 			if err != nil {
-				return refund.ProviderRefundResult{}, serviceerrors.Wrap(serviceerrors.CodeInvalidFields, ErrTelegramStarsPlatformUserIDInvalid.Message(), err)
+				return refund.ProviderRefundResult{}, serviceerrors.Wrap(
+					serviceerrors.CodeInvalidFields,
+					ErrTelegramStarsPlatformUserIDInvalid.Message(),
+					err,
+				)
 			}
-			result, err := telegramStarsAPI.Execute(ctx, telegramstars.RefundParams{
-				Credentials:             credentials,
-				UserID:                  userID,
-				TelegramPaymentChargeID: *params.Attempt.ProviderChargeID,
-			})
+			result, err := telegramStarsAPI.Execute(
+				ctx,
+				telegramstars.RefundParams{
+					Credentials:             credentials,
+					UserID:                  userID,
+					TelegramPaymentChargeID: *params.Attempt.ProviderChargeID,
+				},
+			)
 			if err != nil {
 				return refund.ProviderRefundResult{}, err
 			}
@@ -422,16 +508,20 @@ func refundProviders(
 			if !ok {
 				return refund.ProviderRefundResult{}, ErrYooKassaRefundCredentialsRequired
 			}
-			if params.Attempt.ProviderPaymentID == nil || *params.Attempt.ProviderPaymentID == "" {
+			if params.Attempt.ProviderPaymentID == nil ||
+				*params.Attempt.ProviderPaymentID == "" {
 				return refund.ProviderRefundResult{}, ErrYooKassaPaymentIDRequired
 			}
 			result, err := yooKassaAPI.Execute(ctx, yookassa.RefundParams{
-				Credentials:    credentials,
-				PaymentID:      *params.Attempt.ProviderPaymentID,
-				AmountMinor:    params.AmountMinor,
-				AssetCode:      params.Attempt.AssetCode,
-				Description:    params.Reason,
-				IdempotencyKey: fmt.Sprintf("payment-refund-%d", params.RefundID),
+				Credentials: credentials,
+				PaymentID:   *params.Attempt.ProviderPaymentID,
+				AmountMinor: params.AmountMinor,
+				AssetCode:   params.Attempt.AssetCode,
+				Description: params.Reason,
+				IdempotencyKey: fmt.Sprintf(
+					"payment-refund-%d",
+					params.RefundID,
+				),
 			})
 			if err != nil {
 				return refund.ProviderRefundResult{}, err
@@ -452,7 +542,10 @@ func refundProviders(
 			providerParams.AmountMinor = params.AmountMinor
 			providerParams.AssetCode = params.Attempt.AssetCode
 			providerParams.Reason = params.Reason
-			providerParams.IdempotencyKey = fmt.Sprintf("payment-refund-%d", params.RefundID)
+			providerParams.IdempotencyKey = fmt.Sprintf(
+				"payment-refund-%d",
+				params.RefundID,
+			)
 			result, err := plategaAPI.Execute(ctx, platega.RefundParams{
 				Executor:       providerParams.Executor,
 				TransactionID:  providerParams.TransactionID,
@@ -461,7 +554,10 @@ func refundProviders(
 				Reason:         providerParams.Reason,
 				IdempotencyKey: providerParams.IdempotencyKey,
 			})
-			return refund.ProviderRefundResult{ProviderRefundID: result.ProviderRefundID, Status: result.Status}, err
+			return refund.ProviderRefundResult{
+				ProviderRefundID: result.ProviderRefundID,
+				Status:           result.Status,
+			}, err
 		},
 		ton.ProviderCode: func(ctx context.Context, params refund.ProviderRefundParams) (refund.ProviderRefundResult, error) {
 			providerParams, ok := params.ProviderParams.(ton.RefundParams)
@@ -471,9 +567,15 @@ func refundProviders(
 			providerParams.AssetCode = params.Attempt.AssetCode
 			providerParams.AmountMinor = params.AmountMinor
 			providerParams.Comment = params.Reason
-			providerParams.IdempotencyKey = fmt.Sprintf("payment-refund-%d", params.RefundID)
+			providerParams.IdempotencyKey = fmt.Sprintf(
+				"payment-refund-%d",
+				params.RefundID,
+			)
 			result, err := tonAPI.Execute(ctx, providerParams)
-			return refund.ProviderRefundResult{ProviderRefundID: result.ProviderRefundID, Status: result.Status}, err
+			return refund.ProviderRefundResult{
+				ProviderRefundID: result.ProviderRefundID,
+				Status:           result.Status,
+			}, err
 		},
 	}
 }

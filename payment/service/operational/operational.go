@@ -28,7 +28,10 @@ func New(
 	}
 }
 
-func (o *Operational) CreateEvent(ctx context.Context, params CreateEventParams) (uint64, error) {
+func (o *Operational) CreateEvent(
+	ctx context.Context,
+	params CreateEventParams,
+) (uint64, error) {
 	mergedCtx, cancel := contextutil.Merge(o.rootCtx, ctx)
 	defer cancel()
 

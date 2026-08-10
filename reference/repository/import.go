@@ -13,29 +13,46 @@ import (
 	importexport "github.com/elum2b/services/internal/utils/importexport"
 )
 
-var referenceImportItemKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,127}$`)
+var referenceImportItemKeyPattern = regexp.MustCompile(
+	`^[a-z0-9][a-z0-9._:-]{0,127}$`,
+)
 
-func (r *Repository) PreviewImport(ctx context.Context, workspaceID string, pkg ExportPackage) (ImportPreview, error) {
+func (r *Repository) PreviewImport(
+	ctx context.Context,
+	workspaceID string,
+	pkg ExportPackage,
+) (ImportPreview, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return ImportPreview{}, err
 	}
 	if err := validateExportPackage(pkg); err != nil {
 		return ImportPreview{}, err
 	}
-	preview := ImportPreview{Format: pkg.Format, Service: pkg.Service, Counts: countPackage(pkg)}
+	preview := ImportPreview{
+		Format:  pkg.Format,
+		Service: pkg.Service,
+		Counts:  countPackage(pkg),
+	}
 	existing, err := r.importExistingItemKeys(ctx, workspaceID)
 	if err != nil {
 		return ImportPreview{}, err
 	}
 	for _, item := range pkg.Items {
 		if existing[item.Key] {
-			preview.Conflicts = append(preview.Conflicts, ImportConflict{Type: "item", Key: item.Key})
+			preview.Conflicts = append(
+				preview.Conflicts,
+				ImportConflict{Type: "item", Key: item.Key},
+			)
 		}
 	}
 	return preview, nil
 }
 
-func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportRequest) (ImportResult, error) {
+func (r *Repository) Import(
+	ctx context.Context,
+	workspaceID string,
+	req ImportRequest,
+) (ImportResult, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return ImportResult{}, err
 	}
@@ -46,8 +63,12 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 	if strategy == "" {
 		strategy = ImportConflictFail
 	}
-	if strategy != ImportConflictFail && strategy != ImportConflictSkip && strategy != ImportConflictUpdate {
-		return ImportResult{}, fmt.Errorf("unsupported import conflict strategy: %s", strategy)
+	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
+		strategy != ImportConflictUpdate {
+		return ImportResult{}, fmt.Errorf(
+			"unsupported import conflict strategy: %s",
+			strategy,
+		)
 	}
 	result := ImportResult{}
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
@@ -60,10 +81,20 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 			return err
 		}
 		if strategy == ImportConflictFail && len(preview.Conflicts) > 0 {
-			return fmt.Errorf("import conflicts found: %d", len(preview.Conflicts))
+			return fmt.Errorf(
+				"import conflicts found: %d",
+				len(preview.Conflicts),
+			)
 		}
 
-		return txRepo.importBulk(ctx, workspaceID, req.Package, strategy, preview, &result)
+		return txRepo.importBulk(
+			ctx,
+			workspaceID,
+			req.Package,
+			strategy,
+			preview,
+			&result,
+		)
 	})
 	if err != nil {
 		return ImportResult{}, err
@@ -73,7 +104,10 @@ func (r *Repository) Import(ctx context.Context, workspaceID string, req ImportR
 	return result, r.bumpReferenceCacheVersions(workspaceID, methods...)
 }
 
-func (r *Repository) lockWorkspaceMutation(ctx context.Context, workspaceID string) error {
+func (r *Repository) lockWorkspaceMutation(
+	ctx context.Context,
+	workspaceID string,
+) error {
 	_, err := r.executor.ExecContext(
 		ctx,
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
@@ -182,7 +216,8 @@ func (r *Repository) importItemsBulk(
 	active := make([]bool, 0, len(items))
 	deletedAt := make([]sql.NullTime, 0, len(items))
 	for _, item := range items {
-		if hasImportConflict(conflicts, "item", item.Key) && strategy == ImportConflictSkip {
+		if hasImportConflict(conflicts, "item", item.Key) &&
+			strategy == ImportConflictSkip {
 			result.Skipped.Items++
 			continue
 		}
@@ -248,7 +283,8 @@ func (r *Repository) importLocalizationsBulk(
 	titles := make([]string, 0)
 	descriptions := make([]string, 0)
 	for _, item := range items {
-		if hasImportConflict(conflicts, "item", item.Key) && strategy == ImportConflictSkip {
+		if hasImportConflict(conflicts, "item", item.Key) &&
+			strategy == ImportConflictSkip {
 			continue
 		}
 		for locale, text := range item.Localization {
@@ -343,7 +379,11 @@ func validateExportPackage(pkg ExportPackage) error {
 			return fmt.Errorf("%s.key: invalid item key", prefix)
 		}
 		if previousIndex, exists := itemKeys[item.Key]; exists {
-			return fmt.Errorf("%s.key: duplicates items[%d].key", prefix, previousIndex)
+			return fmt.Errorf(
+				"%s.key: duplicates items[%d].key",
+				prefix,
+				previousIndex,
+			)
 		}
 		itemKeys[item.Key] = itemIndex
 
@@ -360,7 +400,11 @@ func validateExportPackage(pkg ExportPackage) error {
 				return fmt.Errorf("%s.localization: locale is required", prefix)
 			}
 			if strings.TrimSpace(text.Title) == "" {
-				return fmt.Errorf("%s.localization.%s.title: title is required", prefix, locale)
+				return fmt.Errorf(
+					"%s.localization.%s.title: title is required",
+					prefix,
+					locale,
+				)
 			}
 		}
 	}
@@ -377,7 +421,10 @@ func countPackage(pkg ExportPackage) ImportCounts {
 	return counts
 }
 
-func (r *Repository) importExistingItemKeys(ctx context.Context, workspaceID string) (map[string]bool, error) {
+func (r *Repository) importExistingItemKeys(
+	ctx context.Context,
+	workspaceID string,
+) (map[string]bool, error) {
 	keys, err := r.q.ListImportItemKeys(ctx, workspaceID)
 	if err != nil {
 		return nil, err

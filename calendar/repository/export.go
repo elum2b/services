@@ -9,7 +9,11 @@ import (
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 )
 
-func (r *Repository) Export(ctx context.Context, workspaceID string, req ExportRequest) (ExportPackage, error) {
+func (r *Repository) Export(
+	ctx context.Context,
+	workspaceID string,
+	req ExportRequest,
+) (ExportPackage, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return ExportPackage{}, err
 	}
@@ -34,7 +38,10 @@ func (r *Repository) Export(ctx context.Context, workspaceID string, req ExportR
 			return err
 		}
 
-		localizationRows, err = txRepo.q.ListExportLocalizations(ctx, workspaceID)
+		localizationRows, err = txRepo.q.ListExportLocalizations(
+			ctx,
+			workspaceID,
+		)
 		if err != nil {
 			return err
 		}
@@ -76,7 +83,9 @@ func (r *Repository) Export(ctx context.Context, workspaceID string, req ExportR
 	return out, nil
 }
 
-func mapExportLocalizations(rows []calendarsqlc.CalendarLocalization) map[string]map[string]ExportText {
+func mapExportLocalizations(
+	rows []calendarsqlc.CalendarLocalization,
+) map[string]map[string]ExportText {
 	result := make(map[string]map[string]ExportText)
 	for _, row := range rows {
 		if result[row.CalendarID] == nil {
@@ -90,7 +99,9 @@ func mapExportLocalizations(rows []calendarsqlc.CalendarLocalization) map[string
 	return result
 }
 
-func mapExportSteps(rows []calendarsqlc.ListExportStepsWithRewardsRow) map[string][]ExportStep {
+func mapExportSteps(
+	rows []calendarsqlc.ListExportStepsWithRewardsRow,
+) map[string][]ExportStep {
 	result := make(map[string][]ExportStep)
 	var lastCalendarID string
 	var lastStepID int64

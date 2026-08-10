@@ -7,7 +7,11 @@ import (
 	refsqlc "github.com/elum2b/services/reference/sqlc"
 )
 
-func (r *Repository) Export(ctx context.Context, workspaceID string, req ExportRequest) (ExportPackage, error) {
+func (r *Repository) Export(
+	ctx context.Context,
+	workspaceID string,
+	req ExportRequest,
+) (ExportPackage, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return ExportPackage{}, err
 	}
@@ -26,15 +30,21 @@ func (r *Repository) Export(ctx context.Context, workspaceID string, req ExportR
 		}
 
 		var err error
-		items, err = txRepo.q.ListExportItems(ctx, refsqlc.ListExportItemsParams{
-			WorkspaceID: workspaceID,
-			Column2:     req.OnlyNotDeleted,
-		})
+		items, err = txRepo.q.ListExportItems(
+			ctx,
+			refsqlc.ListExportItemsParams{
+				WorkspaceID: workspaceID,
+				Column2:     req.OnlyNotDeleted,
+			},
+		)
 		if err != nil {
 			return err
 		}
 
-		localizationRows, err = txRepo.q.ListExportLocalizations(ctx, workspaceID)
+		localizationRows, err = txRepo.q.ListExportLocalizations(
+			ctx,
+			workspaceID,
+		)
 		return err
 	}); err != nil {
 		return ExportPackage{}, err
@@ -60,7 +70,9 @@ func (r *Repository) Export(ctx context.Context, workspaceID string, req ExportR
 	return out, nil
 }
 
-func mapExportLocalizations(rows []refsqlc.ReferenceLocalization) map[string]map[string]ExportText {
+func mapExportLocalizations(
+	rows []refsqlc.ReferenceLocalization,
+) map[string]map[string]ExportText {
 	result := make(map[string]map[string]ExportText)
 	for _, row := range rows {
 		if result[row.ItemKey] == nil {

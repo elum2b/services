@@ -10,7 +10,11 @@ import (
 	"github.com/elum2b/services/payment/tonconnect"
 )
 
-func (r *PaymentRepository) Export(ctx context.Context, workspaceID string, req ExportRequest) (ExportPackage, error) {
+func (r *PaymentRepository) Export(
+	ctx context.Context,
+	workspaceID string,
+	req ExportRequest,
+) (ExportPackage, error) {
 	workspaceID, err := requireWorkspaceID(workspaceID)
 	if err != nil {
 		return ExportPackage{}, err
@@ -106,7 +110,11 @@ func (r *PaymentRepository) exportGroups(
 			Position:       row.Position,
 			IsActive:       row.IsActive,
 		}
-		group.Localization = exportText(localizations, group.TitleKey, group.DescriptionKey)
+		group.Localization = exportText(
+			localizations,
+			group.TitleKey,
+			group.DescriptionKey,
+		)
 		result = append(result, group)
 	}
 	return result, nil
@@ -147,9 +155,15 @@ func (r *PaymentRepository) exportProducts(
 			IsClosed:             row.IsClosed,
 		}
 		if row.Target.Valid {
-			product.Target = append(product.Target[:0], row.Target.RawMessage...)
+			product.Target = append(
+				product.Target[:0],
+				row.Target.RawMessage...)
 		}
-		product.Localization = exportText(localizations, &product.TitleKey, product.DescriptionKey)
+		product.Localization = exportText(
+			localizations,
+			&product.TitleKey,
+			product.DescriptionKey,
+		)
 		if len(product.Target) == 0 || string(product.Target) == "null" {
 			product.Target = nil
 		}
@@ -169,7 +183,11 @@ func (r *PaymentRepository) exportProductItems(
 	result := make(map[string][]ExportProductItem)
 	for _, row := range rows {
 		if row.Scale < 0 {
-			return nil, fmt.Errorf("payment export product %s item %s has negative scale", row.ProductID, row.ItemID)
+			return nil, fmt.Errorf(
+				"payment export product %s item %s has negative scale",
+				row.ProductID,
+				row.ItemID,
+			)
 		}
 		item := ExportProductItem{
 			ItemID:       row.ItemID,
@@ -183,29 +201,42 @@ func (r *PaymentRepository) exportProductItems(
 	return result, nil
 }
 
-func (r *PaymentRepository) exportPrices(ctx context.Context, workspaceID string) (map[string][]ExportPrice, error) {
+func (r *PaymentRepository) exportPrices(
+	ctx context.Context,
+	workspaceID string,
+) (map[string][]ExportPrice, error) {
 	rows, err := r.q.ExportListPrices(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
 	result := make(map[string][]ExportPrice)
 	for _, row := range rows {
-		if row.ID < 0 || row.ListAmountMinor < 0 || row.DiscountAmountMinor < 0 {
-			return nil, fmt.Errorf("payment export product %s price contains negative values", row.ProductID)
+		if row.ID < 0 || row.ListAmountMinor < 0 ||
+			row.DiscountAmountMinor < 0 {
+			return nil, fmt.Errorf(
+				"payment export product %s price contains negative values",
+				row.ProductID,
+			)
 		}
 		price := ExportPrice{
-			ID:                           uint64(row.ID),
-			AssetCode:                    row.AssetCode,
-			ListAmountMinor:              uint64(row.ListAmountMinor),
-			DiscountAmountMinor:          uint64(row.DiscountAmountMinor),
-			PricingMode:                  string(row.PricingMode),
-			ReferenceAssetCode:           exportNullStringPtr(row.ReferenceAssetCode),
-			ReferenceListAmountMinor:     exportNullUint64Ptr(row.ReferenceListAmountMinor),
-			ReferenceDiscountAmountMinor: exportNullUint64Ptr(row.ReferenceDiscountAmountMinor),
-			Coefficient:                  exportNullStringPtr(row.Coefficient),
-			IsPromotion:                  row.IsPromotion,
-			StartsAt:                     row.StartsAt,
-			EndsAt:                       row.EndsAt,
+			ID:                  uint64(row.ID),
+			AssetCode:           row.AssetCode,
+			ListAmountMinor:     uint64(row.ListAmountMinor),
+			DiscountAmountMinor: uint64(row.DiscountAmountMinor),
+			PricingMode:         string(row.PricingMode),
+			ReferenceAssetCode: exportNullStringPtr(
+				row.ReferenceAssetCode,
+			),
+			ReferenceListAmountMinor: exportNullUint64Ptr(
+				row.ReferenceListAmountMinor,
+			),
+			ReferenceDiscountAmountMinor: exportNullUint64Ptr(
+				row.ReferenceDiscountAmountMinor,
+			),
+			Coefficient: exportNullStringPtr(row.Coefficient),
+			IsPromotion: row.IsPromotion,
+			StartsAt:    row.StartsAt,
+			EndsAt:      row.EndsAt,
 		}
 		result[row.ProductID] = append(result[row.ProductID], price)
 	}
@@ -230,7 +261,10 @@ func (r *PaymentRepository) exportLocalizations(
 	return result, nil
 }
 
-func (r *PaymentRepository) exportTONWallets(ctx context.Context, workspaceID string) ([]ExportTONWallet, error) {
+func (r *PaymentRepository) exportTONWallets(
+	ctx context.Context,
+	workspaceID string,
+) ([]ExportTONWallet, error) {
 	rows, err := r.q.ExportListTONWallets(ctx, workspaceID)
 	if err != nil {
 		return nil, err
@@ -248,7 +282,9 @@ func (r *PaymentRepository) exportTONWallets(ctx context.Context, workspaceID st
 	return result, nil
 }
 
-func tonConnectManifestFromWallet(row paymentsqlc.PaymentTonWallet) *tonconnect.Manifest {
+func tonConnectManifestFromWallet(
+	row paymentsqlc.PaymentTonWallet,
+) *tonconnect.Manifest {
 	manifest := tonconnect.Manifest{
 		URL:              row.ManifestAppUrl,
 		Name:             row.ManifestName,
@@ -263,7 +299,9 @@ func tonConnectManifestFromWallet(row paymentsqlc.PaymentTonWallet) *tonconnect.
 	return &manifest
 }
 
-func exportProductItemDurationUnit(value paymentsqlc.NullPaymentProductItemDurationUnit) *string {
+func exportProductItemDurationUnit(
+	value paymentsqlc.NullPaymentProductItemDurationUnit,
+) *string {
 	if !value.Valid {
 		return nil
 	}

@@ -64,7 +64,8 @@ func luaToGo(value lua.LValue) any {
 		return string(v)
 	case lua.LNumber:
 		number := float64(v)
-		if math.Trunc(number) == number && number >= math.MinInt64 && number <= math.MaxInt64 {
+		if math.Trunc(number) == number && number >= math.MinInt64 &&
+			number <= math.MaxInt64 {
 			return int64(number)
 		}
 		return number
@@ -93,7 +94,8 @@ func isLuaArray(table *lua.LTable) bool {
 	table.ForEach(func(key lua.LValue, _ lua.LValue) {
 		count++
 		number, ok := key.(lua.LNumber)
-		if !ok || int(number) < 1 || int(number) > length || float64(number) != math.Trunc(float64(number)) {
+		if !ok || int(number) < 1 || int(number) > length ||
+			float64(number) != math.Trunc(float64(number)) {
 			array = false
 		}
 	})

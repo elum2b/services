@@ -2,7 +2,10 @@ package product
 
 import "context"
 
-func (a *Product) RebuildWorkspaceCache(ctx context.Context, workspaceID string) error {
+func (a *Product) RebuildWorkspaceCache(
+	ctx context.Context,
+	workspaceID string,
+) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx

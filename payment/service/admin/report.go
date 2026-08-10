@@ -7,7 +7,10 @@ import (
 	"github.com/elum2b/services/payment/repository"
 )
 
-func (a *Admin) GetPaymentReport(ctx context.Context, params PaymentReportParams) (PaymentReport, error) {
+func (a *Admin) GetPaymentReport(
+	ctx context.Context,
+	params PaymentReportParams,
+) (PaymentReport, error) {
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
@@ -17,26 +20,29 @@ func (a *Admin) GetPaymentReport(ctx context.Context, params PaymentReportParams
 		return PaymentReport{}, err
 	}
 
-	payments, stats, err := a.repository.GetPaymentReport(mergedCtx, repository.PaymentReportParams{
-		WorkspaceID:    normalized.WorkspaceID,
-		Identity:       normalized.Identity,
-		IdentityRole:   string(normalized.IdentityRole),
-		AppID:          normalized.AppID,
-		PlatformID:     normalized.PlatformID,
-		PlatformUserID: normalized.PlatformUserID,
-		Status:         normalized.Status,
-		ProductID:      normalized.ProductID,
-		ProviderCode:   normalized.ProviderCode,
-		AssetCode:      normalized.AssetCode,
-		CreatedFrom:    normalized.CreatedFrom,
-		CreatedUntil:   normalized.CreatedUntil,
-		MinAmountMinor: normalized.MinAmountMinor,
-		MaxAmountMinor: normalized.MaxAmountMinor,
-		Sort:           string(normalized.Sort),
-		Direction:      string(normalized.Direction),
-		Limit:          normalized.Page.Limit,
-		Offset:         normalized.Page.Offset,
-	})
+	payments, stats, err := a.repository.GetPaymentReport(
+		mergedCtx,
+		repository.PaymentReportParams{
+			WorkspaceID:    normalized.WorkspaceID,
+			Identity:       normalized.Identity,
+			IdentityRole:   string(normalized.IdentityRole),
+			AppID:          normalized.AppID,
+			PlatformID:     normalized.PlatformID,
+			PlatformUserID: normalized.PlatformUserID,
+			Status:         normalized.Status,
+			ProductID:      normalized.ProductID,
+			ProviderCode:   normalized.ProviderCode,
+			AssetCode:      normalized.AssetCode,
+			CreatedFrom:    normalized.CreatedFrom,
+			CreatedUntil:   normalized.CreatedUntil,
+			MinAmountMinor: normalized.MinAmountMinor,
+			MaxAmountMinor: normalized.MaxAmountMinor,
+			Sort:           string(normalized.Sort),
+			Direction:      string(normalized.Direction),
+			Limit:          normalized.Page.Limit,
+			Offset:         normalized.Page.Offset,
+		},
+	)
 	if err != nil {
 		return PaymentReport{}, err
 	}
@@ -47,7 +53,9 @@ func (a *Admin) GetPaymentReport(ctx context.Context, params PaymentReportParams
 	}, nil
 }
 
-func normalizePaymentReportParams(params PaymentReportParams) (PaymentReportParams, error) {
+func normalizePaymentReportParams(
+	params PaymentReportParams,
+) (PaymentReportParams, error) {
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return PaymentReportParams{}, err
 	}
@@ -67,7 +75,8 @@ func normalizePaymentReportParams(params PaymentReportParams) (PaymentReportPara
 		!params.CreatedFrom.Before(*params.CreatedUntil) {
 		return PaymentReportParams{}, repository.ErrInvalidDateRange
 	}
-	if params.MaxAmountMinor > 0 && params.MinAmountMinor > params.MaxAmountMinor {
+	if params.MaxAmountMinor > 0 &&
+		params.MinAmountMinor > params.MaxAmountMinor {
 		return PaymentReportParams{}, repository.ErrPaymentReportInvalid
 	}
 	if params.Status != "" && !validReportOrderStatus(params.Status) {
@@ -99,7 +108,9 @@ func normalizePaymentReportParams(params PaymentReportParams) (PaymentReportPara
 
 func validPaymentIdentityRole(role PaymentIdentityRole) bool {
 	switch role {
-	case PaymentIdentityRoleRecipient, PaymentIdentityRoleInitiator, PaymentIdentityRoleEither:
+	case PaymentIdentityRoleRecipient,
+		PaymentIdentityRoleInitiator,
+		PaymentIdentityRoleEither:
 		return true
 	default:
 		return false
@@ -180,7 +191,9 @@ func mapPaymentReport(rows []repository.PaymentReportModel) []PaymentModel {
 	return result
 }
 
-func mapPaymentReportStats(stats repository.PaymentReportStatsModel) PaymentReportStats {
+func mapPaymentReportStats(
+	stats repository.PaymentReportStatsModel,
+) PaymentReportStats {
 	result := PaymentReportStats{
 		TotalOrders:          stats.TotalOrders,
 		DraftOrders:          stats.DraftOrders,
@@ -196,7 +209,11 @@ func mapPaymentReportStats(stats repository.PaymentReportStatsModel) PaymentRepo
 		PurchaseCount:        stats.PurchaseCount,
 		PurchaseQuantity:     stats.PurchaseQuantity,
 		UniqueBuyers:         stats.UniqueBuyers,
-		Assets:               make([]PaymentReportAssetStats, 0, len(stats.Assets)),
+		Assets: make(
+			[]PaymentReportAssetStats,
+			0,
+			len(stats.Assets),
+		),
 	}
 	for _, asset := range stats.Assets {
 		result.Assets = append(result.Assets, PaymentReportAssetStats{

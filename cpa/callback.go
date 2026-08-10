@@ -65,7 +65,11 @@ func WithCallbackIdleDelay(delay time.Duration) CallbackOption {
 	return callbackutil.WithIdleDelay(delay)
 }
 
-func (c *CPA) OnCallback(ctx context.Context, handler CallbackHandler, opts ...CallbackOption) error {
+func (c *CPA) OnCallback(
+	ctx context.Context,
+	handler CallbackHandler,
+	opts ...CallbackOption,
+) error {
 	if handler == nil {
 		return ErrCallbackHandlerNil
 	}
@@ -90,7 +94,11 @@ func (c *CPA) OnCallback(ctx context.Context, handler CallbackHandler, opts ...C
 	return nil
 }
 
-func (c *CPA) runCallback(ctx context.Context, handler CallbackHandler, opts ...CallbackOption) error {
+func (c *CPA) runCallback(
+	ctx context.Context,
+	handler CallbackHandler,
+	opts ...CallbackOption,
+) error {
 	if c == nil || c.callbacks == nil {
 		return ErrCallbacksNotConfigured
 	}
@@ -101,7 +109,11 @@ func (c *CPA) runCallback(ctx context.Context, handler CallbackHandler, opts ...
 		value := Context{Context: callbackCtx}
 		var payload CallbackPayload
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
-			return serviceerrors.Wrap(serviceerrors.CodeInternalError, "cpa callback payload decode failed", err)
+			return serviceerrors.Wrap(
+				serviceerrors.CodeInternalError,
+				"cpa callback payload decode failed",
+				err,
+			)
 		}
 		value.Payload = &services.RewardPayload{
 			Identity: services.Identity{

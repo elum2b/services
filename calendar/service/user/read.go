@@ -8,7 +8,10 @@ import (
 	"github.com/elum2b/services/calendar/repository"
 )
 
-func (u *User) ListActive(ctx context.Context, params ListActiveParams) ([]ActiveCalendarModel, error) {
+func (u *User) ListActive(
+	ctx context.Context,
+	params ListActiveParams,
+) ([]ActiveCalendarModel, error) {
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 
@@ -20,15 +23,24 @@ func (u *User) ListActive(ctx context.Context, params ListActiveParams) ([]Activ
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	values, err := u.repository.ListActive(mergedCtx, params.WorkspaceID, params.Locale, now)
+	values, err := u.repository.ListActive(
+		mergedCtx,
+		params.WorkspaceID,
+		params.Locale,
+		now,
+	)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]ActiveCalendarModel, 0, len(values))
 	for _, value := range values {
 		item := ActiveCalendarModel{
-			ID: value.ID, Type: value.Type, Mode: value.Mode, IsActive: value.IsActive,
-			StartAt: value.StartAt, EndAt: value.EndAt,
+			ID:       value.ID,
+			Type:     value.Type,
+			Mode:     value.Mode,
+			IsActive: value.IsActive,
+			StartAt:  value.StartAt,
+			EndAt:    value.EndAt,
 		}
 		if value.Localization != nil {
 			item.Title = value.Localization.Title
@@ -39,7 +51,10 @@ func (u *User) ListActive(ctx context.Context, params ListActiveParams) ([]Activ
 	return result, nil
 }
 
-func (u *User) GetCalendar(ctx context.Context, params GetCalendarParams) (CalendarModel, error) {
+func (u *User) GetCalendar(
+	ctx context.Context,
+	params GetCalendarParams,
+) (CalendarModel, error) {
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 
@@ -47,7 +62,12 @@ func (u *User) GetCalendar(ctx context.Context, params GetCalendarParams) (Calen
 		return CalendarModel{}, err
 	}
 
-	value, err := u.repository.GetCalendar(mergedCtx, params.Identity.WorkspaceID, params.Ref, params.Locale)
+	value, err := u.repository.GetCalendar(
+		mergedCtx,
+		params.Identity.WorkspaceID,
+		params.Ref,
+		params.Locale,
+	)
 	if err != nil {
 		return CalendarModel{}, err
 	}
@@ -63,7 +83,11 @@ func (u *User) GetCalendar(ctx context.Context, params GetCalendarParams) (Calen
 	if !value.HideFutureRewards || value.ID == "" {
 		return result, nil
 	}
-	progress, err := u.repository.GetProgress(mergedCtx, repositoryIdentity(params.Identity), value.ID)
+	progress, err := u.repository.GetProgress(
+		mergedCtx,
+		repositoryIdentity(params.Identity),
+		value.ID,
+	)
 	if err != nil {
 		return CalendarModel{}, err
 	}
@@ -91,7 +115,10 @@ func calendarVisibleAt(value repository.Calendar, now time.Time) bool {
 	return value.EndAt == nil || value.EndAt.After(now)
 }
 
-func (u *User) GetProgress(ctx context.Context, params GetProgressParams) (*ProgressModel, error) {
+func (u *User) GetProgress(
+	ctx context.Context,
+	params GetProgressParams,
+) (*ProgressModel, error) {
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 
@@ -99,7 +126,11 @@ func (u *User) GetProgress(ctx context.Context, params GetProgressParams) (*Prog
 		return nil, err
 	}
 
-	value, err := u.repository.GetProgress(mergedCtx, repositoryIdentity(params.Identity), params.CalendarID)
+	value, err := u.repository.GetProgress(
+		mergedCtx,
+		repositoryIdentity(params.Identity),
+		params.CalendarID,
+	)
 	if err != nil || value == nil {
 		return nil, err
 	}

@@ -2,26 +2,35 @@ package repository
 
 import (
 	"database/sql"
+
 	json "github.com/goccy/go-json"
+	"github.com/google/uuid"
 
 	calendarsqlc "github.com/elum2b/services/calendar/sqlc"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	"github.com/google/uuid"
 )
 
 func mapDefinition(row calendarsqlc.CalendarDefinition) Calendar {
 	return Calendar{
-		ID: row.ID, WorkspaceID: row.WorkspaceID, Type: row.Type,
+		ID:                  row.ID,
+		WorkspaceID:         row.WorkspaceID,
+		Type:                row.Type,
 		Mode:                row.Mode,
 		IntervalType:        row.IntervalType,
 		IntervalUnit:        row.IntervalUnit,
 		IntervalCount:       uint32(row.IntervalCount),
 		ResetAfterIntervals: uint32(row.ResetAfterIntervals),
 		EndBehavior:         row.EndBehavior,
-		Timezone:            row.Timezone, HideFutureRewards: row.HideFutureRewards,
-		IsActive: row.IsActive, StartAt: sqlwrap.NullTimePtr(row.StartAt),
-		EndAt: sqlwrap.NullTimePtr(row.EndAt), DeletedAt: sqlwrap.NullTimePtr(row.DeletedAt),
-		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		Timezone:            row.Timezone,
+		HideFutureRewards:   row.HideFutureRewards,
+		IsActive:            row.IsActive,
+		StartAt:             sqlwrap.NullTimePtr(row.StartAt),
+		EndAt: sqlwrap.NullTimePtr(
+			row.EndAt,
+		),
+		DeletedAt: sqlwrap.NullTimePtr(row.DeletedAt),
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
 	}
 }
 
@@ -35,7 +44,11 @@ func appendStep(steps []Step, stepID sql.NullInt64, position sql.NullInt32,
 	}
 	if len(steps) == 0 || steps[len(steps)-1].ID != uint64(stepID.Int64) {
 		steps = append(steps, Step{
-			ID: uint64(stepID.Int64), Position: uint32(position.Int32), Rewards: make([]Reward, 0),
+			ID: uint64(
+				stepID.Int64,
+			),
+			Position: uint32(position.Int32),
+			Rewards:  make([]Reward, 0),
 		})
 	}
 	if rewardID.Valid {

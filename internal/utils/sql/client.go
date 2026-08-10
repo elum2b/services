@@ -16,7 +16,10 @@ const defaultQueryTimeout = time.Second
 var (
 	// ErrNilDB is returned when a nil *sql.DB is passed.
 	ErrNilDB           = errors.New("sqlcwrap: nil db")
-	ErrServiceNotReady = serviceerrors.New(serviceerrors.CodeNotReady, "service is not ready")
+	ErrServiceNotReady = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"service is not ready",
+	)
 )
 
 // Client is a sqlc-oriented DB wrapper with timeout + L1/L2 cache support.
@@ -117,72 +120,126 @@ type unavailableConnector struct{}
 func (unavailableConnector) Connect(context.Context) (driver.Conn, error) {
 	return unavailableConn{}, nil
 }
+
 func (unavailableConnector) Driver() driver.Driver { return unavailableDriver{} }
 
 type unavailableDriver struct{}
 
-func (unavailableDriver) Open(string) (driver.Conn, error) { return unavailableConn{}, nil }
+func (unavailableDriver) Open(
+	string,
+) (driver.Conn, error) {
+	return unavailableConn{}, nil
+}
 
 type unavailableConn struct{}
 
-func (unavailableConn) Prepare(string) (driver.Stmt, error) { return nil, ErrServiceNotReady }
-func (unavailableConn) Close() error                        { return nil }
-func (unavailableConn) Begin() (driver.Tx, error)           { return nil, ErrServiceNotReady }
-func (unavailableConn) BeginTx(context.Context, driver.TxOptions) (driver.Tx, error) {
+func (unavailableConn) Prepare(
+	string,
+) (driver.Stmt, error) {
+	return nil, ErrServiceNotReady
+}
+func (unavailableConn) Close() error { return nil }
+
+func (unavailableConn) Begin() (driver.Tx, error) { return nil, ErrServiceNotReady }
+
+func (unavailableConn) BeginTx(
+	context.Context,
+	driver.TxOptions,
+) (driver.Tx, error) {
 	return nil, ErrServiceNotReady
 }
 func (unavailableConn) Ping(context.Context) error { return ErrServiceNotReady }
-func (unavailableConn) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
+
+func (unavailableConn) ExecContext(
+	context.Context,
+	string,
+	[]driver.NamedValue,
+) (driver.Result, error) {
 	return nil, ErrServiceNotReady
 }
-func (unavailableConn) QueryContext(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
+
+func (unavailableConn) QueryContext(
+	context.Context,
+	string,
+	[]driver.NamedValue,
+) (driver.Rows, error) {
 	return nil, ErrServiceNotReady
 }
 
 // ExecContext implements sqlc.DBTX with the configured query timeout.
-func (c *Client) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+func (c *Client) ExecContext(
+	ctx context.Context,
+	query string,
+	args ...any,
+) (sql.Result, error) {
 	qctx, cancel := c.queryContext(ctx, 0)
 	defer cancel()
 	return c.db.ExecContext(qctx, query, args...)
 }
 
 // PrepareContext implements sqlc.DBTX with the configured query timeout.
-func (c *Client) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+func (c *Client) PrepareContext(
+	ctx context.Context,
+	query string,
+) (*sql.Stmt, error) {
 	qctx, cancel := c.queryContext(ctx, 0)
 	defer cancel()
 	return c.db.PrepareContext(qctx, query)
 }
 
 // QueryContext implements sqlc.DBTX with the configured query timeout.
-func (c *Client) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+func (c *Client) QueryContext(
+	ctx context.Context,
+	query string,
+	args ...any,
+) (*sql.Rows, error) {
 	qctx, _ := c.queryContext(ctx, 0)
 	return c.db.QueryContext(qctx, query, args...)
 }
 
 // QueryRowContext implements sqlc.DBTX with the configured query timeout.
-func (c *Client) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+func (c *Client) QueryRowContext(
+	ctx context.Context,
+	query string,
+	args ...any,
+) *sql.Row {
 	qctx, _ := c.queryContext(ctx, 0)
 	return c.db.QueryRowContext(qctx, query, args...)
 }
 
-func (e *Executor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+func (e *Executor) ExecContext(
+	ctx context.Context,
+	query string,
+	args ...any,
+) (sql.Result, error) {
 	qctx, cancel := e.client.queryContext(ctx, e.timeout)
 	defer cancel()
 	return e.client.db.ExecContext(qctx, query, args...)
 }
 
-func (e *Executor) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+func (e *Executor) PrepareContext(
+	ctx context.Context,
+	query string,
+) (*sql.Stmt, error) {
 	qctx, cancel := e.client.queryContext(ctx, e.timeout)
 	defer cancel()
 	return e.client.db.PrepareContext(qctx, query)
 }
 
-func (e *Executor) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+func (e *Executor) QueryContext(
+	ctx context.Context,
+	query string,
+	args ...any,
+) (*sql.Rows, error) {
 	qctx, _ := e.client.queryContext(ctx, e.timeout)
 	return e.client.db.QueryContext(qctx, query, args...)
 }
 
-func (e *Executor) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+func (e *Executor) QueryRowContext(
+	ctx context.Context,
+	query string,
+	args ...any,
+) *sql.Row {
 	qctx, _ := e.client.queryContext(ctx, e.timeout)
 	return e.client.db.QueryRowContext(qctx, query, args...)
 }
@@ -250,7 +307,10 @@ func (c *Client) Close() error {
 	return nil
 }
 
-func createContextWithTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+func createContextWithTimeout(
+	parent context.Context,
+	timeout time.Duration,
+) (context.Context, context.CancelFunc) {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -260,7 +320,10 @@ func createContextWithTimeout(parent context.Context, timeout time.Duration) (co
 	return context.WithTimeout(parent, timeout)
 }
 
-func (c *Client) queryContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+func (c *Client) queryContext(
+	parent context.Context,
+	timeout time.Duration,
+) (context.Context, context.CancelFunc) {
 	if timeout <= 0 && c != nil {
 		timeout = c.queryTimeout
 	}
@@ -283,7 +346,10 @@ func (c *Client) rememberL2Expiry(key string, ttl time.Duration) {
 	c.l2Expiry.Store(key, time.Now().Add(ttl))
 }
 
-func (c *Client) l2RemainingTTL(key string, fallback time.Duration) time.Duration {
+func (c *Client) l2RemainingTTL(
+	key string,
+	fallback time.Duration,
+) time.Duration {
 	if c == nil || key == "" {
 		return fallback
 	}

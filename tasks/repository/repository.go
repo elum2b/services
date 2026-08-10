@@ -54,15 +54,20 @@ func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 	}
 	executor := db.WithQueryTimeout(queryTimeout)
 	return &Repository{
-		db:                       db,
-		q:                        tasksqlc.New(executor),
-		callbacks:                callbackutil.NewWithTable(db.DB(), callbackutil.TasksTable),
+		db: db,
+		q:  tasksqlc.New(executor),
+		callbacks: callbackutil.NewWithTable(
+			db.DB(),
+			callbackutil.TasksTable,
+		),
 		executor:                 executor,
 		queryTimeout:             queryTimeout,
 		cacheL1Delay:             options.CacheL1Delay,
 		cacheL2Delay:             options.CacheL2Delay,
 		onCacheInvalidationError: options.OnCacheInvalidationError,
-		secretEncryptionKey:      append([]byte(nil), options.SecretEncryptionKey...),
+		secretEncryptionKey: append(
+			[]byte(nil),
+			options.SecretEncryptionKey...),
 	}
 }
 
@@ -70,22 +75,31 @@ func NewPrepared(ctx context.Context, db *sqlwrap.Client) (*Repository, error) {
 	return NewPreparedWithOptions(ctx, db, Options{})
 }
 
-func NewPreparedWithOptions(_ context.Context, db *sqlwrap.Client, options Options) (*Repository, error) {
+func NewPreparedWithOptions(
+	_ context.Context,
+	db *sqlwrap.Client,
+	options Options,
+) (*Repository, error) {
 	queryTimeout := options.QueryTimeout
 	if queryTimeout <= 0 {
 		queryTimeout = DefaultQueryTimeout
 	}
 	executor := db.WithQueryTimeout(queryTimeout)
 	return &Repository{
-		db:                       db,
-		q:                        tasksqlc.New(executor),
-		callbacks:                callbackutil.NewWithTable(db.DB(), callbackutil.TasksTable),
+		db: db,
+		q:  tasksqlc.New(executor),
+		callbacks: callbackutil.NewWithTable(
+			db.DB(),
+			callbackutil.TasksTable,
+		),
 		executor:                 executor,
 		queryTimeout:             queryTimeout,
 		cacheL1Delay:             options.CacheL1Delay,
 		cacheL2Delay:             options.CacheL2Delay,
 		onCacheInvalidationError: options.OnCacheInvalidationError,
-		secretEncryptionKey:      append([]byte(nil), options.SecretEncryptionKey...),
+		secretEncryptionKey: append(
+			[]byte(nil),
+			options.SecretEncryptionKey...),
 	}, nil
 }
 
@@ -103,7 +117,10 @@ func (r *Repository) Close() error {
 	return err
 }
 
-func (r *Repository) WithTx(ctx context.Context, fn func(*Repository) error) error {
+func (r *Repository) WithTx(
+	ctx context.Context,
+	fn func(*Repository) error,
+) error {
 	_, err := sqlwrap.Transaction(
 		ctx,
 		r.db,
@@ -126,7 +143,10 @@ func (r *Repository) WithTx(ctx context.Context, fn func(*Repository) error) err
 	return err
 }
 
-func (r *Repository) lockWorkspaceMutation(ctx context.Context, workspaceID string) error {
+func (r *Repository) lockWorkspaceMutation(
+	ctx context.Context,
+	workspaceID string,
+) error {
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return err
 	}
@@ -163,9 +183,18 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 	if err := r.migratePartnerSecrets(ctx); err != nil {
 		return err
 	}
-	if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
-		return callbackutil.BootstrapTable(ctx, r.db.DB(), callbackutil.TasksTable)
-	}); err != nil {
+	if err := sqlwrap.Exec(
+		ctx,
+		r.db,
+		sqlwrap.Params{Timeout: bootstrapQueryTimeout},
+		func(ctx context.Context) error {
+			return callbackutil.BootstrapTable(
+				ctx,
+				r.db.DB(),
+				callbackutil.TasksTable,
+			)
+		},
+	); err != nil {
 		return err
 	}
 	if err := r.applySQL(ctx, tasksqlc.TriggerSQL, "trigger"); err != nil {
@@ -221,11 +250,20 @@ func (r *Repository) applySchemaUpgrades(ctx context.Context) error {
 		},
 	}
 	for _, upgrade := range upgrades {
-		if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
-			_, err := r.db.DB().ExecContext(ctx, upgrade.sql)
-			return err
-		}); err != nil {
-			return fmt.Errorf("tasks schema upgrade %s failed: %w", upgrade.name, err)
+		if err := sqlwrap.Exec(
+			ctx,
+			r.db,
+			sqlwrap.Params{Timeout: bootstrapQueryTimeout},
+			func(ctx context.Context) error {
+				_, err := r.db.DB().ExecContext(ctx, upgrade.sql)
+				return err
+			},
+		); err != nil {
+			return fmt.Errorf(
+				"tasks schema upgrade %s failed: %w",
+				upgrade.name,
+				err,
+			)
 		}
 	}
 	return nil
@@ -237,11 +275,21 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 		return fmt.Errorf("tasks %s SQL parse failed: %w", source, err)
 	}
 	for _, statement := range statements {
-		if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
-			_, err := r.db.DB().ExecContext(ctx, statement)
-			return err
-		}); err != nil {
-			return fmt.Errorf("tasks %s SQL statement failed: %w\n%s", source, err, statement)
+		if err := sqlwrap.Exec(
+			ctx,
+			r.db,
+			sqlwrap.Params{Timeout: bootstrapQueryTimeout},
+			func(ctx context.Context) error {
+				_, err := r.db.DB().ExecContext(ctx, statement)
+				return err
+			},
+		); err != nil {
+			return fmt.Errorf(
+				"tasks %s SQL statement failed: %w\n%s",
+				source,
+				err,
+				statement,
+			)
 		}
 	}
 	return nil

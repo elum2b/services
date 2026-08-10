@@ -5,7 +5,11 @@ import (
 	"net/http"
 )
 
-func (c *Client) CreatePayment(ctx context.Context, payload createPaymentRequest, idempotencyKey string) (paymentAPIResponse, error) {
+func (c *Client) CreatePayment(
+	ctx context.Context,
+	payload createPaymentRequest,
+	idempotencyKey string,
+) (paymentAPIResponse, error) {
 	if err := c.requireCredentials(); err != nil {
 		return paymentAPIResponse{}, err
 	}
@@ -21,8 +25,13 @@ func (c *Client) CreatePayment(ctx context.Context, payload createPaymentRequest
 	if err != nil {
 		return paymentAPIResponse{}, err
 	}
-	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusMultipleChoices {
-		return paymentAPIResponse{}, wrapAPIError("create payment", resp.StatusCode(), resp.String())
+	if resp.StatusCode() < http.StatusOK ||
+		resp.StatusCode() >= http.StatusMultipleChoices {
+		return paymentAPIResponse{}, wrapAPIError(
+			"create payment",
+			resp.StatusCode(),
+			resp.String(),
+		)
 	}
 	return result, nil
 }

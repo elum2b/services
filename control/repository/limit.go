@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/google/uuid"
+
 	controlmodel "github.com/elum2b/services/control/model"
 	controlsqlc "github.com/elum2b/services/control/sqlc"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	"github.com/google/uuid"
 )
 
 func (r *Repository) RequestWorkspaceLimit(
@@ -17,13 +18,14 @@ func (r *Repository) RequestWorkspaceLimit(
 	requestedLimit int32,
 	reason string,
 ) (LimitRequest, error) {
-
 	var request LimitRequest
+
 	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		member, err := q.GetPlatformMemberForUpdate(ctx, accountID)
 		if err != nil {
 			return noRows(err, ErrForbidden)
 		}
+
 		if member.Status != string(controlmodel.MembershipStatusActive) ||
 			requestedLimit <= member.WorkspaceLimit {
 			return ErrInvalidArgument
@@ -41,19 +43,23 @@ func (r *Repository) RequestWorkspaceLimit(
 			CreatedAt:      time.Now(),
 		}
 
-		rows, err := q.CreateLimitRequest(ctx, controlsqlc.CreateLimitRequestParams{
-			ID:             request.ID,
-			Kind:           string(request.Kind),
-			AccountID:      nullableString(accountID),
-			WorkspaceID:    sql.NullString{},
-			CurrentLimit:   request.CurrentLimit,
-			RequestedLimit: request.RequestedLimit,
-			Reason:         reason,
-			RequestedBy:    accountID,
-		})
+		rows, err := q.CreateLimitRequest(
+			ctx,
+			controlsqlc.CreateLimitRequestParams{
+				ID:             request.ID,
+				Kind:           string(request.Kind),
+				AccountID:      nullableString(accountID),
+				WorkspaceID:    sql.NullString{},
+				CurrentLimit:   request.CurrentLimit,
+				RequestedLimit: request.RequestedLimit,
+				Reason:         reason,
+				RequestedBy:    accountID,
+			},
+		)
 		if err != nil {
 			return err
 		}
+
 		if rows != 1 {
 			return ErrLimitRequest
 		}
@@ -65,7 +71,6 @@ func (r *Repository) RequestWorkspaceLimit(
 	}
 
 	return request, nil
-
 }
 
 func (r *Repository) RequestEmployeeLimit(
@@ -75,8 +80,8 @@ func (r *Repository) RequestEmployeeLimit(
 	requestedLimit int32,
 	reason string,
 ) (LimitRequest, error) {
-
 	var request LimitRequest
+
 	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		bundle, err := workspaceAuthorization(
 			ctx,
@@ -89,6 +94,7 @@ func (r *Repository) RequestEmployeeLimit(
 		if err != nil {
 			return err
 		}
+
 		if !bundle.ActorIsOwner || requestedLimit <= bundle.EmployeeLimit {
 			return ErrInvalidArgument
 		}
@@ -105,19 +111,23 @@ func (r *Repository) RequestEmployeeLimit(
 			CreatedAt:      time.Now(),
 		}
 
-		rows, err := q.CreateLimitRequest(ctx, controlsqlc.CreateLimitRequestParams{
-			ID:             request.ID,
-			Kind:           string(request.Kind),
-			AccountID:      sql.NullString{},
-			WorkspaceID:    nullableString(workspaceID),
-			CurrentLimit:   request.CurrentLimit,
-			RequestedLimit: request.RequestedLimit,
-			Reason:         reason,
-			RequestedBy:    actorID,
-		})
+		rows, err := q.CreateLimitRequest(
+			ctx,
+			controlsqlc.CreateLimitRequestParams{
+				ID:             request.ID,
+				Kind:           string(request.Kind),
+				AccountID:      sql.NullString{},
+				WorkspaceID:    nullableString(workspaceID),
+				CurrentLimit:   request.CurrentLimit,
+				RequestedLimit: request.RequestedLimit,
+				Reason:         reason,
+				RequestedBy:    actorID,
+			},
+		)
 		if err != nil {
 			return err
 		}
+
 		if rows != 1 {
 			return ErrLimitRequest
 		}
@@ -129,7 +139,6 @@ func (r *Repository) RequestEmployeeLimit(
 	}
 
 	return request, nil
-
 }
 
 func (r *Repository) ListLimitRequests(
@@ -139,7 +148,6 @@ func (r *Repository) ListLimitRequests(
 	cursor Cursor,
 	limit int32,
 ) ([]LimitRequest, error) {
-
 	switch status {
 	case "",
 		controlmodel.LimitRequestStatusPending,
@@ -150,10 +158,15 @@ func (r *Repository) ListLimitRequests(
 		return nil, ErrInvalidArgument
 	}
 
-	allowed, err := r.CheckGlobalAccess(ctx, actorID, "control.global.limit.list")
+	allowed, err := r.CheckGlobalAccess(
+		ctx,
+		actorID,
+		"control.global.limit.list",
+	)
 	if err != nil {
 		return nil, err
 	}
+
 	if !allowed {
 		return nil, ErrForbidden
 	}
@@ -174,7 +187,6 @@ func (r *Repository) ListLimitRequests(
 	}
 
 	return result, nil
-
 }
 
 func (r *Repository) ResolveLimitRequest(
@@ -185,14 +197,21 @@ func (r *Repository) ResolveLimitRequest(
 	approvedLimit int32,
 	comment string,
 ) (LimitRequest, error) {
-
 	var result LimitRequest
+
 	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
 		methodKey := "control.global.limit.reject"
 		if approved {
 			methodKey = "control.global.limit.approve"
 		}
-		if _, err := globalAuthorization(ctx, q, actorID, actorID, methodKey); err != nil {
+
+		if _, err := globalAuthorization(
+			ctx,
+			q,
+			actorID,
+			actorID,
+			methodKey,
+		); err != nil {
 			return err
 		}
 
@@ -200,19 +219,28 @@ func (r *Repository) ResolveLimitRequest(
 		if err != nil {
 			return noRows(err, ErrLimitRequest)
 		}
+
 		switch LimitKind(snapshot.Kind) {
 		case LimitKindAccountWorkspace:
 			if !snapshot.AccountID.Valid {
 				return ErrLimitRequest
 			}
-			if _, err := q.GetPlatformMemberForUpdate(ctx, snapshot.AccountID.String); err != nil {
+
+			if _, err := q.GetPlatformMemberForUpdate(
+				ctx,
+				snapshot.AccountID.String,
+			); err != nil {
 				return noRows(err, ErrLimitRequest)
 			}
 		case LimitKindWorkspaceEmployee:
 			if !snapshot.WorkspaceID.Valid {
 				return ErrLimitRequest
 			}
-			if _, err := q.GetWorkspaceCapacityForUpdate(ctx, snapshot.WorkspaceID.String); err != nil {
+
+			if _, err := q.GetWorkspaceCapacityForUpdate(
+				ctx,
+				snapshot.WorkspaceID.String,
+			); err != nil {
 				return noRows(err, ErrLimitRequest)
 			}
 		default:
@@ -223,6 +251,7 @@ func (r *Repository) ResolveLimitRequest(
 		if err != nil {
 			return noRows(err, ErrLimitRequest)
 		}
+
 		if row.Status != string(controlmodel.LimitRequestStatusPending) ||
 			row.Kind != snapshot.Kind ||
 			row.AccountID != snapshot.AccountID ||
@@ -232,10 +261,13 @@ func (r *Repository) ResolveLimitRequest(
 
 		status := controlmodel.LimitRequestStatusRejected
 		approvedValue := sql.NullInt32{}
+
 		if approved {
-			if approvedLimit < row.RequestedLimit || approvedLimit <= row.CurrentLimit {
+			if approvedLimit < row.RequestedLimit ||
+				approvedLimit <= row.CurrentLimit {
 				return ErrInvalidArgument
 			}
+
 			status = controlmodel.LimitRequestStatusApproved
 			approvedValue = sql.NullInt32{
 				Int32: approvedLimit,
@@ -254,6 +286,7 @@ func (r *Repository) ResolveLimitRequest(
 				if err != nil {
 					return err
 				}
+
 				if updated != 1 {
 					return ErrLimitRequest
 				}
@@ -268,6 +301,7 @@ func (r *Repository) ResolveLimitRequest(
 				if err != nil {
 					return err
 				}
+
 				if updated != 1 {
 					return ErrLimitRequest
 				}
@@ -276,16 +310,20 @@ func (r *Repository) ResolveLimitRequest(
 			}
 		}
 
-		rows, err := q.ResolveLimitRequest(ctx, controlsqlc.ResolveLimitRequestParams{
-			Status:        string(status),
-			ApprovedLimit: approvedValue,
-			ReviewedBy:    nullableString(actorID),
-			ReviewComment: comment,
-			ID:            requestID,
-		})
+		rows, err := q.ResolveLimitRequest(
+			ctx,
+			controlsqlc.ResolveLimitRequestParams{
+				Status:        string(status),
+				ApprovedLimit: approvedValue,
+				ReviewedBy:    nullableString(actorID),
+				ReviewComment: comment,
+				ID:            requestID,
+			},
+		)
 		if err != nil {
 			return err
 		}
+
 		if rows != 1 {
 			return ErrLimitRequest
 		}
@@ -294,11 +332,15 @@ func (r *Repository) ResolveLimitRequest(
 		result.Status = status
 		result.ReviewedBy = actorID
 		result.ReviewComment = comment
+
 		reviewedAt := time.Now()
+
 		result.ReviewedAt = &reviewedAt
 		result.ApprovedLimit = nil
+
 		if approvedValue.Valid {
 			value := approvedValue.Int32
+
 			result.ApprovedLimit = &value
 		}
 
@@ -309,7 +351,6 @@ func (r *Repository) ResolveLimitRequest(
 	}
 
 	return result, nil
-
 }
 
 func (r *Repository) CancelLimitRequest(
@@ -317,8 +358,8 @@ func (r *Repository) CancelLimitRequest(
 	accountID string,
 	requestID string,
 ) (int64, error) {
-
 	var affected int64
+
 	err := sqlwrap.WithTx(
 		ctx,
 		r.db.DB(),
@@ -330,23 +371,31 @@ func (r *Repository) CancelLimitRequest(
 			if err != nil {
 				return noRows(err, ErrLimitRequest)
 			}
-			if request.Status != string(controlmodel.LimitRequestStatusPending) ||
+
+			if request.Status != string(
+				controlmodel.LimitRequestStatusPending,
+			) ||
 				request.RequestedBy != accountID {
 				return ErrLimitRequest
 			}
 
-			affected, err = q.CancelLimitRequest(ctx, controlsqlc.CancelLimitRequestParams{
-				ID:          requestID,
-				RequestedBy: accountID,
-			})
+			affected, err = q.CancelLimitRequest(
+				ctx,
+				controlsqlc.CancelLimitRequestParams{
+					ID:          requestID,
+					RequestedBy: accountID,
+				},
+			)
 			if err != nil {
 				return err
 			}
+
 			if affected != 1 {
 				return ErrLimitRequest
 			}
 
 			var event AuditEvent
+
 			switch LimitKind(request.Kind) {
 			case LimitKindAccountWorkspace:
 				event = AuditEvent{
@@ -374,11 +423,9 @@ func (r *Repository) CancelLimitRequest(
 	)
 
 	return affected, err
-
 }
 
 func mapLimitRequest(value controlsqlc.ControlLimitRequest) LimitRequest {
-
 	result := LimitRequest{
 		ID:             value.ID,
 		Kind:           LimitKind(value.Kind),
@@ -395,12 +442,13 @@ func mapLimitRequest(value controlsqlc.ControlLimitRequest) LimitRequest {
 	}
 	if value.ApprovedLimit.Valid {
 		approved := value.ApprovedLimit.Int32
+
 		result.ApprovedLimit = &approved
 	}
+
 	if value.ReviewedAt.Valid {
 		result.ReviewedAt = &value.ReviewedAt.Time
 	}
 
 	return result
-
 }

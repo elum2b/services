@@ -2,10 +2,11 @@ package admin
 
 import (
 	"context"
-	json "github.com/goccy/go-json"
 	"math"
 	"strings"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	services "github.com/elum2b/services"
 	"github.com/elum2b/services/internal/utils/target"
@@ -25,16 +26,25 @@ type SavePromoParams struct {
 	EndAt          *time.Time
 }
 
-func (a *Admin) CreatePromo(ctx context.Context, params SavePromoParams) (uint64, error) {
+func (a *Admin) CreatePromo(
+	ctx context.Context,
+	params SavePromoParams,
+) (uint64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := validatePromo(params); err != nil {
 		return 0, err
 	}
-	return a.repository.CreatePromo(mergedCtx, repository.SavePromoParams(params))
+	return a.repository.CreatePromo(
+		mergedCtx,
+		repository.SavePromoParams(params),
+	)
 }
 
-func (a *Admin) UpdatePromo(ctx context.Context, params SavePromoParams) (int64, error) {
+func (a *Admin) UpdatePromo(
+	ctx context.Context,
+	params SavePromoParams,
+) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if params.ID == 0 {
@@ -46,10 +56,17 @@ func (a *Admin) UpdatePromo(ctx context.Context, params SavePromoParams) (int64,
 	if err := validatePromo(params); err != nil {
 		return 0, err
 	}
-	return a.repository.UpdatePromo(mergedCtx, repository.SavePromoParams(params))
+	return a.repository.UpdatePromo(
+		mergedCtx,
+		repository.SavePromoParams(params),
+	)
 }
 
-func (a *Admin) GetPromo(ctx context.Context, workspaceID string, id uint64) (PromoModel, error) {
+func (a *Admin) GetPromo(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (PromoModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
@@ -66,7 +83,11 @@ func (a *Admin) GetPromo(ctx context.Context, workspaceID string, id uint64) (Pr
 	if err != nil {
 		return PromoModel{}, err
 	}
-	localizations, err := a.repository.ListLocalizations(mergedCtx, workspaceID, id)
+	localizations, err := a.repository.ListLocalizations(
+		mergedCtx,
+		workspaceID,
+		id,
+	)
 	if err != nil {
 		return PromoModel{}, err
 	}
@@ -77,11 +98,20 @@ func (a *Admin) GetPromo(ctx context.Context, workspaceID string, id uint64) (Pr
 	return mapPromo(promo, localizations, rewards), nil
 }
 
-func (a *Admin) ListPromos(ctx context.Context, workspaceID string, page Page) ([]PromoModel, error) {
+func (a *Admin) ListPromos(
+	ctx context.Context,
+	workspaceID string,
+	page Page,
+) ([]PromoModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	limit, offset := normalizePage(page)
-	values, err := a.repository.ListPromos(mergedCtx, workspaceID, limit, offset)
+	values, err := a.repository.ListPromos(
+		mergedCtx,
+		workspaceID,
+		limit,
+		offset,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +122,11 @@ func (a *Admin) ListPromos(ctx context.Context, workspaceID string, page Page) (
 	return result, nil
 }
 
-func (a *Admin) DeletePromo(ctx context.Context, workspaceID string, id uint64) (int64, error) {
+func (a *Admin) DeletePromo(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
@@ -124,28 +158,48 @@ func validatePromo(params SavePromoParams) error {
 	if err := target.Validate(params.Target); err != nil {
 		return ErrPromoPayloadInvalid
 	}
-	if params.StartAt != nil && params.EndAt != nil && !params.StartAt.Before(*params.EndAt) {
+	if params.StartAt != nil && params.EndAt != nil &&
+		!params.StartAt.Before(*params.EndAt) {
 		return ErrPromoRangeInvalid
 	}
 	return nil
 }
 
-func mapPromo(value repository.Promo, localizations []repository.Localization, rewards []repository.Reward) PromoModel {
+func mapPromo(
+	value repository.Promo,
+	localizations []repository.Localization,
+	rewards []repository.Reward,
+) PromoModel {
 	result := PromoModel{
-		ID: value.ID, Code: value.Code, Payload: value.Payload, Target: value.Target, MaxActivations: value.MaxActivations,
-		ActivationCount: value.ActivationCount, IsActive: value.IsActive, StartAt: value.StartAt,
-		EndAt: value.EndAt, DeletedAt: value.DeletedAt, CreatedAt: value.CreatedAt,
-		UpdatedAt: value.UpdatedAt, Localizations: make([]LocalizationModel, 0, len(localizations)),
-		Rewards: make([]user.RewardModel, 0, len(rewards)),
+		ID:              value.ID,
+		Code:            value.Code,
+		Payload:         value.Payload,
+		Target:          value.Target,
+		MaxActivations:  value.MaxActivations,
+		ActivationCount: value.ActivationCount,
+		IsActive:        value.IsActive,
+		StartAt:         value.StartAt,
+		EndAt:           value.EndAt,
+		DeletedAt:       value.DeletedAt,
+		CreatedAt:       value.CreatedAt,
+		UpdatedAt:       value.UpdatedAt,
+		Localizations:   make([]LocalizationModel, 0, len(localizations)),
+		Rewards:         make([]user.RewardModel, 0, len(rewards)),
 	}
 	for _, item := range localizations {
 		result.Localizations = append(result.Localizations, LocalizationModel{
-			Locale: item.Locale, Title: item.Title, Description: item.Description,
+			Locale:      item.Locale,
+			Title:       item.Title,
+			Description: item.Description,
 		})
 	}
 	for _, reward := range rewards {
 		result.Rewards = append(result.Rewards, user.RewardModel{
-			Key: reward.Key, Type: reward.Type, Quantity: reward.Quantity, Scale: reward.Scale, Unit: reward.Unit,
+			Key:      reward.Key,
+			Type:     reward.Type,
+			Quantity: reward.Quantity,
+			Scale:    reward.Scale,
+			Unit:     reward.Unit,
 		})
 	}
 	return result

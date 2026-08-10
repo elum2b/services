@@ -99,8 +99,18 @@ func (a storageAdapter) Close() error            { return a.value.Close() }
 
 type codecAdapter struct{ value Codec }
 
-func (a codecAdapter) Marshal(v any) ([]byte, error)      { return a.value.Marshal(v) }
-func (a codecAdapter) Unmarshal(data []byte, v any) error { return a.value.Unmarshal(data, v) }
+func (a codecAdapter) Marshal(
+	v any,
+) ([]byte, error) {
+	return a.value.Marshal(v)
+}
+
+func (a codecAdapter) Unmarshal(
+	data []byte,
+	v any,
+) error {
+	return a.value.Unmarshal(data, v)
+}
 
 type mutexAdapter struct{ value Mutex }
 

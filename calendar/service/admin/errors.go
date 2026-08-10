@@ -7,7 +7,10 @@ var (
 		serviceerrors.CodeNotReady,
 		"calendar admin repository is not configured",
 	)
-	ErrCalendarIDRequired    = serviceerrors.New(serviceerrors.CodeInvalidFields, "calendar admin id is required")
+	ErrCalendarIDRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"calendar admin id is required",
+	)
 	ErrCalendarScopeRequired = serviceerrors.New(
 		serviceerrors.CodeInvalidFields,
 		"calendar admin workspace and type are required",

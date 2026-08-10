@@ -10,11 +10,15 @@ import (
 	"github.com/elum2b/services/payment/repository"
 )
 
-func (a *Platega) ReconcilePending(ctx context.Context, params ReconcileParams) (ReconcileResult, error) {
+func (a *Platega) ReconcilePending(
+	ctx context.Context,
+	params ReconcileParams,
+) (ReconcileResult, error) {
 	if a == nil || a.repository == nil {
 		return ReconcileResult{}, ErrNotInitialized
 	}
-	if params.ResolveCredentials == nil || params.CreatedTo.IsZero() || params.Limit <= 0 {
+	if params.ResolveCredentials == nil || params.CreatedTo.IsZero() ||
+		params.Limit <= 0 {
 		return ReconcileResult{}, repository.ErrAttemptFieldsInvalid
 	}
 
@@ -32,9 +36,14 @@ func (a *Platega) ReconcilePending(ctx context.Context, params ReconcileParams) 
 		return result, nil
 	}
 
-	byWorkspace := make(map[string][]repository.ProviderAttemptForReconciliation)
+	byWorkspace := make(
+		map[string][]repository.ProviderAttemptForReconciliation,
+	)
 	for _, attempt := range attempts {
-		byWorkspace[attempt.WorkspaceID] = append(byWorkspace[attempt.WorkspaceID], attempt)
+		byWorkspace[attempt.WorkspaceID] = append(
+			byWorkspace[attempt.WorkspaceID],
+			attempt,
+		)
 	}
 
 	var resultErr error
@@ -59,7 +68,9 @@ func (a *Platega) ReconcilePending(ctx context.Context, params ReconcileParams) 
 		if params.MissingAfter <= 0 || to.After(params.CreatedTo) {
 			to = params.CreatedTo
 		}
-		records, err := NewClient(credentials).ExportTransactions(ctx, exportTransactionsRequest{
+		records, err := NewClient(
+			credentials,
+		).ExportTransactions(ctx, exportTransactionsRequest{
 			From:       from,
 			To:         to,
 			TimeZoneID: "UTC",
@@ -77,12 +88,14 @@ func (a *Platega) ReconcilePending(ctx context.Context, params ReconcileParams) 
 			if record.RecordID == "" {
 				continue
 			}
-			if previous, exists := recordByID[record.RecordID]; exists && previous.Payload != record.Payload {
+			if previous, exists := recordByID[record.RecordID]; exists &&
+				previous.Payload != record.Payload {
 				ambiguousID[record.RecordID] = struct{}{}
 			}
 			recordByID[record.RecordID] = record
 			if record.Payload != "" {
-				if previous, exists := recordByPayload[record.Payload]; exists && previous.RecordID != record.RecordID {
+				if previous, exists := recordByPayload[record.Payload]; exists &&
+					previous.RecordID != record.RecordID {
 					ambiguousPayload[record.Payload] = struct{}{}
 				}
 				recordByPayload[record.Payload] = record
@@ -97,12 +110,17 @@ func (a *Platega) ReconcilePending(ctx context.Context, params ReconcileParams) 
 				ambiguousID,
 			)
 			if ambiguous {
-				resultErr = errors.Join(resultErr, repository.ErrPaymentMismatch)
+				resultErr = errors.Join(
+					resultErr,
+					repository.ErrPaymentMismatch,
+				)
 				continue
 			}
 			if !ok {
-				if attempt.ProviderPaymentID == nil && params.MissingAfter > 0 &&
-					!attempt.CreatedAt.Add(params.MissingAfter).After(params.CreatedTo) {
+				if attempt.ProviderPaymentID == nil &&
+					params.MissingAfter > 0 &&
+					!attempt.CreatedAt.Add(params.MissingAfter).
+						After(params.CreatedTo) {
 					if err := a.repository.FailProviderAttempt(
 						ctx,
 						workspaceID,
@@ -117,12 +135,19 @@ func (a *Platega) ReconcilePending(ctx context.Context, params ReconcileParams) 
 				continue
 			}
 			if record.Payload != attempt.OrderPublicID {
-				resultErr = errors.Join(resultErr, repository.ErrPaymentMismatch)
+				resultErr = errors.Join(
+					resultErr,
+					repository.ErrPaymentMismatch,
+				)
 				continue
 			}
 			recordAmountMinor, err := rubMinorFromMajor(record.Amount)
-			if err != nil || recordAmountMinor != attempt.AmountMinor || record.CurrencyCode != attempt.AssetCode {
-				resultErr = errors.Join(resultErr, repository.ErrPaymentMismatch)
+			if err != nil || recordAmountMinor != attempt.AmountMinor ||
+				record.CurrencyCode != attempt.AssetCode {
+				resultErr = errors.Join(
+					resultErr,
+					repository.ErrPaymentMismatch,
+				)
 				continue
 			}
 
@@ -139,10 +164,13 @@ func (a *Platega) ReconcilePending(ctx context.Context, params ReconcileParams) 
 				continue
 			}
 			transaction := transactionStatusResponse{
-				ID:             record.RecordID,
-				Status:         record.Status,
-				PaymentDetails: paymentDetails{Amount: record.Amount, Currency: record.CurrencyCode},
-				Payload:        record.Payload,
+				ID:     record.RecordID,
+				Status: record.Status,
+				PaymentDetails: paymentDetails{
+					Amount:   record.Amount,
+					Currency: record.CurrencyCode,
+				},
+				Payload: record.Payload,
 			}
 			webhookResult, err := a.handlePayload(
 				ctx,

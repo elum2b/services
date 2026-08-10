@@ -21,7 +21,10 @@ type RefundResult struct {
 
 type RefundExecutor func(context.Context, RefundParams) (RefundResult, error)
 
-func (a *TON) Execute(ctx context.Context, params RefundParams) (RefundResult, error) {
+func (a *TON) Execute(
+	ctx context.Context,
+	params RefundParams,
+) (RefundResult, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx

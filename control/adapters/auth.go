@@ -17,6 +17,7 @@ func New(admin Admin, providers ...Provider) (*Auth, error) {
 	if admin == nil {
 		return nil, ErrAdminRequired
 	}
+
 	a := &Auth{
 		admin:     admin,
 		providers: make(map[string]Provider, len(providers)),
@@ -26,6 +27,7 @@ func New(admin Admin, providers ...Provider) (*Auth, error) {
 			return nil, err
 		}
 	}
+
 	return a, nil
 }
 
@@ -33,42 +35,60 @@ func (a *Auth) Register(provider Provider) error {
 	if provider == nil {
 		return ErrProviderRequired
 	}
+
 	key := normalizeProvider(provider.Provider())
 	if key == "" {
 		return ErrProviderRequired
 	}
+
 	if a.providers == nil {
 		a.providers = make(map[string]Provider)
 	}
+
 	if _, exists := a.providers[key]; exists {
 		return ErrProviderExists
 	}
+
 	a.providers[key] = provider
+
 	return nil
 }
 
-func (a *Auth) Authenticate(ctx context.Context, request Request) (admin.AuthResult, error) {
+func (a *Auth) Authenticate(
+	ctx context.Context,
+	request Request,
+) (admin.AuthResult, error) {
 	if a == nil || a.admin == nil {
 		return admin.AuthResult{}, ErrAdminRequired
 	}
+
 	providerKey := normalizeProvider(request.Provider)
 	if providerKey == "" {
 		return admin.AuthResult{}, ErrProviderRequired
 	}
+
 	provider, ok := a.providers[providerKey]
 	if !ok {
 		return admin.AuthResult{}, ErrProviderNotFound
 	}
+
 	identity, err := provider.Resolve(ctx, request)
 	if err != nil {
 		return admin.AuthResult{}, err
 	}
-	identity.Provider = firstNonEmpty(identity.Provider, provider.Provider(), providerKey)
+
+	identity.Provider = firstNonEmpty(
+		identity.Provider,
+		provider.Provider(),
+		providerKey,
+	)
 	identity.Provider = normalizeProvider(identity.Provider)
 	identity.Subject = strings.TrimSpace(identity.Subject)
+
 	if identity.Subject == "" {
 		return admin.AuthResult{}, ErrSubjectRequired
 	}
+
 	result, err := a.admin.CompleteAuth(ctx, admin.AuthIdentityParams{
 		Provider:    identity.Provider,
 		Subject:     identity.Subject,
@@ -81,8 +101,13 @@ func (a *Auth) Authenticate(ctx context.Context, request Request) (admin.AuthRes
 		ExpiresAt:   request.ExpiresAt,
 	})
 	if err != nil {
-		return admin.AuthResult{}, serviceerrors.Normalize(err, serviceerrors.CodeInternalError, "control auth failed")
+		return admin.AuthResult{}, serviceerrors.Normalize(
+			err,
+			serviceerrors.CodeInternalError,
+			"control auth failed",
+		)
 	}
+
 	return result, nil
 }
 
@@ -97,5 +122,6 @@ func firstNonEmpty(values ...string) string {
 			return value
 		}
 	}
+
 	return ""
 }

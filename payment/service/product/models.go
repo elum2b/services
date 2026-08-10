@@ -1,8 +1,9 @@
 package product
 
 import (
-	json "github.com/goccy/go-json"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	services "github.com/elum2b/services"
 )

@@ -24,8 +24,15 @@ func TestVerifyTMAUsesTheSecretProvidedForEachApplication(t *testing.T) {
 	if err != nil || secondResult.PlatformUserID != "2" {
 		t.Fatalf("second application result = %#v, %v", secondResult, err)
 	}
-	if _, err := Verify(ProviderTMA, second, "first-bot-token", 101); err == nil {
-		t.Fatal("second application was verified by another application's secret")
+	if _, err := Verify(
+		ProviderTMA,
+		second,
+		"first-bot-token",
+		101,
+	); err == nil {
+		t.Fatal(
+			"second application was verified by another application's secret",
+		)
 	}
 
 }
@@ -39,7 +46,15 @@ func signedTMA(secret string, userID int64, issuedAt time.Time) string {
 	macKey := hmac.New(sha256.New, []byte("WebAppData"))
 	_, _ = macKey.Write([]byte(secret))
 	mac := hmac.New(sha256.New, macKey.Sum(nil))
-	_, _ = mac.Write([]byte("auth_date=" + values.Get("auth_date") + "\nuser=" + values.Get("user")))
+	_, _ = mac.Write(
+		[]byte(
+			"auth_date=" + values.Get(
+				"auth_date",
+			) + "\nuser=" + values.Get(
+				"user",
+			),
+		),
+	)
 	values.Set("hash", hex.EncodeToString(mac.Sum(nil)))
 	return values.Encode()
 

@@ -7,13 +7,17 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/elum-utils/sign/vkmashop"
+
 	utils "github.com/elum2b/services/internal/utils"
 	"github.com/elum2b/services/payment/repository"
-
-	"github.com/elum-utils/sign/vkmashop"
 )
 
-func (a *VKMA) ChargeableForWorkspace(ctx context.Context, workspaceID string, params vkmashop.Params) (*ChargeableResponse, error) {
+func (a *VKMA) ChargeableForWorkspace(
+	ctx context.Context,
+	workspaceID string,
+	params vkmashop.Params,
+) (*ChargeableResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
@@ -28,14 +32,17 @@ func (a *VKMA) ChargeableForWorkspace(ctx context.Context, workspaceID string, p
 	)
 	if err == nil {
 		if attempt.Status != "succeeded" {
-			if _, completeErr := a.repository.CompleteAttempt(ctx, repository.CompleteAttemptParams{
-				WorkspaceID:       workspaceID,
-				AttemptID:         attempt.ID,
-				ProviderCode:      ProviderCode,
-				ProviderPaymentID: utils.Ref(providerPaymentID),
-				AmountMinor:       attempt.AmountMinor,
-				AssetCode:         AssetCode,
-			}); completeErr != nil {
+			if _, completeErr := a.repository.CompleteAttempt(
+				ctx,
+				repository.CompleteAttemptParams{
+					WorkspaceID:       workspaceID,
+					AttemptID:         attempt.ID,
+					ProviderCode:      ProviderCode,
+					ProviderPaymentID: utils.Ref(providerPaymentID),
+					AmountMinor:       attempt.AmountMinor,
+					AssetCode:         AssetCode,
+				},
+			); completeErr != nil {
 				return nil, completeErr
 			}
 		}
@@ -43,7 +50,10 @@ func (a *VKMA) ChargeableForWorkspace(ctx context.Context, workspaceID string, p
 		if orderErr != nil {
 			return nil, orderErr
 		}
-		return &ChargeableResponse{AppOrderID: order.ID, OrderID: params.OrderID}, nil
+		return &ChargeableResponse{
+			AppOrderID: order.ID,
+			OrderID:    params.OrderID,
+		}, nil
 	}
 	if err != sql.ErrNoRows {
 		return nil, err
@@ -62,13 +72,18 @@ func (a *VKMA) ChargeableForWorkspace(ctx context.Context, workspaceID string, p
 		return nil, err
 	}
 
-	attempt, err = a.repository.CreateAttempt(ctx, repository.AttemptCreateParams{
-		OrderID:                order.ID,
-		ProviderCode:           ProviderCode,
-		ProviderPaymentID:      utils.Ref(providerPaymentID),
-		ProviderSubscriptionID: providerSubscriptionID,
-		IdempotencyKey:         utils.Ref(fmt.Sprintf("%s:%s", ProviderCode, providerPaymentID)),
-	})
+	attempt, err = a.repository.CreateAttempt(
+		ctx,
+		repository.AttemptCreateParams{
+			OrderID:                order.ID,
+			ProviderCode:           ProviderCode,
+			ProviderPaymentID:      utils.Ref(providerPaymentID),
+			ProviderSubscriptionID: providerSubscriptionID,
+			IdempotencyKey: utils.Ref(
+				fmt.Sprintf("%s:%s", ProviderCode, providerPaymentID),
+			),
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -88,34 +103,43 @@ func (a *VKMA) ChargeableForWorkspace(ctx context.Context, workspaceID string, p
 		return nil, err
 	}
 
-	if _, err := a.repository.CompleteAttempt(ctx, repository.CompleteAttemptParams{
-		WorkspaceID:       workspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      ProviderCode,
-		ProviderPaymentID: utils.Ref(providerPaymentID),
-		AmountMinor:       attempt.AmountMinor,
-		AssetCode:         AssetCode,
-	}); err != nil {
+	if _, err := a.repository.CompleteAttempt(
+		ctx,
+		repository.CompleteAttemptParams{
+			WorkspaceID:       workspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      ProviderCode,
+			ProviderPaymentID: utils.Ref(providerPaymentID),
+			AmountMinor:       attempt.AmountMinor,
+			AssetCode:         AssetCode,
+		},
+	); err != nil {
 		return nil, err
 	}
 
 	if params.SubscriptionID > 0 {
-		if _, err := a.repository.UpsertSubscription(ctx, repository.SubscriptionUpsertParams{
-			ProviderCode:           ProviderCode,
-			WorkspaceID:            workspaceID,
-			ProviderSubscriptionID: strconv.Itoa(params.SubscriptionID),
-			AppID:                  int64(params.AppID),
-			PlatformID:             PlatformID,
-			PlatformUserID:         strconv.Itoa(params.UserID),
-			ProductID:              order.ProductID,
-			OrderID:                utils.Ref(int64(order.ID)),
-			AttemptID:              utils.Ref(int64(attempt.ID)),
-			Status:                 "active",
-			StartedAt:              time.Now(),
-		}); err != nil {
+		if _, err := a.repository.UpsertSubscription(
+			ctx,
+			repository.SubscriptionUpsertParams{
+				ProviderCode:           ProviderCode,
+				WorkspaceID:            workspaceID,
+				ProviderSubscriptionID: strconv.Itoa(params.SubscriptionID),
+				AppID:                  int64(params.AppID),
+				PlatformID:             PlatformID,
+				PlatformUserID:         strconv.Itoa(params.UserID),
+				ProductID:              order.ProductID,
+				OrderID:                utils.Ref(int64(order.ID)),
+				AttemptID:              utils.Ref(int64(attempt.ID)),
+				Status:                 "active",
+				StartedAt:              time.Now(),
+			},
+		); err != nil {
 			return nil, err
 		}
 	}
 
-	return &ChargeableResponse{AppOrderID: order.ID, OrderID: params.OrderID}, nil
+	return &ChargeableResponse{
+		AppOrderID: order.ID,
+		OrderID:    params.OrderID,
+	}, nil
 }

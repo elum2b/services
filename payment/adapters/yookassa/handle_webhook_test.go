@@ -9,7 +9,9 @@ import (
 	"github.com/elum2b/services/payment/repository"
 )
 
-func TestHandleWebhookRejectsInvalidSignatureBeforePayloadParsing(t *testing.T) {
+func TestHandleWebhookRejectsInvalidSignatureBeforePayloadParsing(
+	t *testing.T,
+) {
 	adapter := &YooKassa{repository: &repository.PaymentRepository{}}
 
 	_, err := adapter.HandleWebhook(context.Background(), WebhookRequest{
@@ -54,7 +56,11 @@ func TestParseRubAmountRejectsOverflow(t *testing.T) {
 			got, err := parseRubAmount(test.value)
 			if test.wantErr {
 				if err == nil {
-					t.Fatalf("parseRubAmount(%q) succeeded with %d", test.value, got)
+					t.Fatalf(
+						"parseRubAmount(%q) succeeded with %d",
+						test.value,
+						got,
+					)
 				}
 				return
 			}
@@ -62,7 +68,12 @@ func TestParseRubAmountRejectsOverflow(t *testing.T) {
 				t.Fatalf("parseRubAmount(%q): %v", test.value, err)
 			}
 			if got != test.want {
-				t.Fatalf("parseRubAmount(%q) = %d, want %d", test.value, got, test.want)
+				t.Fatalf(
+					"parseRubAmount(%q) = %d, want %d",
+					test.value,
+					got,
+					test.want,
+				)
 			}
 		})
 	}

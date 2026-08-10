@@ -5,8 +5,9 @@ import (
 	"errors"
 	"strings"
 
-	serviceerrors "github.com/elum2b/services/errors"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	serviceerrors "github.com/elum2b/services/errors"
 )
 
 func normalizeLocale(locale string) string {
@@ -40,10 +41,20 @@ func NormalizeNetwork(network string) (string, error) {
 }
 
 func NormalizeWalletAddress(value string, network string) (string, error) {
-	return normalizeTONAddress(value, network, ErrWalletAddressRequired, ErrWalletAddressInvalid)
+	return normalizeTONAddress(
+		value,
+		network,
+		ErrWalletAddressRequired,
+		ErrWalletAddressInvalid,
+	)
 }
 
-func normalizeTONAddress(value string, network string, requiredErr *serviceerrors.Error, invalidErr *serviceerrors.Error) (string, error) {
+func normalizeTONAddress(
+	value string,
+	network string,
+	requiredErr *serviceerrors.Error,
+	invalidErr *serviceerrors.Error,
+) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return "", requiredErr
@@ -54,7 +65,11 @@ func normalizeTONAddress(value string, network string, requiredErr *serviceerror
 	}
 	parsed, err := parseTONAddress(value)
 	if err != nil {
-		return "", serviceerrors.Wrap(serviceerrors.CodeInvalidFields, invalidErr.Message(), err)
+		return "", serviceerrors.Wrap(
+			serviceerrors.CodeInvalidFields,
+			invalidErr.Message(),
+			err,
+		)
 	}
 	return parsed.Testnet(network == NetworkTestnet).String(), nil
 }

@@ -20,7 +20,11 @@ func TestValidateHTTPCheckURLRejectsUnsafeTargets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse %q: %v", raw, err)
 		}
-		if err := validateHTTPCheckURL(context.Background(), value, false); err == nil {
+		if err := validateHTTPCheckURL(
+			context.Background(),
+			value,
+			false,
+		); err == nil {
 			t.Fatalf("unsafe URL %q was accepted", raw)
 		}
 	}
@@ -33,7 +37,11 @@ func TestValidateHTTPCheckURLAllowsExplicitPrivateHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := validateHTTPCheckURL(context.Background(), value, true); err != nil {
+	if err := validateHTTPCheckURL(
+		context.Background(),
+		value,
+		true,
+	); err != nil {
 		t.Fatalf("explicit private URL rejected: %v", err)
 	}
 

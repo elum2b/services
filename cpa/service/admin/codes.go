@@ -8,16 +8,27 @@ type AddCodesParams struct {
 	Codes       []string
 }
 
-func (a *Admin) AddCodes(ctx context.Context, params AddCodesParams) (int, error) {
+func (a *Admin) AddCodes(
+	ctx context.Context,
+	params AddCodesParams,
+) (int, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	return a.repository.AddCodes(mergedCtx, params.WorkspaceID, params.CPAID, params.Codes)
+	return a.repository.AddCodes(
+		mergedCtx,
+		params.WorkspaceID,
+		params.CPAID,
+		params.Codes,
+	)
 
 }
 
-func (a *Admin) DeleteAvailableCodes(ctx context.Context, workspaceID, cpaID string) (int64, error) {
+func (a *Admin) DeleteAvailableCodes(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) (int64, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -26,7 +37,10 @@ func (a *Admin) DeleteAvailableCodes(ctx context.Context, workspaceID, cpaID str
 
 }
 
-func (a *Admin) DeleteIssuedCodes(ctx context.Context, workspaceID, cpaID string) (int64, error) {
+func (a *Admin) DeleteIssuedCodes(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) (int64, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -35,7 +49,10 @@ func (a *Admin) DeleteIssuedCodes(ctx context.Context, workspaceID, cpaID string
 
 }
 
-func (a *Admin) DeleteCompletedCodes(ctx context.Context, workspaceID, cpaID string) (int64, error) {
+func (a *Admin) DeleteCompletedCodes(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) (int64, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()

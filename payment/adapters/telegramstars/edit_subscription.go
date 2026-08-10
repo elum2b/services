@@ -4,7 +4,10 @@ import (
 	"context"
 )
 
-func (a *TelegramStars) EditSubscription(ctx context.Context, params EditSubscriptionParams) error {
+func (a *TelegramStars) EditSubscription(
+	ctx context.Context,
+	params EditSubscriptionParams,
+) error {
 	if a == nil {
 		return ErrNotInitialized
 	}
@@ -12,7 +15,9 @@ func (a *TelegramStars) EditSubscription(ctx context.Context, params EditSubscri
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	return NewClient(params.Credentials).EditUserStarSubscription(ctx, editUserStarSubscriptionRequest{
+	return NewClient(
+		params.Credentials,
+	).EditUserStarSubscription(ctx, editUserStarSubscriptionRequest{
 		UserID:                  params.UserID,
 		TelegramPaymentChargeID: params.TelegramPaymentChargeID,
 		IsCanceled:              params.IsCanceled,

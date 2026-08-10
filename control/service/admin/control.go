@@ -4,20 +4,21 @@ import (
 	"context"
 	"strings"
 
+	"github.com/google/uuid"
+
 	services "github.com/elum2b/services"
 	controlmodel "github.com/elum2b/services/control/model"
 	"github.com/elum2b/services/control/repository"
-	"github.com/google/uuid"
 )
 
 func (a *Admin) CreateWorkspace(
 	ctx context.Context,
 	params CreateWorkspaceParams,
 ) (WorkspaceModel, error) {
-
 	if strings.TrimSpace(params.ID) == "" {
 		params.ID = uuid.NewString()
 	}
+
 	if err := services.ValidateWorkspaceID(params.ID); err != nil {
 		return WorkspaceModel{}, err
 	}
@@ -40,11 +41,12 @@ func (a *Admin) CreateWorkspace(
 	)
 
 	return mapWorkspace(workspace), err
-
 }
 
-func (a *Admin) GetWorkspace(ctx context.Context, workspaceID string) (WorkspaceModel, error) {
-
+func (a *Admin) GetWorkspace(
+	ctx context.Context,
+	workspaceID string,
+) (WorkspaceModel, error) {
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return WorkspaceModel{}, err
 	}
@@ -55,7 +57,6 @@ func (a *Admin) GetWorkspace(ctx context.Context, workspaceID string) (Workspace
 	workspace, err := a.repository.GetWorkspace(mergedCtx, workspaceID)
 
 	return mapWorkspace(workspace), err
-
 }
 
 func (a *Admin) ListWorkspaces(
@@ -63,7 +64,6 @@ func (a *Admin) ListWorkspaces(
 	accountID string,
 	page Page,
 ) ([]WorkspaceModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -83,14 +83,12 @@ func (a *Admin) ListWorkspaces(
 	}
 
 	return result, nil
-
 }
 
 func (a *Admin) UpdateWorkspace(
 	ctx context.Context,
 	params UpdateWorkspaceParams,
 ) (int64, error) {
-
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return 0, err
 	}
@@ -113,7 +111,6 @@ func (a *Admin) UpdateWorkspace(
 			Title: strings.TrimSpace(params.Title),
 		},
 	)
-
 }
 
 func (a *Admin) ArchiveWorkspace(
@@ -121,7 +118,6 @@ func (a *Admin) ArchiveWorkspace(
 	actorID string,
 	workspaceID string,
 ) (int64, error) {
-
 	mergedCtx, cancel := a.withMutation(ctx, workspaceAudit(
 		actorID,
 		workspaceID,
@@ -136,7 +132,6 @@ func (a *Admin) ArchiveWorkspace(
 		strings.TrimSpace(actorID),
 		workspaceID,
 	)
-
 }
 
 func (a *Admin) TransferWorkspaceOwnership(
@@ -145,7 +140,6 @@ func (a *Admin) TransferWorkspaceOwnership(
 	workspaceID string,
 	targetAccountID string,
 ) error {
-
 	mergedCtx, cancel := a.withMutation(ctx, workspaceAudit(
 		actorID,
 		workspaceID,
@@ -161,18 +155,20 @@ func (a *Admin) TransferWorkspaceOwnership(
 		workspaceID,
 		strings.TrimSpace(targetAccountID),
 	)
-
 }
 
 func (a *Admin) ListPlatformMembers(
 	ctx context.Context,
 	page Page,
 ) ([]PlatformMemberModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	items, err := a.repository.ListPlatformMembers(mergedCtx, mapCursor(page), page.Limit)
+	items, err := a.repository.ListPlatformMembers(
+		mergedCtx,
+		mapCursor(page),
+		page.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +188,6 @@ func (a *Admin) ListPlatformMembers(
 	}
 
 	return result, nil
-
 }
 
 func (a *Admin) RemovePlatformMember(
@@ -200,7 +195,6 @@ func (a *Admin) RemovePlatformMember(
 	actorID string,
 	accountID string,
 ) (int64, error) {
-
 	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
 		Scope:      repository.ScopeGlobal,
 		ActorID:    strings.TrimSpace(actorID),
@@ -215,7 +209,6 @@ func (a *Admin) RemovePlatformMember(
 		strings.TrimSpace(actorID),
 		strings.TrimSpace(accountID),
 	)
-
 }
 
 func (a *Admin) TransferGlobalOwnership(
@@ -223,7 +216,6 @@ func (a *Admin) TransferGlobalOwnership(
 	actorID string,
 	targetAccountID string,
 ) error {
-
 	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
 		Scope:      repository.ScopeGlobal,
 		ActorID:    strings.TrimSpace(actorID),
@@ -238,25 +230,20 @@ func (a *Admin) TransferGlobalOwnership(
 		strings.TrimSpace(actorID),
 		strings.TrimSpace(targetAccountID),
 	)
-
 }
 
 func (a *Admin) CreateGlobalRole(
 	ctx context.Context,
 	params CreateRoleParams,
 ) (RoleModel, error) {
-
 	return a.createRole(ctx, params, true)
-
 }
 
 func (a *Admin) CreateWorkspaceRole(
 	ctx context.Context,
 	params CreateRoleParams,
 ) (RoleModel, error) {
-
 	return a.createRole(ctx, params, false)
-
 }
 
 func (a *Admin) createRole(
@@ -264,10 +251,10 @@ func (a *Admin) createRole(
 	params CreateRoleParams,
 	global bool,
 ) (RoleModel, error) {
-
 	if params.ID == "" {
 		params.ID = uuid.NewString()
 	}
+
 	role := repository.Role{
 		ID:          strings.TrimSpace(params.ID),
 		WorkspaceID: strings.TrimSpace(params.WorkspaceID),
@@ -311,11 +298,9 @@ func (a *Admin) createRole(
 	)
 
 	return mapRole(value), err
-
 }
 
 func (a *Admin) ListGlobalRoles(ctx context.Context) ([]RoleModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -325,25 +310,27 @@ func (a *Admin) ListGlobalRoles(ctx context.Context) ([]RoleModel, error) {
 	}
 
 	return mapRoles(items), nil
-
 }
 
-func (a *Admin) GetGlobalRole(ctx context.Context, roleID string) (RoleModel, error) {
-
+func (a *Admin) GetGlobalRole(
+	ctx context.Context,
+	roleID string,
+) (RoleModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	value, err := a.repository.GetGlobalRole(mergedCtx, strings.TrimSpace(roleID))
+	value, err := a.repository.GetGlobalRole(
+		mergedCtx,
+		strings.TrimSpace(roleID),
+	)
 
 	return mapRole(value), err
-
 }
 
 func (a *Admin) ListWorkspaceRoles(
 	ctx context.Context,
 	workspaceID string,
 ) ([]RoleModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -353,7 +340,6 @@ func (a *Admin) ListWorkspaceRoles(
 	}
 
 	return mapRoles(items), nil
-
 }
 
 func (a *Admin) GetWorkspaceRole(
@@ -361,7 +347,6 @@ func (a *Admin) GetWorkspaceRole(
 	workspaceID string,
 	roleID string,
 ) (RoleModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -372,14 +357,12 @@ func (a *Admin) GetWorkspaceRole(
 	)
 
 	return mapRole(value), err
-
 }
 
 func (a *Admin) UpdateGlobalRole(
 	ctx context.Context,
 	params UpdateRoleParams,
 ) (int64, error) {
-
 	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
 		Scope:      repository.ScopeGlobal,
 		ActorID:    strings.TrimSpace(params.ActorID),
@@ -394,14 +377,12 @@ func (a *Admin) UpdateGlobalRole(
 		strings.TrimSpace(params.ActorID),
 		mapRoleParams(params),
 	)
-
 }
 
 func (a *Admin) UpdateWorkspaceRole(
 	ctx context.Context,
 	params UpdateRoleParams,
 ) (int64, error) {
-
 	mergedCtx, cancel := a.withMutation(ctx, workspaceAudit(
 		params.ActorID,
 		params.WorkspaceID,
@@ -416,7 +397,6 @@ func (a *Admin) UpdateWorkspaceRole(
 		strings.TrimSpace(params.ActorID),
 		mapRoleParams(params),
 	)
-
 }
 
 func (a *Admin) DeleteGlobalRole(
@@ -424,7 +404,6 @@ func (a *Admin) DeleteGlobalRole(
 	actorID string,
 	roleID string,
 ) (int64, error) {
-
 	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
 		Scope:      repository.ScopeGlobal,
 		ActorID:    strings.TrimSpace(actorID),
@@ -439,7 +418,6 @@ func (a *Admin) DeleteGlobalRole(
 		strings.TrimSpace(actorID),
 		strings.TrimSpace(roleID),
 	)
-
 }
 
 func (a *Admin) DeleteWorkspaceRole(
@@ -448,7 +426,6 @@ func (a *Admin) DeleteWorkspaceRole(
 	workspaceID string,
 	roleID string,
 ) (int64, error) {
-
 	mergedCtx, cancel := a.withMutation(ctx, workspaceAudit(
 		actorID,
 		workspaceID,
@@ -464,31 +441,34 @@ func (a *Admin) DeleteWorkspaceRole(
 		workspaceID,
 		strings.TrimSpace(roleID),
 	)
-
 }
 
-func (a *Admin) AssignGlobalRole(ctx context.Context, params SetRoleMemberParams) error {
-
+func (a *Admin) AssignGlobalRole(
+	ctx context.Context,
+	params SetRoleMemberParams,
+) error {
 	return a.changeRoleMember(ctx, params, true, true)
-
 }
 
-func (a *Admin) RemoveGlobalRole(ctx context.Context, params SetRoleMemberParams) error {
-
+func (a *Admin) RemoveGlobalRole(
+	ctx context.Context,
+	params SetRoleMemberParams,
+) error {
 	return a.changeRoleMember(ctx, params, true, false)
-
 }
 
-func (a *Admin) AssignWorkspaceRole(ctx context.Context, params SetRoleMemberParams) error {
-
+func (a *Admin) AssignWorkspaceRole(
+	ctx context.Context,
+	params SetRoleMemberParams,
+) error {
 	return a.changeRoleMember(ctx, params, false, true)
-
 }
 
-func (a *Admin) RemoveWorkspaceRole(ctx context.Context, params SetRoleMemberParams) error {
-
+func (a *Admin) RemoveWorkspaceRole(
+	ctx context.Context,
+	params SetRoleMemberParams,
+) error {
 	return a.changeRoleMember(ctx, params, false, false)
-
 }
 
 func (a *Admin) changeRoleMember(
@@ -497,12 +477,12 @@ func (a *Admin) changeRoleMember(
 	global bool,
 	assign bool,
 ) error {
-
 	if global {
 		methodKey := "control.global.role.member.remove"
 		if assign {
 			methodKey = "control.global.role.member.assign"
 		}
+
 		mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
 			Scope:      repository.ScopeGlobal,
 			ActorID:    strings.TrimSpace(params.ActorID),
@@ -510,6 +490,7 @@ func (a *Admin) changeRoleMember(
 			TargetType: "account",
 			TargetID:   strings.TrimSpace(params.AccountID),
 		})
+
 		defer cancel()
 
 		if assign {
@@ -533,6 +514,7 @@ func (a *Admin) changeRoleMember(
 	if assign {
 		methodKey = "control.workspace.role.member.assign"
 	}
+
 	mergedCtx, cancel := a.withMutation(ctx, workspaceAudit(
 		params.ActorID,
 		params.WorkspaceID,
@@ -540,6 +522,7 @@ func (a *Admin) changeRoleMember(
 		"account",
 		params.AccountID,
 	))
+
 	defer cancel()
 
 	if assign {
@@ -559,14 +542,12 @@ func (a *Admin) changeRoleMember(
 		strings.TrimSpace(params.AccountID),
 		strings.TrimSpace(params.RoleID),
 	)
-
 }
 
 func (a *Admin) ReplaceGlobalRolePermissions(
 	ctx context.Context,
 	params ReplaceRolePermissionsParams,
 ) error {
-
 	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
 		Scope:      repository.ScopeGlobal,
 		ActorID:    strings.TrimSpace(params.ActorID),
@@ -582,26 +563,25 @@ func (a *Admin) ReplaceGlobalRolePermissions(
 		strings.TrimSpace(params.RoleID),
 		params.MethodKeys,
 	)
-
 }
 
 func (a *Admin) ListGlobalRolePermissions(
 	ctx context.Context,
 	roleID string,
 ) ([]string, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	return a.repository.ListGlobalRolePermissions(mergedCtx, strings.TrimSpace(roleID))
-
+	return a.repository.ListGlobalRolePermissions(
+		mergedCtx,
+		strings.TrimSpace(roleID),
+	)
 }
 
 func (a *Admin) ReplaceWorkspaceRolePermissions(
 	ctx context.Context,
 	params ReplaceRolePermissionsParams,
 ) error {
-
 	mergedCtx, cancel := a.withMutation(ctx, workspaceAudit(
 		params.ActorID,
 		params.WorkspaceID,
@@ -618,7 +598,6 @@ func (a *Admin) ReplaceWorkspaceRolePermissions(
 		strings.TrimSpace(params.RoleID),
 		params.MethodKeys,
 	)
-
 }
 
 func (a *Admin) ListWorkspaceRolePermissions(
@@ -626,7 +605,6 @@ func (a *Admin) ListWorkspaceRolePermissions(
 	workspaceID string,
 	roleID string,
 ) ([]string, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -635,7 +613,6 @@ func (a *Admin) ListWorkspaceRolePermissions(
 		workspaceID,
 		strings.TrimSpace(roleID),
 	)
-
 }
 
 func (a *Admin) ListMembers(
@@ -643,7 +620,6 @@ func (a *Admin) ListMembers(
 	workspaceID string,
 	page Page,
 ) ([]MemberModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -671,7 +647,6 @@ func (a *Admin) ListMembers(
 	}
 
 	return result, nil
-
 }
 
 func (a *Admin) RemoveMember(
@@ -680,7 +655,6 @@ func (a *Admin) RemoveMember(
 	workspaceID string,
 	accountID string,
 ) (int64, error) {
-
 	mergedCtx, cancel := a.withMutation(ctx, workspaceAudit(
 		actorID,
 		workspaceID,
@@ -696,25 +670,20 @@ func (a *Admin) RemoveMember(
 		workspaceID,
 		strings.TrimSpace(accountID),
 	)
-
 }
 
 func (a *Admin) CreateGlobalInvite(
 	ctx context.Context,
 	params CreateInviteParams,
 ) (InviteModel, string, error) {
-
 	return a.createInvite(ctx, params, true)
-
 }
 
 func (a *Admin) CreateWorkspaceInvite(
 	ctx context.Context,
 	params CreateInviteParams,
 ) (InviteModel, string, error) {
-
 	return a.createInvite(ctx, params, false)
-
 }
 
 func (a *Admin) createInvite(
@@ -722,7 +691,6 @@ func (a *Admin) createInvite(
 	params CreateInviteParams,
 	global bool,
 ) (InviteModel, string, error) {
-
 	event := workspaceAudit(
 		params.ActorID,
 		params.WorkspaceID,
@@ -738,7 +706,9 @@ func (a *Admin) createInvite(
 			TargetType: "invite",
 		}
 	}
+
 	mergedCtx, cancel := a.withMutation(ctx, event)
+
 	defer cancel()
 
 	input := repository.CreateInviteInput{
@@ -747,11 +717,13 @@ func (a *Admin) createInvite(
 		RoleIDs:     append([]string(nil), params.RoleIDs...),
 		ExpiresAt:   params.ExpiresAt,
 	}
+
 	var (
 		value repository.Invite
 		token string
 		err   error
 	)
+
 	if global {
 		value, token, err = a.repository.CreateGlobalInvite(mergedCtx, input)
 	} else {
@@ -759,24 +731,25 @@ func (a *Admin) createInvite(
 	}
 
 	return mapInvite(value), token, err
-
 }
 
 func (a *Admin) ListGlobalInvites(
 	ctx context.Context,
 	page Page,
 ) ([]InviteModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	items, err := a.repository.ListGlobalInvites(mergedCtx, mapCursor(page), page.Limit)
+	items, err := a.repository.ListGlobalInvites(
+		mergedCtx,
+		mapCursor(page),
+		page.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	return mapInvites(items), nil
-
 }
 
 func (a *Admin) ListWorkspaceInvites(
@@ -784,7 +757,6 @@ func (a *Admin) ListWorkspaceInvites(
 	workspaceID string,
 	page Page,
 ) ([]InviteModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -799,7 +771,6 @@ func (a *Admin) ListWorkspaceInvites(
 	}
 
 	return mapInvites(items), nil
-
 }
 
 func (a *Admin) RevokeInvite(
@@ -807,7 +778,6 @@ func (a *Admin) RevokeInvite(
 	actorID string,
 	inviteID string,
 ) (int64, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -816,7 +786,6 @@ func (a *Admin) RevokeInvite(
 		strings.TrimSpace(actorID),
 		strings.TrimSpace(inviteID),
 	)
-
 }
 
 func (a *Admin) RequestWorkspaceLimit(
@@ -825,7 +794,6 @@ func (a *Admin) RequestWorkspaceLimit(
 	requestedLimit int32,
 	reason string,
 ) (LimitRequestModel, error) {
-
 	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
 		Scope:      repository.ScopeGlobal,
 		ActorID:    strings.TrimSpace(accountID),
@@ -843,7 +811,6 @@ func (a *Admin) RequestWorkspaceLimit(
 	)
 
 	return mapLimitRequest(value), err
-
 }
 
 func (a *Admin) RequestEmployeeLimit(
@@ -853,7 +820,6 @@ func (a *Admin) RequestEmployeeLimit(
 	requestedLimit int32,
 	reason string,
 ) (LimitRequestModel, error) {
-
 	mergedCtx, cancel := a.withMutation(ctx, workspaceAudit(
 		actorID,
 		workspaceID,
@@ -872,7 +838,6 @@ func (a *Admin) RequestEmployeeLimit(
 	)
 
 	return mapLimitRequest(value), err
-
 }
 
 func (a *Admin) ListLimitRequests(
@@ -881,7 +846,6 @@ func (a *Admin) ListLimitRequests(
 	status controlmodel.LimitRequestStatus,
 	page Page,
 ) ([]LimitRequestModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -902,14 +866,12 @@ func (a *Admin) ListLimitRequests(
 	}
 
 	return result, nil
-
 }
 
 func (a *Admin) ResolveLimitRequest(
 	ctx context.Context,
 	params ResolveLimitRequestParams,
 ) (LimitRequestModel, error) {
-
 	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
 		Scope:      repository.ScopeGlobal,
 		ActorID:    strings.TrimSpace(params.ActorID),
@@ -929,7 +891,6 @@ func (a *Admin) ResolveLimitRequest(
 	)
 
 	return mapLimitRequest(value), err
-
 }
 
 func (a *Admin) CancelLimitRequest(
@@ -937,7 +898,6 @@ func (a *Admin) CancelLimitRequest(
 	accountID string,
 	requestID string,
 ) (int64, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -946,11 +906,9 @@ func (a *Admin) CancelLimitRequest(
 		strings.TrimSpace(accountID),
 		strings.TrimSpace(requestID),
 	)
-
 }
 
 func (a *Admin) ListMethods(ctx context.Context) ([]MethodModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -965,18 +923,21 @@ func (a *Admin) ListMethods(ctx context.Context) ([]MethodModel, error) {
 	}
 
 	return result, nil
-
 }
 
-func (a *Admin) GetMethod(ctx context.Context, methodKey string) (MethodModel, error) {
-
+func (a *Admin) GetMethod(
+	ctx context.Context,
+	methodKey string,
+) (MethodModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	value, err := a.repository.GetMethod(mergedCtx, strings.TrimSpace(methodKey))
+	value, err := a.repository.GetMethod(
+		mergedCtx,
+		strings.TrimSpace(methodKey),
+	)
 
 	return mapMethod(value), err
-
 }
 
 func (a *Admin) ListAccess(
@@ -984,7 +945,6 @@ func (a *Admin) ListAccess(
 	locale string,
 	scope AccessScope,
 ) ([]AccessGroupModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -999,15 +959,18 @@ func (a *Admin) ListAccess(
 
 	services := make([]AccessGroupModel, 0)
 	for _, row := range rows {
-		if len(services) == 0 || services[len(services)-1].Service != row.Service {
+		if len(services) == 0 ||
+			services[len(services)-1].Service != row.Service {
 			services = append(services, AccessGroupModel{
 				Service:     row.Service,
 				Title:       row.ServiceTitle,
 				Description: row.ServiceDescription,
 			})
 		}
+
 		serviceIndex := len(services) - 1
 		groups := services[serviceIndex].Groups
+
 		if len(groups) == 0 || groups[len(groups)-1].Key != row.GroupKey {
 			services[serviceIndex].Groups = append(groups, AccessGroups{
 				Key:         row.GroupKey,
@@ -1015,7 +978,9 @@ func (a *Admin) ListAccess(
 				Description: row.GroupDescription,
 			})
 		}
+
 		groupIndex := len(services[serviceIndex].Groups) - 1
+
 		services[serviceIndex].Groups[groupIndex].Accesses = append(
 			services[serviceIndex].Groups[groupIndex].Accesses,
 			AccessModel{
@@ -1028,11 +993,9 @@ func (a *Admin) ListAccess(
 	}
 
 	return services, nil
-
 }
 
 func mapAccount(value repository.Account) AccountModel {
-
 	return AccountModel{
 		ID:          value.ID,
 		DisplayName: value.DisplayName,
@@ -1040,11 +1003,9 @@ func mapAccount(value repository.Account) AccountModel {
 		CreatedAt:   value.CreatedAt,
 		UpdatedAt:   value.UpdatedAt,
 	}
-
 }
 
 func mapSession(value repository.Session) SessionModel {
-
 	return SessionModel{
 		ID:         value.ID,
 		AccountID:  value.AccountID,
@@ -1056,11 +1017,9 @@ func mapSession(value repository.Session) SessionModel {
 		LastUsedAt: value.LastUsedAt,
 		CreatedAt:  value.CreatedAt,
 	}
-
 }
 
 func mapMCPToken(value repository.MCPToken) MCPTokenModel {
-
 	return MCPTokenModel{
 		ID:         value.ID,
 		AccountID:  value.AccountID,
@@ -1073,7 +1032,6 @@ func mapMCPToken(value repository.MCPToken) MCPTokenModel {
 }
 
 func mapWorkspace(value repository.Workspace) WorkspaceModel {
-
 	return WorkspaceModel{
 		ID:             value.ID,
 		Slug:           value.Slug,
@@ -1085,11 +1043,9 @@ func mapWorkspace(value repository.Workspace) WorkspaceModel {
 		CreatedAt:      value.CreatedAt,
 		UpdatedAt:      value.UpdatedAt,
 	}
-
 }
 
 func mapRole(value repository.Role) RoleModel {
-
 	return RoleModel{
 		ID:          value.ID,
 		WorkspaceID: value.WorkspaceID,
@@ -1101,22 +1057,18 @@ func mapRole(value repository.Role) RoleModel {
 		CreatedAt:   value.CreatedAt,
 		UpdatedAt:   value.UpdatedAt,
 	}
-
 }
 
 func mapRoles(values []repository.Role) []RoleModel {
-
 	result := make([]RoleModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, mapRole(value))
 	}
 
 	return result
-
 }
 
 func mapInvite(value repository.Invite) InviteModel {
-
 	return InviteModel{
 		ID:          value.ID,
 		Kind:        InviteKind(value.Kind),
@@ -1129,22 +1081,18 @@ func mapInvite(value repository.Invite) InviteModel {
 		CreatedAt:   value.CreatedAt,
 		RoleIDs:     append([]string(nil), value.RoleIDs...),
 	}
-
 }
 
 func mapInvites(values []repository.Invite) []InviteModel {
-
 	result := make([]InviteModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, mapInvite(value))
 	}
 
 	return result
-
 }
 
 func mapLimitRequest(value repository.LimitRequest) LimitRequestModel {
-
 	return LimitRequestModel{
 		ID:             value.ID,
 		Kind:           LimitKind(value.Kind),
@@ -1161,11 +1109,9 @@ func mapLimitRequest(value repository.LimitRequest) LimitRequestModel {
 		CreatedAt:      value.CreatedAt,
 		ReviewedAt:     value.ReviewedAt,
 	}
-
 }
 
 func mapMethod(value repository.Method) MethodModel {
-
 	return MethodModel{
 		Key:       value.Key,
 		Service:   value.Service,
@@ -1175,11 +1121,9 @@ func mapMethod(value repository.Method) MethodModel {
 		CreatedAt: value.CreatedAt,
 		UpdatedAt: value.UpdatedAt,
 	}
-
 }
 
 func mapRoleParams(params UpdateRoleParams) repository.Role {
-
 	return repository.Role{
 		ID:          strings.TrimSpace(params.ID),
 		WorkspaceID: strings.TrimSpace(params.WorkspaceID),
@@ -1187,16 +1131,13 @@ func mapRoleParams(params UpdateRoleParams) repository.Role {
 		Description: strings.TrimSpace(params.Description),
 		Position:    params.Position,
 	}
-
 }
 
 func mapCursor(page Page) repository.Cursor {
-
 	return repository.Cursor{
 		Time: page.CursorAt,
 		ID:   strings.TrimSpace(page.CursorID),
 	}
-
 }
 
 func workspaceAudit(
@@ -1206,7 +1147,6 @@ func workspaceAudit(
 	targetType string,
 	targetID string,
 ) repository.AuditEvent {
-
 	return repository.AuditEvent{
 		Scope:       repository.ScopeWorkspace,
 		WorkspaceID: workspaceID,
@@ -1215,15 +1155,12 @@ func workspaceAudit(
 		TargetType:  targetType,
 		TargetID:    strings.TrimSpace(targetID),
 	}
-
 }
 
 func limitResolutionMethod(approved bool) string {
-
 	if approved {
 		return "control.global.limit.approve"
 	}
 
 	return "control.global.limit.reject"
-
 }

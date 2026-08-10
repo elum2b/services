@@ -19,7 +19,11 @@ func TestValidatePartnerURLRejectsUnsafeTargets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse %q: %v", raw, err)
 		}
-		if err := validatePartnerURL(context.Background(), value, false); err == nil {
+		if err := validatePartnerURL(
+			context.Background(),
+			value,
+			false,
+		); err == nil {
 			t.Fatalf("unsafe URL %q was accepted", raw)
 		}
 	}
@@ -32,7 +36,11 @@ func TestValidatePartnerURLAllowsExplicitTrustedPrivateNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := validatePartnerURL(context.Background(), value, true); err != nil {
+	if err := validatePartnerURL(
+		context.Background(),
+		value,
+		true,
+	); err != nil {
 		t.Fatalf("explicit trusted private URL: %v", err)
 	}
 

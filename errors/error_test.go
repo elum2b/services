@@ -54,7 +54,11 @@ func TestErrorAs(t *testing.T) {
 }
 
 func TestCodeAndMessageOf(t *testing.T) {
-	err := Wrap(CodeTimeout, "request timed out", errors.New("context deadline exceeded"))
+	err := Wrap(
+		CodeTimeout,
+		"request timed out",
+		errors.New("context deadline exceeded"),
+	)
 	if CodeOf(err) != CodeTimeout {
 		t.Fatalf("unexpected code: %s", CodeOf(err))
 	}
@@ -64,10 +68,14 @@ func TestCodeAndMessageOf(t *testing.T) {
 }
 
 func TestPublicMessageDoesNotExposeRawCause(t *testing.T) {
-	if got := PublicMessage(errors.New("postgres password=secret")); got != "internal error" {
+	if got := PublicMessage(
+		errors.New("postgres password=secret"),
+	); got != "internal error" {
 		t.Fatalf("raw error leaked: %q", got)
 	}
-	if got := PublicMessage(Wrap(CodeUnavailable, "provider unavailable", errors.New("raw body"))); got != "provider unavailable" {
+	if got := PublicMessage(
+		Wrap(CodeUnavailable, "provider unavailable", errors.New("raw body")),
+	); got != "provider unavailable" {
 		t.Fatalf("structured public message = %q", got)
 	}
 }

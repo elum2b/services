@@ -5,19 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	services "github.com/elum2b/services"
-	"github.com/elum2b/services/internal/testsupport"
-	"github.com/elum2b/services/internal/utils/apiflow"
-	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	"github.com/elum2b/services/tasks/repository"
-	taskruntime "github.com/elum2b/services/tasks/runtime"
-	"github.com/elum2b/services/tasks/service/admin"
-	"github.com/elum2b/services/tasks/service/integration"
-	"github.com/elum2b/services/tasks/service/internalapi"
-	"github.com/elum2b/services/tasks/service/user"
-	"github.com/go-resty/resty/v2"
-	json "github.com/goccy/go-json"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"io"
 	"math"
 	"net/http"
@@ -30,6 +17,21 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/go-resty/resty/v2"
+	json "github.com/goccy/go-json"
+	_ "github.com/jackc/pgx/v5/stdlib"
+
+	services "github.com/elum2b/services"
+	"github.com/elum2b/services/internal/testsupport"
+	"github.com/elum2b/services/internal/utils/apiflow"
+	sqlwrap "github.com/elum2b/services/internal/utils/sql"
+	"github.com/elum2b/services/tasks/repository"
+	taskruntime "github.com/elum2b/services/tasks/runtime"
+	"github.com/elum2b/services/tasks/service/admin"
+	"github.com/elum2b/services/tasks/service/integration"
+	"github.com/elum2b/services/tasks/service/internalapi"
+	"github.com/elum2b/services/tasks/service/user"
 )
 
 func TestTasksRecordRejectsAmountAboveBigInt(t *testing.T) {
@@ -37,20 +39,26 @@ func TestTasksRecordRejectsAmountAboveBigInt(t *testing.T) {
 	workspaceID := testsupport.WorkspaceID("record-amount-overflow")
 	createStandaloneTask(t, service, workspaceID, "overflow", "overflow", 1, 1)
 
-	_, err := service.Internal.Record(context.Background(), internalapi.RecordParams{
-		Identity: internalapi.Identity{
-			WorkspaceID:    workspaceID,
-			AppID:          1,
-			PlatformID:     1,
-			PlatformUserID: "player",
+	_, err := service.Internal.Record(
+		context.Background(),
+		internalapi.RecordParams{
+			Identity: internalapi.Identity{
+				WorkspaceID:    workspaceID,
+				AppID:          1,
+				PlatformID:     1,
+				PlatformUserID: "player",
+			},
+			ActionKey:        "overflow",
+			Amount:           math.MaxUint64,
+			Source:           "test",
+			ExternalEventKey: "overflow-event",
 		},
-		ActionKey:        "overflow",
-		Amount:           math.MaxUint64,
-		Source:           "test",
-		ExternalEventKey: "overflow-event",
-	})
+	)
 	if !errors.Is(err, repository.ErrRecordAmountOverflow) {
-		t.Fatalf("record overflow error = %v, want ErrRecordAmountOverflow", err)
+		t.Fatalf(
+			"record overflow error = %v, want ErrRecordAmountOverflow",
+			err,
+		)
 	}
 
 	db, err := openTasksPostgres(tasksTestDB)
@@ -91,18 +99,23 @@ func TestTasksRecordRejectsIntegrationAndCompositeActions(t *testing.T) {
 		ActionKind:  repository.ActionKindChannelSubscribe,
 		Provider:    "telegram",
 	})
-	complexIDs := createComplexTaskSet(t, service, workspaceID, complexTaskOptions{
-		ParentKey: "complex-protected",
-		Conditions: []complexConditionSeed{
-			{
-				Key:         "complex-protected-condition",
-				ActionKey:   "allowed-action",
-				TargetCount: 1,
+	complexIDs := createComplexTaskSet(
+		t,
+		service,
+		workspaceID,
+		complexTaskOptions{
+			ParentKey: "complex-protected",
+			Conditions: []complexConditionSeed{
+				{
+					Key:         "complex-protected-condition",
+					ActionKey:   "allowed-action",
+					TargetCount: 1,
+				},
 			},
+			ParentRewardKey:      "stars",
+			ParentRewardQuantity: 1,
 		},
-		ParentRewardKey:      "stars",
-		ParentRewardQuantity: 1,
-	})
+	)
 
 	for _, actionKey := range []string{
 		"subscribe:protected",
@@ -118,8 +131,13 @@ func TestTasksRecordRejectsIntegrationAndCompositeActions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("record forbidden action %q: %v", actionKey, err)
 		}
-		if result.Status != repository.RecordStatusNoTasks || len(result.Tasks) != 0 {
-			t.Fatalf("forbidden action %q progressed tasks: %+v", actionKey, result)
+		if result.Status != repository.RecordStatusNoTasks ||
+			len(result.Tasks) != 0 {
+			t.Fatalf(
+				"forbidden action %q progressed tasks: %+v",
+				actionKey,
+				result,
+			)
 		}
 	}
 
@@ -146,13 +164,41 @@ func TestTasksIdentityCollisionIsolation(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("tasks-identity-collision")
-	createStandaloneTask(t, service, workspaceID, "identity-collision", "identity-event", 1, 1)
+	createStandaloneTask(
+		t,
+		service,
+		workspaceID,
+		"identity-collision",
+		"identity-event",
+		1,
+		1,
+	)
 
 	identities := []internalapi.Identity{
-		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "shared-user"},
-		{WorkspaceID: workspaceID, AppID: 101, PlatformID: 200, PlatformUserID: "shared-user"},
-		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 201, PlatformUserID: "shared-user"},
-		{WorkspaceID: workspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "other-user"},
+		{
+			WorkspaceID:    workspaceID,
+			AppID:          100,
+			PlatformID:     200,
+			PlatformUserID: "shared-user",
+		},
+		{
+			WorkspaceID:    workspaceID,
+			AppID:          101,
+			PlatformID:     200,
+			PlatformUserID: "shared-user",
+		},
+		{
+			WorkspaceID:    workspaceID,
+			AppID:          100,
+			PlatformID:     201,
+			PlatformUserID: "shared-user",
+		},
+		{
+			WorkspaceID:    workspaceID,
+			AppID:          100,
+			PlatformID:     200,
+			PlatformUserID: "other-user",
+		},
 	}
 	for index, identity := range identities {
 		recorded, err := service.Internal.Record(ctx, internalapi.RecordParams{
@@ -168,7 +214,11 @@ func TestTasksIdentityCollisionIsolation(t *testing.T) {
 		if recorded.Status != repository.RecordStatusRecorded ||
 			recorded.Consumed != 1 ||
 			len(recorded.Tasks) != 1 {
-			t.Fatalf("identity %#v collided during record: %+v", identity, recorded)
+			t.Fatalf(
+				"identity %#v collided during record: %+v",
+				identity,
+				recorded,
+			)
 		}
 
 		claimed, err := service.User.Claim(ctx, user.ClaimParams{
@@ -180,7 +230,11 @@ func TestTasksIdentityCollisionIsolation(t *testing.T) {
 			t.Fatalf("claim for %#v: %v", identity, err)
 		}
 		if claimed.Status != repository.ClaimStatusClaimed {
-			t.Fatalf("identity %#v collided during claim: %+v", identity, claimed)
+			t.Fatalf(
+				"identity %#v collided during claim: %+v",
+				identity,
+				claimed,
+			)
 		}
 	}
 
@@ -195,7 +249,10 @@ func TestTasksIdentityCollisionIsolation(t *testing.T) {
 		t.Fatalf("repeat record: %v", err)
 	}
 	if repeated.Status != repository.RecordStatusDuplicate {
-		t.Fatalf("same full identity record status=%q, want duplicate", repeated.Status)
+		t.Fatalf(
+			"same full identity record status=%q, want duplicate",
+			repeated.Status,
+		)
 	}
 
 	db, err := openTasksPostgres(tasksTestDB)
@@ -247,7 +304,13 @@ func TestTasksAdminRejectsIncompatibleTaskAndActionKinds(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("task-action-compatibility")
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
 
@@ -276,43 +339,74 @@ func TestAdminValidateReward(t *testing.T) {
 	taskID := createRewardValidationTask(t, service, workspaceID)
 	hour := "hour"
 
-	if err := service.Admin.UpsertReward(context.Background(), workspaceID, taskID, admin.RewardModel{
-		Key: "coin", Quantity: 1,
-	}, 1); err != nil {
+	if err := service.Admin.UpsertReward(
+		context.Background(),
+		workspaceID,
+		taskID,
+		admin.RewardModel{
+			Key: "coin", Quantity: 1,
+		},
+		1,
+	); err != nil {
 		t.Fatalf("default quantity reward: %v", err)
 	}
-	if err := service.Admin.UpsertReward(context.Background(), workspaceID, taskID, admin.RewardModel{
-		Key: "energy", Type: "duration", Quantity: 3, Unit: &hour,
-	}, 2); err != nil {
+	if err := service.Admin.UpsertReward(
+		context.Background(),
+		workspaceID,
+		taskID,
+		admin.RewardModel{
+			Key: "energy", Type: "duration", Quantity: 3, Unit: &hour,
+		},
+		2,
+	); err != nil {
 		t.Fatalf("duration reward: %v", err)
 	}
-	if err := service.Admin.UpsertReward(context.Background(), workspaceID, taskID, admin.RewardModel{
-		Key: "bad_energy", Type: "duration", Quantity: 3,
-	}, 3); err == nil {
+	if err := service.Admin.UpsertReward(
+		context.Background(),
+		workspaceID,
+		taskID,
+		admin.RewardModel{
+			Key: "bad_energy", Type: "duration", Quantity: 3,
+		},
+		3,
+	); err == nil {
 		t.Fatal("duration reward without unit must fail")
 	}
 }
 
-func createRewardValidationTask(t testing.TB, service *Tasks, workspaceID string) uint64 {
+func createRewardValidationTask(
+	t testing.TB,
+	service *Tasks,
+	workspaceID string,
+) uint64 {
 	t.Helper()
-	if err := service.Admin.UpsertGroup(context.Background(), workspaceID, "daily", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		context.Background(),
+		workspaceID,
+		"daily",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("save reward validation group: %v", err)
 	}
-	taskID, err := service.Admin.SaveTask(context.Background(), admin.SaveTaskParams{
-		WorkspaceID: workspaceID,
-		Key:         "reward_validation",
-		GroupKey:    "daily",
-		TaskKind:    repository.TaskKindInternal,
-		ActionKey:   "reward.validation",
-		ActionKind:  repository.ActionKindAppAction,
-		ClaimMode:   repository.ClaimModeManual,
-		TargetCount: 1,
-		ResetUnit:   repository.ResetNever,
-		ResetEvery:  1,
-		Position:    1,
-		IsVisible:   true,
-		IsActive:    true,
-	})
+	taskID, err := service.Admin.SaveTask(
+		context.Background(),
+		admin.SaveTaskParams{
+			WorkspaceID: workspaceID,
+			Key:         "reward_validation",
+			GroupKey:    "daily",
+			TaskKind:    repository.TaskKindInternal,
+			ActionKey:   "reward.validation",
+			ActionKind:  repository.ActionKindAppAction,
+			ClaimMode:   repository.ClaimModeManual,
+			TargetCount: 1,
+			ResetUnit:   repository.ResetNever,
+			ResetEvery:  1,
+			Position:    1,
+			IsVisible:   true,
+			IsActive:    true,
+		},
+	)
 	if err != nil {
 		t.Fatalf("save reward validation task: %v", err)
 	}
@@ -342,10 +436,16 @@ func TestTasksAPIFlowRoundRobin(t *testing.T) {
 func TestTasksAPIFlowPerTokenRateLimit(t *testing.T) {
 	flow := apiflow.New(apiflow.Options{RatePerSecond: 30})
 	start := time.Now()
-	if _, err := flow.Acquire(context.Background(), apiflow.TokenSet{Tokens: []string{"a"}}); err != nil {
+	if _, err := flow.Acquire(
+		context.Background(),
+		apiflow.TokenSet{Tokens: []string{"a"}},
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := flow.Acquire(context.Background(), apiflow.TokenSet{Tokens: []string{"a"}}); err != nil {
+	if _, err := flow.Acquire(
+		context.Background(),
+		apiflow.TokenSet{Tokens: []string{"a"}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if elapsed := time.Since(start); elapsed < 30*time.Millisecond {
@@ -355,12 +455,18 @@ func TestTasksAPIFlowPerTokenRateLimit(t *testing.T) {
 
 func TestTasksAPIFlowContextCanceled(t *testing.T) {
 	flow := apiflow.New(apiflow.Options{RatePerSecond: 1})
-	if _, err := flow.Acquire(context.Background(), apiflow.TokenSet{Tokens: []string{"a"}}); err != nil {
+	if _, err := flow.Acquire(
+		context.Background(),
+		apiflow.TokenSet{Tokens: []string{"a"}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
-	if _, err := flow.Acquire(ctx, apiflow.TokenSet{Tokens: []string{"a"}}); err == nil {
+	if _, err := flow.Acquire(
+		ctx,
+		apiflow.TokenSet{Tokens: []string{"a"}},
+	); err == nil {
 		t.Fatal("expected context timeout")
 	}
 }
@@ -369,59 +475,79 @@ func TestTasksChannelSubscriptionCheckerTelegram(t *testing.T) {
 	mux := http.NewServeMux()
 	var mu sync.Mutex
 	usedTokens := make([]string, 0, 2)
-	mux.HandleFunc("/botbad/getChatMember", func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		usedTokens = append(usedTokens, "bad")
-		mu.Unlock()
-		_, _ = w.Write([]byte(`{"ok":true,"result":{"status":"member"}}`))
-	})
-	mux.HandleFunc("/botgood/getChatMember", func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		usedTokens = append(usedTokens, "good")
-		mu.Unlock()
-		if got := r.URL.Query().Get("chat_id"); got != "@channel" {
-			t.Fatalf("chat_id = %q", got)
-		}
-		if got := r.URL.Query().Get("user_id"); got != "1093776793" {
-			t.Fatalf("user_id = %q", got)
-		}
-		_, _ = w.Write([]byte(`{"ok":true,"result":{"status":"member"}}`))
-	})
+	mux.HandleFunc(
+		"/botbad/getChatMember",
+		func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			usedTokens = append(usedTokens, "bad")
+			mu.Unlock()
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"status":"member"}}`))
+		},
+	)
+	mux.HandleFunc(
+		"/botgood/getChatMember",
+		func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			usedTokens = append(usedTokens, "good")
+			mu.Unlock()
+			if got := r.URL.Query().Get("chat_id"); got != "@channel" {
+				t.Fatalf("chat_id = %q", got)
+			}
+			if got := r.URL.Query().Get("user_id"); got != "1093776793" {
+				t.Fatalf("user_id = %q", got)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"status":"member"}}`))
+		},
+	)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	checker := integration.NewChannelSubscriptionChecker(integration.ChannelSubscriptionCheckerOptions{
-		Client:                resty.New(),
-		TelegramBotAPIBaseURL: server.URL,
-	})
-	result, err := checker.CheckChannelSubscription(context.Background(), integration.ChannelSubscriptionCheckParams{
-		Identity: integration.Identity{WorkspaceID: testsupport.WorkspaceID("w"), PlatformUserID: "1093776793"},
-		Provider: "tg",
-		Task: integration.TaskContext{
-			ActionKey: "telegram",
-			IntegrationPayload: json.RawMessage(`{
+	checker := integration.NewChannelSubscriptionChecker(
+		integration.ChannelSubscriptionCheckerOptions{
+			Client:                resty.New(),
+			TelegramBotAPIBaseURL: server.URL,
+		},
+	)
+	result, err := checker.CheckChannelSubscription(
+		context.Background(),
+		integration.ChannelSubscriptionCheckParams{
+			Identity: integration.Identity{
+				WorkspaceID:    testsupport.WorkspaceID("w"),
+				PlatformUserID: "1093776793",
+			},
+			Provider: "tg",
+			Task: integration.TaskContext{
+				ActionKey: "telegram",
+				IntegrationPayload: json.RawMessage(`{
 				"chat_id":"@channel",
 				"tokens":["bad","good"]
 			}`),
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !result.Completed {
 		t.Fatalf("expected completed result: %+v", result)
 	}
-	result, err = checker.CheckChannelSubscription(context.Background(), integration.ChannelSubscriptionCheckParams{
-		Identity: integration.Identity{WorkspaceID: testsupport.WorkspaceID("w"), PlatformUserID: "1093776793"},
-		Provider: "tg",
-		Task: integration.TaskContext{
-			ActionKey: "telegram",
-			IntegrationPayload: json.RawMessage(`{
+	result, err = checker.CheckChannelSubscription(
+		context.Background(),
+		integration.ChannelSubscriptionCheckParams{
+			Identity: integration.Identity{
+				WorkspaceID:    testsupport.WorkspaceID("w"),
+				PlatformUserID: "1093776793",
+			},
+			Provider: "tg",
+			Task: integration.TaskContext{
+				ActionKey: "telegram",
+				IntegrationPayload: json.RawMessage(`{
 				"chat_id":"@channel",
 				"tokens":["bad","good"]
 			}`),
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +556,8 @@ func TestTasksChannelSubscriptionCheckerTelegram(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(usedTokens) != 2 || usedTokens[0] != "bad" || usedTokens[1] != "good" {
+	if len(usedTokens) != 2 || usedTokens[0] != "bad" ||
+		usedTokens[1] != "good" {
 		t.Fatalf("unexpected token usage: %#v", usedTokens)
 	}
 }
@@ -439,51 +566,68 @@ func TestTasksChannelSubscriptionCheckerVK(t *testing.T) {
 	mux := http.NewServeMux()
 	var mu sync.Mutex
 	usedTokens := make([]string, 0, 2)
-	mux.HandleFunc("/groups.isMember", func(w http.ResponseWriter, r *http.Request) {
-		if got := r.URL.Query().Get("group_id"); got != "club123" {
-			t.Fatalf("group_id = %q", got)
-		}
-		if got := r.URL.Query().Get("user_id"); got != "42" {
-			t.Fatalf("user_id = %q", got)
-		}
-		mu.Lock()
-		usedTokens = append(usedTokens, r.URL.Query().Get("access_token"))
-		mu.Unlock()
-		_, _ = w.Write([]byte(`{"response":1}`))
-	})
+	mux.HandleFunc(
+		"/groups.isMember",
+		func(w http.ResponseWriter, r *http.Request) {
+			if got := r.URL.Query().Get("group_id"); got != "club123" {
+				t.Fatalf("group_id = %q", got)
+			}
+			if got := r.URL.Query().Get("user_id"); got != "42" {
+				t.Fatalf("user_id = %q", got)
+			}
+			mu.Lock()
+			usedTokens = append(usedTokens, r.URL.Query().Get("access_token"))
+			mu.Unlock()
+			_, _ = w.Write([]byte(`{"response":1}`))
+		},
+	)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	checker := integration.NewChannelSubscriptionChecker(integration.ChannelSubscriptionCheckerOptions{
-		Client:       resty.New(),
-		VKAPIBaseURL: server.URL,
-	})
-	result, err := checker.CheckChannelSubscription(context.Background(), integration.ChannelSubscriptionCheckParams{
-		Identity: integration.Identity{WorkspaceID: testsupport.WorkspaceID("w"), PlatformUserID: "42"},
-		Provider: "vk",
-		Task: integration.TaskContext{
-			IntegrationPayload: json.RawMessage(`{
+	checker := integration.NewChannelSubscriptionChecker(
+		integration.ChannelSubscriptionCheckerOptions{
+			Client:       resty.New(),
+			VKAPIBaseURL: server.URL,
+		},
+	)
+	result, err := checker.CheckChannelSubscription(
+		context.Background(),
+		integration.ChannelSubscriptionCheckParams{
+			Identity: integration.Identity{
+				WorkspaceID:    testsupport.WorkspaceID("w"),
+				PlatformUserID: "42",
+			},
+			Provider: "vk",
+			Task: integration.TaskContext{
+				IntegrationPayload: json.RawMessage(`{
 				"group_id":"club123",
 				"tokens":["vk-token-1","vk-token-2"]
 			}`),
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !result.Completed {
 		t.Fatalf("expected completed result: %+v", result)
 	}
-	result, err = checker.CheckChannelSubscription(context.Background(), integration.ChannelSubscriptionCheckParams{
-		Identity: integration.Identity{WorkspaceID: testsupport.WorkspaceID("w"), PlatformUserID: "42"},
-		Provider: "vk",
-		Task: integration.TaskContext{
-			IntegrationPayload: json.RawMessage(`{
+	result, err = checker.CheckChannelSubscription(
+		context.Background(),
+		integration.ChannelSubscriptionCheckParams{
+			Identity: integration.Identity{
+				WorkspaceID:    testsupport.WorkspaceID("w"),
+				PlatformUserID: "42",
+			},
+			Provider: "vk",
+			Task: integration.TaskContext{
+				IntegrationPayload: json.RawMessage(`{
 				"group_id":"club123",
 				"tokens":["vk-token-1","vk-token-2"]
 			}`),
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +636,8 @@ func TestTasksChannelSubscriptionCheckerVK(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(usedTokens) != 2 || usedTokens[0] != "vk-token-1" || usedTokens[1] != "vk-token-2" {
+	if len(usedTokens) != 2 || usedTokens[0] != "vk-token-1" ||
+		usedTokens[1] != "vk-token-2" {
 		t.Fatalf("unexpected token usage: %#v", usedTokens)
 	}
 }
@@ -501,33 +646,48 @@ func TestTasksChannelBoostCheckerTelegram(t *testing.T) {
 	mux := http.NewServeMux()
 	var mu sync.Mutex
 	usedTokens := make([]string, 0, 2)
-	mux.HandleFunc("/botone/getUserChatBoosts", func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		usedTokens = append(usedTokens, "one")
-		mu.Unlock()
-		if got := r.URL.Query().Get("chat_id"); got != "@boosted" {
-			t.Fatalf("chat_id = %q", got)
-		}
-		if got := r.URL.Query().Get("user_id"); got != "1093776793" {
-			t.Fatalf("user_id = %q", got)
-		}
-		_, _ = w.Write([]byte(`{"ok":true,"result":{"boosts":[{"boost_id":"b1"}]}}`))
-	})
-	mux.HandleFunc("/bottwo/getUserChatBoosts", func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		usedTokens = append(usedTokens, "two")
-		mu.Unlock()
-		_, _ = w.Write([]byte(`{"ok":true,"result":{"boosts":[{"boost_id":"b2"}]}}`))
-	})
+	mux.HandleFunc(
+		"/botone/getUserChatBoosts",
+		func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			usedTokens = append(usedTokens, "one")
+			mu.Unlock()
+			if got := r.URL.Query().Get("chat_id"); got != "@boosted" {
+				t.Fatalf("chat_id = %q", got)
+			}
+			if got := r.URL.Query().Get("user_id"); got != "1093776793" {
+				t.Fatalf("user_id = %q", got)
+			}
+			_, _ = w.Write(
+				[]byte(`{"ok":true,"result":{"boosts":[{"boost_id":"b1"}]}}`),
+			)
+		},
+	)
+	mux.HandleFunc(
+		"/bottwo/getUserChatBoosts",
+		func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			usedTokens = append(usedTokens, "two")
+			mu.Unlock()
+			_, _ = w.Write(
+				[]byte(`{"ok":true,"result":{"boosts":[{"boost_id":"b2"}]}}`),
+			)
+		},
+	)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	checker := integration.NewChannelSubscriptionChecker(integration.ChannelSubscriptionCheckerOptions{
-		Client:                resty.New(),
-		TelegramBotAPIBaseURL: server.URL,
-	})
+	checker := integration.NewChannelSubscriptionChecker(
+		integration.ChannelSubscriptionCheckerOptions{
+			Client:                resty.New(),
+			TelegramBotAPIBaseURL: server.URL,
+		},
+	)
 	params := integration.ChannelBoostCheckParams{
-		Identity: integration.Identity{WorkspaceID: testsupport.WorkspaceID("w"), PlatformUserID: "1093776793"},
+		Identity: integration.Identity{
+			WorkspaceID:    testsupport.WorkspaceID("w"),
+			PlatformUserID: "1093776793",
+		},
 		Provider: "tg",
 		Task: integration.TaskContext{
 			ActionKey: "telegram",
@@ -550,7 +710,8 @@ func TestTasksChannelBoostCheckerTelegram(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(usedTokens) != 2 || usedTokens[0] != "one" || usedTokens[1] != "two" {
+	if len(usedTokens) != 2 || usedTokens[0] != "one" ||
+		usedTokens[1] != "two" {
 		t.Fatalf("unexpected token usage: %#v", usedTokens)
 	}
 }
@@ -559,20 +720,45 @@ func TestTasksComplexConditionsOutOfOrderAndClaim(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
-	identity := internalapi.Identity{WorkspaceID: testsupport.WorkspaceID("complex-out-of-order"), AppID: 1, PlatformID: 1, PlatformUserID: "player"}
-	ids := createComplexTaskSet(t, service, identity.WorkspaceID, complexTaskOptions{
-		ParentKey: "daily.combo",
-		Conditions: []complexConditionSeed{
-			{Key: "daily.send_message", ActionKey: "message.send", TargetCount: 1, RewardKey: "stars", RewardQuantity: 25},
-			{Key: "daily.play_coin", ActionKey: "coin.play", TargetCount: 1},
+	identity := internalapi.Identity{
+		WorkspaceID:    testsupport.WorkspaceID("complex-out-of-order"),
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "player",
+	}
+	ids := createComplexTaskSet(
+		t,
+		service,
+		identity.WorkspaceID,
+		complexTaskOptions{
+			ParentKey: "daily.combo",
+			Conditions: []complexConditionSeed{
+				{
+					Key:            "daily.send_message",
+					ActionKey:      "message.send",
+					TargetCount:    1,
+					RewardKey:      "stars",
+					RewardQuantity: 25,
+				},
+				{
+					Key:         "daily.play_coin",
+					ActionKey:   "coin.play",
+					TargetCount: 1,
+				},
+			},
+			ParentRewardKey:      "stars",
+			ParentRewardQuantity: 100,
+			ResetUnit:            repository.ResetNever,
 		},
-		ParentRewardKey:      "stars",
-		ParentRewardQuantity: 100,
-		ResetUnit:            repository.ResetNever,
-	})
+	)
 
 	first, err := service.Internal.Record(ctx, internalapi.RecordParams{
-		Identity: identity, ActionKey: "coin.play", Amount: 1, Source: "test", ExternalEventKey: "coin-1", Now: now,
+		Identity:         identity,
+		ActionKey:        "coin.play",
+		Amount:           1,
+		Source:           "test",
+		ExternalEventKey: "coin-1",
+		Now:              now,
 	})
 	if err != nil {
 		t.Fatalf("record first condition: %v", err)
@@ -580,12 +766,21 @@ func TestTasksComplexConditionsOutOfOrderAndClaim(t *testing.T) {
 	if first.Status != repository.RecordStatusRecorded {
 		t.Fatalf("unexpected first record: %+v", first)
 	}
-	list, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity), Locale: "ru", Now: now})
+	list, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(identity),
+			Locale:   "ru",
+			Now:      now,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list after first: %v", err)
 	}
 	parent := findTask(t, list, "daily.combo")
-	if parent.Progress == nil || parent.Progress.Status != repository.StatusOpen || parent.Progress.Progress != 1 {
+	if parent.Progress == nil ||
+		parent.Progress.Status != repository.StatusOpen ||
+		parent.Progress.Progress != 1 {
 		t.Fatalf("expected parent partial progress: %+v", parent.Progress)
 	}
 	if len(parent.Conditions) != 2 {
@@ -593,7 +788,12 @@ func TestTasksComplexConditionsOutOfOrderAndClaim(t *testing.T) {
 	}
 
 	second, err := service.Internal.Record(ctx, internalapi.RecordParams{
-		Identity: identity, ActionKey: "message.send", Amount: 1, Source: "test", ExternalEventKey: "message-1", Now: now,
+		Identity:         identity,
+		ActionKey:        "message.send",
+		Amount:           1,
+		Source:           "test",
+		ExternalEventKey: "message-1",
+		Now:              now,
 	})
 	if err != nil {
 		t.Fatalf("record second condition: %v", err)
@@ -601,22 +801,37 @@ func TestTasksComplexConditionsOutOfOrderAndClaim(t *testing.T) {
 	if second.Status != repository.RecordStatusRecorded {
 		t.Fatalf("unexpected second record: %+v", second)
 	}
-	list, err = service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity), Locale: "ru", Now: now})
+	list, err = service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(identity),
+			Locale:   "ru",
+			Now:      now,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list after second: %v", err)
 	}
 	parent = findTask(t, list, "daily.combo")
-	if parent.ID != ids.parentID || parent.Progress == nil || parent.Progress.Status != repository.StatusReady || parent.Progress.Progress != 2 {
+	if parent.ID != ids.parentID || parent.Progress == nil ||
+		parent.Progress.Status != repository.StatusReady ||
+		parent.Progress.Progress != 2 {
 		t.Fatalf("expected parent ready: %+v", parent)
 	}
 
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(identity), TaskRef: fmt.Sprintf("%d", ids.parentID), OperationID: "complex-claim", Now: now,
+		Identity: user.Identity(
+			identity,
+		),
+		TaskRef:     fmt.Sprintf("%d", ids.parentID),
+		OperationID: "complex-claim",
+		Now:         now,
 	})
 	if err != nil || claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim parent: %+v err=%v", claim, err)
 	}
-	if claim.Task == nil || len(claim.Task.Rewards) != 1 || claim.Task.Rewards[0].Quantity != 100 {
+	if claim.Task == nil || len(claim.Task.Rewards) != 1 ||
+		claim.Task.Rewards[0].Quantity != 100 {
 		t.Fatalf("unexpected parent reward: %+v", claim.Task)
 	}
 }
@@ -625,64 +840,130 @@ func TestTasksComplexParallelActionAndConditionReward(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	now := time.Date(2026, 7, 5, 13, 0, 0, 0, time.UTC)
-	identity := internalapi.Identity{WorkspaceID: testsupport.WorkspaceID("complex-parallel"), AppID: 1, PlatformID: 1, PlatformUserID: "player"}
-	if err := service.Admin.UpsertGroup(ctx, identity.WorkspaceID, "main", 1, true); err != nil {
+	identity := internalapi.Identity{
+		WorkspaceID:    testsupport.WorkspaceID("complex-parallel"),
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "player",
+	}
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		identity.WorkspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
-	standaloneID := saveTaskForComplexTest(t, service, identity.WorkspaceID, "standalone.send", "message.send", 1, repository.TaskKindInternal, repository.ActionKindAmountAction, repository.ResetNever, 10)
-	if err := service.Admin.UpsertReward(ctx, identity.WorkspaceID, standaloneID, admin.RewardModel{Key: "stars", Quantity: 10}, 1); err != nil {
+	standaloneID := saveTaskForComplexTest(
+		t,
+		service,
+		identity.WorkspaceID,
+		"standalone.send",
+		"message.send",
+		1,
+		repository.TaskKindInternal,
+		repository.ActionKindAmountAction,
+		repository.ResetNever,
+		10,
+	)
+	if err := service.Admin.UpsertReward(
+		ctx,
+		identity.WorkspaceID,
+		standaloneID,
+		admin.RewardModel{Key: "stars", Quantity: 10},
+		1,
+	); err != nil {
 		t.Fatalf("standalone reward: %v", err)
 	}
-	ids := createComplexTaskSet(t, service, identity.WorkspaceID, complexTaskOptions{
-		ParentKey: "combo.send",
-		Conditions: []complexConditionSeed{
-			{Key: "combo.condition.send", ActionKey: "message.send", TargetCount: 1, RewardKey: "stars", RewardQuantity: 15},
+	ids := createComplexTaskSet(
+		t,
+		service,
+		identity.WorkspaceID,
+		complexTaskOptions{
+			ParentKey: "combo.send",
+			Conditions: []complexConditionSeed{
+				{
+					Key:            "combo.condition.send",
+					ActionKey:      "message.send",
+					TargetCount:    1,
+					RewardKey:      "stars",
+					RewardQuantity: 15,
+				},
+			},
+			ParentRewardKey:      "stars",
+			ParentRewardQuantity: 50,
+			ResetUnit:            repository.ResetNever,
+			StartPosition:        20,
 		},
-		ParentRewardKey:      "stars",
-		ParentRewardQuantity: 50,
-		ResetUnit:            repository.ResetNever,
-		StartPosition:        20,
-	})
+	)
 
 	recorded, err := service.Internal.Record(ctx, internalapi.RecordParams{
-		Identity: identity, ActionKey: "message.send", Amount: 1, Source: "test", ExternalEventKey: "message-parallel", Now: now,
+		Identity:         identity,
+		ActionKey:        "message.send",
+		Amount:           1,
+		Source:           "test",
+		ExternalEventKey: "message-parallel",
+		Now:              now,
 	})
 	if err != nil {
 		t.Fatalf("record parallel action: %v", err)
 	}
-	if recorded.Status != repository.RecordStatusRecorded || len(recorded.Tasks) != 2 {
+	if recorded.Status != repository.RecordStatusRecorded ||
+		len(recorded.Tasks) != 2 {
 		t.Fatalf("expected standalone and condition to progress: %+v", recorded)
 	}
-	list, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity), Locale: "ru", Now: now})
+	list, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(identity),
+			Locale:   "ru",
+			Now:      now,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
 	standalone := findTask(t, list, "standalone.send")
 	condition := findTask(t, list, "combo.condition.send")
 	parent := findTask(t, list, "combo.send")
-	if standalone.Progress == nil || standalone.Progress.Status != repository.StatusReady {
+	if standalone.Progress == nil ||
+		standalone.Progress.Status != repository.StatusReady {
 		t.Fatalf("standalone must be ready: %+v", standalone.Progress)
 	}
-	if condition.Progress == nil || condition.Progress.Status != repository.StatusReady {
+	if condition.Progress == nil ||
+		condition.Progress.Status != repository.StatusReady {
 		t.Fatalf("condition must be ready: %+v", condition.Progress)
 	}
-	if parent.Progress == nil || parent.Progress.Status != repository.StatusReady {
+	if parent.Progress == nil ||
+		parent.Progress.Status != repository.StatusReady {
 		t.Fatalf("parent must be ready: %+v", parent.Progress)
 	}
 
 	conditionClaim, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(identity), TaskRef: fmt.Sprintf("%d", ids.conditionIDs[0]), OperationID: "condition-claim", Now: now,
+		Identity: user.Identity(
+			identity,
+		),
+		TaskRef:     fmt.Sprintf("%d", ids.conditionIDs[0]),
+		OperationID: "condition-claim",
+		Now:         now,
 	})
 	if err != nil || conditionClaim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim condition: %+v err=%v", conditionClaim, err)
 	}
 	parentClaim, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(identity), TaskRef: fmt.Sprintf("%d", ids.parentID), OperationID: "parent-claim", Now: now,
+		Identity: user.Identity(
+			identity,
+		),
+		TaskRef:     fmt.Sprintf("%d", ids.parentID),
+		OperationID: "parent-claim",
+		Now:         now,
 	})
 	if err != nil || parentClaim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim parent: %+v err=%v", parentClaim, err)
 	}
-	if parentClaim.Task == nil || len(parentClaim.Task.Rewards) != 1 || parentClaim.Task.Rewards[0].Quantity != 50 {
+	if parentClaim.Task == nil || len(parentClaim.Task.Rewards) != 1 ||
+		parentClaim.Task.Rewards[0].Quantity != 50 {
 		t.Fatalf("unexpected parent claim reward: %+v", parentClaim.Task)
 	}
 }
@@ -692,57 +973,109 @@ func TestTasksComplexTargetsAndResetWindows(t *testing.T) {
 	ctx := context.Background()
 	day1 := time.Date(2026, 7, 5, 10, 0, 0, 0, time.UTC)
 	day2 := day1.Add(24 * time.Hour)
-	identity := internalapi.Identity{WorkspaceID: testsupport.WorkspaceID("complex-window"), AppID: 1, PlatformID: 1, PlatformUserID: "player"}
-	ids := createComplexTaskSet(t, service, identity.WorkspaceID, complexTaskOptions{
-		ParentKey: "daily.combo.window",
-		Conditions: []complexConditionSeed{
-			{Key: "daily.watch_ads", ActionKey: "ads.watch", TargetCount: 2},
+	identity := internalapi.Identity{
+		WorkspaceID:    testsupport.WorkspaceID("complex-window"),
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "player",
+	}
+	ids := createComplexTaskSet(
+		t,
+		service,
+		identity.WorkspaceID,
+		complexTaskOptions{
+			ParentKey: "daily.combo.window",
+			Conditions: []complexConditionSeed{
+				{
+					Key:         "daily.watch_ads",
+					ActionKey:   "ads.watch",
+					TargetCount: 2,
+				},
+			},
+			ParentRewardKey:      "stars",
+			ParentRewardQuantity: 25,
+			ResetUnit:            repository.ResetDay,
 		},
-		ParentRewardKey:      "stars",
-		ParentRewardQuantity: 25,
-		ResetUnit:            repository.ResetDay,
-	})
+	)
 
 	one, err := service.Internal.Record(ctx, internalapi.RecordParams{
-		Identity: identity, ActionKey: "ads.watch", Amount: 1, Source: "test", ExternalEventKey: "ads-1", Now: day1,
+		Identity:         identity,
+		ActionKey:        "ads.watch",
+		Amount:           1,
+		Source:           "test",
+		ExternalEventKey: "ads-1",
+		Now:              day1,
 	})
 	if err != nil || one.Status != repository.RecordStatusRecorded {
 		t.Fatalf("record first ad: %+v err=%v", one, err)
 	}
-	list, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity), Locale: "ru", Now: day1})
+	list, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(identity),
+			Locale:   "ru",
+			Now:      day1,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list after one: %v", err)
 	}
 	parent := findTask(t, list, "daily.combo.window")
 	if parent.Progress != nil {
-		t.Fatalf("parent should not count incomplete condition: %+v", parent.Progress)
+		t.Fatalf(
+			"parent should not count incomplete condition: %+v",
+			parent.Progress,
+		)
 	}
 
 	two, err := service.Internal.Record(ctx, internalapi.RecordParams{
-		Identity: identity, ActionKey: "ads.watch", Amount: 1, Source: "test", ExternalEventKey: "ads-2", Now: day1,
+		Identity:         identity,
+		ActionKey:        "ads.watch",
+		Amount:           1,
+		Source:           "test",
+		ExternalEventKey: "ads-2",
+		Now:              day1,
 	})
 	if err != nil || two.Status != repository.RecordStatusRecorded {
 		t.Fatalf("record second ad: %+v err=%v", two, err)
 	}
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(identity), TaskRef: fmt.Sprintf("%d", ids.parentID), OperationID: "window-claim-day1", Now: day1,
+		Identity: user.Identity(
+			identity,
+		),
+		TaskRef:     fmt.Sprintf("%d", ids.parentID),
+		OperationID: "window-claim-day1",
+		Now:         day1,
 	})
 	if err != nil || claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim day1: %+v err=%v", claim, err)
 	}
 
-	nextDayList, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity), Locale: "ru", Now: day2})
+	nextDayList, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(identity),
+			Locale:   "ru",
+			Now:      day2,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list day2: %v", err)
 	}
 	nextDayParent := findTask(t, nextDayList, "daily.combo.window")
 	nextDayCondition := findTask(t, nextDayList, "daily.watch_ads")
 	if nextDayParent.Progress != nil || nextDayCondition.Progress != nil {
-		t.Fatalf("daily window must reset parent=%+v condition=%+v", nextDayParent.Progress, nextDayCondition.Progress)
+		t.Fatalf(
+			"daily window must reset parent=%+v condition=%+v",
+			nextDayParent.Progress,
+			nextDayCondition.Progress,
+		)
 	}
 }
 
-func TestTasksComplexOptionalConditionDoesNotInflateRequiredProgress(t *testing.T) {
+func TestTasksComplexOptionalConditionDoesNotInflateRequiredProgress(
+	t *testing.T,
+) {
 
 	service := newTasksTestService(t)
 	ctx := context.Background()
@@ -755,7 +1088,13 @@ func TestTasksComplexOptionalConditionDoesNotInflateRequiredProgress(t *testing.
 		PlatformUserID: "player",
 	}
 
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
 	requiredID := saveTaskForComplexTest(
@@ -813,7 +1152,10 @@ func TestTasksComplexOptionalConditionDoesNotInflateRequiredProgress(t *testing.
 			IsRequired:      false,
 		},
 	} {
-		if err := service.Admin.UpsertComplexCondition(ctx, condition); err != nil {
+		if err := service.Admin.UpsertComplexCondition(
+			ctx,
+			condition,
+		); err != nil {
 			t.Fatalf("save complex condition: %v", err)
 		}
 	}
@@ -847,8 +1189,15 @@ func TestTasksComplexOptionalConditionDoesNotInflateRequiredProgress(t *testing.
 		parent.Progress.Status != repository.StatusReady {
 		t.Fatalf("parent progress = %+v, want ready 1/1", parent.Progress)
 	}
-	if optional := findTask(t, list, "complex.optional"); optional.ID != optionalID {
-		t.Fatalf("optional task must remain independently visible: %+v", optional)
+	if optional := findTask(
+		t,
+		list,
+		"complex.optional",
+	); optional.ID != optionalID {
+		t.Fatalf(
+			"optional task must remain independently visible: %+v",
+			optional,
+		)
 	}
 
 }
@@ -866,7 +1215,13 @@ func TestTasksComplexProgressPropagatesThroughDeepGraph(t *testing.T) {
 		PlatformUserID: "deep-player",
 	}
 
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
 	leafID := saveTaskForComplexTest(
@@ -897,14 +1252,17 @@ func TestTasksComplexProgressPropagatesThroughDeepGraph(t *testing.T) {
 			repository.ResetNever,
 			int32(20-depth),
 		)
-		if err := service.Admin.UpsertComplexCondition(ctx, admin.SaveComplexConditionParams{
-			WorkspaceID:     workspaceID,
-			ParentTaskID:    parentID,
-			ConditionTaskID: conditionID,
-			RequiredStatus:  repository.ComplexRequiredStatusReady,
-			Position:        1,
-			IsRequired:      true,
-		}); err != nil {
+		if err := service.Admin.UpsertComplexCondition(
+			ctx,
+			admin.SaveComplexConditionParams{
+				WorkspaceID:     workspaceID,
+				ParentTaskID:    parentID,
+				ConditionTaskID: conditionID,
+				RequiredStatus:  repository.ComplexRequiredStatusReady,
+				Position:        1,
+				IsRequired:      true,
+			},
+		); err != nil {
 			t.Fatalf("link complex depth %d: %v", depth, err)
 		}
 
@@ -946,7 +1304,13 @@ func TestTasksRejectsUnsupportedComplexConfigurations(t *testing.T) {
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("complex-invalid-config")
 
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
 	parentID := saveTaskForComplexTest(
@@ -974,14 +1338,17 @@ func TestTasksRejectsUnsupportedComplexConfigurations(t *testing.T) {
 		2,
 	)
 
-	if err := service.Admin.UpsertComplexCondition(ctx, admin.SaveComplexConditionParams{
-		WorkspaceID:     workspaceID,
-		ParentTaskID:    parentID,
-		ConditionTaskID: conditionID,
-		RequiredStatus:  repository.ComplexRequiredStatusReady,
-		Position:        1,
-		IsRequired:      true,
-	}); err == nil {
+	if err := service.Admin.UpsertComplexCondition(
+		ctx,
+		admin.SaveComplexConditionParams{
+			WorkspaceID:     workspaceID,
+			ParentTaskID:    parentID,
+			ConditionTaskID: conditionID,
+			RequiredStatus:  repository.ComplexRequiredStatusReady,
+			Position:        1,
+			IsRequired:      true,
+		},
+	); err == nil {
 		t.Fatal("non-complex parent must be rejected")
 	}
 
@@ -1042,7 +1409,12 @@ type complexTaskIDs struct {
 	conditionIDs []uint64
 }
 
-func createComplexTaskSet(t testing.TB, service *Tasks, workspaceID string, options complexTaskOptions) complexTaskIDs {
+func createComplexTaskSet(
+	t testing.TB,
+	service *Tasks,
+	workspaceID string,
+	options complexTaskOptions,
+) complexTaskIDs {
 	t.Helper()
 	ctx := context.Background()
 	if options.ResetUnit == "" {
@@ -1051,29 +1423,81 @@ func createComplexTaskSet(t testing.TB, service *Tasks, workspaceID string, opti
 	if options.StartPosition == 0 {
 		options.StartPosition = 1
 	}
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
-	parentID := saveTaskForComplexTest(t, service, workspaceID, options.ParentKey, "complex."+options.ParentKey, uint64(len(options.Conditions)), repository.TaskKindComplex, repository.ActionKindComposite, options.ResetUnit, options.StartPosition)
-	if err := service.Admin.UpsertReward(ctx, workspaceID, parentID, admin.RewardModel{Key: options.ParentRewardKey, Quantity: options.ParentRewardQuantity}, 1); err != nil {
+	parentID := saveTaskForComplexTest(
+		t,
+		service,
+		workspaceID,
+		options.ParentKey,
+		"complex."+options.ParentKey,
+		uint64(len(options.Conditions)),
+		repository.TaskKindComplex,
+		repository.ActionKindComposite,
+		options.ResetUnit,
+		options.StartPosition,
+	)
+	if err := service.Admin.UpsertReward(
+		ctx,
+		workspaceID,
+		parentID,
+		admin.RewardModel{
+			Key:      options.ParentRewardKey,
+			Quantity: options.ParentRewardQuantity,
+		},
+		1,
+	); err != nil {
 		t.Fatalf("parent reward: %v", err)
 	}
-	ids := complexTaskIDs{parentID: parentID, conditionIDs: make([]uint64, 0, len(options.Conditions))}
+	ids := complexTaskIDs{
+		parentID:     parentID,
+		conditionIDs: make([]uint64, 0, len(options.Conditions)),
+	}
 	for index, condition := range options.Conditions {
-		conditionID := saveTaskForComplexTest(t, service, workspaceID, condition.Key, condition.ActionKey, condition.TargetCount, repository.TaskKindInternal, repository.ActionKindAmountAction, options.ResetUnit, options.StartPosition+int32(index)+1)
+		conditionID := saveTaskForComplexTest(
+			t,
+			service,
+			workspaceID,
+			condition.Key,
+			condition.ActionKey,
+			condition.TargetCount,
+			repository.TaskKindInternal,
+			repository.ActionKindAmountAction,
+			options.ResetUnit,
+			options.StartPosition+int32(index)+1,
+		)
 		if condition.RewardKey != "" {
-			if err := service.Admin.UpsertReward(ctx, workspaceID, conditionID, admin.RewardModel{Key: condition.RewardKey, Quantity: condition.RewardQuantity}, 1); err != nil {
+			if err := service.Admin.UpsertReward(
+				ctx,
+				workspaceID,
+				conditionID,
+				admin.RewardModel{
+					Key:      condition.RewardKey,
+					Quantity: condition.RewardQuantity,
+				},
+				1,
+			); err != nil {
 				t.Fatalf("condition reward %s: %v", condition.Key, err)
 			}
 		}
-		if err := service.Admin.UpsertComplexCondition(ctx, admin.SaveComplexConditionParams{
-			WorkspaceID:     workspaceID,
-			ParentTaskID:    parentID,
-			ConditionTaskID: conditionID,
-			RequiredStatus:  repository.ComplexRequiredStatusReady,
-			Position:        int32(index + 1),
-			IsRequired:      true,
-		}); err != nil {
+		if err := service.Admin.UpsertComplexCondition(
+			ctx,
+			admin.SaveComplexConditionParams{
+				WorkspaceID:     workspaceID,
+				ParentTaskID:    parentID,
+				ConditionTaskID: conditionID,
+				RequiredStatus:  repository.ComplexRequiredStatusReady,
+				Position:        int32(index + 1),
+				IsRequired:      true,
+			},
+		); err != nil {
 			t.Fatalf("complex condition %s: %v", condition.Key, err)
 		}
 		ids.conditionIDs = append(ids.conditionIDs, conditionID)
@@ -1081,7 +1505,14 @@ func createComplexTaskSet(t testing.TB, service *Tasks, workspaceID string, opti
 	return ids
 }
 
-func saveTaskForComplexTest(t testing.TB, service *Tasks, workspaceID, key, actionKey string, targetCount uint64, taskKind, actionKind, resetUnit string, position int32) uint64 {
+func saveTaskForComplexTest(
+	t testing.TB,
+	service *Tasks,
+	workspaceID, key, actionKey string,
+	targetCount uint64,
+	taskKind, actionKind, resetUnit string,
+	position int32,
+) uint64 {
 	t.Helper()
 	ctx := context.Background()
 	id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
@@ -1103,7 +1534,14 @@ func saveTaskForComplexTest(t testing.TB, service *Tasks, workspaceID, key, acti
 	if err != nil {
 		t.Fatalf("task %s: %v", key, err)
 	}
-	if err := service.Admin.UpsertTaskLocalization(ctx, workspaceID, id, "ru", key, key); err != nil {
+	if err := service.Admin.UpsertTaskLocalization(
+		ctx,
+		workspaceID,
+		id,
+		"ru",
+		key,
+		key,
+	); err != nil {
 		t.Fatalf("localization %s: %v", key, err)
 	}
 	return id
@@ -1139,17 +1577,21 @@ func TestExportSectionsDefaultsToFullCatalog(t *testing.T) {
 func TestValidateExportPackageRequiresSequencePair(t *testing.T) {
 	repo := newExportImportRepository(t)
 	sequenceKey := "chain"
-	if _, err := repo.PreviewImport(context.Background(), "validation", repository.ExportPackage{
-		Format:  repository.ExportFormat,
-		Service: "tasks",
-		Groups: []repository.ExportGroup{{
-			Key: "daily",
-			Tasks: []repository.ExportTask{{
-				Key:         "task",
-				SequenceKey: &sequenceKey,
+	if _, err := repo.PreviewImport(
+		context.Background(),
+		"validation",
+		repository.ExportPackage{
+			Format:  repository.ExportFormat,
+			Service: "tasks",
+			Groups: []repository.ExportGroup{{
+				Key: "daily",
+				Tasks: []repository.ExportTask{{
+					Key:         "task",
+					SequenceKey: &sequenceKey,
+				}},
 			}},
-		}},
-	}); err == nil {
+		},
+	); err == nil {
 		t.Fatal("sequence_key without sequence_position must fail")
 	}
 }
@@ -1164,41 +1606,64 @@ func TestRequireImportSecrets(t *testing.T) {
 		Service: "tasks",
 		Groups: []repository.ExportGroup{{
 			Key: "daily",
-			PartnerConfigs: []repository.ExportPartnerConfig{{
-				Provider: "tgrass",
-				Platform: "telegram",
-				Secret:   &repository.ExportSecret{Mode: "required", Key: "tasks.partner.tgrass.daily.telegram.secret"},
-			}},
+			PartnerConfigs: []repository.ExportPartnerConfig{
+				{
+					Provider: "tgrass",
+					Platform: "telegram",
+					Secret: &repository.ExportSecret{
+						Mode: "required",
+						Key:  "tasks.partner.tgrass.daily.telegram.secret",
+					},
+				},
+			},
 		}},
 	}
 	preview, err := repo.PreviewImport(context.Background(), workspaceID, pkg)
 	if err != nil {
 		t.Fatalf("preview secrets: %v", err)
 	}
-	if len(preview.RequiredSecrets) != 1 || preview.RequiredSecrets[0].Key != "tasks.partner.tgrass.daily.telegram.secret" {
+	if len(preview.RequiredSecrets) != 1 ||
+		preview.RequiredSecrets[0].Key != "tasks.partner.tgrass.daily.telegram.secret" {
 		t.Fatalf("bad required secrets: %+v", preview.RequiredSecrets)
 	}
-	_, err = repo.Import(context.Background(), workspaceID, repository.ImportRequest{
-		Package:          pkg,
-		ConflictStrategy: repository.ImportConflictFail,
-		Secrets:          map[string]string{"tasks.partner.tgrass.daily.telegram.secret": "token"},
-	})
+	_, err = repo.Import(
+		context.Background(),
+		workspaceID,
+		repository.ImportRequest{
+			Package:          pkg,
+			ConflictStrategy: repository.ImportConflictFail,
+			Secrets: map[string]string{
+				"tasks.partner.tgrass.daily.telegram.secret": "token",
+			},
+		},
+	)
 	if err != nil {
 		t.Fatalf("secret should satisfy import requirement: %v", err)
 	}
 
 	pkg.Groups[0].PartnerConfigs[0].Secret.Value = &embedded
-	preview, err = repo.PreviewImport(context.Background(), embeddedWorkspaceID, pkg)
+	preview, err = repo.PreviewImport(
+		context.Background(),
+		embeddedWorkspaceID,
+		pkg,
+	)
 	if err != nil {
 		t.Fatalf("preview embedded secrets: %v", err)
 	}
 	if len(preview.RequiredSecrets) != 0 {
-		t.Fatalf("embedded secret must not be required: %+v", preview.RequiredSecrets)
+		t.Fatalf(
+			"embedded secret must not be required: %+v",
+			preview.RequiredSecrets,
+		)
 	}
-	_, err = repo.Import(context.Background(), embeddedWorkspaceID, repository.ImportRequest{
-		Package:          pkg,
-		ConflictStrategy: repository.ImportConflictFail,
-	})
+	_, err = repo.Import(
+		context.Background(),
+		embeddedWorkspaceID,
+		repository.ImportRequest{
+			Package:          pkg,
+			ConflictStrategy: repository.ImportConflictFail,
+		},
+	)
 	if err != nil {
 		t.Fatalf("embedded secret should satisfy import requirement: %v", err)
 	}
@@ -1209,8 +1674,14 @@ func TestRequireImportSecrets(t *testing.T) {
 		"daily",
 		"telegram",
 	)
-	if err != nil || !found || config.Secret == nil || *config.Secret != embedded {
-		t.Fatalf("embedded secret was not imported: found=%t config=%+v err=%v", found, config, err)
+	if err != nil || !found || config.Secret == nil ||
+		*config.Secret != embedded {
+		t.Fatalf(
+			"embedded secret was not imported: found=%t config=%+v err=%v",
+			found,
+			config,
+			err,
+		)
 	}
 }
 
@@ -1221,11 +1692,19 @@ func TestExportImportFullCycle(t *testing.T) {
 	targetWorkspace := testsupport.WorkspaceID("target")
 	seedExportSource(t, repo, sourceWorkspace)
 
-	pkg, err := repo.Export(ctx, sourceWorkspace, repository.ExportRequest{Now: time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)})
+	pkg, err := repo.Export(
+		ctx,
+		sourceWorkspace,
+		repository.ExportRequest{
+			Now: time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC),
+		},
+	)
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	if pkg.Format != repository.ExportFormat || pkg.Service != "tasks" || len(pkg.Groups) != 1 || len(pkg.Sequences) != 1 {
+	if pkg.Format != repository.ExportFormat || pkg.Service != "tasks" ||
+		len(pkg.Groups) != 1 ||
+		len(pkg.Sequences) != 1 {
 		t.Fatalf("unexpected export package: %+v", pkg)
 	}
 	raw, err := json.Marshal(pkg)
@@ -1235,18 +1714,26 @@ func TestExportImportFullCycle(t *testing.T) {
 	if strings.Contains(string(raw), "source-token") {
 		t.Fatalf("export must not contain secret value: %s", raw)
 	}
-	withSecrets, err := repo.Export(ctx, sourceWorkspace, repository.ExportRequest{IncludeSecrets: true})
+	withSecrets, err := repo.Export(
+		ctx,
+		sourceWorkspace,
+		repository.ExportRequest{IncludeSecrets: true},
+	)
 	if err != nil {
 		t.Fatalf("export with secrets: %v", err)
 	}
-	if len(withSecrets.Groups) != 1 || len(withSecrets.Groups[0].PartnerConfigs) != 1 ||
+	if len(withSecrets.Groups) != 1 ||
+		len(withSecrets.Groups[0].PartnerConfigs) != 1 ||
 		withSecrets.Groups[0].PartnerConfigs[0].Secret == nil ||
 		withSecrets.Groups[0].PartnerConfigs[0].Secret.Value == nil ||
 		*withSecrets.Groups[0].PartnerConfigs[0].Secret.Value != "source-token" ||
 		withSecrets.Groups[0].PartnerConfigs[0].WebhookSecret == nil ||
 		withSecrets.Groups[0].PartnerConfigs[0].WebhookSecret.Value == nil ||
 		*withSecrets.Groups[0].PartnerConfigs[0].WebhookSecret.Value != "source-webhook-secret" {
-		t.Fatalf("export with secrets missed values: %+v", withSecrets.Groups[0].PartnerConfigs)
+		t.Fatalf(
+			"export with secrets missed values: %+v",
+			withSecrets.Groups[0].PartnerConfigs,
+		)
 	}
 
 	preview, err := repo.PreviewImport(ctx, targetWorkspace, pkg)
@@ -1282,18 +1769,35 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	if result.Imported.Tasks != 1 || result.Imported.Rewards != 1 || result.Imported.PartnerConfigs != 1 {
+	if result.Imported.Tasks != 1 || result.Imported.Rewards != 1 ||
+		result.Imported.PartnerConfigs != 1 {
 		t.Fatalf("bad import result: %+v", result)
 	}
 
-	imported, err := repo.Export(ctx, targetWorkspace, repository.ExportRequest{})
+	imported, err := repo.Export(
+		ctx,
+		targetWorkspace,
+		repository.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export imported workspace: %v", err)
 	}
 	assertImportedCatalog(t, imported)
-	config, found, err := repo.GetPartnerConfig(ctx, targetWorkspace, "tgrass", "daily", "telegram")
-	if err != nil || !found || config.Secret == nil || *config.Secret != "target-token" {
-		t.Fatalf("bad imported partner config: found=%t config=%+v err=%v", found, config, err)
+	config, found, err := repo.GetPartnerConfig(
+		ctx,
+		targetWorkspace,
+		"tgrass",
+		"daily",
+		"telegram",
+	)
+	if err != nil || !found || config.Secret == nil ||
+		*config.Secret != "target-token" {
+		t.Fatalf(
+			"bad imported partner config: found=%t config=%+v err=%v",
+			found,
+			config,
+			err,
+		)
 	}
 	if config.WebhookSecret == nil || *config.WebhookSecret != "target-token" {
 		t.Fatalf("bad imported webhook secret: %+v", config)
@@ -1321,13 +1825,20 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("skip existing import: %v", err)
 	}
-	if skipped.Skipped.Tasks != 1 || skipped.Skipped.Groups != 1 || skipped.Skipped.PartnerConfigs != 1 {
+	if skipped.Skipped.Tasks != 1 || skipped.Skipped.Groups != 1 ||
+		skipped.Skipped.PartnerConfigs != 1 {
 		t.Fatalf("bad skipped result: %+v", skipped)
 	}
 
-	pkg.Groups[0].Localization["ru"] = repository.ExportText{Title: "Обновленные", Description: "Обновленное описание"}
+	pkg.Groups[0].Localization["ru"] = repository.ExportText{
+		Title:       "Обновленные",
+		Description: "Обновленное описание",
+	}
 	pkg.Groups[0].Tasks[0].Rewards[0].Quantity = 777
-	updatedSecrets := exportImportSecretMap(preview.RequiredSecrets, "updated-token")
+	updatedSecrets := exportImportSecretMap(
+		preview.RequiredSecrets,
+		"updated-token",
+	)
 	updated, err := repo.Import(ctx, targetWorkspace, repository.ImportRequest{
 		Package:          pkg,
 		ConflictStrategy: repository.ImportConflictUpdate,
@@ -1339,15 +1850,25 @@ func TestExportImportFullCycle(t *testing.T) {
 	if updated.Imported.Tasks != 1 || updated.Imported.Rewards != 1 {
 		t.Fatalf("bad update result: %+v", updated)
 	}
-	afterUpdate, err := repo.Export(ctx, targetWorkspace, repository.ExportRequest{})
+	afterUpdate, err := repo.Export(
+		ctx,
+		targetWorkspace,
+		repository.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export after update: %v", err)
 	}
 	if afterUpdate.Groups[0].Localization["ru"].Title != "Обновленные" {
-		t.Fatalf("group localization was not updated: %+v", afterUpdate.Groups[0].Localization)
+		t.Fatalf(
+			"group localization was not updated: %+v",
+			afterUpdate.Groups[0].Localization,
+		)
 	}
 	if afterUpdate.Groups[0].Tasks[0].Rewards[0].Quantity != 777 {
-		t.Fatalf("reward was not updated: %+v", afterUpdate.Groups[0].Tasks[0].Rewards[0])
+		t.Fatalf(
+			"reward was not updated: %+v",
+			afterUpdate.Groups[0].Tasks[0].Rewards[0],
+		)
 	}
 
 	pkg.Groups[0].Localization = nil
@@ -1362,7 +1883,11 @@ func TestExportImportFullCycle(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("replace imported task aggregate: %v", err)
 	}
-	replaced, err := repo.Export(ctx, targetWorkspace, repository.ExportRequest{})
+	replaced, err := repo.Export(
+		ctx,
+		targetWorkspace,
+		repository.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export replaced task aggregate: %v", err)
 	}
@@ -1372,7 +1897,10 @@ func TestExportImportFullCycle(t *testing.T) {
 		len(replaced.Groups[0].Tasks[0].Rewards) != 0 ||
 		len(replaced.Groups[0].PartnerConfigs) != 0 ||
 		len(replaced.Groups[0].PartnerRewardRules) != 0 {
-		t.Fatalf("update_existing kept removed task children: %+v", replaced.Groups)
+		t.Fatalf(
+			"update_existing kept removed task children: %+v",
+			replaced.Groups,
+		)
 	}
 }
 
@@ -1383,7 +1911,10 @@ func TestExportSectionsAndInvalidImportFormats(t *testing.T) {
 	seedExportSource(t, repo, workspaceID)
 
 	pkg, err := repo.Export(ctx, workspaceID, repository.ExportRequest{
-		Sections: []string{repository.ExportSectionGroups, repository.ExportSectionTasks},
+		Sections: []string{
+			repository.ExportSectionGroups,
+			repository.ExportSectionTasks,
+		},
 	})
 	if err != nil {
 		t.Fatalf("section export: %v", err)
@@ -1398,17 +1929,30 @@ func TestExportSectionsAndInvalidImportFormats(t *testing.T) {
 	if task.SequenceKey != nil || task.SequencePosition != nil {
 		t.Fatalf("sequence fields must be omitted: %+v", task)
 	}
-	if len(task.Rewards) != 0 || len(task.Localization) != 0 || len(pkg.Groups[0].PartnerConfigs) != 0 {
+	if len(task.Rewards) != 0 || len(task.Localization) != 0 ||
+		len(pkg.Groups[0].PartnerConfigs) != 0 {
 		t.Fatalf("disabled sections leaked into export: %+v", pkg.Groups[0])
 	}
-	if len(task.Target) != 0 || len(task.Integration.Payload) != 0 || task.Integration.Provider != nil {
+	if len(task.Target) != 0 || len(task.Integration.Payload) != 0 ||
+		task.Integration.Provider != nil {
 		t.Fatalf("target/integration must be omitted: %+v", task)
 	}
 
-	if _, err := repo.PreviewImport(ctx, workspaceID, repository.ExportPackage{Format: "tasks.export.v2", Service: "tasks"}); err == nil {
+	if _, err := repo.PreviewImport(
+		ctx,
+		workspaceID,
+		repository.ExportPackage{Format: "tasks.export.v2", Service: "tasks"},
+	); err == nil {
 		t.Fatal("unsupported format must fail")
 	}
-	if _, err := repo.PreviewImport(ctx, workspaceID, repository.ExportPackage{Format: repository.ExportFormat, Service: "cpa"}); err == nil {
+	if _, err := repo.PreviewImport(
+		ctx,
+		workspaceID,
+		repository.ExportPackage{
+			Format:  repository.ExportFormat,
+			Service: "cpa",
+		},
+	); err == nil {
 		t.Fatal("wrong service must fail")
 	}
 	position := uint32(1)
@@ -1460,7 +2004,11 @@ func TestTasksImportRejectsConditionsOnNonComplexTask(t *testing.T) {
 		testsupport.WorkspaceID("import-non-complex-condition"),
 		pkg,
 	)
-	if err == nil || !strings.Contains(err.Error(), `conditions require task_kind "complex"`) {
+	if err == nil ||
+		!strings.Contains(
+			err.Error(),
+			`conditions require task_kind "complex"`,
+		) {
 		t.Fatalf("non-complex conditions error = %v", err)
 	}
 
@@ -1471,7 +2019,9 @@ func TestImportDailyTasksExampleAndExport(t *testing.T) {
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("daily-example")
 
-	raw, err := os.ReadFile(filepath.Join("examples", "daily_tasks_import.json"))
+	raw, err := os.ReadFile(
+		filepath.Join("examples", "daily_tasks_import.json"),
+	)
 	if err != nil {
 		t.Fatalf("read daily example: %v", err)
 	}
@@ -1484,7 +2034,10 @@ func TestImportDailyTasksExampleAndExport(t *testing.T) {
 		t.Fatal("daily example import request must contain conflict_strategy")
 	}
 	if len(req.Secrets) != 0 {
-		t.Fatalf("daily example import request secrets = %d, want 0", len(req.Secrets))
+		t.Fatalf(
+			"daily example import request secrets = %d, want 0",
+			len(req.Secrets),
+		)
 	}
 
 	preview, err := repo.PreviewImport(ctx, workspaceID, pkg)
@@ -1502,7 +2055,8 @@ func TestImportDailyTasksExampleAndExport(t *testing.T) {
 		preview.Counts.PartnerRewards != 3 {
 		t.Fatalf("bad daily preview counts: %+v", preview.Counts)
 	}
-	if len(preview.Conflicts) != 0 || len(preview.Warnings) != 0 || len(preview.RequiredSecrets) != 6 {
+	if len(preview.Conflicts) != 0 || len(preview.Warnings) != 0 ||
+		len(preview.RequiredSecrets) != 6 {
 		t.Fatalf("daily preview should be clean: %+v", preview)
 	}
 	secrets := exportImportSecretMap(preview.RequiredSecrets, "example-secret")
@@ -1532,55 +2086,117 @@ func TestImportDailyTasksExampleAndExport(t *testing.T) {
 	assertDailyExampleExport(t, pkg, exported)
 }
 
-func seedExportSource(t *testing.T, repo *repository.Repository, workspaceID string) {
+func seedExportSource(
+	t *testing.T,
+	repo *repository.Repository,
+	workspaceID string,
+) {
 	t.Helper()
 	ctx := context.Background()
-	if err := repo.UpsertGroup(ctx, workspaceID, "daily", 10, true); err != nil {
+	if err := repo.UpsertGroup(
+		ctx,
+		workspaceID,
+		"daily",
+		10,
+		true,
+	); err != nil {
 		t.Fatalf("upsert group: %v", err)
 	}
-	if err := repo.UpsertGroupLocalization(ctx, workspaceID, "daily", "ru", "Ежедневные", "Ежедневные задания"); err != nil {
+	if err := repo.UpsertGroupLocalization(
+		ctx,
+		workspaceID,
+		"daily",
+		"ru",
+		"Ежедневные",
+		"Ежедневные задания",
+	); err != nil {
 		t.Fatalf("upsert group ru localization: %v", err)
 	}
-	if err := repo.UpsertGroupLocalization(ctx, workspaceID, "daily", "en", "Daily", "Daily tasks"); err != nil {
+	if err := repo.UpsertGroupLocalization(
+		ctx,
+		workspaceID,
+		"daily",
+		"en",
+		"Daily",
+		"Daily tasks",
+	); err != nil {
 		t.Fatalf("upsert group en localization: %v", err)
 	}
-	if err := repo.UpsertSequence(ctx, workspaceID, "daily_chain", 10, true); err != nil {
+	if err := repo.UpsertSequence(
+		ctx,
+		workspaceID,
+		"daily_chain",
+		10,
+		true,
+	); err != nil {
 		t.Fatalf("upsert sequence: %v", err)
 	}
 	position := uint32(1)
 	provider := "http"
 	taskID, err := repo.SaveTask(ctx, repository.SaveTaskParams{
-		WorkspaceID: workspaceID,
-		Key:         "subscribe_tg",
-		GroupKey:    "daily",
-		SequenceKey: exportStrPtr("daily_chain"), SequencePosition: &position,
-		TaskKind:            repository.TaskKindChannelSubscribe,
-		ActionKey:           "telegram.subscribe",
-		ActionKind:          repository.ActionKindChannelSubscribe,
-		ClaimMode:           repository.ClaimModeManual,
-		TargetCount:         1,
-		ResetUnit:           repository.ResetNever,
-		ResetEvery:          1,
-		Position:            10,
-		Payload:             json.RawMessage(`{"channel_url":"https://t.me/example"}`),
-		Target:              json.RawMessage(`{"platform":["tma",12],"loc":["ru"]}`),
+		WorkspaceID:      workspaceID,
+		Key:              "subscribe_tg",
+		GroupKey:         "daily",
+		SequenceKey:      exportStrPtr("daily_chain"),
+		SequencePosition: &position,
+		TaskKind:         repository.TaskKindChannelSubscribe,
+		ActionKey:        "telegram.subscribe",
+		ActionKind:       repository.ActionKindChannelSubscribe,
+		ClaimMode:        repository.ClaimModeManual,
+		TargetCount:      1,
+		ResetUnit:        repository.ResetNever,
+		ResetEvery:       1,
+		Position:         10,
+		Payload: json.RawMessage(
+			`{"channel_url":"https://t.me/example"}`,
+		),
+		Target: json.RawMessage(
+			`{"platform":["tma",12],"loc":["ru"]}`,
+		),
 		IntegrationKind:     exportStrPtr("channel"),
 		IntegrationProvider: &provider,
-		IntegrationPayload:  json.RawMessage(`{"url":"https://partner.example/check","secret":"private"}`),
-		ImageURL:            exportStrPtr("https://example.com/image.png"),
-		IsVisible:           true,
-		IsActive:            true,
+		IntegrationPayload: json.RawMessage(
+			`{"url":"https://partner.example/check","secret":"private"}`,
+		),
+		ImageURL:  exportStrPtr("https://example.com/image.png"),
+		IsVisible: true,
+		IsActive:  true,
 	})
 	if err != nil {
 		t.Fatalf("save task: %v", err)
 	}
-	if err := repo.UpsertTaskLocalization(ctx, workspaceID, taskID, "ru", "Подпишись", "Подпишись на канал"); err != nil {
+	if err := repo.UpsertTaskLocalization(
+		ctx,
+		workspaceID,
+		taskID,
+		"ru",
+		"Подпишись",
+		"Подпишись на канал",
+	); err != nil {
 		t.Fatalf("upsert task ru localization: %v", err)
 	}
-	if err := repo.UpsertTaskLocalization(ctx, workspaceID, taskID, "en", "Subscribe", "Subscribe to channel"); err != nil {
+	if err := repo.UpsertTaskLocalization(
+		ctx,
+		workspaceID,
+		taskID,
+		"en",
+		"Subscribe",
+		"Subscribe to channel",
+	); err != nil {
 		t.Fatalf("upsert task en localization: %v", err)
 	}
-	if err := repo.UpsertReward(ctx, workspaceID, taskID, repository.Reward{Key: "coin", Type: "quantity", Quantity: 100, Scale: 2}, 10); err != nil {
+	if err := repo.UpsertReward(
+		ctx,
+		workspaceID,
+		taskID,
+		repository.Reward{
+			Key:      "coin",
+			Type:     "quantity",
+			Quantity: 100,
+			Scale:    2,
+		},
+		10,
+	); err != nil {
 		t.Fatalf("upsert reward: %v", err)
 	}
 	secret := "source-token"
@@ -1598,32 +2214,57 @@ func seedExportSource(t *testing.T, repo *repository.Repository, workspaceID str
 	}); err != nil {
 		t.Fatalf("save partner config: %v", err)
 	}
-	if err := repo.SavePartnerRewardRule(ctx, repository.SavePartnerRewardRuleParams{
-		WorkspaceID:  workspaceID,
-		Provider:     "tgrass",
-		GroupKey:     "daily",
-		ExternalType: "*",
-		Reward:       repository.Reward{Key: "coin", Type: "quantity", Quantity: 50, Scale: 2},
-		Position:     10,
-		IsEnabled:    true,
-	}); err != nil {
+	if err := repo.SavePartnerRewardRule(
+		ctx,
+		repository.SavePartnerRewardRuleParams{
+			WorkspaceID:  workspaceID,
+			Provider:     "tgrass",
+			GroupKey:     "daily",
+			ExternalType: "*",
+			Reward: repository.Reward{
+				Key:      "coin",
+				Type:     "quantity",
+				Quantity: 50,
+				Scale:    2,
+			},
+			Position:  10,
+			IsEnabled: true,
+		},
+	); err != nil {
 		t.Fatalf("save partner reward rule: %v", err)
 	}
 }
 
-func assertDailyExampleExport(t *testing.T, imported, exported repository.ExportPackage) {
+func assertDailyExampleExport(
+	t *testing.T,
+	imported, exported repository.ExportPackage,
+) {
 	t.Helper()
-	if exported.Format != repository.ExportFormat || exported.Service != "tasks" {
+	if exported.Format != repository.ExportFormat ||
+		exported.Service != "tasks" {
 		t.Fatalf("bad exported header: %+v", exported)
 	}
 	if len(exported.Sequences) != 0 {
-		t.Fatalf("daily tasks must be standalone, got sequences: %+v", exported.Sequences)
+		t.Fatalf(
+			"daily tasks must be standalone, got sequences: %+v",
+			exported.Sequences,
+		)
 	}
 	if len(imported.Groups) != 2 || len(exported.Groups) != 2 {
-		t.Fatalf("bad group counts: imported=%d exported=%d", len(imported.Groups), len(exported.Groups))
+		t.Fatalf(
+			"bad group counts: imported=%d exported=%d",
+			len(imported.Groups),
+			len(exported.Groups),
+		)
 	}
-	importedByGroup := make(map[string]repository.ExportGroup, len(imported.Groups))
-	exportedByGroup := make(map[string]repository.ExportGroup, len(exported.Groups))
+	importedByGroup := make(
+		map[string]repository.ExportGroup,
+		len(imported.Groups),
+	)
+	exportedByGroup := make(
+		map[string]repository.ExportGroup,
+		len(exported.Groups),
+	)
 	for _, group := range imported.Groups {
 		importedByGroup[group.Key] = group
 	}
@@ -1632,14 +2273,18 @@ func assertDailyExampleExport(t *testing.T, imported, exported repository.Export
 	}
 	expectedGroup := importedByGroup["daily"]
 	actualGroup := exportedByGroup["daily"]
-	if actualGroup.Key != expectedGroup.Key || actualGroup.Localization["ru"].Title != "Ежедневные задания" ||
+	if actualGroup.Key != expectedGroup.Key ||
+		actualGroup.Localization["ru"].Title != "Ежедневные задания" ||
 		actualGroup.Localization["en"].Title != "Daily tasks" {
 		t.Fatalf("bad exported daily group: %+v", actualGroup)
 	}
 	if len(actualGroup.Tasks) != 20 {
 		t.Fatalf("exported tasks = %d, want 20", len(actualGroup.Tasks))
 	}
-	expectedByKey := make(map[string]repository.ExportTask, len(expectedGroup.Tasks))
+	expectedByKey := make(
+		map[string]repository.ExportTask,
+		len(expectedGroup.Tasks),
+	)
 	for _, task := range expectedGroup.Tasks {
 		expectedByKey[task.Key] = task
 	}
@@ -1652,23 +2297,45 @@ func assertDailyExampleExport(t *testing.T, imported, exported repository.Export
 			t.Fatalf("daily task must not be sequential: %+v", task)
 		}
 		if len(task.Target) != 0 {
-			t.Fatalf("daily task must not have target: key=%s target=%s", task.Key, task.Target)
+			t.Fatalf(
+				"daily task must not have target: key=%s target=%s",
+				task.Key,
+				task.Target,
+			)
 		}
 		if task.Localization["ru"].Title != expected.Localization["ru"].Title ||
 			task.Localization["en"].Title != expected.Localization["en"].Title {
-			t.Fatalf("bad localization for %s: %+v", task.Key, task.Localization)
+			t.Fatalf(
+				"bad localization for %s: %+v",
+				task.Key,
+				task.Localization,
+			)
 		}
 		if len(task.Rewards) != 1 || len(expected.Rewards) != 1 {
-			t.Fatalf("bad rewards for %s: actual=%+v expected=%+v", task.Key, task.Rewards, expected.Rewards)
+			t.Fatalf(
+				"bad rewards for %s: actual=%+v expected=%+v",
+				task.Key,
+				task.Rewards,
+				expected.Rewards,
+			)
 		}
 		if task.Rewards[0].Key != "stars" ||
 			task.Rewards[0].Type != "quantity" ||
 			task.Rewards[0].Quantity != expected.Rewards[0].Quantity ||
 			task.Rewards[0].Scale != 2 {
-			t.Fatalf("bad reward for %s: actual=%+v expected=%+v", task.Key, task.Rewards[0], expected.Rewards[0])
+			t.Fatalf(
+				"bad reward for %s: actual=%+v expected=%+v",
+				task.Key,
+				task.Rewards[0],
+				expected.Rewards[0],
+			)
 		}
 		if task.Reset.Unit != repository.ResetDay || task.Reset.Every != 1 {
-			t.Fatalf("daily task must reset daily: key=%s reset=%+v", task.Key, task.Reset)
+			t.Fatalf(
+				"daily task must reset daily: key=%s reset=%+v",
+				task.Key,
+				task.Reset,
+			)
 		}
 	}
 
@@ -1686,15 +2353,22 @@ func assertDailyExampleExport(t *testing.T, imported, exported repository.Export
 	if parent == nil {
 		t.Fatal("complex parent task was not exported")
 	}
-	if parent.TaskKind != repository.TaskKindComplex || parent.ActionKind != repository.ActionKindComposite || len(parent.Conditions) != 4 {
+	if parent.TaskKind != repository.TaskKindComplex ||
+		parent.ActionKind != repository.ActionKindComposite ||
+		len(parent.Conditions) != 4 {
 		t.Fatalf("bad complex parent task: %+v", parent)
 	}
-	if len(parent.Rewards) != 1 || parent.Rewards[0].Key != "gift.bear" || parent.Rewards[0].Quantity != 1 {
+	if len(parent.Rewards) != 1 || parent.Rewards[0].Key != "gift.bear" ||
+		parent.Rewards[0].Quantity != 1 {
 		t.Fatalf("bad complex reward: %+v", parent.Rewards)
 	}
 	subscribeTask, ok := expectedByKey["daily.subscribe_channel"]
-	if !ok || len(subscribeTask.Integration.Payload) == 0 || subscribeTask.Integration.Provider == nil {
-		t.Fatalf("daily subscribe task must contain integration payload: %+v", subscribeTask)
+	if !ok || len(subscribeTask.Integration.Payload) == 0 ||
+		subscribeTask.Integration.Provider == nil {
+		t.Fatalf(
+			"daily subscribe task must contain integration payload: %+v",
+			subscribeTask,
+		)
 	}
 }
 
@@ -1704,14 +2378,17 @@ func assertImportedCatalog(t *testing.T, pkg repository.ExportPackage) {
 		t.Fatalf("bad imported groups: %+v", pkg.Groups)
 	}
 	group := pkg.Groups[0]
-	if group.Localization["ru"].Title != "Ежедневные" || group.Localization["en"].Title != "Daily" {
+	if group.Localization["ru"].Title != "Ежедневные" ||
+		group.Localization["en"].Title != "Daily" {
 		t.Fatalf("bad group localization: %+v", group.Localization)
 	}
 	if len(group.Tasks) != 1 || group.Tasks[0].Key != "subscribe_tg" {
 		t.Fatalf("bad imported tasks: %+v", group.Tasks)
 	}
 	task := group.Tasks[0]
-	if task.SequenceKey == nil || *task.SequenceKey != "daily_chain" || task.SequencePosition == nil || *task.SequencePosition != 1 {
+	if task.SequenceKey == nil || *task.SequenceKey != "daily_chain" ||
+		task.SequencePosition == nil ||
+		*task.SequencePosition != 1 {
 		t.Fatalf("bad task sequence fields: %+v", task)
 	}
 	if task.Localization["ru"].Title != "Подпишись" || len(task.Rewards) != 1 ||
@@ -1721,7 +2398,8 @@ func assertImportedCatalog(t *testing.T, pkg repository.ExportPackage) {
 	if len(group.PartnerConfigs) != 1 || group.PartnerConfigs[0].Secret == nil {
 		t.Fatalf("bad partner configs: %+v", group.PartnerConfigs)
 	}
-	if len(group.PartnerRewardRules) != 1 || group.PartnerRewardRules[0].Reward.Quantity != 50 ||
+	if len(group.PartnerRewardRules) != 1 ||
+		group.PartnerRewardRules[0].Reward.Quantity != 50 ||
 		group.PartnerRewardRules[0].Reward.Scale != 2 {
 		t.Fatalf("bad partner rewards: %+v", group.PartnerRewardRules)
 	}
@@ -1742,7 +2420,14 @@ func newExportImportRepository(t *testing.T) *repository.Repository {
 	if err != nil {
 		t.Fatalf("open postgres: %v", err)
 	}
-	client, err := sqlwrap.New(db, sqlwrap.Options{CacheEnabled: true, CacheSize: 1000, CacheTTLCheck: time.Minute})
+	client, err := sqlwrap.New(
+		db,
+		sqlwrap.Options{
+			CacheEnabled:  true,
+			CacheSize:     1000,
+			CacheTTLCheck: time.Minute,
+		},
+	)
 	if err != nil {
 		t.Fatalf("sqlwrap: %v", err)
 	}
@@ -1781,7 +2466,10 @@ func openExportImportPostgres(database string) (*sql.DB, error) {
 
 func exportStrPtr(value string) *string { return &value }
 
-func exportImportSecretMap(required []repository.ExportSecret, value string) map[string]string {
+func exportImportSecretMap(
+	required []repository.ExportSecret,
+	value string,
+) map[string]string {
 	out := make(map[string]string, len(required))
 	webhookSecrets := 0
 	for _, secret := range required {
@@ -1791,7 +2479,8 @@ func exportImportSecretMap(required []repository.ExportSecret, value string) map
 	}
 	for index, secret := range required {
 		secretValue := value
-		if webhookSecrets > 1 && strings.HasSuffix(secret.Key, ".webhook_secret") {
+		if webhookSecrets > 1 &&
+			strings.HasSuffix(secret.Key, ".webhook_secret") {
 			secretValue += "-" + strconv.Itoa(index+1)
 		}
 		out[secret.Key] = secretValue
@@ -1803,12 +2492,19 @@ func TestTasksIntegrationChannelSubscriptionClaim(t *testing.T) {
 	checker := &fakeChannelChecker{completed: true}
 	service := newTasksTestService(t, Options{
 		Integration: integration.Options{
-			ChannelCheckers: map[string]integration.ChannelSubscriptionChecker{"telegram": checker},
+			ChannelCheckers: map[string]integration.ChannelSubscriptionChecker{
+				"telegram": checker,
+			},
 		},
 	})
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("workspace-integration-channel")
-	identity := integration.Identity{WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "telegram-user"}
+	identity := integration.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "telegram-user",
+	}
 	taskID := createIntegrationTask(t, service, integrationTaskSeed{
 		WorkspaceID: workspaceID,
 		Key:         "subscribe_telegram",
@@ -1826,7 +2522,14 @@ func TestTasksIntegrationChannelSubscriptionClaim(t *testing.T) {
 		},
 	})
 
-	list, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity), Locale: "ru", Now: time.Now()})
+	list, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(identity),
+			Locale:   "ru",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
@@ -1834,7 +2537,8 @@ func TestTasksIntegrationChannelSubscriptionClaim(t *testing.T) {
 	if publicTask.TaskKind != repository.TaskKindChannelSubscribe {
 		t.Fatalf("public task kind = %q", publicTask.TaskKind)
 	}
-	if string(publicTask.Payload) == "" || string(publicTask.Payload) == "null" {
+	if string(publicTask.Payload) == "" ||
+		string(publicTask.Payload) == "null" {
 		t.Fatalf("public payload not returned: %s", publicTask.Payload)
 	}
 
@@ -1842,28 +2546,51 @@ func TestTasksIntegrationChannelSubscriptionClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("admin get task: %v", err)
 	}
-	if adminTask.IntegrationProvider == nil || *adminTask.IntegrationProvider != "telegram" {
+	if adminTask.IntegrationProvider == nil ||
+		*adminTask.IntegrationProvider != "telegram" {
 		t.Fatalf("admin provider = %+v", adminTask.IntegrationProvider)
 	}
-	if len(adminTask.IntegrationPayload) == 0 || string(adminTask.IntegrationPayload) == "null" {
-		t.Fatalf("admin private payload not returned: %s", adminTask.IntegrationPayload)
+	if len(adminTask.IntegrationPayload) == 0 ||
+		string(adminTask.IntegrationPayload) == "null" {
+		t.Fatalf(
+			"admin private payload not returned: %s",
+			adminTask.IntegrationPayload,
+		)
 	}
 
-	result, err := service.Integration.CheckChannelSubscription(ctx, integration.CheckChannelSubscriptionParams{
-		TaskRefParams: integration.TaskRefParams{Identity: identity, TaskRef: fmt.Sprintf("%d", taskID), Now: time.Now()},
-	})
+	result, err := service.Integration.CheckChannelSubscription(
+		ctx,
+		integration.CheckChannelSubscriptionParams{
+			TaskRefParams: integration.TaskRefParams{
+				Identity: identity,
+				TaskRef:  fmt.Sprintf("%d", taskID),
+				Now:      time.Now(),
+			},
+		},
+	)
 	if err != nil {
 		t.Fatalf("check channel: %v", err)
 	}
-	if result.Status != repository.StatusReady || !result.Completed || result.Task == nil {
+	if result.Status != repository.StatusReady || !result.Completed ||
+		result.Task == nil {
 		t.Fatalf("unexpected channel result: %+v", result)
 	}
-	if checker.calls != 1 || checker.lastTask.IntegrationProvider == nil || *checker.lastTask.IntegrationProvider != "telegram" {
-		t.Fatalf("checker did not receive private task context: calls=%d task=%+v", checker.calls, checker.lastTask)
+	if checker.calls != 1 || checker.lastTask.IntegrationProvider == nil ||
+		*checker.lastTask.IntegrationProvider != "telegram" {
+		t.Fatalf(
+			"checker did not receive private task context: calls=%d task=%+v",
+			checker.calls,
+			checker.lastTask,
+		)
 	}
 
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(identity), TaskRef: fmt.Sprintf("%d", taskID), OperationID: "telegram-claim-1", Now: time.Now(),
+		Identity: user.Identity(
+			identity,
+		),
+		TaskRef:     fmt.Sprintf("%d", taskID),
+		OperationID: "telegram-claim-1",
+		Now:         time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("claim reward: %v", err)
@@ -1872,13 +2599,22 @@ func TestTasksIntegrationChannelSubscriptionClaim(t *testing.T) {
 		t.Fatalf("unexpected claim result: %+v", claim)
 	}
 
-	confirmed, err := service.Integration.ConfirmCompletion(ctx, integration.ConfirmCompletionParams{
-		TaskRefParams: integration.TaskRefParams{Identity: identity, TaskRef: "subscribe_telegram", Now: time.Now()},
-	})
+	confirmed, err := service.Integration.ConfirmCompletion(
+		ctx,
+		integration.ConfirmCompletionParams{
+			TaskRefParams: integration.TaskRefParams{
+				Identity: identity,
+				TaskRef:  "subscribe_telegram",
+				Now:      time.Now(),
+			},
+		},
+	)
 	if err != nil {
 		t.Fatalf("confirm completion: %v", err)
 	}
-	if !confirmed.Completed || confirmed.Status != repository.StatusClaimed || confirmed.OperationID == nil || *confirmed.OperationID != "telegram-claim-1" {
+	if !confirmed.Completed || confirmed.Status != repository.StatusClaimed ||
+		confirmed.OperationID == nil ||
+		*confirmed.OperationID != "telegram-claim-1" {
 		t.Fatalf("unexpected confirmation: %+v", confirmed)
 	}
 }
@@ -1887,12 +2623,21 @@ func TestTasksIntegrationCheckDispatchesByActionKind(t *testing.T) {
 	checker := &fakeChannelChecker{completed: true}
 	service := newTasksTestService(t, Options{
 		Integration: integration.Options{
-			ChannelCheckers: map[string]integration.ChannelSubscriptionChecker{"telegram": checker},
+			ChannelCheckers: map[string]integration.ChannelSubscriptionChecker{
+				"telegram": checker,
+			},
 		},
 	})
 	ctx := context.Background()
-	workspaceID := testsupport.WorkspaceID("workspace-integration-generic-check")
-	identity := integration.Identity{WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "telegram-user"}
+	workspaceID := testsupport.WorkspaceID(
+		"workspace-integration-generic-check",
+	)
+	identity := integration.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "telegram-user",
+	}
 	taskID := createIntegrationTask(t, service, integrationTaskSeed{
 		WorkspaceID: workspaceID,
 		Key:         "generic_subscribe_telegram",
@@ -1911,16 +2656,26 @@ func TestTasksIntegrationCheckDispatchesByActionKind(t *testing.T) {
 	})
 
 	result, err := service.Integration.Check(ctx, integration.CheckParams{
-		TaskRefParams: integration.TaskRefParams{Identity: identity, TaskRef: fmt.Sprintf("%d", taskID), Now: time.Now()},
+		TaskRefParams: integration.TaskRefParams{
+			Identity: identity,
+			TaskRef:  fmt.Sprintf("%d", taskID),
+			Now:      time.Now(),
+		},
 	})
 	if err != nil {
 		t.Fatalf("generic check: %v", err)
 	}
-	if result.Status != repository.StatusReady || !result.Completed || result.Task == nil {
+	if result.Status != repository.StatusReady || !result.Completed ||
+		result.Task == nil {
 		t.Fatalf("unexpected generic result: %+v", result)
 	}
-	if checker.calls != 1 || checker.lastTask.ActionKind != repository.ActionKindChannelSubscribe {
-		t.Fatalf("generic check did not dispatch to channel checker: calls=%d task=%+v", checker.calls, checker.lastTask)
+	if checker.calls != 1 ||
+		checker.lastTask.ActionKind != repository.ActionKindChannelSubscribe {
+		t.Fatalf(
+			"generic check did not dispatch to channel checker: calls=%d task=%+v",
+			checker.calls,
+			checker.lastTask,
+		)
 	}
 }
 
@@ -1979,12 +2734,21 @@ func TestTasksIntegrationChannelBoostClaim(t *testing.T) {
 	checker := &fakeChannelBoostChecker{completed: true}
 	service := newTasksTestService(t, Options{
 		Integration: integration.Options{
-			ChannelBoostCheckers: map[string]integration.ChannelBoostChecker{"telegram": checker},
+			ChannelBoostCheckers: map[string]integration.ChannelBoostChecker{
+				"telegram": checker,
+			},
 		},
 	})
 	ctx := context.Background()
-	workspaceID := testsupport.WorkspaceID("workspace-integration-channel-boost")
-	identity := integration.Identity{WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "telegram-user"}
+	workspaceID := testsupport.WorkspaceID(
+		"workspace-integration-channel-boost",
+	)
+	identity := integration.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "telegram-user",
+	}
 	taskID := createIntegrationTask(t, service, integrationTaskSeed{
 		WorkspaceID: workspaceID,
 		Key:         "boost_telegram",
@@ -2002,21 +2766,39 @@ func TestTasksIntegrationChannelBoostClaim(t *testing.T) {
 		},
 	})
 
-	result, err := service.Integration.CheckChannelBoost(ctx, integration.CheckChannelBoostParams{
-		TaskRefParams: integration.TaskRefParams{Identity: identity, TaskRef: fmt.Sprintf("%d", taskID), Now: time.Now()},
-	})
+	result, err := service.Integration.CheckChannelBoost(
+		ctx,
+		integration.CheckChannelBoostParams{
+			TaskRefParams: integration.TaskRefParams{
+				Identity: identity,
+				TaskRef:  fmt.Sprintf("%d", taskID),
+				Now:      time.Now(),
+			},
+		},
+	)
 	if err != nil {
 		t.Fatalf("check boost: %v", err)
 	}
-	if result.Status != repository.StatusReady || !result.Completed || result.Task == nil {
+	if result.Status != repository.StatusReady || !result.Completed ||
+		result.Task == nil {
 		t.Fatalf("unexpected boost result: %+v", result)
 	}
-	if checker.calls != 1 || checker.lastTask.ActionKind != repository.ActionKindChannelBoost {
-		t.Fatalf("checker did not receive boost task context: calls=%d task=%+v", checker.calls, checker.lastTask)
+	if checker.calls != 1 ||
+		checker.lastTask.ActionKind != repository.ActionKindChannelBoost {
+		t.Fatalf(
+			"checker did not receive boost task context: calls=%d task=%+v",
+			checker.calls,
+			checker.lastTask,
+		)
 	}
 
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(identity), TaskRef: fmt.Sprintf("%d", taskID), OperationID: "boost-claim-1", Now: time.Now(),
+		Identity: user.Identity(
+			identity,
+		),
+		TaskRef:     fmt.Sprintf("%d", taskID),
+		OperationID: "boost-claim-1",
+		Now:         time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("claim boost reward: %v", err)
@@ -2028,25 +2810,41 @@ func TestTasksIntegrationChannelBoostClaim(t *testing.T) {
 
 func TestTasksIntegrationExternalHTTPCheck(t *testing.T) {
 	var receivedToken string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedToken = r.Header.Get("X-Partner-Token")
-		if r.Method != http.MethodPost || r.URL.Query().Get("user") != "external-user" {
-			t.Fatalf("unexpected request: method=%s query=%s", r.Method, r.URL.RawQuery)
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "level": 5})
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedToken = r.Header.Get("X-Partner-Token")
+			if r.Method != http.MethodPost ||
+				r.URL.Query().Get("user") != "external-user" {
+				t.Fatalf(
+					"unexpected request: method=%s query=%s",
+					r.Method,
+					r.URL.RawQuery,
+				)
+			}
+			_ = json.NewEncoder(w).
+				Encode(map[string]any{"ok": true, "level": 5})
+		}),
+	)
 	defer server.Close()
 
 	service := newTasksTestService(t, Options{
 		Integration: integration.Options{
 			ExternalCheckers: map[string]integration.ExternalTaskChecker{
-				"http": integration.HTTPChecker{Client: server.Client(), AllowPrivateHosts: true},
+				"http": integration.HTTPChecker{
+					Client:            server.Client(),
+					AllowPrivateHosts: true,
+				},
 			},
 		},
 	})
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("workspace-integration-http")
-	identity := integration.Identity{WorkspaceID: workspaceID, AppID: 7, PlatformID: 9, PlatformUserID: "external-user"}
+	identity := integration.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          7,
+		PlatformID:     9,
+		PlatformUserID: "external-user",
+	}
 	taskID := createIntegrationTask(t, service, integrationTaskSeed{
 		WorkspaceID: workspaceID,
 		Key:         "reach_level_5",
@@ -2062,17 +2860,34 @@ func TestTasksIntegrationExternalHTTPCheck(t *testing.T) {
 				Method:  http.MethodPost,
 				URL:     server.URL + "/check",
 				Headers: map[string]string{"X-Partner-Token": "${token}"},
-				Query:   map[string]string{"user": "${user}", "task": "${task_key}", "time": "${time_unix}"},
-				Body:    json.RawMessage(`{"workspace":"${workspace}","app":"${app}"}`),
+				Query: map[string]string{
+					"user": "${user}",
+					"task": "${task_key}",
+					"time": "${time_unix}",
+				},
+				Body: json.RawMessage(
+					`{"workspace":"${workspace}","app":"${app}"}`,
+				),
 			},
-			Success: integration.HTTPCheckSuccess{StatusCodes: []int{200}, JSONPath: "ok", Equals: true},
+			Success: integration.HTTPCheckSuccess{
+				StatusCodes: []int{200},
+				JSONPath:    "ok",
+				Equals:      true,
+			},
 		},
 	})
 
-	result, err := service.Integration.CheckExternal(ctx, integration.CheckExternalParams{
-		TaskRefParams: integration.TaskRefParams{Identity: identity, TaskRef: fmt.Sprintf("%d", taskID), Now: time.Now()},
-		Variables:     map[string]string{"token": "secret-token"},
-	})
+	result, err := service.Integration.CheckExternal(
+		ctx,
+		integration.CheckExternalParams{
+			TaskRefParams: integration.TaskRefParams{
+				Identity: identity,
+				TaskRef:  fmt.Sprintf("%d", taskID),
+				Now:      time.Now(),
+			},
+			Variables: map[string]string{"token": "secret-token"},
+		},
+	)
 	if err != nil {
 		t.Fatalf("check external: %v", err)
 	}
@@ -2083,7 +2898,12 @@ func TestTasksIntegrationExternalHTTPCheck(t *testing.T) {
 		t.Fatalf("token header = %q", receivedToken)
 	}
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(identity), TaskRef: fmt.Sprintf("%d", taskID), OperationID: "external-claim-1", Now: time.Now(),
+		Identity: user.Identity(
+			identity,
+		),
+		TaskRef:     fmt.Sprintf("%d", taskID),
+		OperationID: "external-claim-1",
+		Now:         time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("claim external reward: %v", err)
@@ -2093,22 +2913,31 @@ func TestTasksIntegrationExternalHTTPCheck(t *testing.T) {
 	}
 }
 
-func TestTasksIntegrationExternalHTTPCheckRejectsDifferentJSONType(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":"true"}`))
-	}))
+func TestTasksIntegrationExternalHTTPCheckRejectsDifferentJSONType(
+	t *testing.T,
+) {
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":"true"}`))
+		}),
+	)
 	defer server.Close()
 
 	service := newTasksTestService(t, Options{
 		Integration: integration.Options{
 			ExternalCheckers: map[string]integration.ExternalTaskChecker{
-				"http": integration.HTTPChecker{Client: server.Client(), AllowPrivateHosts: true},
+				"http": integration.HTTPChecker{
+					Client:            server.Client(),
+					AllowPrivateHosts: true,
+				},
 			},
 		},
 	})
 	ctx := context.Background()
-	workspaceID := testsupport.WorkspaceID("workspace-integration-http-json-type")
+	workspaceID := testsupport.WorkspaceID(
+		"workspace-integration-http-json-type",
+	)
 	identity := integration.Identity{
 		WorkspaceID:    workspaceID,
 		AppID:          7,
@@ -2135,18 +2964,24 @@ func TestTasksIntegrationExternalHTTPCheckRejectsDifferentJSONType(t *testing.T)
 		},
 	})
 
-	result, err := service.Integration.CheckExternal(ctx, integration.CheckExternalParams{
-		TaskRefParams: integration.TaskRefParams{
-			Identity: identity,
-			TaskRef:  strconv.FormatUint(taskID, 10),
-			Now:      time.Now(),
+	result, err := service.Integration.CheckExternal(
+		ctx,
+		integration.CheckExternalParams{
+			TaskRefParams: integration.TaskRefParams{
+				Identity: identity,
+				TaskRef:  strconv.FormatUint(taskID, 10),
+				Now:      time.Now(),
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("check external task with mismatched JSON type: %v", err)
 	}
 	if result.Status != integration.StatusNotCompleted || result.Completed {
-		t.Fatalf("mismatched JSON type result = %+v, want not completed", result)
+		t.Fatalf(
+			"mismatched JSON type result = %+v, want not completed",
+			result,
+		)
 	}
 }
 
@@ -2154,12 +2989,21 @@ func TestTasksIntegrationNotCompleted(t *testing.T) {
 	checker := &fakeExternalChecker{completed: false}
 	service := newTasksTestService(t, Options{
 		Integration: integration.Options{
-			ExternalCheckers: map[string]integration.ExternalTaskChecker{"fake": checker},
+			ExternalCheckers: map[string]integration.ExternalTaskChecker{
+				"fake": checker,
+			},
 		},
 	})
 	ctx := context.Background()
-	workspaceID := testsupport.WorkspaceID("workspace-integration-not-completed")
-	identity := integration.Identity{WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "player"}
+	workspaceID := testsupport.WorkspaceID(
+		"workspace-integration-not-completed",
+	)
+	identity := integration.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "player",
+	}
 	taskID := createIntegrationTask(t, service, integrationTaskSeed{
 		WorkspaceID: workspaceID,
 		Key:         "external_not_done",
@@ -2169,18 +3013,32 @@ func TestTasksIntegrationNotCompleted(t *testing.T) {
 		Provider:    "fake",
 	})
 
-	result, err := service.Integration.CheckExternal(ctx, integration.CheckExternalParams{
-		TaskRefParams: integration.TaskRefParams{Identity: identity, TaskRef: fmt.Sprintf("%d", taskID), Now: time.Now()},
-	})
+	result, err := service.Integration.CheckExternal(
+		ctx,
+		integration.CheckExternalParams{
+			TaskRefParams: integration.TaskRefParams{
+				Identity: identity,
+				TaskRef:  fmt.Sprintf("%d", taskID),
+				Now:      time.Now(),
+			},
+		},
+	)
 	if err != nil {
 		t.Fatalf("check external not completed: %v", err)
 	}
 	if result.Status != integration.StatusNotCompleted || result.Completed {
 		t.Fatalf("unexpected not completed result: %+v", result)
 	}
-	confirmed, err := service.Integration.ConfirmCompletion(ctx, integration.ConfirmCompletionParams{
-		TaskRefParams: integration.TaskRefParams{Identity: identity, TaskRef: fmt.Sprintf("%d", taskID), Now: time.Now()},
-	})
+	confirmed, err := service.Integration.ConfirmCompletion(
+		ctx,
+		integration.ConfirmCompletionParams{
+			TaskRefParams: integration.TaskRefParams{
+				Identity: identity,
+				TaskRef:  fmt.Sprintf("%d", taskID),
+				Now:      time.Now(),
+			},
+		},
+	)
 	if err != nil {
 		t.Fatalf("confirm after not completed: %v", err)
 	}
@@ -2196,17 +3054,35 @@ func TestTasksIntegrationChannelSubscriptionLivePlatforms(t *testing.T) {
 	tgToken := os.Getenv("TASKS_LIVE_TG_TOKEN")
 	tgChatID := os.Getenv("TASKS_LIVE_TG_CHAT_ID")
 	tgUserID := os.Getenv("TASKS_LIVE_TG_USER_ID")
-	if vkToken == "" || vkGroupID == "" || vkUserID == "" || tgToken == "" || tgChatID == "" || tgUserID == "" {
-		t.Skip("set TASKS_LIVE_VK_TOKEN/GROUP_ID/USER_ID and TASKS_LIVE_TG_TOKEN/CHAT_ID/USER_ID")
+	if vkToken == "" || vkGroupID == "" || vkUserID == "" || tgToken == "" ||
+		tgChatID == "" ||
+		tgUserID == "" {
+		t.Skip(
+			"set TASKS_LIVE_VK_TOKEN/GROUP_ID/USER_ID and TASKS_LIVE_TG_TOKEN/CHAT_ID/USER_ID",
+		)
 	}
 
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	now := time.Now()
-	workspaceID := testsupport.WorkspaceID(fmt.Sprintf("workspace-live-channel-%d", now.UnixNano()))
+	workspaceID := testsupport.WorkspaceID(
+		fmt.Sprintf("workspace-live-channel-%d", now.UnixNano()),
+	)
 
-	vkIdentity := integration.Identity{WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, Platform: "vk", PlatformUserID: vkUserID}
-	tgIdentity := integration.Identity{WorkspaceID: workspaceID, AppID: 1, PlatformID: 2, Platform: "tg", PlatformUserID: tgUserID}
+	vkIdentity := integration.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		Platform:       "vk",
+		PlatformUserID: vkUserID,
+	}
+	tgIdentity := integration.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     2,
+		Platform:       "tg",
+		PlatformUserID: tgUserID,
+	}
 
 	vkTaskID := createIntegrationTask(t, service, integrationTaskSeed{
 		WorkspaceID: workspaceID,
@@ -2245,15 +3121,41 @@ func TestTasksIntegrationChannelSubscriptionLivePlatforms(t *testing.T) {
 		},
 	})
 
-	if _, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(vkIdentity), Locale: "ru", Now: now}); err != nil {
+	if _, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(vkIdentity),
+			Locale:   "ru",
+			Now:      now,
+		},
+	); err != nil {
 		t.Fatalf("list active vk: %v", err)
 	}
-	if _, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(tgIdentity), Locale: "ru", Now: now}); err != nil {
+	if _, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(tgIdentity),
+			Locale:   "ru",
+			Now:      now,
+		},
+	); err != nil {
 		t.Fatalf("list active tg: %v", err)
 	}
 
-	checkAndClaimLiveChannelTask(t, service, vkIdentity, vkTaskID, "vk-live-claim")
-	checkAndClaimLiveChannelTask(t, service, tgIdentity, tgTaskID, "tg-live-claim")
+	checkAndClaimLiveChannelTask(
+		t,
+		service,
+		vkIdentity,
+		vkTaskID,
+		"vk-live-claim",
+	)
+	checkAndClaimLiveChannelTask(
+		t,
+		service,
+		tgIdentity,
+		tgTaskID,
+		"tg-live-claim",
+	)
 	tgBoostTaskID := createIntegrationTask(t, service, integrationTaskSeed{
 		WorkspaceID: workspaceID,
 		Key:         "live_tg_boost",
@@ -2272,15 +3174,34 @@ func TestTasksIntegrationChannelSubscriptionLivePlatforms(t *testing.T) {
 			"token_strategy": "round_robin",
 		},
 	})
-	checkAndClaimLiveChannelBoostTask(t, service, tgIdentity, tgBoostTaskID, "tg-live-boost-claim")
+	checkAndClaimLiveChannelBoostTask(
+		t,
+		service,
+		tgIdentity,
+		tgBoostTaskID,
+		"tg-live-boost-claim",
+	)
 }
 
-func checkAndClaimLiveChannelTask(t *testing.T, service *Tasks, identity integration.Identity, taskID uint64, operationID string) {
+func checkAndClaimLiveChannelTask(
+	t *testing.T,
+	service *Tasks,
+	identity integration.Identity,
+	taskID uint64,
+	operationID string,
+) {
 	t.Helper()
 	ctx := context.Background()
-	result, err := service.Integration.CheckChannelSubscription(ctx, integration.CheckChannelSubscriptionParams{
-		TaskRefParams: integration.TaskRefParams{Identity: identity, TaskRef: fmt.Sprintf("%d", taskID), Now: time.Now()},
-	})
+	result, err := service.Integration.CheckChannelSubscription(
+		ctx,
+		integration.CheckChannelSubscriptionParams{
+			TaskRefParams: integration.TaskRefParams{
+				Identity: identity,
+				TaskRef:  fmt.Sprintf("%d", taskID),
+				Now:      time.Now(),
+			},
+		},
+	)
 	if err != nil {
 		t.Fatalf("check %s: %v", operationID, err)
 	}
@@ -2288,7 +3209,12 @@ func checkAndClaimLiveChannelTask(t *testing.T, service *Tasks, identity integra
 		t.Fatalf("unexpected check %s: %+v", operationID, result)
 	}
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(identity), TaskRef: fmt.Sprintf("%d", taskID), OperationID: operationID, Now: time.Now(),
+		Identity: user.Identity(
+			identity,
+		),
+		TaskRef:     fmt.Sprintf("%d", taskID),
+		OperationID: operationID,
+		Now:         time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("claim %s: %v", operationID, err)
@@ -2298,12 +3224,25 @@ func checkAndClaimLiveChannelTask(t *testing.T, service *Tasks, identity integra
 	}
 }
 
-func checkAndClaimLiveChannelBoostTask(t *testing.T, service *Tasks, identity integration.Identity, taskID uint64, operationID string) {
+func checkAndClaimLiveChannelBoostTask(
+	t *testing.T,
+	service *Tasks,
+	identity integration.Identity,
+	taskID uint64,
+	operationID string,
+) {
 	t.Helper()
 	ctx := context.Background()
-	result, err := service.Integration.CheckChannelBoost(ctx, integration.CheckChannelBoostParams{
-		TaskRefParams: integration.TaskRefParams{Identity: identity, TaskRef: fmt.Sprintf("%d", taskID), Now: time.Now()},
-	})
+	result, err := service.Integration.CheckChannelBoost(
+		ctx,
+		integration.CheckChannelBoostParams{
+			TaskRefParams: integration.TaskRefParams{
+				Identity: identity,
+				TaskRef:  fmt.Sprintf("%d", taskID),
+				Now:      time.Now(),
+			},
+		},
+	)
 	if err != nil {
 		t.Fatalf("check %s: %v", operationID, err)
 	}
@@ -2311,7 +3250,12 @@ func checkAndClaimLiveChannelBoostTask(t *testing.T, service *Tasks, identity in
 		t.Fatalf("unexpected check %s: %+v", operationID, result)
 	}
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(identity), TaskRef: fmt.Sprintf("%d", taskID), OperationID: operationID, Now: time.Now(),
+		Identity: user.Identity(
+			identity,
+		),
+		TaskRef:     fmt.Sprintf("%d", taskID),
+		OperationID: operationID,
+		Now:         time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("claim %s: %v", operationID, err)
@@ -2332,26 +3276,52 @@ type integrationTaskSeed struct {
 	PrivatePayload any
 }
 
-func createIntegrationTask(t testing.TB, service *Tasks, seed integrationTaskSeed) uint64 {
+func createIntegrationTask(
+	t testing.TB,
+	service *Tasks,
+	seed integrationTaskSeed,
+) uint64 {
 	t.Helper()
 	ctx := context.Background()
-	if err := service.Admin.UpsertGroup(ctx, seed.WorkspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		seed.WorkspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
 	publicPayload := mustJSON(t, seed.PublicPayload)
 	privatePayload := mustJSON(t, seed.PrivatePayload)
 	id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
-		WorkspaceID: seed.WorkspaceID, Key: seed.Key, GroupKey: "main",
-		TaskKind: seed.TaskKind, ActionKey: seed.ActionKey, ActionKind: seed.ActionKind,
-		ClaimMode: repository.ClaimModeManual, TargetCount: 1,
-		ResetUnit: repository.ResetNever, ResetEvery: 1, Position: 1,
-		Payload: publicPayload, IntegrationProvider: strPtr(seed.Provider), IntegrationPayload: privatePayload,
-		IsVisible: true, IsActive: true,
+		WorkspaceID:         seed.WorkspaceID,
+		Key:                 seed.Key,
+		GroupKey:            "main",
+		TaskKind:            seed.TaskKind,
+		ActionKey:           seed.ActionKey,
+		ActionKind:          seed.ActionKind,
+		ClaimMode:           repository.ClaimModeManual,
+		TargetCount:         1,
+		ResetUnit:           repository.ResetNever,
+		ResetEvery:          1,
+		Position:            1,
+		Payload:             publicPayload,
+		IntegrationProvider: strPtr(seed.Provider),
+		IntegrationPayload:  privatePayload,
+		IsVisible:           true,
+		IsActive:            true,
 	})
 	if err != nil {
 		t.Fatalf("integration task: %v", err)
 	}
-	if err := service.Admin.UpsertReward(ctx, seed.WorkspaceID, id, admin.RewardModel{Key: "coin", Quantity: 1}, 1); err != nil {
+	if err := service.Admin.UpsertReward(
+		ctx,
+		seed.WorkspaceID,
+		id,
+		admin.RewardModel{Key: "coin", Quantity: 1},
+		1,
+	); err != nil {
 		t.Fatalf("reward: %v", err)
 	}
 	return id
@@ -2375,10 +3345,16 @@ type fakeChannelChecker struct {
 	lastTask  integration.TaskContext
 }
 
-func (f *fakeChannelChecker) CheckChannelSubscription(ctx context.Context, params integration.ChannelSubscriptionCheckParams) (integration.CheckResult, error) {
+func (f *fakeChannelChecker) CheckChannelSubscription(
+	ctx context.Context,
+	params integration.ChannelSubscriptionCheckParams,
+) (integration.CheckResult, error) {
 	f.calls++
 	f.lastTask = params.Task
-	return integration.CheckResult{Completed: f.completed, Payload: json.RawMessage(`{"source":"fake_channel"}`)}, nil
+	return integration.CheckResult{
+		Completed: f.completed,
+		Payload:   json.RawMessage(`{"source":"fake_channel"}`),
+	}, nil
 }
 
 type fakeChannelBoostChecker struct {
@@ -2387,18 +3363,30 @@ type fakeChannelBoostChecker struct {
 	lastTask  integration.TaskContext
 }
 
-func (f *fakeChannelBoostChecker) CheckChannelBoost(ctx context.Context, params integration.ChannelBoostCheckParams) (integration.CheckResult, error) {
+func (f *fakeChannelBoostChecker) CheckChannelBoost(
+	ctx context.Context,
+	params integration.ChannelBoostCheckParams,
+) (integration.CheckResult, error) {
 	f.calls++
 	f.lastTask = params.Task
-	return integration.CheckResult{Completed: f.completed, Payload: json.RawMessage(`{"source":"fake_channel_boost"}`)}, nil
+	return integration.CheckResult{
+		Completed: f.completed,
+		Payload:   json.RawMessage(`{"source":"fake_channel_boost"}`),
+	}, nil
 }
 
 type fakeExternalChecker struct {
 	completed bool
 }
 
-func (f *fakeExternalChecker) CheckExternalTask(ctx context.Context, params integration.ExternalTaskCheckParams) (integration.CheckResult, error) {
-	return integration.CheckResult{Completed: f.completed, Payload: json.RawMessage(`{"source":"fake_external"}`)}, nil
+func (f *fakeExternalChecker) CheckExternalTask(
+	ctx context.Context,
+	params integration.ExternalTaskCheckParams,
+) (integration.CheckResult, error) {
+	return integration.CheckResult{
+		Completed: f.completed,
+		Payload:   json.RawMessage(`{"source":"fake_external"}`),
+	}, nil
 }
 
 func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
@@ -2453,7 +3441,9 @@ func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
 		Now:            time.Now().UTC(),
 	}
 	if _, _, err := repo.CreatePartnerIssue(ctx, params); err == nil {
-		t.Fatal("create partner issue succeeded while stats write was forced to fail")
+		t.Fatal(
+			"create partner issue succeeded while stats write was forced to fail",
+		)
 	}
 
 	for table, expected := range map[string]int{
@@ -2461,12 +3451,21 @@ func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
 		"task_partner_stats_event": 0,
 	} {
 		var count int
-		query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE workspace_id = $1", table)
-		if err := db.QueryRowContext(ctx, query, workspaceID).Scan(&count); err != nil {
+		query := fmt.Sprintf(
+			"SELECT COUNT(*) FROM %s WHERE workspace_id = $1",
+			table,
+		)
+		if err := db.QueryRowContext(ctx, query, workspaceID).
+			Scan(&count); err != nil {
 			t.Fatalf("count %s: %v", table, err)
 		}
 		if count != expected {
-			t.Fatalf("%s rows = %d, want %d after rollback", table, count, expected)
+			t.Fatalf(
+				"%s rows = %d, want %d after rollback",
+				table,
+				count,
+				expected,
+			)
 		}
 	}
 
@@ -2482,7 +3481,11 @@ func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
 		t.Fatalf("retry partner issue: %v", err)
 	}
 	if issue.ID == 0 || !inserted {
-		t.Fatalf("retry partner issue result: issue=%+v inserted=%t", issue, inserted)
+		t.Fatalf(
+			"retry partner issue result: issue=%+v inserted=%t",
+			issue,
+			inserted,
+		)
 	}
 
 	var issuedCount int64
@@ -2502,27 +3505,40 @@ func TestTasksPartnerCallbackRevokesBeforeClaim(t *testing.T) {
 	service := newPartnerCallbackTestService(t)
 	ctx := context.Background()
 	identity := user.Identity{
-		WorkspaceID: testsupport.WorkspaceID("workspace-partner-revoke"), AppID: 1, PlatformID: 2, Platform: "telegram", PlatformUserID: "1093776793",
+		WorkspaceID: testsupport.WorkspaceID(
+			"workspace-partner-revoke",
+		),
+		AppID:          1,
+		PlatformID:     2,
+		Platform:       "telegram",
+		PlatformUserID: "1093776793",
 	}
 	createPartnerConfigAndReward(t, service, identity.WorkspaceID)
 
 	items, err := service.User.ListPartner(ctx, user.PartnerListParams{
-		Identity: identity, Provider: "fake", GroupKey: "daily", Platform: "telegram", Now: time.Now(),
+		Identity: identity,
+		Provider: "fake",
+		GroupKey: "daily",
+		Platform: "telegram",
+		Now:      time.Now(),
 	})
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list partner: items=%+v err=%v", items, err)
 	}
 
-	revoked, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-		WorkspaceID: identity.WorkspaceID,
-		Provider:    "fake",
-		GroupKey:    "daily",
-		Platform:    "telegram",
-		IssueRef:    items[0].Key,
-		Status:      "unsubscribed",
-		Payload:     json.RawMessage(`{"source":"partner"}`),
-		Now:         time.Now(),
-	})
+	revoked, err := service.Internal.OnPartnerCallback(
+		ctx,
+		internalapi.PartnerCallbackParams{
+			WorkspaceID: identity.WorkspaceID,
+			Provider:    "fake",
+			GroupKey:    "daily",
+			Platform:    "telegram",
+			IssueRef:    items[0].Key,
+			Status:      "unsubscribed",
+			Payload:     json.RawMessage(`{"source":"partner"}`),
+			Now:         time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("revoke callback: %v", err)
 	}
@@ -2546,15 +3562,18 @@ func TestTasksPartnerCallbackRevokesBeforeClaim(t *testing.T) {
 		t.Fatalf("unexpected revoke stats: %+v", stats)
 	}
 
-	again, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-		WorkspaceID: identity.WorkspaceID,
-		Provider:    "fake",
-		GroupKey:    "daily",
-		Platform:    "telegram",
-		IssueRef:    items[0].Key,
-		Status:      "unsubscribed",
-		Now:         time.Now(),
-	})
+	again, err := service.Internal.OnPartnerCallback(
+		ctx,
+		internalapi.PartnerCallbackParams{
+			WorkspaceID: identity.WorkspaceID,
+			Provider:    "fake",
+			GroupKey:    "daily",
+			Platform:    "telegram",
+			IssueRef:    items[0].Key,
+			Status:      "unsubscribed",
+			Now:         time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("duplicate revoke callback: %v", err)
 	}
@@ -2572,12 +3591,22 @@ func TestTasksPartnerCallbackRevokesAfterClaimAndEmitsCallback(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	identity := user.Identity{
-		WorkspaceID: testsupport.WorkspaceID("workspace-partner-revoke-after-claim"), AppID: 1, PlatformID: 2, Platform: "telegram", PlatformUserID: "1093776793",
+		WorkspaceID: testsupport.WorkspaceID(
+			"workspace-partner-revoke-after-claim",
+		),
+		AppID:          1,
+		PlatformID:     2,
+		Platform:       "telegram",
+		PlatformUserID: "1093776793",
 	}
 	createPartnerConfigAndReward(t, service, identity.WorkspaceID)
 
 	items, err := service.User.ListPartner(ctx, user.PartnerListParams{
-		Identity: identity, Provider: "fake", GroupKey: "daily", Platform: "telegram", Now: now,
+		Identity: identity,
+		Provider: "fake",
+		GroupKey: "daily",
+		Platform: "telegram",
+		Now:      now,
 	})
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list partner: items=%+v err=%v", items, err)
@@ -2589,22 +3618,27 @@ func TestTasksPartnerCallbackRevokesAfterClaimAndEmitsCallback(t *testing.T) {
 		t.Fatalf("check partner: %+v err=%v", check, err)
 	}
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: identity, TaskRef: items[0].Key, OperationID: "claim-before-revoke",
+		Identity:    identity,
+		TaskRef:     items[0].Key,
+		OperationID: "claim-before-revoke",
 	})
 	if err != nil || claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim partner: %+v err=%v", claim, err)
 	}
 
-	revoked, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-		WorkspaceID: identity.WorkspaceID,
-		Provider:    "fake",
-		GroupKey:    "daily",
-		Platform:    "telegram",
-		IssueRef:    items[0].Key,
-		Status:      "unsubscribed",
-		Payload:     json.RawMessage(`{"source":"partner"}`),
-		Now:         now,
-	})
+	revoked, err := service.Internal.OnPartnerCallback(
+		ctx,
+		internalapi.PartnerCallbackParams{
+			WorkspaceID: identity.WorkspaceID,
+			Provider:    "fake",
+			GroupKey:    "daily",
+			Platform:    "telegram",
+			IssueRef:    items[0].Key,
+			Status:      "unsubscribed",
+			Payload:     json.RawMessage(`{"source":"partner"}`),
+			Now:         now,
+		},
+	)
 	if err != nil {
 		t.Fatalf("revoke callback: %v", err)
 	}
@@ -2629,7 +3663,9 @@ func TestTasksPartnerCallbackRevokesAfterClaimAndEmitsCallback(t *testing.T) {
 		}
 		if callbackCtx.Revoked.TaskKey != items[0].Key ||
 			callbackCtx.Revoked.OperationID != "claim-before-revoke" ||
-			len(callbackCtx.Revoked.Rewards) != 1 || callbackCtx.Revoked.Rewards[0].Key != "stars" {
+			len(
+				callbackCtx.Revoked.Rewards,
+			) != 1 || callbackCtx.Revoked.Rewards[0].Key != "stars" {
 			return errors.New("bad revoked callback payload")
 		}
 		seenRevoked = true
@@ -2687,15 +3723,18 @@ func TestTasksPartnerCallbackRejectsIssueFromAnotherScope(t *testing.T) {
 		t.Fatalf("list weekly partner: items=%+v err=%v", items, err)
 	}
 
-	result, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-		WorkspaceID: workspaceID,
-		Provider:    "fake",
-		GroupKey:    "daily",
-		Platform:    "telegram",
-		IssueRef:    items[0].Key,
-		Status:      "step_completed",
-		Now:         time.Now(),
-	})
+	result, err := service.Internal.OnPartnerCallback(
+		ctx,
+		internalapi.PartnerCallbackParams{
+			WorkspaceID: workspaceID,
+			Provider:    "fake",
+			GroupKey:    "daily",
+			Platform:    "telegram",
+			IssueRef:    items[0].Key,
+			Status:      "step_completed",
+			Now:         time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("cross-scope callback: %v", err)
 	}
@@ -2717,10 +3756,14 @@ func TestTasksPartnerCallbackRejectsIssueFromAnotherScope(t *testing.T) {
 	}
 }
 
-func TestTasksPartnerCallbackRequiresApplicationScopeWhenAmbiguous(t *testing.T) {
+func TestTasksPartnerCallbackRequiresApplicationScopeWhenAmbiguous(
+	t *testing.T,
+) {
 	service := newPartnerCallbackTestService(t)
 	ctx := context.Background()
-	workspaceID := testsupport.WorkspaceID("workspace-partner-callback-application")
+	workspaceID := testsupport.WorkspaceID(
+		"workspace-partner-callback-application",
+	)
 	createPartnerConfigAndReward(t, service, workspaceID)
 
 	firstIdentity := user.Identity{
@@ -2754,20 +3797,24 @@ func TestTasksPartnerCallbackRequiresApplicationScopeWhenAmbiguous(t *testing.T)
 		t.Fatalf("list second application: items=%+v err=%v", secondItems, err)
 	}
 
-	ambiguous, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-		WorkspaceID:    workspaceID,
-		Provider:       "fake",
-		GroupKey:       "daily",
-		Platform:       "telegram",
-		ExternalID:     "offer-1",
-		PlatformUserID: "same-user",
-		Status:         "step_completed",
-		Now:            time.Now(),
-	})
+	ambiguous, err := service.Internal.OnPartnerCallback(
+		ctx,
+		internalapi.PartnerCallbackParams{
+			WorkspaceID:    workspaceID,
+			Provider:       "fake",
+			GroupKey:       "daily",
+			Platform:       "telegram",
+			ExternalID:     "offer-1",
+			PlatformUserID: "same-user",
+			Status:         "step_completed",
+			Now:            time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("ambiguous callback: %v", err)
 	}
-	if ambiguous.Status != internalapi.PartnerCallbackStatusAmbiguous || ambiguous.Issue != nil {
+	if ambiguous.Status != internalapi.PartnerCallbackStatusAmbiguous ||
+		ambiguous.Issue != nil {
 		t.Fatalf("ambiguous callback result = %+v", ambiguous)
 	}
 
@@ -2792,19 +3839,23 @@ func TestTasksPartnerCallbackRequiresApplicationScopeWhenAmbiguous(t *testing.T)
 		}
 	}
 
-	completed, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-		WorkspaceID:    workspaceID,
-		Provider:       "fake",
-		GroupKey:       "daily",
-		Platform:       "telegram",
-		ExternalID:     "offer-1",
-		PlatformUserID: "same-user",
-		AppID:          firstIdentity.AppID,
-		PlatformID:     firstIdentity.PlatformID,
-		Status:         "step_completed",
-		Now:            time.Now(),
-	})
-	if err != nil || completed.Status != repository.PartnerIssueStatusCompleted {
+	completed, err := service.Internal.OnPartnerCallback(
+		ctx,
+		internalapi.PartnerCallbackParams{
+			WorkspaceID:    workspaceID,
+			Provider:       "fake",
+			GroupKey:       "daily",
+			Platform:       "telegram",
+			ExternalID:     "offer-1",
+			PlatformUserID: "same-user",
+			AppID:          firstIdentity.AppID,
+			PlatformID:     firstIdentity.PlatformID,
+			Status:         "step_completed",
+			Now:            time.Now(),
+		},
+	)
+	if err != nil ||
+		completed.Status != repository.PartnerIssueStatusCompleted {
 		t.Fatalf("scoped callback: result=%+v err=%v", completed, err)
 	}
 	if completed.Issue == nil || completed.Issue.AppID != firstIdentity.AppID {
@@ -2812,7 +3863,9 @@ func TestTasksPartnerCallbackRequiresApplicationScopeWhenAmbiguous(t *testing.T)
 	}
 }
 
-func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(t *testing.T) {
+func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(
+	t *testing.T,
+) {
 	ctx := context.Background()
 	base := time.Now().UTC().Truncate(time.Second)
 	provider := deadlinePartnerProvider{base: base}
@@ -2824,7 +3877,13 @@ func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(t *testing.
 		t.Helper()
 
 		workspaceID := testsupport.WorkspaceID("partner-deadline-" + groupKey)
-		createPartnerConfigAndRewardForProvider(t, service, workspaceID, "deadline", groupKey)
+		createPartnerConfigAndRewardForProvider(
+			t,
+			service,
+			workspaceID,
+			"deadline",
+			groupKey,
+		)
 		identity := user.Identity{
 			WorkspaceID:    workspaceID,
 			AppID:          1,
@@ -2847,15 +3906,18 @@ func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(t *testing.
 
 	t.Run("limited_late_callback_expires", func(t *testing.T) {
 		identity, task := newIssue(t, "limited-expired", "limited-expired-user")
-		result, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-			WorkspaceID: identity.WorkspaceID,
-			Provider:    "deadline",
-			GroupKey:    "limited-expired",
-			Platform:    "telegram",
-			IssueRef:    task.Key,
-			Status:      "step_completed",
-			Now:         base.Add(2 * time.Minute),
-		})
+		result, err := service.Internal.OnPartnerCallback(
+			ctx,
+			internalapi.PartnerCallbackParams{
+				WorkspaceID: identity.WorkspaceID,
+				Provider:    "deadline",
+				GroupKey:    "limited-expired",
+				Platform:    "telegram",
+				IssueRef:    task.Key,
+				Status:      "step_completed",
+				Now:         base.Add(2 * time.Minute),
+			},
+		)
 		if err != nil || result.Status != repository.PartnerIssueStatusExpired {
 			t.Fatalf("late callback result=%+v err=%v", result, err)
 		}
@@ -2872,17 +3934,25 @@ func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(t *testing.
 	})
 
 	t.Run("limited_completion_can_be_claimed_later", func(t *testing.T) {
-		identity, task := newIssue(t, "limited-completed", "limited-completed-user")
-		result, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-			WorkspaceID: identity.WorkspaceID,
-			Provider:    "deadline",
-			GroupKey:    "limited-completed",
-			Platform:    "telegram",
-			IssueRef:    task.Key,
-			Status:      "step_completed",
-			Now:         base.Add(30 * time.Second),
-		})
-		if err != nil || result.Status != repository.PartnerIssueStatusCompleted {
+		identity, task := newIssue(
+			t,
+			"limited-completed",
+			"limited-completed-user",
+		)
+		result, err := service.Internal.OnPartnerCallback(
+			ctx,
+			internalapi.PartnerCallbackParams{
+				WorkspaceID: identity.WorkspaceID,
+				Provider:    "deadline",
+				GroupKey:    "limited-completed",
+				Platform:    "telegram",
+				IssueRef:    task.Key,
+				Status:      "step_completed",
+				Now:         base.Add(30 * time.Second),
+			},
+		)
+		if err != nil ||
+			result.Status != repository.PartnerIssueStatusCompleted {
 			t.Fatalf("on-time callback result=%+v err=%v", result, err)
 		}
 
@@ -2893,7 +3963,11 @@ func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(t *testing.
 			Now:         base.Add(2 * time.Minute),
 		})
 		if err != nil || claim.Status != repository.ClaimStatusClaimed {
-			t.Fatalf("late claim after on-time completion=%+v err=%v", claim, err)
+			t.Fatalf(
+				"late claim after on-time completion=%+v err=%v",
+				claim,
+				err,
+			)
 		}
 	})
 
@@ -2904,7 +3978,8 @@ func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(t *testing.
 			IssueRef: task.Key,
 			Now:      base.Add(365 * 24 * time.Hour),
 		})
-		if err != nil || !check.Completed || check.Status != user.PartnerStatusReady {
+		if err != nil || !check.Completed ||
+			check.Status != user.PartnerStatusReady {
 			t.Fatalf("unlimited check=%+v err=%v", check, err)
 		}
 
@@ -2944,22 +4019,28 @@ func TestTasksPartnerIssueKeepsRewardSnapshot(t *testing.T) {
 		t.Fatalf("issue partner task: tasks=%+v err=%v", issued, err)
 	}
 	if issued[0].Rewards[0].Quantity != 25 {
-		t.Fatalf("issued reward quantity = %d, want 25", issued[0].Rewards[0].Quantity)
+		t.Fatalf(
+			"issued reward quantity = %d, want 25",
+			issued[0].Rewards[0].Quantity,
+		)
 	}
 
-	if err := service.Admin.SavePartnerRewardRule(ctx, admin.SavePartnerRewardRuleParams{
-		WorkspaceID:  workspaceID,
-		Provider:     "fake",
-		GroupKey:     "daily",
-		ExternalType: "subscribe",
-		Reward: admin.RewardModel{
-			Key:      "stars",
-			Type:     "quantity",
-			Quantity: 100,
-			Scale:    2,
+	if err := service.Admin.SavePartnerRewardRule(
+		ctx,
+		admin.SavePartnerRewardRuleParams{
+			WorkspaceID:  workspaceID,
+			Provider:     "fake",
+			GroupKey:     "daily",
+			ExternalType: "subscribe",
+			Reward: admin.RewardModel{
+				Key:      "stars",
+				Type:     "quantity",
+				Quantity: 100,
+				Scale:    2,
+			},
+			IsEnabled: true,
 		},
-		IsEnabled: true,
-	}); err != nil {
+	); err != nil {
 		t.Fatalf("update partner reward: %v", err)
 	}
 
@@ -2974,7 +4055,10 @@ func TestTasksPartnerIssueKeepsRewardSnapshot(t *testing.T) {
 		t.Fatalf("list issued partner task: tasks=%+v err=%v", listed, err)
 	}
 	if listed[0].Rewards[0].Quantity != 25 {
-		t.Fatalf("listed reward quantity = %d, want issued snapshot 25", listed[0].Rewards[0].Quantity)
+		t.Fatalf(
+			"listed reward quantity = %d, want issued snapshot 25",
+			listed[0].Rewards[0].Quantity,
+		)
 	}
 
 	checked, err := service.User.CheckPartner(ctx, user.PartnerCheckParams{
@@ -2982,11 +4066,15 @@ func TestTasksPartnerIssueKeepsRewardSnapshot(t *testing.T) {
 		IssueRef: issued[0].Key,
 		Now:      time.Now().UTC(),
 	})
-	if err != nil || !checked.Completed || checked.Task == nil || len(checked.Task.Rewards) != 1 {
+	if err != nil || !checked.Completed || checked.Task == nil ||
+		len(checked.Task.Rewards) != 1 {
 		t.Fatalf("check partner task: result=%+v err=%v", checked, err)
 	}
 	if checked.Task.Rewards[0].Quantity != 25 {
-		t.Fatalf("checked reward quantity = %d, want issued snapshot 25", checked.Task.Rewards[0].Quantity)
+		t.Fatalf(
+			"checked reward quantity = %d, want issued snapshot 25",
+			checked.Task.Rewards[0].Quantity,
+		)
 	}
 
 	claimed, err := service.User.Claim(ctx, user.ClaimParams{
@@ -3000,7 +4088,10 @@ func TestTasksPartnerIssueKeepsRewardSnapshot(t *testing.T) {
 		t.Fatalf("claim partner task: result=%+v err=%v", claimed, err)
 	}
 	if claimed.Task.Rewards[0].Quantity != 25 {
-		t.Fatalf("claimed reward quantity = %d, want issued snapshot 25", claimed.Task.Rewards[0].Quantity)
+		t.Fatalf(
+			"claimed reward quantity = %d, want issued snapshot 25",
+			claimed.Task.Rewards[0].Quantity,
+		)
 	}
 }
 
@@ -3015,7 +4106,13 @@ func TestTasksLimitedPartnerIssueCanBeReissuedInNextWindow(t *testing.T) {
 		PartnerProviders: map[string]user.PartnerProvider{"window": provider},
 	})
 	workspaceID := testsupport.WorkspaceID("partner-next-window")
-	createPartnerConfigAndRewardForProvider(t, service, workspaceID, "window", "daily")
+	createPartnerConfigAndRewardForProvider(
+		t,
+		service,
+		workspaceID,
+		"window",
+		"daily",
+	)
 	identity := user.Identity{
 		WorkspaceID:    workspaceID,
 		AppID:          1,
@@ -3035,15 +4132,18 @@ func TestTasksLimitedPartnerIssueCanBeReissuedInNextWindow(t *testing.T) {
 		t.Fatalf("list first window: tasks=%+v err=%v", first, err)
 	}
 
-	expired, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-		WorkspaceID: workspaceID,
-		Provider:    "window",
-		GroupKey:    "daily",
-		Platform:    "telegram",
-		IssueRef:    first[0].Key,
-		Status:      "step_completed",
-		Now:         base.Add(2 * time.Minute),
-	})
+	expired, err := service.Internal.OnPartnerCallback(
+		ctx,
+		internalapi.PartnerCallbackParams{
+			WorkspaceID: workspaceID,
+			Provider:    "window",
+			GroupKey:    "daily",
+			Platform:    "telegram",
+			IssueRef:    first[0].Key,
+			Status:      "step_completed",
+			Now:         base.Add(2 * time.Minute),
+		},
+	)
 	if err != nil || expired.Status != repository.PartnerIssueStatusExpired {
 		t.Fatalf("expire first window: result=%+v err=%v", expired, err)
 	}
@@ -3063,7 +4163,8 @@ func TestTasksLimitedPartnerIssueCanBeReissuedInNextWindow(t *testing.T) {
 	if second[0].Key == first[0].Key {
 		t.Fatalf("next window reused expired issue %q", first[0].Key)
 	}
-	if second[0].Progress == nil || second[0].Progress.Status != repository.StatusOpen {
+	if second[0].Progress == nil ||
+		second[0].Progress.Status != repository.StatusOpen {
 		t.Fatalf("second window task is not open: %+v", second[0])
 	}
 }
@@ -3071,21 +4172,33 @@ func TestTasksLimitedPartnerIssueCanBeReissuedInNextWindow(t *testing.T) {
 func TestTasksPartnerInternalRejectsInvalidWorkspace(t *testing.T) {
 	service := newPartnerCallbackTestService(t)
 
-	if _, err := service.Internal.OnPartnerCallback(context.Background(), internalapi.PartnerCallbackParams{
-		WorkspaceID: "main",
-		Provider:    "fake",
-		GroupKey:    "daily",
-		Platform:    "telegram",
-		IssueID:     1,
-		Status:      "step_completed",
-	}); !errors.Is(err, services.ErrIdentityWorkspaceInvalid) {
+	if _, err := service.Internal.OnPartnerCallback(
+		context.Background(),
+		internalapi.PartnerCallbackParams{
+			WorkspaceID: "main",
+			Provider:    "fake",
+			GroupKey:    "daily",
+			Platform:    "telegram",
+			IssueID:     1,
+			Status:      "step_completed",
+		},
+	); !errors.Is(
+		err,
+		services.ErrIdentityWorkspaceInvalid,
+	) {
 		t.Fatalf("callback invalid workspace error = %v", err)
 	}
 
-	if _, err := service.Internal.HandlePartnerWebhook(context.Background(), internalapi.PartnerWebhookParams{
-		WorkspaceID: "main",
-		Secret:      "secret",
-	}); !errors.Is(err, services.ErrIdentityWorkspaceInvalid) {
+	if _, err := service.Internal.HandlePartnerWebhook(
+		context.Background(),
+		internalapi.PartnerWebhookParams{
+			WorkspaceID: "main",
+			Secret:      "secret",
+		},
+	); !errors.Is(
+		err,
+		services.ErrIdentityWorkspaceInvalid,
+	) {
 		t.Fatalf("webhook invalid workspace error = %v", err)
 	}
 }
@@ -3162,16 +4275,26 @@ func (*windowPartnerProvider) CheckPartnerTask(
 	return user.PartnerCheckResult{Completed: true, Status: "completed"}, nil
 }
 
-func (fakePartnerProvider) ListPartnerTasks(context.Context, user.PartnerListProviderParams) ([]user.PartnerExternalTask, error) {
-	return []user.PartnerExternalTask{{
-		ExternalID:     "offer-1",
-		ExternalType:   "subscribe",
-		PublicPayload:  json.RawMessage(`{"provider":"fake","link":"https://example.com"}`),
-		PrivatePayload: json.RawMessage(`{"offer_id":"offer-1"}`),
-	}}, nil
+func (fakePartnerProvider) ListPartnerTasks(
+	context.Context,
+	user.PartnerListProviderParams,
+) ([]user.PartnerExternalTask, error) {
+	return []user.PartnerExternalTask{
+		{
+			ExternalID:   "offer-1",
+			ExternalType: "subscribe",
+			PublicPayload: json.RawMessage(
+				`{"provider":"fake","link":"https://example.com"}`,
+			),
+			PrivatePayload: json.RawMessage(`{"offer_id":"offer-1"}`),
+		},
+	}, nil
 }
 
-func (fakePartnerProvider) CheckPartnerTask(context.Context, user.PartnerCheckProviderParams) (user.PartnerCheckResult, error) {
+func (fakePartnerProvider) CheckPartnerTask(
+	context.Context,
+	user.PartnerCheckProviderParams,
+) (user.PartnerCheckResult, error) {
 	return user.PartnerCheckResult{
 		Completed: true,
 		Status:    "subscribed",
@@ -3242,7 +4365,9 @@ func (p *controlledStartPartnerProvider) StartPartnerTask(
 
 }
 
-func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(t *testing.T) {
+func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(
+	t *testing.T,
+) {
 
 	release := make(chan struct{})
 	provider := &controlledStartPartnerProvider{
@@ -3263,7 +4388,11 @@ func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(t *testing.T)
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	nodeB, err := NewWithDatabase(context.Background(), db, tasksTestOptions(options))
+	nodeB, err := NewWithDatabase(
+		context.Background(),
+		db,
+		tasksTestOptions(options),
+	)
 	if err != nil {
 		t.Fatalf("create second tasks node: %v", err)
 	}
@@ -3338,7 +4467,8 @@ func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(t *testing.T)
 		if errorsByNode[index] != nil {
 			t.Fatalf("node %d start error: %v", index, errorsByNode[index])
 		}
-		if !results[index].Started || results[index].ActionURL != provider.actionURL {
+		if !results[index].Started ||
+			results[index].ActionURL != provider.actionURL {
 			t.Fatalf("node %d start result: %+v", index, results[index])
 		}
 	}
@@ -3355,7 +4485,10 @@ func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(t *testing.T)
 		t.Fatalf("replay partner start: %v", err)
 	}
 	if !replayed.Started || replayed.ActionURL != provider.actionURL {
-		t.Fatalf("replayed start did not use persisted action URL: %+v", replayed)
+		t.Fatalf(
+			"replayed start did not use persisted action URL: %+v",
+			replayed,
+		)
 	}
 	if calls := provider.calls.Load(); calls != 1 {
 		t.Fatalf("provider calls after replay = %d, want 1", calls)
@@ -3391,12 +4524,15 @@ func TestTasksPartnerStartReleasesLeaseAfterRequestCancellation(t *testing.T) {
 		"controlled",
 		"daily",
 	)
-	items, err := service.User.ListPartner(context.Background(), user.PartnerListParams{
-		Identity: identity,
-		Provider: "controlled",
-		GroupKey: "daily",
-		Platform: "telegram",
-	})
+	items, err := service.User.ListPartner(
+		context.Background(),
+		user.PartnerListParams{
+			Identity: identity,
+			Provider: "controlled",
+			GroupKey: "daily",
+			Platform: "telegram",
+		},
+	)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list controlled partner: items=%+v err=%v", items, err)
 	}
@@ -3404,10 +4540,13 @@ func TestTasksPartnerStartReleasesLeaseAfterRequestCancellation(t *testing.T) {
 	firstCtx, cancelFirst := context.WithCancel(context.Background())
 	firstDone := make(chan error, 1)
 	go func() {
-		_, startErr := service.User.StartPartner(firstCtx, user.PartnerStartParams{
-			Identity: identity,
-			IssueRef: items[0].Key,
-		})
+		_, startErr := service.User.StartPartner(
+			firstCtx,
+			user.PartnerStartParams{
+				Identity: identity,
+				IssueRef: items[0].Key,
+			},
+		)
 		firstDone <- startErr
 	}()
 
@@ -3418,11 +4557,17 @@ func TestTasksPartnerStartReleasesLeaseAfterRequestCancellation(t *testing.T) {
 	}
 	cancelFirst()
 	if err := <-firstDone; !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled partner start error = %v, want context.Canceled", err)
+		t.Fatalf(
+			"canceled partner start error = %v, want context.Canceled",
+			err,
+		)
 	}
 	close(release)
 
-	retryCtx, cancelRetry := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	retryCtx, cancelRetry := context.WithTimeout(
+		context.Background(),
+		500*time.Millisecond,
+	)
 	defer cancelRetry()
 	retried, err := service.User.StartPartner(retryCtx, user.PartnerStartParams{
 		Identity: identity,
@@ -3468,12 +4613,15 @@ func TestTasksStandaloneUserCloseCancelsPartnerStart(t *testing.T) {
 		"controlled",
 		"daily",
 	)
-	items, err := service.User.ListPartner(context.Background(), user.PartnerListParams{
-		Identity: identity,
-		Provider: "controlled",
-		GroupKey: "daily",
-		Platform: "telegram",
-	})
+	items, err := service.User.ListPartner(
+		context.Background(),
+		user.PartnerListParams{
+			Identity: identity,
+			Provider: "controlled",
+			GroupKey: "daily",
+			Platform: "telegram",
+		},
+	)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list standalone close issue: items=%+v err=%v", items, err)
 	}
@@ -3487,11 +4635,15 @@ func TestTasksStandaloneUserCloseCancelsPartnerStart(t *testing.T) {
 		_ = db.Close()
 		t.Fatalf("create standalone user client: %v", err)
 	}
-	standalone := user.NewWithServiceOptions(context.Background(), client, user.Options{
-		PartnerProviders: map[string]user.PartnerProvider{
-			"controlled": provider,
+	standalone := user.NewWithServiceOptions(
+		context.Background(),
+		client,
+		user.Options{
+			PartnerProviders: map[string]user.PartnerProvider{
+				"controlled": provider,
+			},
 		},
-	})
+	)
 	t.Cleanup(func() {
 		close(release)
 		_ = standalone.Close()
@@ -3501,10 +4653,13 @@ func TestTasksStandaloneUserCloseCancelsPartnerStart(t *testing.T) {
 
 	startDone := make(chan error, 1)
 	go func() {
-		_, err := standalone.StartPartner(context.Background(), user.PartnerStartParams{
-			Identity: identity,
-			IssueRef: items[0].Key,
-		})
+		_, err := standalone.StartPartner(
+			context.Background(),
+			user.PartnerStartParams{
+				Identity: identity,
+				IssueRef: items[0].Key,
+			},
+		)
 		startDone <- err
 	}()
 
@@ -3561,7 +4716,11 @@ func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	nodeB, err := NewWithDatabase(context.Background(), db, tasksTestOptions(options))
+	nodeB, err := NewWithDatabase(
+		context.Background(),
+		db,
+		tasksTestOptions(options),
+	)
 	if err != nil {
 		t.Fatalf("create second tasks node: %v", err)
 	}
@@ -3581,12 +4740,15 @@ func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
 		"controlled",
 		"daily",
 	)
-	items, err := nodeA.User.ListPartner(context.Background(), user.PartnerListParams{
-		Identity: identity,
-		Provider: "controlled",
-		GroupKey: "daily",
-		Platform: "telegram",
-	})
+	items, err := nodeA.User.ListPartner(
+		context.Background(),
+		user.PartnerListParams{
+			Identity: identity,
+			Provider: "controlled",
+			GroupKey: "daily",
+			Platform: "telegram",
+		},
+	)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list controlled partner: items=%+v err=%v", items, err)
 	}
@@ -3594,10 +4756,13 @@ func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
 	results := make(chan user.PartnerStartOutput, 2)
 	errorsByNode := make(chan error, 2)
 	start := func(node *Tasks) {
-		result, startErr := node.User.StartPartner(context.Background(), user.PartnerStartParams{
-			Identity: identity,
-			IssueRef: items[0].Key,
-		})
+		result, startErr := node.User.StartPartner(
+			context.Background(),
+			user.PartnerStartParams{
+				Identity: identity,
+				IssueRef: items[0].Key,
+			},
+		)
 		results <- result
 		errorsByNode <- startErr
 	}
@@ -3612,7 +4777,10 @@ func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
 	go start(nodeB)
 	time.Sleep(options.PartnerStartLeaseDuration)
 	if calls := provider.calls.Load(); calls != 1 {
-		t.Fatalf("provider calls after original lease duration = %d, want 1", calls)
+		t.Fatalf(
+			"provider calls after original lease duration = %d, want 1",
+			calls,
+		)
 	}
 
 	close(release)
@@ -3620,17 +4788,23 @@ func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
 		if err := <-errorsByNode; err != nil {
 			t.Fatalf("partner start with renewed lease: %v", err)
 		}
-		if result := <-results; !result.Started || result.ActionURL != provider.actionURL {
+		if result := <-results; !result.Started ||
+			result.ActionURL != provider.actionURL {
 			t.Fatalf("partner start with renewed lease result: %+v", result)
 		}
 	}
 	if calls := provider.calls.Load(); calls != 1 {
-		t.Fatalf("provider calls after renewed lease completion = %d, want 1", calls)
+		t.Fatalf(
+			"provider calls after renewed lease completion = %d, want 1",
+			calls,
+		)
 	}
 
 }
 
-func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(t *testing.T) {
+func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(
+	t *testing.T,
+) {
 
 	provider := &controlledStartPartnerProvider{
 		externalClickID: "state-click",
@@ -3667,20 +4841,26 @@ func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(t *tes
 		t.Fatalf("list prestart issue: items=%+v err=%v", prestartItems, err)
 	}
 
-	prestartCallback, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-		WorkspaceID: prestartIdentity.WorkspaceID,
-		Provider:    "controlled",
-		GroupKey:    "daily",
-		Platform:    "telegram",
-		IssueRef:    prestartItems[0].Key,
-		Status:      "step_completed",
-		Now:         time.Now(),
-	})
+	prestartCallback, err := service.Internal.OnPartnerCallback(
+		ctx,
+		internalapi.PartnerCallbackParams{
+			WorkspaceID: prestartIdentity.WorkspaceID,
+			Provider:    "controlled",
+			GroupKey:    "daily",
+			Platform:    "telegram",
+			IssueRef:    prestartItems[0].Key,
+			Status:      "step_completed",
+			Now:         time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("prestart callback: %v", err)
 	}
 	if prestartCallback.Status != repository.PartnerIssueStatusIssued {
-		t.Fatalf("prestart callback status = %q, want issued", prestartCallback.Status)
+		t.Fatalf(
+			"prestart callback status = %q, want issued",
+			prestartCallback.Status,
+		)
 	}
 
 	revokedIdentity := user.Identity{
@@ -3706,15 +4886,18 @@ func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(t *tes
 	if err != nil || len(revokedItems) != 1 {
 		t.Fatalf("list revoked issue: items=%+v err=%v", revokedItems, err)
 	}
-	if _, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-		WorkspaceID: revokedIdentity.WorkspaceID,
-		Provider:    "controlled",
-		GroupKey:    "daily",
-		Platform:    "telegram",
-		IssueRef:    revokedItems[0].Key,
-		Status:      "unsubscribed",
-		Now:         time.Now(),
-	}); err != nil {
+	if _, err := service.Internal.OnPartnerCallback(
+		ctx,
+		internalapi.PartnerCallbackParams{
+			WorkspaceID: revokedIdentity.WorkspaceID,
+			Provider:    "controlled",
+			GroupKey:    "daily",
+			Platform:    "telegram",
+			IssueRef:    revokedItems[0].Key,
+			Status:      "unsubscribed",
+			Now:         time.Now(),
+		},
+	); err != nil {
 		t.Fatalf("revoke issue: %v", err)
 	}
 
@@ -3726,7 +4909,8 @@ func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(t *tes
 	if err != nil {
 		t.Fatalf("start revoked issue: %v", err)
 	}
-	if startResult.Status != repository.PartnerIssueStatusRevoked || startResult.Started {
+	if startResult.Status != repository.PartnerIssueStatusRevoked ||
+		startResult.Started {
 		t.Fatalf("revoked start result: %+v", startResult)
 	}
 	if calls := provider.calls.Load(); calls != 0 {
@@ -3735,7 +4919,9 @@ func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(t *tes
 
 }
 
-func TestTasksPartnerCallbackDuringStartCompletesAndPersistsStart(t *testing.T) {
+func TestTasksPartnerCallbackDuringStartCompletesAndPersistsStart(
+	t *testing.T,
+) {
 
 	provider := &controlledStartPartnerProvider{
 		externalClickID: "early-callback-click",
@@ -3760,12 +4946,15 @@ func TestTasksPartnerCallbackDuringStartCompletesAndPersistsStart(t *testing.T) 
 		"controlled",
 		"daily",
 	)
-	items, err := service.User.ListPartner(context.Background(), user.PartnerListParams{
-		Identity: identity,
-		Provider: "controlled",
-		GroupKey: "daily",
-		Platform: "telegram",
-	})
+	items, err := service.User.ListPartner(
+		context.Background(),
+		user.PartnerListParams{
+			Identity: identity,
+			Provider: "controlled",
+			GroupKey: "daily",
+			Platform: "telegram",
+		},
+	)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list early callback issue: items=%+v err=%v", items, err)
 	}
@@ -3793,11 +4982,14 @@ func TestTasksPartnerCallbackDuringStartCompletesAndPersistsStart(t *testing.T) 
 		return nil
 	}
 
-	started, err := service.User.StartPartner(context.Background(), user.PartnerStartParams{
-		Identity: identity,
-		IssueRef: items[0].Key,
-		Now:      time.Now(),
-	})
+	started, err := service.User.StartPartner(
+		context.Background(),
+		user.PartnerStartParams{
+			Identity: identity,
+			IssueRef: items[0].Key,
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("start with early callback: %v", err)
 	}
@@ -3840,20 +5032,26 @@ func TestTasksPartnerClickIDIsScopedByProvider(t *testing.T) {
 			provider,
 			"daily",
 		)
-		items, err := service.User.ListPartner(context.Background(), user.PartnerListParams{
-			Identity: identity,
-			Provider: provider,
-			GroupKey: "daily",
-			Platform: "telegram",
-		})
+		items, err := service.User.ListPartner(
+			context.Background(),
+			user.PartnerListParams{
+				Identity: identity,
+				Provider: provider,
+				GroupKey: "daily",
+				Platform: "telegram",
+			},
+		)
 		if err != nil || len(items) != 1 {
 			t.Fatalf("list %s issue: items=%+v err=%v", provider, items, err)
 		}
-		if _, err := service.User.StartPartner(context.Background(), user.PartnerStartParams{
-			Identity: identity,
-			IssueRef: items[0].Key,
-			Now:      time.Now(),
-		}); err != nil {
+		if _, err := service.User.StartPartner(
+			context.Background(),
+			user.PartnerStartParams{
+				Identity: identity,
+				IssueRef: items[0].Key,
+				Now:      time.Now(),
+			},
+		); err != nil {
 			t.Fatalf("start %s issue with shared click: %v", provider, err)
 		}
 	}
@@ -3882,13 +5080,25 @@ WHERE workspace_id = $1
 func newPartnerCallbackTestService(t testing.TB) *Tasks {
 	t.Helper()
 	return newTasksTestService(t, Options{
-		PartnerProviders: map[string]user.PartnerProvider{"fake": fakePartnerProvider{}},
+		PartnerProviders: map[string]user.PartnerProvider{
+			"fake": fakePartnerProvider{},
+		},
 	})
 }
 
-func createPartnerConfigAndReward(t testing.TB, service *Tasks, workspaceID string) {
+func createPartnerConfigAndReward(
+	t testing.TB,
+	service *Tasks,
+	workspaceID string,
+) {
 	t.Helper()
-	createPartnerConfigAndRewardForProvider(t, service, workspaceID, "fake", "daily")
+	createPartnerConfigAndRewardForProvider(
+		t,
+		service,
+		workspaceID,
+		"fake",
+		"daily",
+	)
 }
 
 func createPartnerConfigAndRewardForProvider(
@@ -3899,40 +5109,64 @@ func createPartnerConfigAndRewardForProvider(
 	groupKey string,
 ) {
 	t.Helper()
-	if err := service.Admin.SavePartnerConfig(context.Background(), admin.PartnerConfigModel{
-		WorkspaceID: workspaceID,
-		Provider:    provider,
-		GroupKey:    groupKey,
-		Platform:    "telegram",
-		IsEnabled:   true,
-		Target:      json.RawMessage(`null`),
-		Settings:    json.RawMessage(`{}`),
-	}); err != nil {
+	if err := service.Admin.SavePartnerConfig(
+		context.Background(),
+		admin.PartnerConfigModel{
+			WorkspaceID: workspaceID,
+			Provider:    provider,
+			GroupKey:    groupKey,
+			Platform:    "telegram",
+			IsEnabled:   true,
+			Target:      json.RawMessage(`null`),
+			Settings:    json.RawMessage(`{}`),
+		},
+	); err != nil {
 		t.Fatalf("save partner config: %v", err)
 	}
-	if err := service.Admin.SavePartnerRewardRule(context.Background(), admin.SavePartnerRewardRuleParams{
-		WorkspaceID:  workspaceID,
-		Provider:     provider,
-		GroupKey:     groupKey,
-		ExternalType: "subscribe",
-		Reward:       admin.RewardModel{Key: "stars", Type: "quantity", Quantity: 25, Scale: 2},
-		IsEnabled:    true,
-	}); err != nil {
+	if err := service.Admin.SavePartnerRewardRule(
+		context.Background(),
+		admin.SavePartnerRewardRuleParams{
+			WorkspaceID:  workspaceID,
+			Provider:     provider,
+			GroupKey:     groupKey,
+			ExternalType: "subscribe",
+			Reward: admin.RewardModel{
+				Key:      "stars",
+				Type:     "quantity",
+				Quantity: 25,
+				Scale:    2,
+			},
+			IsEnabled: true,
+		},
+	); err != nil {
 		t.Fatalf("save partner reward: %v", err)
 	}
 }
 
-func partnerDailyStats(t testing.TB, service *Tasks, workspaceID string) admin.PartnerDailyStatsModel {
+func partnerDailyStats(
+	t testing.TB,
+	service *Tasks,
+	workspaceID string,
+) admin.PartnerDailyStatsModel {
 	t.Helper()
 	now := time.Now()
 	stats, err := service.Admin.ListPartnerDailyStats(
-		context.Background(), workspaceID, "fake", "daily", now.Add(-24*time.Hour), now.Add(24*time.Hour),
+		context.Background(),
+		workspaceID,
+		"fake",
+		"daily",
+		now.Add(-24*time.Hour),
+		now.Add(24*time.Hour),
 	)
 	if err != nil {
 		t.Fatalf("list partner stats: %v", err)
 	}
 	if len(stats) != 1 {
-		result := admin.PartnerDailyStatsModel{Provider: "fake", GroupKey: "daily", ExternalType: "subscribe"}
+		result := admin.PartnerDailyStatsModel{
+			Provider:     "fake",
+			GroupKey:     "daily",
+			ExternalType: "subscribe",
+		}
 		for _, item := range stats {
 			result.IssuedCount += item.IssuedCount
 			result.CompletedCount += item.CompletedCount
@@ -4003,10 +5237,20 @@ func TestTgrassProviderListAndCheck(t *testing.T) {
 	provider := user.TgrassProvider{BaseURL: server.URL}
 	params := user.PartnerListProviderParams{
 		Identity: user.Identity{
-			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88,
-			PlatformUserID: "123", IsPremium: true,
+			WorkspaceID: testsupport.WorkspaceID(
+				"w",
+			),
+			AppID:          77,
+			PlatformID:     88,
+			PlatformUserID: "123",
+			IsPremium:      true,
 		},
-		Config: repository.PartnerConfig{Provider: "tgrass", GroupKey: "tgrass", Platform: "telegram", Secret: &secret},
+		Config: repository.PartnerConfig{
+			Provider: "tgrass",
+			GroupKey: "tgrass",
+			Platform: "telegram",
+			Secret:   &secret,
+		},
 		Locale: "ru",
 		Limit:  1,
 	}
@@ -4014,16 +5258,20 @@ func TestTgrassProviderListAndCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 1 || tasks[0].ExternalID != "1054" || tasks[0].ExternalType != "channel" {
+	if len(tasks) != 1 || tasks[0].ExternalID != "1054" ||
+		tasks[0].ExternalType != "channel" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
-	check, err := provider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
-		Identity: params.Identity,
-		Config:   params.Config,
-		Issue: repository.PartnerIssue{
-			ExternalID: "1054", PrivatePayload: tasks[0].PrivatePayload,
+	check, err := provider.CheckPartnerTask(
+		context.Background(),
+		user.PartnerCheckProviderParams{
+			Identity: params.Identity,
+			Config:   params.Config,
+			Issue: repository.PartnerIssue{
+				ExternalID: "1054", PrivatePayload: tasks[0].PrivatePayload,
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4052,15 +5300,27 @@ func TestTgrassLuaProviderListAndCheck(t *testing.T) {
 	defer server.Close()
 
 	secret := "token"
-	provider, closeRuntime := newLuaProviderForScript(t, "tgrass", taskruntime.TgrassScript)
+	provider, closeRuntime := newLuaProviderForScript(
+		t,
+		"tgrass",
+		taskruntime.TgrassScript,
+	)
 	defer closeRuntime()
 	params := user.PartnerListProviderParams{
 		Identity: user.Identity{
-			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88,
-			PlatformUserID: "123", IsPremium: true,
+			WorkspaceID: testsupport.WorkspaceID(
+				"w",
+			),
+			AppID:          77,
+			PlatformID:     88,
+			PlatformUserID: "123",
+			IsPremium:      true,
 		},
 		Config: repository.PartnerConfig{
-			Provider: "tgrass", GroupKey: "tgrass", Platform: "telegram", Secret: &secret,
+			Provider: "tgrass",
+			GroupKey: "tgrass",
+			Platform: "telegram",
+			Secret:   &secret,
 			Settings: json.RawMessage(`{"base_url":"` + server.URL + `"}`),
 		},
 		Locale: "ru",
@@ -4070,16 +5330,20 @@ func TestTgrassLuaProviderListAndCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 1 || tasks[0].ExternalID != "1054" || tasks[0].ExternalType != "channel" {
+	if len(tasks) != 1 || tasks[0].ExternalID != "1054" ||
+		tasks[0].ExternalType != "channel" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
-	check, err := provider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
-		Identity: params.Identity,
-		Config:   params.Config,
-		Issue: repository.PartnerIssue{
-			ExternalID: "1054", PrivatePayload: tasks[0].PrivatePayload,
+	check, err := provider.CheckPartnerTask(
+		context.Background(),
+		user.PartnerCheckProviderParams{
+			Identity: params.Identity,
+			Config:   params.Config,
+			Issue: repository.PartnerIssue{
+				ExternalID: "1054", PrivatePayload: tasks[0].PrivatePayload,
+			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4090,20 +5354,26 @@ func TestTgrassLuaProviderListAndCheck(t *testing.T) {
 
 func TestSubGramProviderListAndCheck(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/get-sponsors", func(w http.ResponseWriter, r *http.Request) {
-		assertPartnerRequestIdentity(t, r, 77, 88, "123")
-		_, _ = w.Write([]byte(`{
+	mux.HandleFunc(
+		"/get-sponsors",
+		func(w http.ResponseWriter, r *http.Request) {
+			assertPartnerRequestIdentity(t, r, 77, 88, "123")
+			_, _ = w.Write([]byte(`{
 			"status":"warning",
 			"additional":{"sponsors":[{"ads_id":"42","link":"https://t.me/s","resource_id":"-100","type":"channel","status":"unsubscribed","available_now":true,"button_text":"Join"}]}
 		}`))
-	})
-	mux.HandleFunc("/get-user-subscriptions", func(w http.ResponseWriter, r *http.Request) {
-		assertPartnerRequestIdentity(t, r, 77, 88, "123")
-		_, _ = w.Write([]byte(`{
+		},
+	)
+	mux.HandleFunc(
+		"/get-user-subscriptions",
+		func(w http.ResponseWriter, r *http.Request) {
+			assertPartnerRequestIdentity(t, r, 77, 88, "123")
+			_, _ = w.Write([]byte(`{
 			"status":"ok",
 			"additional":{"sponsors":[{"link":"https://t.me/s","status":"subscribed"}]}
 		}`))
-	})
+		},
+	)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -4111,9 +5381,19 @@ func TestSubGramProviderListAndCheck(t *testing.T) {
 	provider := user.SubGramProvider{BaseURL: server.URL}
 	params := user.PartnerListProviderParams{
 		Identity: user.Identity{
-			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88, PlatformUserID: "123",
+			WorkspaceID: testsupport.WorkspaceID(
+				"w",
+			),
+			AppID:          77,
+			PlatformID:     88,
+			PlatformUserID: "123",
 		},
-		Config: repository.PartnerConfig{Provider: "subgram", GroupKey: "subgram", Secret: &secret, Settings: json.RawMessage(`{"action":"task"}`)},
+		Config: repository.PartnerConfig{
+			Provider: "subgram",
+			GroupKey: "subgram",
+			Secret:   &secret,
+			Settings: json.RawMessage(`{"action":"task"}`),
+		},
 		Locale: "ru",
 	}
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
@@ -4123,11 +5403,16 @@ func TestSubGramProviderListAndCheck(t *testing.T) {
 	if len(tasks) != 1 || tasks[0].ExternalID != "42:-100" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
-	check, err := provider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
-		Identity: params.Identity,
-		Config:   params.Config,
-		Issue:    repository.PartnerIssue{PrivatePayload: tasks[0].PrivatePayload},
-	})
+	check, err := provider.CheckPartnerTask(
+		context.Background(),
+		user.PartnerCheckProviderParams{
+			Identity: params.Identity,
+			Config:   params.Config,
+			Issue: repository.PartnerIssue{
+				PrivatePayload: tasks[0].PrivatePayload,
+			},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4138,36 +5423,55 @@ func TestSubGramProviderListAndCheck(t *testing.T) {
 
 func TestSubGramLuaProviderListAndCheck(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/get-sponsors", func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Auth"); got != "token" {
-			t.Fatalf("Auth header = %q", got)
-		}
-		assertPartnerRequestIdentity(t, r, 77, 88, "123")
-		_, _ = w.Write([]byte(`{
+	mux.HandleFunc(
+		"/get-sponsors",
+		func(w http.ResponseWriter, r *http.Request) {
+			if got := r.Header.Get("Auth"); got != "token" {
+				t.Fatalf("Auth header = %q", got)
+			}
+			assertPartnerRequestIdentity(t, r, 77, 88, "123")
+			_, _ = w.Write([]byte(`{
 			"status":"warning",
 			"additional":{"sponsors":[{"ads_id":"42","link":"https://t.me/s","resource_id":"-100","type":"channel","status":"unsubscribed","available_now":true,"button_text":"Join"}]}
 		}`))
-	})
-	mux.HandleFunc("/get-user-subscriptions", func(w http.ResponseWriter, r *http.Request) {
-		assertPartnerRequestIdentity(t, r, 77, 88, "123")
-		_, _ = w.Write([]byte(`{
+		},
+	)
+	mux.HandleFunc(
+		"/get-user-subscriptions",
+		func(w http.ResponseWriter, r *http.Request) {
+			assertPartnerRequestIdentity(t, r, 77, 88, "123")
+			_, _ = w.Write([]byte(`{
 			"status":"ok",
 			"additional":{"sponsors":[{"link":"https://t.me/s","status":"subscribed"}]}
 		}`))
-	})
+		},
+	)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	secret := "token"
-	provider, closeRuntime := newLuaProviderForScript(t, "subgram", taskruntime.SubGramScript)
+	provider, closeRuntime := newLuaProviderForScript(
+		t,
+		"subgram",
+		taskruntime.SubGramScript,
+	)
 	defer closeRuntime()
 	params := user.PartnerListProviderParams{
 		Identity: user.Identity{
-			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88, PlatformUserID: "123",
+			WorkspaceID: testsupport.WorkspaceID(
+				"w",
+			),
+			AppID:          77,
+			PlatformID:     88,
+			PlatformUserID: "123",
 		},
 		Config: repository.PartnerConfig{
-			Provider: "subgram", GroupKey: "subgram", Secret: &secret,
-			Settings: json.RawMessage(`{"action":"task","base_url":"` + server.URL + `"}`),
+			Provider: "subgram",
+			GroupKey: "subgram",
+			Secret:   &secret,
+			Settings: json.RawMessage(
+				`{"action":"task","base_url":"` + server.URL + `"}`,
+			),
 		},
 		Locale: "ru",
 	}
@@ -4178,11 +5482,16 @@ func TestSubGramLuaProviderListAndCheck(t *testing.T) {
 	if len(tasks) != 1 || tasks[0].ExternalID != "42:-100" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
-	check, err := provider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
-		Identity: params.Identity,
-		Config:   params.Config,
-		Issue:    repository.PartnerIssue{PrivatePayload: tasks[0].PrivatePayload},
-	})
+	check, err := provider.CheckPartnerTask(
+		context.Background(),
+		user.PartnerCheckProviderParams{
+			Identity: params.Identity,
+			Config:   params.Config,
+			Issue: repository.PartnerIssue{
+				PrivatePayload: tasks[0].PrivatePayload,
+			},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4195,7 +5504,11 @@ func TestFlyerProviderListAndCheck(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/get_tasks", func(w http.ResponseWriter, r *http.Request) {
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
-		_, _ = w.Write([]byte(`{"tasks":[{"signature":"sig","task_type":"subscribe channel","link":"https://t.me/c","title":"Channel"}]}`))
+		_, _ = w.Write(
+			[]byte(
+				`{"tasks":[{"signature":"sig","task_type":"subscribe channel","link":"https://t.me/c","title":"Channel"}]}`,
+			),
+		)
 	})
 	mux.HandleFunc("/check_task", func(w http.ResponseWriter, r *http.Request) {
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
@@ -4208,9 +5521,19 @@ func TestFlyerProviderListAndCheck(t *testing.T) {
 	provider := user.FlyerProvider{BaseURL: server.URL}
 	params := user.PartnerListProviderParams{
 		Identity: user.Identity{
-			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88, PlatformUserID: "123",
+			WorkspaceID: testsupport.WorkspaceID(
+				"w",
+			),
+			AppID:          77,
+			PlatformID:     88,
+			PlatformUserID: "123",
 		},
-		Config: repository.PartnerConfig{Provider: "flyer", GroupKey: "flyer", Platform: "telegram", Secret: &secret},
+		Config: repository.PartnerConfig{
+			Provider: "flyer",
+			GroupKey: "flyer",
+			Platform: "telegram",
+			Secret:   &secret,
+		},
 		Locale: "ru",
 	}
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
@@ -4220,11 +5543,16 @@ func TestFlyerProviderListAndCheck(t *testing.T) {
 	if len(tasks) != 1 || tasks[0].ExternalID != "sig" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
-	check, err := provider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
-		Identity: params.Identity,
-		Config:   params.Config,
-		Issue:    repository.PartnerIssue{PrivatePayload: tasks[0].PrivatePayload},
-	})
+	check, err := provider.CheckPartnerTask(
+		context.Background(),
+		user.PartnerCheckProviderParams{
+			Identity: params.Identity,
+			Config:   params.Config,
+			Issue: repository.PartnerIssue{
+				PrivatePayload: tasks[0].PrivatePayload,
+			},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4237,7 +5565,11 @@ func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/get_tasks", func(w http.ResponseWriter, r *http.Request) {
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
-		_, _ = w.Write([]byte(`{"tasks":[{"signature":"sig","task_type":"subscribe channel","link":"https://t.me/c","title":"Channel"}]}`))
+		_, _ = w.Write(
+			[]byte(
+				`{"tasks":[{"signature":"sig","task_type":"subscribe channel","link":"https://t.me/c","title":"Channel"}]}`,
+			),
+		)
 	})
 	mux.HandleFunc("/check_task", func(w http.ResponseWriter, r *http.Request) {
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
@@ -4247,14 +5579,26 @@ func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 	defer server.Close()
 
 	secret := "key"
-	provider, closeRuntime := newLuaProviderForScript(t, "flyer", taskruntime.FlyerScript)
+	provider, closeRuntime := newLuaProviderForScript(
+		t,
+		"flyer",
+		taskruntime.FlyerScript,
+	)
 	defer closeRuntime()
 	params := user.PartnerListProviderParams{
 		Identity: user.Identity{
-			WorkspaceID: testsupport.WorkspaceID("w"), AppID: 77, PlatformID: 88, PlatformUserID: "123",
+			WorkspaceID: testsupport.WorkspaceID(
+				"w",
+			),
+			AppID:          77,
+			PlatformID:     88,
+			PlatformUserID: "123",
 		},
 		Config: repository.PartnerConfig{
-			Provider: "flyer", GroupKey: "flyer", Platform: "telegram", Secret: &secret,
+			Provider: "flyer",
+			GroupKey: "flyer",
+			Platform: "telegram",
+			Secret:   &secret,
 			Settings: json.RawMessage(`{"base_url":"` + server.URL + `"}`),
 		},
 		Locale: "ru",
@@ -4266,11 +5610,16 @@ func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 	if len(tasks) != 1 || tasks[0].ExternalID != "sig" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
-	check, err := provider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
-		Identity: params.Identity,
-		Config:   params.Config,
-		Issue:    repository.PartnerIssue{PrivatePayload: tasks[0].PrivatePayload},
-	})
+	check, err := provider.CheckPartnerTask(
+		context.Background(),
+		user.PartnerCheckProviderParams{
+			Identity: params.Identity,
+			Config:   params.Config,
+			Issue: repository.PartnerIssue{
+				PrivatePayload: tasks[0].PrivatePayload,
+			},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4279,12 +5628,20 @@ func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 	}
 }
 
-func newLuaProviderForScript(t testing.TB, provider string, source string) (user.LuaProvider, func()) {
+func newLuaProviderForScript(
+	t testing.TB,
+	provider string,
+	source string,
+) (user.LuaProvider, func()) {
 	t.Helper()
 	manager := taskruntime.New(context.Background(), taskruntime.Options{
 		AllowPrivateHTTP: true,
 		ScriptLoader: func(context.Context, string) (taskruntime.Script, bool, error) {
-			return taskruntime.Script{Provider: provider, Source: source, Version: "test"}, true, nil
+			return taskruntime.Script{
+				Provider: provider,
+				Source:   source,
+				Version:  "test",
+			}, true, nil
 		},
 	})
 	return user.LuaProvider{Runtime: manager, Provider: provider}, func() {
@@ -4303,9 +5660,20 @@ func TestTasksIsReady(t *testing.T) {
 	if service.IsReady() {
 		t.Fatal("uninitialized tasks must not be ready")
 	}
-	if _, err := service.User.ListActive(context.Background(), user.ListActiveParams{
-		Identity: user.Identity{WorkspaceID: "00000000-0000-0000-0000-000000000001", AppID: 1, PlatformID: 1, PlatformUserID: "user"},
-	}); !errors.Is(err, sqlwrap.ErrServiceNotReady) {
+	if _, err := service.User.ListActive(
+		context.Background(),
+		user.ListActiveParams{
+			Identity: user.Identity{
+				WorkspaceID:    "00000000-0000-0000-0000-000000000001",
+				AppID:          1,
+				PlatformID:     1,
+				PlatformUserID: "user",
+			},
+		},
+	); !errors.Is(
+		err,
+		sqlwrap.ErrServiceNotReady,
+	) {
 		t.Fatalf("unready tasks user error = %v", err)
 	}
 	initialized := newTasksTestService(t)
@@ -4352,7 +5720,13 @@ func TestTasksRunBlocksUntilContextCanceled(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if err := service.Run(context.Background(), params); !errors.Is(err, ErrServiceRunning) {
+	if err := service.Run(
+		context.Background(),
+		params,
+	); !errors.Is(
+		err,
+		ErrServiceRunning,
+	) {
 		cancel()
 		t.Fatalf("second Run error = %v, want ErrServiceRunning", err)
 	}
@@ -4414,34 +5788,42 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 		IsEnabled:     true,
 		Secret:        &secret,
 		WebhookSecret: &webhookSecret,
-		Settings:      json.RawMessage(`{"base_url":"https://partner.example"}`),
+		Settings: json.RawMessage(
+			`{"base_url":"https://partner.example"}`,
+		),
 	}); err != nil {
 		t.Fatalf("save partner config: %v", err)
 	}
 	configs, err := service.Admin.ListPartnerConfigs(ctx, workspaceID)
-	if err != nil || len(configs) != 1 || configs[0].Provider != "admin-provider" ||
-		configs[0].Secret == nil || *configs[0].Secret != secret {
+	if err != nil || len(configs) != 1 ||
+		configs[0].Provider != "admin-provider" ||
+		configs[0].Secret == nil ||
+		*configs[0].Secret != secret {
 		t.Fatalf("list partner configs: values=%+v err=%v", configs, err)
 	}
-	if err := service.Admin.SavePartnerRewardRule(ctx, admin.SavePartnerRewardRuleParams{
-		WorkspaceID:  workspaceID,
-		Provider:     "admin-provider",
-		GroupKey:     "main",
-		ExternalType: "subscribe",
-		Reward: admin.RewardModel{
-			Key:      "stars",
-			Type:     "quantity",
-			Quantity: 25,
-			Scale:    2,
+	if err := service.Admin.SavePartnerRewardRule(
+		ctx,
+		admin.SavePartnerRewardRuleParams{
+			WorkspaceID:  workspaceID,
+			Provider:     "admin-provider",
+			GroupKey:     "main",
+			ExternalType: "subscribe",
+			Reward: admin.RewardModel{
+				Key:      "stars",
+				Type:     "quantity",
+				Quantity: 25,
+				Scale:    2,
+			},
+			Position:  1,
+			IsEnabled: true,
 		},
-		Position:  1,
-		IsEnabled: true,
-	}); err != nil {
+	); err != nil {
 		t.Fatalf("save partner reward: %v", err)
 	}
 
 	manifest, err := service.Admin.ExportManifest(ctx)
-	if err != nil || manifest.Format != repository.ExportFormat || len(manifest.Sections) == 0 {
+	if err != nil || manifest.Format != repository.ExportFormat ||
+		len(manifest.Sections) == 0 {
 		t.Fatalf("export manifest: value=%+v err=%v", manifest, err)
 	}
 	pkg, err := service.Admin.Export(ctx, workspaceID, admin.ExportRequest{
@@ -4477,7 +5859,11 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 	}
 	conditions, err = service.Admin.ListComplexConditions(ctx, workspaceID)
 	if err != nil || len(conditions) != 0 {
-		t.Fatalf("complex conditions after delete: values=%+v err=%v", conditions, err)
+		t.Fatalf(
+			"complex conditions after delete: values=%+v err=%v",
+			conditions,
+			err,
+		)
 	}
 
 	script := internalapi.PartnerScriptModel{
@@ -4489,18 +5875,32 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 	if err := service.Internal.SavePartnerScript(ctx, script); err != nil {
 		t.Fatalf("save partner script: %v", err)
 	}
-	loadedScript, found, err := service.Internal.GetPartnerScript(ctx, script.Provider)
-	if err != nil || !found || loadedScript.Version != script.Version || loadedScript.Source != script.Source {
-		t.Fatalf("get partner script: value=%+v found=%v err=%v", loadedScript, found, err)
+	loadedScript, found, err := service.Internal.GetPartnerScript(
+		ctx,
+		script.Provider,
+	)
+	if err != nil || !found || loadedScript.Version != script.Version ||
+		loadedScript.Source != script.Source {
+		t.Fatalf(
+			"get partner script: value=%+v found=%v err=%v",
+			loadedScript,
+			found,
+			err,
+		)
 	}
 	scripts, err := service.Internal.ListPartnerScripts(ctx, 1, 0)
-	if err != nil || len(scripts) != 1 || scripts[0].Provider != script.Provider {
+	if err != nil || len(scripts) != 1 ||
+		scripts[0].Provider != script.Provider {
 		t.Fatalf("list partner scripts: values=%+v err=%v", scripts, err)
 	}
 	if _, err := service.Internal.ListPartnerScripts(ctx, 1, -1); err == nil {
 		t.Fatal("expected negative partner script offset to be rejected")
 	}
-	if _, found, err := service.Internal.GetPartnerScript(ctx, "missing-provider"); err != nil || found {
+	if _, found, err := service.Internal.GetPartnerScript(
+		ctx,
+		"missing-provider",
+	); err != nil ||
+		found {
 		t.Fatalf("missing partner script: found=%v err=%v", found, err)
 	}
 
@@ -4508,13 +5908,18 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 
 func TestTasksHTTPCheckerChannelSubscriptionContract(t *testing.T) {
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.URL.Query().Get("user") != "channel-user" {
-			t.Fatalf("channel user query = %q", request.URL.Query().Get("user"))
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"subscribed": true})
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			if request.URL.Query().Get("user") != "channel-user" {
+				t.Fatalf(
+					"channel user query = %q",
+					request.URL.Query().Get("user"),
+				)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"subscribed": true})
+		}),
+	)
 	defer server.Close()
 
 	payload, err := json.Marshal(integration.HTTPCheckPayload{
@@ -4532,7 +5937,10 @@ func TestTasksHTTPCheckerChannelSubscriptionContract(t *testing.T) {
 		t.Fatalf("encode checker payload: %v", err)
 	}
 
-	checker := integration.HTTPChecker{Client: server.Client(), AllowPrivateHosts: true}
+	checker := integration.HTTPChecker{
+		Client:            server.Client(),
+		AllowPrivateHosts: true,
+	}
 	result, err := checker.CheckChannelSubscription(
 		context.Background(),
 		integration.ChannelSubscriptionCheckParams{
@@ -4559,9 +5967,11 @@ func TestTasksHTTPCheckerChannelSubscriptionContract(t *testing.T) {
 
 func TestTasksChannelCheckerRejectsOversizedResponse(t *testing.T) {
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(strings.Repeat("x", 1<<20+1)))
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(strings.Repeat("x", 1<<20+1)))
+		}),
+	)
 	defer server.Close()
 
 	payload, err := json.Marshal(map[string]any{
@@ -4573,19 +5983,26 @@ func TestTasksChannelCheckerRejectsOversizedResponse(t *testing.T) {
 		t.Fatalf("encode channel payload: %v", err)
 	}
 
-	checker := integration.NewChannelSubscriptionChecker(integration.ChannelSubscriptionCheckerOptions{
-		TelegramBotAPIBaseURL: server.URL,
-	})
-	_, err = checker.CheckChannelSubscription(context.Background(), integration.ChannelSubscriptionCheckParams{
-		Identity: integration.Identity{
-			WorkspaceID:    testsupport.WorkspaceID("channel-response-limit"),
-			AppID:          1,
-			PlatformID:     1,
-			PlatformUserID: "user",
+	checker := integration.NewChannelSubscriptionChecker(
+		integration.ChannelSubscriptionCheckerOptions{
+			TelegramBotAPIBaseURL: server.URL,
 		},
-		Task:     integration.TaskContext{IntegrationPayload: payload},
-		Provider: "telegram",
-	})
+	)
+	_, err = checker.CheckChannelSubscription(
+		context.Background(),
+		integration.ChannelSubscriptionCheckParams{
+			Identity: integration.Identity{
+				WorkspaceID: testsupport.WorkspaceID(
+					"channel-response-limit",
+				),
+				AppID:          1,
+				PlatformID:     1,
+				PlatformUserID: "user",
+			},
+			Task:     integration.TaskContext{IntegrationPayload: payload},
+			Provider: "telegram",
+		},
+	)
 	if err == nil {
 		t.Fatal("oversized channel response was accepted")
 	}
@@ -4594,7 +6011,9 @@ func TestTasksChannelCheckerRejectsOversizedResponse(t *testing.T) {
 
 func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 	cache := testsupport.NewCache()
-	options := tasksTestOptions(Options{Cache: cache, CacheL2Delay: time.Minute})
+	options := tasksTestOptions(
+		Options{Cache: cache, CacheL2Delay: time.Minute},
+	)
 	nodeA := newTasksTestService(t, options)
 	db, err := openTasksPostgres(tasksTestDB)
 	if err != nil {
@@ -4609,7 +6028,13 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("cache-workspace")
-	if err := nodeA.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := nodeA.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create cached task group: %v", err)
 	}
 	taskID, err := nodeA.Admin.SaveTask(ctx, admin.SaveTaskParams{
@@ -4629,7 +6054,14 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create cached task: %v", err)
 	}
-	if err := nodeA.Admin.UpsertTaskLocalization(ctx, workspaceID, taskID, "ru", "Old title", ""); err != nil {
+	if err := nodeA.Admin.UpsertTaskLocalization(
+		ctx,
+		workspaceID,
+		taskID,
+		"ru",
+		"Old title",
+		"",
+	); err != nil {
 		t.Fatalf("create cached task localization: %v", err)
 	}
 	secret := "old-secret"
@@ -4645,7 +6077,14 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 	}
 	assertTasksCacheRead(t, nodeB, "Old title", "old-secret")
 
-	if err := nodeA.Admin.UpsertTaskLocalization(ctx, workspaceID, taskID, "ru", "New title", ""); err != nil {
+	if err := nodeA.Admin.UpsertTaskLocalization(
+		ctx,
+		workspaceID,
+		taskID,
+		"ru",
+		"New title",
+		"",
+	); err != nil {
 		t.Fatalf("update cached task localization: %v", err)
 	}
 	secret = "new-secret"
@@ -4675,26 +6114,37 @@ func TestTasksImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 			ClaimMode:   repository.ClaimModeManual,
 			StartMode:   repository.StartModeNone,
 			TargetCount: 1,
-			Reset:       repository.ExportReset{Unit: repository.ResetNever, Every: 1},
-			IsVisible:   true,
-			IsActive:    true,
+			Reset: repository.ExportReset{
+				Unit:  repository.ResetNever,
+				Every: 1,
+			},
+			IsVisible: true,
+			IsActive:  true,
 		})
 	}
-	result, err := service.Admin.Import(context.Background(), testsupport.WorkspaceID("large-workspace"), admin.ImportRequest{
-		Package: admin.ExportPackage{
-			Format:  repository.ExportFormat,
-			Service: "tasks",
-			Groups: []repository.ExportGroup{
-				{Key: "main", IsActive: true, Tasks: values},
+	result, err := service.Admin.Import(
+		context.Background(),
+		testsupport.WorkspaceID("large-workspace"),
+		admin.ImportRequest{
+			Package: admin.ExportPackage{
+				Format:  repository.ExportFormat,
+				Service: "tasks",
+				Groups: []repository.ExportGroup{
+					{Key: "main", IsActive: true, Tasks: values},
+				},
 			},
+			ConflictStrategy: repository.ImportConflictUpdate,
 		},
-		ConflictStrategy: repository.ImportConflictUpdate,
-	})
+	)
 	if err != nil {
 		t.Fatalf("import large tasks package: %v", err)
 	}
 	if result.Imported.Tasks != taskCount {
-		t.Fatalf("imported tasks = %d, want %d", result.Imported.Tasks, taskCount)
+		t.Fatalf(
+			"imported tasks = %d, want %d",
+			result.Imported.Tasks,
+			taskCount,
+		)
 	}
 }
 
@@ -4707,7 +6157,13 @@ func TestTasksImportSerializesWithAdminWrite(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("concurrent-workspace")
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create tasks group before concurrent writes: %v", err)
 	}
 
@@ -4820,14 +6276,23 @@ WHERE datname = current_database()
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("tasks lock waiters = %d, want at least %d", waiting, minimum)
+			t.Fatalf(
+				"tasks lock waiters = %d, want at least %d",
+				waiting,
+				minimum,
+			)
 		}
 
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
-func assertTasksCacheRead(t *testing.T, service *Tasks, title string, secret string) {
+func assertTasksCacheRead(
+	t *testing.T,
+	service *Tasks,
+	title string,
+	secret string,
+) {
 	t.Helper()
 	ctx := context.Background()
 	values, err := service.User.ListActive(ctx, user.ListActiveParams{
@@ -4839,43 +6304,70 @@ func assertTasksCacheRead(t *testing.T, service *Tasks, title string, secret str
 		},
 		Locale: "ru",
 	})
-	if err != nil || len(values) != 1 || len(values[0].Tasks) != 1 || values[0].Tasks[0].Title != title {
-		t.Fatalf("tasks node returned stale catalog: values=%+v err=%v", values, err)
+	if err != nil || len(values) != 1 || len(values[0].Tasks) != 1 ||
+		values[0].Tasks[0].Title != title {
+		t.Fatalf(
+			"tasks node returned stale catalog: values=%+v err=%v",
+			values,
+			err,
+		)
 	}
-	config, found, err := service.Admin.GetPartnerConfig(ctx, testsupport.WorkspaceID("cache-workspace"), "test-provider", "main", "telegram")
-	if err != nil || !found || config.Secret == nil || *config.Secret != secret {
-		t.Fatalf("tasks node returned stale partner config: config=%+v found=%v err=%v", config, found, err)
+	config, found, err := service.Admin.GetPartnerConfig(
+		ctx,
+		testsupport.WorkspaceID("cache-workspace"),
+		"test-provider",
+		"main",
+		"telegram",
+	)
+	if err != nil || !found || config.Secret == nil ||
+		*config.Secret != secret {
+		t.Fatalf(
+			"tasks node returned stale partner config: config=%+v found=%v err=%v",
+			config,
+			found,
+			err,
+		)
 	}
 }
 
 func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
 	var generatedClickID string
 	var startRequests int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/v1/partner/offers":
-			if r.Header.Get("X-Api-Key") != "secret" {
-				http.Error(w, "bad key", http.StatusForbidden)
-				return
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/v1/partner/offers":
+				if r.Header.Get("X-Api-Key") != "secret" {
+					http.Error(w, "bad key", http.StatusForbidden)
+					return
+				}
+				_, _ = w.Write(
+					[]byte(
+						`{"offers":[{"id":1,"title":"Offer","steps":[{"id":3,"title":"Registration","description":"Create account"}]}]}`,
+					),
+				)
+			case "/v1/partner/click/generate":
+				startRequests++
+				var body struct {
+					StepID  int64  `json:"step_id"`
+					ClickID string `json:"click_id"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				if body.StepID != 3 || body.ClickID == "" {
+					http.Error(w, "bad click", http.StatusBadRequest)
+					return
+				}
+				generatedClickID = body.ClickID
+				_, _ = w.Write(
+					[]byte(
+						`{"statusCode":200,"body":{"external_click_id":"` + body.ClickID + `","action_url":"https://advertiser.example/register","step":{"id":3,"title":"Registration"}}}`,
+					),
+				)
+			default:
+				http.NotFound(w, r)
 			}
-			_, _ = w.Write([]byte(`{"offers":[{"id":1,"title":"Offer","steps":[{"id":3,"title":"Registration","description":"Create account"}]}]}`))
-		case "/v1/partner/click/generate":
-			startRequests++
-			var body struct {
-				StepID  int64  `json:"step_id"`
-				ClickID string `json:"click_id"`
-			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			if body.StepID != 3 || body.ClickID == "" {
-				http.Error(w, "bad click", http.StatusBadRequest)
-				return
-			}
-			generatedClickID = body.ClickID
-			_, _ = w.Write([]byte(`{"statusCode":200,"body":{"external_click_id":"` + body.ClickID + `","action_url":"https://advertiser.example/register","step":{"id":3,"title":"Registration"}}}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+		}),
+	)
 	defer server.Close()
 
 	service := newTasksTestService(t, Options{
@@ -4885,68 +6377,110 @@ func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
 		},
 	})
 	identity := user.Identity{
-		WorkspaceID: testsupport.WorkspaceID("workspace-getbonus"), AppID: 1, PlatformID: 2, Platform: "telegram", PlatformUserID: "1093776793",
+		WorkspaceID: testsupport.WorkspaceID(
+			"workspace-getbonus",
+		),
+		AppID:          1,
+		PlatformID:     2,
+		Platform:       "telegram",
+		PlatformUserID: "1093776793",
 	}
-	saveRuntimePartnerConfig(t, service, identity.WorkspaceID, "getbonus", server.URL)
+	saveRuntimePartnerConfig(
+		t,
+		service,
+		identity.WorkspaceID,
+		"getbonus",
+		server.URL,
+	)
 
-	items, err := service.User.ListPartner(context.Background(), user.PartnerListParams{
-		Identity: identity, Provider: "getbonus", GroupKey: "daily", Platform: "telegram", Now: time.Now(),
-	})
+	items, err := service.User.ListPartner(
+		context.Background(),
+		user.PartnerListParams{
+			Identity: identity,
+			Provider: "getbonus",
+			GroupKey: "daily",
+			Platform: "telegram",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list getbonus: items=%+v err=%v", items, err)
 	}
-	if items[0].Payload == nil || !strings.Contains(string(items[0].Payload), "Registration") {
+	if items[0].Payload == nil ||
+		!strings.Contains(string(items[0].Payload), "Registration") {
 		t.Fatalf("bad getbonus payload: %s", string(items[0].Payload))
 	}
 	if items[0].StartMode != repository.StartModeRequired {
 		t.Fatalf("getbonus must require start: %+v", items[0])
 	}
-	notStarted, err := service.User.CheckPartner(context.Background(), user.PartnerCheckParams{
-		Identity: identity, IssueRef: items[0].Key, Now: time.Now(),
-	})
+	notStarted, err := service.User.CheckPartner(
+		context.Background(),
+		user.PartnerCheckParams{
+			Identity: identity, IssueRef: items[0].Key, Now: time.Now(),
+		},
+	)
 	if err != nil || notStarted.Status != repository.ClaimStatusNotStarted {
 		t.Fatalf("check before start: %+v err=%v", notStarted, err)
 	}
 
-	started, err := service.User.StartPartner(context.Background(), user.PartnerStartParams{
-		Identity: identity, IssueRef: items[0].Key, Now: time.Now(),
-	})
+	started, err := service.User.StartPartner(
+		context.Background(),
+		user.PartnerStartParams{
+			Identity: identity, IssueRef: items[0].Key, Now: time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("start getbonus: %v", err)
 	}
-	if !started.Started || started.ActionURL != "https://advertiser.example/register" || generatedClickID == "" {
+	if !started.Started ||
+		started.ActionURL != "https://advertiser.example/register" ||
+		generatedClickID == "" {
 		t.Fatalf("bad start result: %+v click=%q", started, generatedClickID)
 	}
 
-	startedAgain, err := service.User.StartPartner(context.Background(), user.PartnerStartParams{
-		Identity: identity,
-		IssueRef: items[0].Key,
-		Now:      time.Now(),
-	})
+	startedAgain, err := service.User.StartPartner(
+		context.Background(),
+		user.PartnerStartParams{
+			Identity: identity,
+			IssueRef: items[0].Key,
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("repeat getbonus start: %v", err)
 	}
 	if !startedAgain.Started || startedAgain.ActionURL != started.ActionURL {
-		t.Fatalf("repeat start result = %+v, want original %+v", startedAgain, started)
+		t.Fatalf(
+			"repeat start result = %+v, want original %+v",
+			startedAgain,
+			started,
+		)
 	}
 	if startRequests != 1 {
 		t.Fatalf("getbonus start requests = %d, want 1", startRequests)
 	}
 
-	completed, err := service.Internal.OnPartnerCallback(context.Background(), internalapi.PartnerCallbackParams{
-		WorkspaceID:     identity.WorkspaceID,
-		Provider:        "getbonus",
-		ExternalClickID: generatedClickID,
-		Status:          "step_completed",
-		Payload:         json.RawMessage(`{"event":"step_completed"}`),
-		Now:             time.Now(),
-	})
-	if err != nil || completed.Status != repository.PartnerIssueStatusCompleted {
+	completed, err := service.Internal.OnPartnerCallback(
+		context.Background(),
+		internalapi.PartnerCallbackParams{
+			WorkspaceID:     identity.WorkspaceID,
+			Provider:        "getbonus",
+			ExternalClickID: generatedClickID,
+			Status:          "step_completed",
+			Payload:         json.RawMessage(`{"event":"step_completed"}`),
+			Now:             time.Now(),
+		},
+	)
+	if err != nil ||
+		completed.Status != repository.PartnerIssueStatusCompleted {
 		t.Fatalf("callback complete: %+v err=%v", completed, err)
 	}
 
 	claim, err := service.User.Claim(context.Background(), user.ClaimParams{
-		Identity: identity, TaskRef: items[0].Key, OperationID: "getbonus-claim", Now: time.Now(),
+		Identity:    identity,
+		TaskRef:     items[0].Key,
+		OperationID: "getbonus-claim",
+		Now:         time.Now(),
 	})
 	if err != nil || claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim getbonus: %+v err=%v", claim, err)
@@ -4955,21 +6489,31 @@ func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
 
 func TestTasksRuntimeGetBonusUnifiedWebhook(t *testing.T) {
 	var generatedClickID string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/v1/partner/offers":
-			_, _ = w.Write([]byte(`{"offers":[{"id":1,"title":"Offer","steps":[{"id":3,"title":"Registration","description":"Create account"}]}]}`))
-		case "/v1/partner/click/generate":
-			var body struct {
-				ClickID string `json:"click_id"`
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/v1/partner/offers":
+				_, _ = w.Write(
+					[]byte(
+						`{"offers":[{"id":1,"title":"Offer","steps":[{"id":3,"title":"Registration","description":"Create account"}]}]}`,
+					),
+				)
+			case "/v1/partner/click/generate":
+				var body struct {
+					ClickID string `json:"click_id"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				generatedClickID = body.ClickID
+				_, _ = w.Write(
+					[]byte(
+						`{"statusCode":200,"body":{"external_click_id":"` + body.ClickID + `","action_url":"https://advertiser.example/register"}}`,
+					),
+				)
+			default:
+				http.NotFound(w, r)
 			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			generatedClickID = body.ClickID
-			_, _ = w.Write([]byte(`{"statusCode":200,"body":{"external_click_id":"` + body.ClickID + `","action_url":"https://advertiser.example/register"}}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+		}),
+	)
 	defer server.Close()
 
 	service := newTasksTestService(t, Options{
@@ -4979,64 +6523,107 @@ func TestTasksRuntimeGetBonusUnifiedWebhook(t *testing.T) {
 		},
 	})
 	identity := user.Identity{
-		WorkspaceID: testsupport.WorkspaceID("workspace-getbonus-webhook"), AppID: 1, PlatformID: 2, Platform: "telegram", PlatformUserID: "1093776793",
+		WorkspaceID: testsupport.WorkspaceID(
+			"workspace-getbonus-webhook",
+		),
+		AppID:          1,
+		PlatformID:     2,
+		Platform:       "telegram",
+		PlatformUserID: "1093776793",
 	}
-	saveRuntimePartnerConfig(t, service, identity.WorkspaceID, "getbonus", server.URL)
-	items, err := service.User.ListPartner(context.Background(), user.PartnerListParams{
-		Identity: identity, Provider: "getbonus", GroupKey: "daily", Platform: "telegram", Now: time.Now(),
-	})
+	saveRuntimePartnerConfig(
+		t,
+		service,
+		identity.WorkspaceID,
+		"getbonus",
+		server.URL,
+	)
+	items, err := service.User.ListPartner(
+		context.Background(),
+		user.PartnerListParams{
+			Identity: identity,
+			Provider: "getbonus",
+			GroupKey: "daily",
+			Platform: "telegram",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list getbonus: items=%+v err=%v", items, err)
 	}
-	if _, err = service.User.StartPartner(context.Background(), user.PartnerStartParams{
-		Identity: identity, IssueRef: items[0].Key, Now: time.Now(),
-	}); err != nil {
+	if _, err = service.User.StartPartner(
+		context.Background(),
+		user.PartnerStartParams{
+			Identity: identity, IssueRef: items[0].Key, Now: time.Now(),
+		},
+	); err != nil {
 		t.Fatalf("start getbonus: %v", err)
 	}
-	rejected, err := service.Internal.HandlePartnerWebhook(context.Background(), internalapi.PartnerWebhookParams{
-		WorkspaceID: identity.WorkspaceID,
-		Secret:      "webhook-secret-getbonus",
-		Headers:     map[string]string{"X-Api-Key": "wrong-key"},
-		Body: json.RawMessage(`{
+	rejected, err := service.Internal.HandlePartnerWebhook(
+		context.Background(),
+		internalapi.PartnerWebhookParams{
+			WorkspaceID: identity.WorkspaceID,
+			Secret:      "webhook-secret-getbonus",
+			Headers:     map[string]string{"X-Api-Key": "wrong-key"},
+			Body: json.RawMessage(`{
 			"event":"step_completed",
 			"external_click_id":"` + generatedClickID + `",
 			"offer_id":1,
 			"step_id":3
 		}`),
-		Now: time.Now(),
-	})
+			Now: time.Now(),
+		},
+	)
 	if err != nil || rejected.Status != "invalid_api_key" {
-		t.Fatalf("expected getbonus webhook api key rejection: %+v err=%v", rejected, err)
+		t.Fatalf(
+			"expected getbonus webhook api key rejection: %+v err=%v",
+			rejected,
+			err,
+		)
 	}
 
-	completed, err := service.Internal.HandlePartnerWebhook(context.Background(), internalapi.PartnerWebhookParams{
-		WorkspaceID: identity.WorkspaceID,
-		Secret:      "webhook-secret-getbonus",
-		Headers:     map[string]string{"X-Api-Key": "webhook-secret-getbonus"},
-		Body: json.RawMessage(`{
+	completed, err := service.Internal.HandlePartnerWebhook(
+		context.Background(),
+		internalapi.PartnerWebhookParams{
+			WorkspaceID: identity.WorkspaceID,
+			Secret:      "webhook-secret-getbonus",
+			Headers: map[string]string{
+				"X-Api-Key": "webhook-secret-getbonus",
+			},
+			Body: json.RawMessage(`{
 			"event":"step_completed",
 			"external_click_id":"` + generatedClickID + `",
 			"offer_id":1,
 			"step_id":3
 		}`),
-		Now: time.Now(),
-	})
-	if err != nil || completed.Status != repository.PartnerIssueStatusCompleted {
+			Now: time.Now(),
+		},
+	)
+	if err != nil ||
+		completed.Status != repository.PartnerIssueStatusCompleted {
 		t.Fatalf("handle getbonus webhook: %+v err=%v", completed, err)
 	}
 }
 
 func TestTasksRuntimeTgrassUnifiedWebhookRevoke(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/offers":
-			_, _ = w.Write([]byte(`{"status":"ok","offers":[{"link":"https://t.me/example","subscribed":false,"type":"channel","channel_id":"-100","offer_id":42,"name":"Example"}]}`))
-		case "/check":
-			_, _ = w.Write([]byte(`{"status":"subscribed","is_fake":false}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/offers":
+				_, _ = w.Write(
+					[]byte(
+						`{"status":"ok","offers":[{"link":"https://t.me/example","subscribed":false,"type":"channel","channel_id":"-100","offer_id":42,"name":"Example"}]}`,
+					),
+				)
+			case "/check":
+				_, _ = w.Write(
+					[]byte(`{"status":"subscribed","is_fake":false}`),
+				)
+			default:
+				http.NotFound(w, r)
+			}
+		}),
+	)
 	defer server.Close()
 	service := newTasksTestService(t, Options{
 		Runtime: taskruntime.Options{
@@ -5045,32 +6632,67 @@ func TestTasksRuntimeTgrassUnifiedWebhookRevoke(t *testing.T) {
 		},
 	})
 	identity := user.Identity{
-		WorkspaceID: testsupport.WorkspaceID("workspace-tgrass-webhook"), AppID: 1, PlatformID: 2, Platform: "telegram", PlatformUserID: "1093776793",
+		WorkspaceID: testsupport.WorkspaceID(
+			"workspace-tgrass-webhook",
+		),
+		AppID:          1,
+		PlatformID:     2,
+		Platform:       "telegram",
+		PlatformUserID: "1093776793",
 	}
-	saveRuntimePartnerConfig(t, service, identity.WorkspaceID, "tgrass", server.URL)
-	items, err := service.User.ListPartner(context.Background(), user.PartnerListParams{
-		Identity: identity, Provider: "tgrass", GroupKey: "daily", Platform: "telegram", Now: time.Now(),
-	})
+	saveRuntimePartnerConfig(
+		t,
+		service,
+		identity.WorkspaceID,
+		"tgrass",
+		server.URL,
+	)
+	items, err := service.User.ListPartner(
+		context.Background(),
+		user.PartnerListParams{
+			Identity: identity,
+			Provider: "tgrass",
+			GroupKey: "daily",
+			Platform: "telegram",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list tgrass: items=%+v err=%v", items, err)
 	}
-	revoked, err := service.Internal.HandlePartnerWebhook(context.Background(), internalapi.PartnerWebhookParams{
-		WorkspaceID: identity.WorkspaceID,
-		Secret:      "webhook-secret-tgrass",
-		Body:        json.RawMessage(`{"status":"unsubscribed","offer_link":"https://t.me/example","tg_user_id":"1093776793"}`),
-		Now:         time.Now(),
-	})
+	revoked, err := service.Internal.HandlePartnerWebhook(
+		context.Background(),
+		internalapi.PartnerWebhookParams{
+			WorkspaceID: identity.WorkspaceID,
+			Secret:      "webhook-secret-tgrass",
+			Body: json.RawMessage(
+				`{"status":"unsubscribed","offer_link":"https://t.me/example","tg_user_id":"1093776793"}`,
+			),
+			Now: time.Now(),
+		},
+	)
 	if err != nil || revoked.Status != repository.PartnerIssueStatusRevoked {
 		t.Fatalf("handle tgrass webhook: %+v err=%v", revoked, err)
 	}
-	check, err := service.User.CheckPartner(context.Background(), user.PartnerCheckParams{
-		Identity: identity, IssueRef: items[0].Key, Now: time.Now(),
-	})
-	if err != nil || check.Status != repository.PartnerIssueStatusRevoked || check.Completed {
-		t.Fatalf("check must not reopen revoked tgrass issue: %+v err=%v", check, err)
+	check, err := service.User.CheckPartner(
+		context.Background(),
+		user.PartnerCheckParams{
+			Identity: identity, IssueRef: items[0].Key, Now: time.Now(),
+		},
+	)
+	if err != nil || check.Status != repository.PartnerIssueStatusRevoked ||
+		check.Completed {
+		t.Fatalf(
+			"check must not reopen revoked tgrass issue: %+v err=%v",
+			check,
+			err,
+		)
 	}
 	claim, err := service.User.Claim(context.Background(), user.ClaimParams{
-		Identity: identity, TaskRef: items[0].Key, OperationID: "tgrass-revoked-claim", Now: time.Now(),
+		Identity:    identity,
+		TaskRef:     items[0].Key,
+		OperationID: "tgrass-revoked-claim",
+		Now:         time.Now(),
 	})
 	if err != nil || claim.Status != repository.ClaimStatusNotReady {
 		t.Fatalf("claim revoked tgrass: %+v err=%v", claim, err)
@@ -5078,17 +6700,19 @@ func TestTasksRuntimeTgrassUnifiedWebhookRevoke(t *testing.T) {
 }
 
 func TestTasksRuntimeSubGramBatchWebhookComplete(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/get-sponsors":
-			_, _ = w.Write([]byte(`{
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/get-sponsors":
+				_, _ = w.Write([]byte(`{
 				"status":"warning",
 				"additional":{"sponsors":[{"ads_id":"42","link":"https://t.me/s","resource_id":"-100","type":"channel","status":"unsubscribed","available_now":true,"button_text":"Join"}]}
 			}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+			default:
+				http.NotFound(w, r)
+			}
+		}),
+	)
 	defer server.Close()
 	service := newTasksTestService(t, Options{
 		Runtime: taskruntime.Options{
@@ -5097,22 +6721,47 @@ func TestTasksRuntimeSubGramBatchWebhookComplete(t *testing.T) {
 		},
 	})
 	identity := user.Identity{
-		WorkspaceID: testsupport.WorkspaceID("workspace-subgram-webhook"), AppID: 1, PlatformID: 2, Platform: "telegram", PlatformUserID: "1093776793",
+		WorkspaceID: testsupport.WorkspaceID(
+			"workspace-subgram-webhook",
+		),
+		AppID:          1,
+		PlatformID:     2,
+		Platform:       "telegram",
+		PlatformUserID: "1093776793",
 	}
-	saveRuntimePartnerConfig(t, service, identity.WorkspaceID, "subgram", server.URL)
-	items, err := service.User.ListPartner(context.Background(), user.PartnerListParams{
-		Identity: identity, Provider: "subgram", GroupKey: "daily", Platform: "telegram", Now: time.Now(),
-	})
+	saveRuntimePartnerConfig(
+		t,
+		service,
+		identity.WorkspaceID,
+		"subgram",
+		server.URL,
+	)
+	items, err := service.User.ListPartner(
+		context.Background(),
+		user.PartnerListParams{
+			Identity: identity,
+			Provider: "subgram",
+			GroupKey: "daily",
+			Platform: "telegram",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list subgram: items=%+v err=%v", items, err)
 	}
-	completed, err := service.Internal.HandlePartnerWebhook(context.Background(), internalapi.PartnerWebhookParams{
-		WorkspaceID: identity.WorkspaceID,
-		Secret:      "webhook-secret-subgram",
-		Body:        json.RawMessage(`{"webhooks":[{"status":"subscribed","ads_id":42,"resource_id":"-100","user_id":"1093776793"}]}`),
-		Now:         time.Now(),
-	})
-	if err != nil || completed.Status != repository.PartnerIssueStatusCompleted {
+	completed, err := service.Internal.HandlePartnerWebhook(
+		context.Background(),
+		internalapi.PartnerWebhookParams{
+			WorkspaceID: identity.WorkspaceID,
+			Secret:      "webhook-secret-subgram",
+			Body: json.RawMessage(
+				`{"webhooks":[{"status":"subscribed","ads_id":42,"resource_id":"-100","user_id":"1093776793"}]}`,
+			),
+			Now: time.Now(),
+		},
+	)
+	if err != nil ||
+		completed.Status != repository.PartnerIssueStatusCompleted {
 		t.Fatalf("handle subgram webhook: %+v err=%v", completed, err)
 	}
 }
@@ -5120,11 +6769,13 @@ func TestTasksRuntimeSubGramBatchWebhookComplete(t *testing.T) {
 func TestTasksRuntimeDoesNotRestoreReplacedStatePool(t *testing.T) {
 	requestStarted := make(chan struct{})
 	releaseRequest := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		close(requestStarted)
-		<-releaseRequest
-		_, _ = w.Write([]byte(`{"ok":true}`))
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			close(requestStarted)
+			<-releaseRequest
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}),
+	)
 	defer server.Close()
 
 	const oldSource = `
@@ -5163,16 +6814,23 @@ end
 		}
 	}()
 
-	if err := manager.WarmProvider(context.Background(), "pool-test"); err != nil {
+	if err := manager.WarmProvider(
+		context.Background(),
+		"pool-test",
+	); err != nil {
 		t.Fatalf("warm old provider: %v", err)
 	}
 
 	callDone := make(chan error, 1)
 	go func() {
-		_, err := manager.Handle(context.Background(), "pool-test", taskruntime.Event{
-			Action: "list",
-			Config: map[string]any{"url": server.URL},
-		})
+		_, err := manager.Handle(
+			context.Background(),
+			"pool-test",
+			taskruntime.Event{
+				Action: "list",
+				Config: map[string]any{"url": server.URL},
+			},
+		)
 		callDone <- err
 	}()
 
@@ -5190,7 +6848,10 @@ end
 	}
 	scriptMu.Unlock()
 
-	if err := manager.WarmProvider(context.Background(), "pool-test"); err != nil {
+	if err := manager.WarmProvider(
+		context.Background(),
+		"pool-test",
+	); err != nil {
 		t.Fatalf("warm new provider: %v", err)
 	}
 	close(releaseRequest)
@@ -5207,12 +6868,27 @@ end
 func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 	httpClient := &http.Client{Transport: staticTgrassTransport{}}
 	secret := "secret"
-	identity := user.Identity{WorkspaceID: testsupport.WorkspaceID("bench"), AppID: 1, PlatformID: 2, Platform: "telegram", PlatformUserID: "1093776793"}
-	config := repository.PartnerConfig{
-		WorkspaceID: testsupport.WorkspaceID("bench"), Provider: "tgrass", GroupKey: "daily", Platform: "telegram",
-		Secret: &secret, Settings: json.RawMessage(`{"base_url":"https://tgrass.local"}`),
+	identity := user.Identity{
+		WorkspaceID:    testsupport.WorkspaceID("bench"),
+		AppID:          1,
+		PlatformID:     2,
+		Platform:       "telegram",
+		PlatformUserID: "1093776793",
 	}
-	goProvider := user.TgrassProvider{Client: httpClient, BaseURL: "https://tgrass.local"}
+	config := repository.PartnerConfig{
+		WorkspaceID: testsupport.WorkspaceID(
+			"bench",
+		),
+		Provider: "tgrass",
+		GroupKey: "daily",
+		Platform: "telegram",
+		Secret:   &secret,
+		Settings: json.RawMessage(`{"base_url":"https://tgrass.local"}`),
+	}
+	goProvider := user.TgrassProvider{
+		Client:  httpClient,
+		BaseURL: "https://tgrass.local",
+	}
 	luaProviders := map[string]user.LuaProvider{}
 	for name, options := range map[string]taskruntime.Options{
 		"lua_no_pool": {
@@ -5234,26 +6910,45 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 	} {
 		options.HTTPClient = httpClient
 		options.ScriptLoader = func(context.Context, string) (taskruntime.Script, bool, error) {
-			return taskruntime.Script{Provider: "tgrass", Source: taskruntime.TgrassScript, Version: "bench"}, true, nil
+			return taskruntime.Script{
+				Provider: "tgrass",
+				Source:   taskruntime.TgrassScript,
+				Version:  "bench",
+			}, true, nil
 		}
 		manager := taskruntime.New(context.Background(), options)
 		defer func() { _ = manager.Close() }()
-		luaProviders[name] = user.LuaProvider{Runtime: manager, Provider: "tgrass"}
+		luaProviders[name] = user.LuaProvider{
+			Runtime:  manager,
+			Provider: "tgrass",
+		}
 	}
 
 	b.Run("go_list_check", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			items, err := goProvider.ListPartnerTasks(context.Background(), user.PartnerListProviderParams{
-				Identity: identity, Config: config, Locale: "ru", Now: time.Now(),
-			})
+			items, err := goProvider.ListPartnerTasks(
+				context.Background(),
+				user.PartnerListProviderParams{
+					Identity: identity,
+					Config:   config,
+					Locale:   "ru",
+					Now:      time.Now(),
+				},
+			)
 			if err != nil || len(items) != 1 {
 				b.Fatalf("go list: items=%+v err=%v", items, err)
 			}
-			_, err = goProvider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
-				Identity: identity, Config: config, Issue: repository.PartnerIssue{
-					ExternalID: items[0].ExternalID, PrivatePayload: items[0].PrivatePayload,
+			_, err = goProvider.CheckPartnerTask(
+				context.Background(),
+				user.PartnerCheckProviderParams{
+					Identity: identity,
+					Config:   config,
+					Issue: repository.PartnerIssue{
+						ExternalID:     items[0].ExternalID,
+						PrivatePayload: items[0].PrivatePayload,
+					},
 				},
-			})
+			)
 			if err != nil {
 				b.Fatalf("go check: %v", err)
 			}
@@ -5263,17 +6958,29 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 		provider := provider
 		b.Run(name+"_list_check", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				items, err := provider.ListPartnerTasks(context.Background(), user.PartnerListProviderParams{
-					Identity: identity, Config: config, Locale: "ru", Now: time.Now(),
-				})
+				items, err := provider.ListPartnerTasks(
+					context.Background(),
+					user.PartnerListProviderParams{
+						Identity: identity,
+						Config:   config,
+						Locale:   "ru",
+						Now:      time.Now(),
+					},
+				)
 				if err != nil || len(items) != 1 {
 					b.Fatalf("%s list: items=%+v err=%v", name, items, err)
 				}
-				_, err = provider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
-					Identity: identity, Config: config, Issue: repository.PartnerIssue{
-						ExternalID: items[0].ExternalID, PrivatePayload: items[0].PrivatePayload,
+				_, err = provider.CheckPartnerTask(
+					context.Background(),
+					user.PartnerCheckProviderParams{
+						Identity: identity,
+						Config:   config,
+						Issue: repository.PartnerIssue{
+							ExternalID:     items[0].ExternalID,
+							PrivatePayload: items[0].PrivatePayload,
+						},
 					},
-				})
+				)
 				if err != nil {
 					b.Fatalf("%s check: %v", name, err)
 				}
@@ -5283,17 +6990,29 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 	b.Run("go_list_check_parallel", func(b *testing.B) {
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				items, err := goProvider.ListPartnerTasks(context.Background(), user.PartnerListProviderParams{
-					Identity: identity, Config: config, Locale: "ru", Now: time.Now(),
-				})
+				items, err := goProvider.ListPartnerTasks(
+					context.Background(),
+					user.PartnerListProviderParams{
+						Identity: identity,
+						Config:   config,
+						Locale:   "ru",
+						Now:      time.Now(),
+					},
+				)
 				if err != nil || len(items) != 1 {
 					b.Fatalf("go list: items=%+v err=%v", items, err)
 				}
-				_, err = goProvider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
-					Identity: identity, Config: config, Issue: repository.PartnerIssue{
-						ExternalID: items[0].ExternalID, PrivatePayload: items[0].PrivatePayload,
+				_, err = goProvider.CheckPartnerTask(
+					context.Background(),
+					user.PartnerCheckProviderParams{
+						Identity: identity,
+						Config:   config,
+						Issue: repository.PartnerIssue{
+							ExternalID:     items[0].ExternalID,
+							PrivatePayload: items[0].PrivatePayload,
+						},
 					},
-				})
+				)
 				if err != nil {
 					b.Fatalf("go check: %v", err)
 				}
@@ -5305,17 +7024,29 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 		b.Run(name+"_list_check_parallel", func(b *testing.B) {
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					items, err := provider.ListPartnerTasks(context.Background(), user.PartnerListProviderParams{
-						Identity: identity, Config: config, Locale: "ru", Now: time.Now(),
-					})
+					items, err := provider.ListPartnerTasks(
+						context.Background(),
+						user.PartnerListProviderParams{
+							Identity: identity,
+							Config:   config,
+							Locale:   "ru",
+							Now:      time.Now(),
+						},
+					)
 					if err != nil || len(items) != 1 {
 						b.Fatalf("%s list: items=%+v err=%v", name, items, err)
 					}
-					_, err = provider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
-						Identity: identity, Config: config, Issue: repository.PartnerIssue{
-							ExternalID: items[0].ExternalID, PrivatePayload: items[0].PrivatePayload,
+					_, err = provider.CheckPartnerTask(
+						context.Background(),
+						user.PartnerCheckProviderParams{
+							Identity: identity,
+							Config:   config,
+							Issue: repository.PartnerIssue{
+								ExternalID:     items[0].ExternalID,
+								PrivatePayload: items[0].PrivatePayload,
+							},
 						},
-					})
+					)
 					if err != nil {
 						b.Fatalf("%s check: %v", name, err)
 					}
@@ -5344,11 +7075,22 @@ func BenchmarkTasksRuntimePartnerServiceMethods(b *testing.B) {
 	b.ReportAllocs()
 	b.Run("User.ListPartner/tgrass", func(b *testing.B) {
 		identity := user.Identity{
-			WorkspaceID: testsupport.WorkspaceID("bench-partner-service"), AppID: 1, PlatformID: 2, Platform: "telegram", PlatformUserID: "list",
+			WorkspaceID: testsupport.WorkspaceID(
+				"bench-partner-service",
+			),
+			AppID:          1,
+			PlatformID:     2,
+			Platform:       "telegram",
+			PlatformUserID: "list",
 		}
 		for range b.N {
 			_, err := service.User.ListPartner(ctx, user.PartnerListParams{
-				Identity: identity, Provider: "tgrass", GroupKey: "daily", Platform: "telegram", Locale: "ru", Now: time.Now(),
+				Identity: identity,
+				Provider: "tgrass",
+				GroupKey: "daily",
+				Platform: "telegram",
+				Locale:   "ru",
+				Now:      time.Now(),
 			})
 			benchError(b, err)
 		}
@@ -5370,27 +7112,48 @@ func BenchmarkTasksRuntimePartnerServiceMethods(b *testing.B) {
 			b.StopTimer()
 			identity, _ := benchmarkTgrassIssue(b, service, ctx)
 			b.StartTimer()
-			_, err := service.Internal.HandlePartnerWebhook(ctx, internalapi.PartnerWebhookParams{
-				WorkspaceID: testsupport.WorkspaceID("bench-partner-service"),
-				Secret:      "webhook-secret-tgrass",
-				Body:        json.RawMessage(`{"status":"unsubscribed","offer_link":"https://t.me/example","tg_user_id":"` + identity.PlatformUserID + `"}`),
-				Now:         time.Now(),
-			})
+			_, err := service.Internal.HandlePartnerWebhook(
+				ctx,
+				internalapi.PartnerWebhookParams{
+					WorkspaceID: testsupport.WorkspaceID(
+						"bench-partner-service",
+					),
+					Secret: "webhook-secret-tgrass",
+					Body: json.RawMessage(
+						`{"status":"unsubscribed","offer_link":"https://t.me/example","tg_user_id":"` + identity.PlatformUserID + `"}`,
+					),
+					Now: time.Now(),
+				},
+			)
 			b.StopTimer()
 			benchError(b, err)
 		}
 	})
 }
 
-func benchmarkTgrassIssue(b *testing.B, service *Tasks, ctx context.Context) (user.Identity, string) {
+func benchmarkTgrassIssue(
+	b *testing.B,
+	service *Tasks,
+	ctx context.Context,
+) (user.Identity, string) {
 	b.Helper()
 	id := tasksBenchmarkUserID.Add(1)
 	identity := user.Identity{
-		WorkspaceID: testsupport.WorkspaceID("bench-partner-service"), AppID: 1, PlatformID: 2, Platform: "telegram",
+		WorkspaceID: testsupport.WorkspaceID(
+			"bench-partner-service",
+		),
+		AppID:          1,
+		PlatformID:     2,
+		Platform:       "telegram",
 		PlatformUserID: "bench-" + strconv.FormatUint(id, 10),
 	}
 	items, err := service.User.ListPartner(ctx, user.PartnerListParams{
-		Identity: identity, Provider: "tgrass", GroupKey: "daily", Platform: "telegram", Locale: "ru", Now: time.Now(),
+		Identity: identity,
+		Provider: "tgrass",
+		GroupKey: "daily",
+		Platform: "telegram",
+		Locale:   "ru",
+		Now:      time.Now(),
 	})
 	benchError(b, err)
 	if len(items) != 1 {
@@ -5405,7 +7168,9 @@ func staticTgrassHTTPClient() *http.Client {
 
 type staticTgrassTransport struct{}
 
-func (staticTgrassTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+func (staticTgrassTransport) RoundTrip(
+	r *http.Request,
+) (*http.Response, error) {
 	var body string
 	switch r.URL.Path {
 	case "/offers":
@@ -5423,7 +7188,11 @@ func (staticTgrassTransport) RoundTrip(r *http.Request) (*http.Response, error) 
 	}, nil
 }
 
-func saveRuntimePartnerConfig(t testing.TB, service *Tasks, workspaceID, provider, baseURL string) {
+func saveRuntimePartnerConfig(
+	t testing.TB,
+	service *Tasks,
+	workspaceID, provider, baseURL string,
+) {
 	t.Helper()
 	source := taskruntime.TgrassScript
 	switch provider {
@@ -5434,28 +7203,52 @@ func saveRuntimePartnerConfig(t testing.TB, service *Tasks, workspaceID, provide
 	case "flyer":
 		source = taskruntime.FlyerScript
 	}
-	if err := service.Internal.SavePartnerScript(context.Background(), internalapi.PartnerScriptModel{
-		Provider:  provider,
-		IsEnabled: true,
-		Version:   "test",
-		Source:    source,
-	}); err != nil {
+	if err := service.Internal.SavePartnerScript(
+		context.Background(),
+		internalapi.PartnerScriptModel{
+			Provider:  provider,
+			IsEnabled: true,
+			Version:   "test",
+			Source:    source,
+		},
+	); err != nil {
 		t.Fatalf("save runtime partner script: %v", err)
 	}
 	secret := "secret"
 	webhookSecret := "webhook-secret-" + provider
 	settings := json.RawMessage(`{"base_url":"` + baseURL + `"}`)
-	if err := service.Admin.SavePartnerConfig(context.Background(), admin.PartnerConfigModel{
-		WorkspaceID: workspaceID, Provider: provider, GroupKey: "daily", Platform: "telegram",
-		IsEnabled: true, Secret: &secret, WebhookSecret: &webhookSecret, Target: json.RawMessage(`null`),
-		Settings: settings,
-	}); err != nil {
+	if err := service.Admin.SavePartnerConfig(
+		context.Background(),
+		admin.PartnerConfigModel{
+			WorkspaceID:   workspaceID,
+			Provider:      provider,
+			GroupKey:      "daily",
+			Platform:      "telegram",
+			IsEnabled:     true,
+			Secret:        &secret,
+			WebhookSecret: &webhookSecret,
+			Target:        json.RawMessage(`null`),
+			Settings:      settings,
+		},
+	); err != nil {
 		t.Fatalf("save runtime partner config: %v", err)
 	}
-	if err := service.Admin.SavePartnerRewardRule(context.Background(), admin.SavePartnerRewardRuleParams{
-		WorkspaceID: workspaceID, Provider: provider, GroupKey: "daily", ExternalType: "step:3",
-		Reward: admin.RewardModel{Key: "stars", Type: "quantity", Quantity: 25, Scale: 2}, IsEnabled: true,
-	}); err != nil {
+	if err := service.Admin.SavePartnerRewardRule(
+		context.Background(),
+		admin.SavePartnerRewardRuleParams{
+			WorkspaceID:  workspaceID,
+			Provider:     provider,
+			GroupKey:     "daily",
+			ExternalType: "step:3",
+			Reward: admin.RewardModel{
+				Key:      "stars",
+				Type:     "quantity",
+				Quantity: 25,
+				Scale:    2,
+			},
+			IsEnabled: true,
+		},
+	); err != nil {
 		t.Fatalf("save runtime partner reward: %v", err)
 	}
 }
@@ -5469,7 +7262,10 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	createEarnChain(t, service, workspaceID, repository.ClaimModeManual)
 	autoTaskID := createStatsAutoTask(t, service, workspaceID)
 	identity := internalapi.Identity{
-		WorkspaceID: workspaceID, AppID: 1, PlatformID: 2, PlatformUserID: "stats-player",
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     2,
+		PlatformUserID: "stats-player",
 	}
 
 	manual, err := service.Internal.Record(ctx, internalapi.RecordParams{
@@ -5485,7 +7281,11 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	manualTaskID := manual.Tasks[0].Task.ID
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity: user.Identity(identity),
-		TaskRef:  fmt.Sprint(manualTaskID), OperationID: "stats-manual-claim", Now: now,
+		TaskRef: fmt.Sprint(
+			manualTaskID,
+		),
+		OperationID: "stats-manual-claim",
+		Now:         now,
 	})
 	if err != nil || claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim manual task: %+v err=%v", claim, err)
@@ -5498,7 +7298,8 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record auto progress: %v", err)
 	}
-	if len(auto.Tasks) != 1 || !auto.Tasks[0].Claimed || auto.Tasks[0].Task.ID != autoTaskID {
+	if len(auto.Tasks) != 1 || !auto.Tasks[0].Claimed ||
+		auto.Tasks[0].Task.ID != autoTaskID {
 		t.Fatalf("unexpected auto record result: %+v", auto)
 	}
 	duplicate, err := service.Internal.Record(ctx, internalapi.RecordParams{
@@ -5513,12 +7314,18 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get stats: %v", err)
 	}
-	if stats.TasksTotal != 3 || stats.ActiveTasks != 3 || stats.VisibleTasks != 3 ||
-		stats.ProgressTotal != 2 || stats.ClaimedProgress != 2 ||
-		stats.ProgressCreated != 2 || stats.ProgressAmount != 1500 ||
-		stats.ReadyCount != 1 || stats.ClaimedCount != 2 ||
-		stats.ManualClaimedCount != 1 || stats.AutoClaimedCount != 1 ||
-		stats.UniqueParticipants != 1 || stats.UniqueClaimers != 1 {
+	if stats.TasksTotal != 3 || stats.ActiveTasks != 3 ||
+		stats.VisibleTasks != 3 ||
+		stats.ProgressTotal != 2 ||
+		stats.ClaimedProgress != 2 ||
+		stats.ProgressCreated != 2 ||
+		stats.ProgressAmount != 1500 ||
+		stats.ReadyCount != 1 ||
+		stats.ClaimedCount != 2 ||
+		stats.ManualClaimedCount != 1 ||
+		stats.AutoClaimedCount != 1 ||
+		stats.UniqueParticipants != 1 ||
+		stats.UniqueClaimers != 1 {
 		t.Fatalf("unexpected tasks stats: %+v", stats)
 	}
 
@@ -5533,10 +7340,21 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	}
 
 	from, until := now.Add(-24*time.Hour), now.Add(24*time.Hour)
-	if err := service.Admin.RefreshDailyStats(ctx, workspaceID, from, until); err != nil {
+	if err := service.Admin.RefreshDailyStats(
+		ctx,
+		workspaceID,
+		from,
+		until,
+	); err != nil {
 		t.Fatalf("refresh daily stats: %v", err)
 	}
-	daily, err := service.Admin.ListDailyStats(ctx, workspaceID, manualTaskID, from, until)
+	daily, err := service.Admin.ListDailyStats(
+		ctx,
+		workspaceID,
+		manualTaskID,
+		from,
+		until,
+	)
 	if err != nil {
 		t.Fatalf("list daily stats: %v", err)
 	}
@@ -5544,7 +7362,12 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 		daily[0].ReadyCount != 1 || daily[0].ClaimedCount != 1 {
 		t.Fatalf("unexpected daily task stats: %+v", daily)
 	}
-	overview, err := service.Admin.ListDailyOverview(ctx, workspaceID, from, until)
+	overview, err := service.Admin.ListDailyOverview(
+		ctx,
+		workspaceID,
+		from,
+		until,
+	)
 	if err != nil {
 		t.Fatalf("list daily overview: %v", err)
 	}
@@ -5564,7 +7387,10 @@ func BenchmarkTasksAdminStats(b *testing.B) {
 	createEarnChain(b, service, workspaceID, repository.ClaimModeManual)
 
 	identity := internalapi.Identity{
-		WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "bench-player",
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "bench-player",
 	}
 	recorded, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity: identity, ActionKey: "earn_coin", Amount: 1000,
@@ -5579,7 +7405,10 @@ func BenchmarkTasksAdminStats(b *testing.B) {
 	benchError(b, err)
 
 	from, until := now.Add(-24*time.Hour), now.Add(24*time.Hour)
-	benchError(b, service.Admin.RefreshDailyStats(ctx, workspaceID, from, until))
+	benchError(
+		b,
+		service.Admin.RefreshDailyStats(ctx, workspaceID, from, until),
+	)
 	b.ReportAllocs()
 	b.Run("GetStats", func(b *testing.B) {
 		for range b.N {
@@ -5595,32 +7424,60 @@ func BenchmarkTasksAdminStats(b *testing.B) {
 	})
 	b.Run("ListDailyStats", func(b *testing.B) {
 		for range b.N {
-			_, err := service.Admin.ListDailyStats(ctx, workspaceID, taskID, from, until)
+			_, err := service.Admin.ListDailyStats(
+				ctx,
+				workspaceID,
+				taskID,
+				from,
+				until,
+			)
 			benchError(b, err)
 		}
 	})
 	b.Run("ListDailyOverview", func(b *testing.B) {
 		for range b.N {
-			_, err := service.Admin.ListDailyOverview(ctx, workspaceID, from, until)
+			_, err := service.Admin.ListDailyOverview(
+				ctx,
+				workspaceID,
+				from,
+				until,
+			)
 			benchError(b, err)
 		}
 	})
 	b.Run("RefreshDailyStats", func(b *testing.B) {
 		for range b.N {
-			benchError(b, service.Admin.RefreshDailyStats(ctx, workspaceID, from, until))
+			benchError(
+				b,
+				service.Admin.RefreshDailyStats(ctx, workspaceID, from, until),
+			)
 		}
 	})
 }
 
-func createStatsAutoTask(t testing.TB, service *Tasks, workspaceID string) uint64 {
+func createStatsAutoTask(
+	t testing.TB,
+	service *Tasks,
+	workspaceID string,
+) uint64 {
 	t.Helper()
-	id, err := service.Admin.SaveTask(context.Background(), admin.SaveTaskParams{
-		WorkspaceID: workspaceID, Key: "stats_auto", GroupKey: "main",
-		ActionKey: "stats_auto", ActionKind: repository.ActionKindAmountAction,
-		ClaimMode: repository.ClaimModeAuto, TargetCount: 500,
-		ResetUnit: repository.ResetNever, ResetEvery: 1,
-		Position: 3, IsVisible: true, IsActive: true,
-	})
+	id, err := service.Admin.SaveTask(
+		context.Background(),
+		admin.SaveTaskParams{
+			WorkspaceID: workspaceID,
+			Key:         "stats_auto",
+			GroupKey:    "main",
+			ActionKey:   "stats_auto",
+			ActionKind:  repository.ActionKindAmountAction,
+			ClaimMode:   repository.ClaimModeAuto,
+			TargetCount: 500,
+			ResetUnit:   repository.ResetNever,
+			ResetEvery:  1,
+			Position:    3,
+			IsVisible:   true,
+			IsActive:    true,
+		},
+	)
 	if err != nil {
 		t.Fatalf("create stats auto task: %v", err)
 	}
@@ -5646,9 +7503,19 @@ func TestTasksManualSequenceCarryAndCallback(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	identity := internalapi.Identity{
-		WorkspaceID: testsupport.WorkspaceID("workspace-a"), AppID: 1, PlatformID: 2, PlatformUserID: "player",
+		WorkspaceID: testsupport.WorkspaceID(
+			"workspace-a",
+		),
+		AppID:          1,
+		PlatformID:     2,
+		PlatformUserID: "player",
 	}
-	createEarnChain(t, service, identity.WorkspaceID, repository.ClaimModeManual)
+	createEarnChain(
+		t,
+		service,
+		identity.WorkspaceID,
+		repository.ClaimModeManual,
+	)
 
 	recorded, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity: identity, ActionKey: "earn_coin", Amount: 1500,
@@ -5657,24 +7524,41 @@ func TestTasksManualSequenceCarryAndCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record: %v", err)
 	}
-	if recorded.Consumed != 1000 || recorded.Remaining != 500 || len(recorded.Tasks) != 1 {
+	if recorded.Consumed != 1000 || recorded.Remaining != 500 ||
+		len(recorded.Tasks) != 1 {
 		t.Fatalf("manual sequence must stop at ready task: %+v", recorded)
 	}
-	list, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity), Locale: "ru", Now: time.Now()})
+	list, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(identity),
+			Locale:   "ru",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
 	first := findTask(t, list, "earn_1")
 	second := findTask(t, list, "earn_2")
-	if first.Progress == nil || first.Progress.Status != repository.StatusReady || first.Progress.Progress != 1000 {
+	if first.Progress == nil ||
+		first.Progress.Status != repository.StatusReady ||
+		first.Progress.Progress != 1000 {
 		t.Fatalf("unexpected first progress: %+v", first.Progress)
 	}
 	if second.Progress != nil {
-		t.Fatalf("second task must not receive carry before manual claim: %+v", second.Progress)
+		t.Fatalf(
+			"second task must not receive carry before manual claim: %+v",
+			second.Progress,
+		)
 	}
 
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(identity), TaskRef: fmt.Sprintf("%d", first.ID), OperationID: "claim-1",
+		Identity: user.Identity(
+			identity,
+		),
+		TaskRef:     fmt.Sprintf("%d", first.ID),
+		OperationID: "claim-1",
 	})
 	if err != nil || claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim: %+v err=%v", claim, err)
@@ -5686,15 +7570,18 @@ func TestTasksManualSequenceCarryAndCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record second carry: %v", err)
 	}
-	if again.Consumed != 500 || again.Remaining != 0 || len(again.Tasks) != 1 || again.Tasks[0].Task.Key != "earn_2" {
+	if again.Consumed != 500 || again.Remaining != 0 || len(again.Tasks) != 1 ||
+		again.Tasks[0].Task.Key != "earn_2" {
 		t.Fatalf("unexpected second progress: %+v", again)
 	}
 
 	workerCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	err = service.OnCallback(workerCtx, func(callbackCtx Context) error {
-		if callbackCtx.Claimed == nil || callbackCtx.Claimed.TaskKey != "earn_1" ||
-			len(callbackCtx.Claimed.Rewards) != 1 || callbackCtx.Claimed.Rewards[0].Key != "coin" {
+		if callbackCtx.Claimed == nil ||
+			callbackCtx.Claimed.TaskKey != "earn_1" ||
+			len(callbackCtx.Claimed.Rewards) != 1 ||
+			callbackCtx.Claimed.Rewards[0].Key != "coin" {
 			return errors.New("bad callback payload")
 		}
 		if err := callbackCtx.Successful(); err != nil {
@@ -5716,7 +7603,12 @@ func TestTasksManualSequenceCarryAndCallback(t *testing.T) {
 func TestTasksAutoClaimAndIdempotency(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
-	identity := internalapi.Identity{WorkspaceID: testsupport.WorkspaceID("workspace-b"), AppID: 1, PlatformID: 1, PlatformUserID: "auto"}
+	identity := internalapi.Identity{
+		WorkspaceID:    testsupport.WorkspaceID("workspace-b"),
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "auto",
+	}
 	createEarnChain(t, service, identity.WorkspaceID, repository.ClaimModeAuto)
 	first, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity: identity, ActionKey: "earn_coin", Amount: 1500,
@@ -5725,8 +7617,10 @@ func TestTasksAutoClaimAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("auto record: %v", err)
 	}
-	if first.Consumed != 1000 || first.Remaining != 500 || len(first.Tasks) != 1 ||
-		!first.Tasks[0].Claimed || first.Tasks[0].Task.Key != "earn_1" {
+	if first.Consumed != 1000 || first.Remaining != 500 ||
+		len(first.Tasks) != 1 ||
+		!first.Tasks[0].Claimed ||
+		first.Tasks[0].Task.Key != "earn_1" {
 		t.Fatalf("unexpected auto result: %+v", first)
 	}
 	duplicate, err := service.Internal.Record(ctx, internalapi.RecordParams{
@@ -5736,7 +7630,8 @@ func TestTasksAutoClaimAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("duplicate record: %v", err)
 	}
-	if duplicate.Status != repository.RecordStatusDuplicate || duplicate.Consumed != 0 {
+	if duplicate.Status != repository.RecordStatusDuplicate ||
+		duplicate.Consumed != 0 {
 		t.Fatalf("unexpected duplicate: %+v", duplicate)
 	}
 	callbacks := countTaskCallbacks(t, tasksTestDB)
@@ -5757,7 +7652,13 @@ func TestTasksAutoClaimUsesTaskScopedOperationIDs(t *testing.T) {
 		PlatformUserID: "auto-operation-user",
 	}
 
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
 	for position, key := range []string{"auto_first", "auto_second"} {
@@ -5789,7 +7690,8 @@ func TestTasksAutoClaimUsesTaskScopedOperationIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record shared event: %v", err)
 	}
-	if len(recorded.Tasks) != 2 || !recorded.Tasks[0].Claimed || !recorded.Tasks[1].Claimed {
+	if len(recorded.Tasks) != 2 || !recorded.Tasks[0].Claimed ||
+		!recorded.Tasks[1].Claimed {
 		t.Fatalf("unexpected auto claim result: %+v", recorded)
 	}
 
@@ -5825,7 +7727,11 @@ func TestTasksAutoClaimUsesTaskScopedOperationIDs(t *testing.T) {
 		t.Fatalf("iterate callbacks: %v", err)
 	}
 	if len(operationIDs) != 2 {
-		t.Fatalf("unique operation ids = %d, want 2: %+v", len(operationIDs), operationIDs)
+		t.Fatalf(
+			"unique operation ids = %d, want 2: %+v",
+			len(operationIDs),
+			operationIDs,
+		)
 	}
 
 }
@@ -5834,46 +7740,95 @@ func TestTasksStartModeRequiredBlocksRecordUntilStart(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("workspace-start-required")
-	identity := user.Identity{WorkspaceID: workspaceID, AppID: 1, PlatformID: 2, PlatformUserID: "starter"}
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	identity := user.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     2,
+		PlatformUserID: "starter",
+	}
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
 	id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
-		WorkspaceID: workspaceID, Key: "start_required", GroupKey: "main",
-		ActionKey: "play", ActionKind: repository.ActionKindAppAction,
-		ClaimMode: repository.ClaimModeManual, StartMode: repository.StartModeRequired,
-		TargetCount: 1, ResetUnit: repository.ResetNever, ResetEvery: 1,
-		Position: 1, IsVisible: true, IsActive: true,
+		WorkspaceID: workspaceID,
+		Key:         "start_required",
+		GroupKey:    "main",
+		ActionKey:   "play",
+		ActionKind:  repository.ActionKindAppAction,
+		ClaimMode:   repository.ClaimModeManual,
+		StartMode:   repository.StartModeRequired,
+		TargetCount: 1,
+		ResetUnit:   repository.ResetNever,
+		ResetEvery:  1,
+		Position:    1,
+		IsVisible:   true,
+		IsActive:    true,
 	})
 	if err != nil {
 		t.Fatalf("task: %v", err)
 	}
-	if err := service.Admin.UpsertReward(ctx, workspaceID, id, admin.RewardModel{Key: "coin", Quantity: 1}, 1); err != nil {
+	if err := service.Admin.UpsertReward(
+		ctx,
+		workspaceID,
+		id,
+		admin.RewardModel{Key: "coin", Quantity: 1},
+		1,
+	); err != nil {
 		t.Fatalf("reward: %v", err)
 	}
 	before, err := service.Internal.Record(ctx, internalapi.RecordParams{
-		Identity: internalapi.Identity(identity), ActionKey: "play", Source: "game", ExternalEventKey: "before-start",
+		Identity: internalapi.Identity(
+			identity,
+		),
+		ActionKey:        "play",
+		Source:           "game",
+		ExternalEventKey: "before-start",
 	})
 	if err != nil {
 		t.Fatalf("record before start: %v", err)
 	}
-	if before.Status != repository.RecordStatusNoTasks || len(before.Tasks) != 0 {
+	if before.Status != repository.RecordStatusNoTasks ||
+		len(before.Tasks) != 0 {
 		t.Fatalf("record before start must be ignored: %+v", before)
 	}
-	started, err := service.User.StartTask(ctx, user.StartTaskParams{Identity: identity, TaskRef: "start_required"})
-	if err != nil || !started.Started || started.Status != repository.StartStatusStarted {
+	started, err := service.User.StartTask(
+		ctx,
+		user.StartTaskParams{Identity: identity, TaskRef: "start_required"},
+	)
+	if err != nil || !started.Started ||
+		started.Status != repository.StartStatusStarted {
 		t.Fatalf("start: %+v err=%v", started, err)
 	}
 	after, err := service.Internal.Record(ctx, internalapi.RecordParams{
-		Identity: internalapi.Identity(identity), ActionKey: "play", Source: "game", ExternalEventKey: "after-start",
+		Identity: internalapi.Identity(
+			identity,
+		),
+		ActionKey:        "play",
+		Source:           "game",
+		ExternalEventKey: "after-start",
 	})
 	if err != nil {
 		t.Fatalf("record after start: %v", err)
 	}
-	if after.Status != repository.RecordStatusRecorded || len(after.Tasks) != 1 || after.Tasks[0].After != 1 {
+	if after.Status != repository.RecordStatusRecorded ||
+		len(after.Tasks) != 1 ||
+		after.Tasks[0].After != 1 {
 		t.Fatalf("record after start: %+v", after)
 	}
-	claim, err := service.User.Claim(ctx, user.ClaimParams{Identity: identity, TaskRef: "start_required", OperationID: "claim-start-required"})
+	claim, err := service.User.Claim(
+		ctx,
+		user.ClaimParams{
+			Identity:    identity,
+			TaskRef:     "start_required",
+			OperationID: "claim-start-required",
+		},
+	)
 	if err != nil || claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim: %+v err=%v", claim, err)
 	}
@@ -5891,10 +7846,22 @@ func TestTasksStartTaskLocksProgressBeforeSequenceState(t *testing.T) {
 		PlatformUserID: "sequence-user",
 	}
 
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
-	if err := service.Admin.UpsertSequence(ctx, workspaceID, sequenceKey, 1, true); err != nil {
+	if err := service.Admin.UpsertSequence(
+		ctx,
+		workspaceID,
+		sequenceKey,
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create sequence: %v", err)
 	}
 
@@ -6013,13 +7980,28 @@ func TestTasksSequenceSkipsDeactivatedCurrentTask(t *testing.T) {
 	workspaceID := testsupport.WorkspaceID("sequence-skip-deactivated")
 	sequenceKey := "sequence-skip-deactivated"
 	identity := user.Identity{
-		WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "sequence-user",
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "sequence-user",
 	}
 
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
-	if err := service.Admin.UpsertSequence(ctx, workspaceID, sequenceKey, 1, true); err != nil {
+	if err := service.Admin.UpsertSequence(
+		ctx,
+		workspaceID,
+		sequenceKey,
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create sequence: %v", err)
 	}
 
@@ -6050,7 +8032,11 @@ func TestTasksSequenceSkipsDeactivatedCurrentTask(t *testing.T) {
 	}
 
 	if _, err := service.Internal.Record(ctx, internalapi.RecordParams{
-		Identity: internalapi.Identity(identity), ActionKey: "sequence-skip-action-1", Source: "test",
+		Identity: internalapi.Identity(
+			identity,
+		),
+		ActionKey: "sequence-skip-action-1",
+		Source:    "test",
 	}); err != nil {
 		t.Fatalf("record first sequence task: %v", err)
 	}
@@ -6061,12 +8047,17 @@ func TestTasksSequenceSkipsDeactivatedCurrentTask(t *testing.T) {
 	}
 
 	result, err := service.Internal.Record(ctx, internalapi.RecordParams{
-		Identity: internalapi.Identity(identity), ActionKey: "sequence-skip-action-3", Source: "test",
+		Identity: internalapi.Identity(
+			identity,
+		),
+		ActionKey: "sequence-skip-action-3",
+		Source:    "test",
 	})
 	if err != nil {
 		t.Fatalf("record task after deactivated step: %v", err)
 	}
-	if result.Status != repository.RecordStatusRecorded || len(result.Tasks) != 1 ||
+	if result.Status != repository.RecordStatusRecorded ||
+		len(result.Tasks) != 1 ||
 		result.Tasks[0].Task.ID != params[2].ID {
 		t.Fatalf("deactivated step was not skipped: %+v", result)
 	}
@@ -6084,7 +8075,13 @@ func TestTasksRecordDoesNotLockUnrelatedComplexParentProgress(t *testing.T) {
 		PlatformUserID: "complex-user",
 	}
 
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
 
@@ -6127,14 +8124,17 @@ func TestTasksRecordDoesNotLockUnrelatedComplexParentProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create complex child: %v", err)
 	}
-	if err := service.Admin.UpsertComplexCondition(ctx, admin.SaveComplexConditionParams{
-		WorkspaceID:     workspaceID,
-		ParentTaskID:    parentID,
-		ConditionTaskID: childID,
-		RequiredStatus:  repository.ComplexRequiredStatusReady,
-		Position:        1,
-		IsRequired:      true,
-	}); err != nil {
+	if err := service.Admin.UpsertComplexCondition(
+		ctx,
+		admin.SaveComplexConditionParams{
+			WorkspaceID:     workspaceID,
+			ParentTaskID:    parentID,
+			ConditionTaskID: childID,
+			RequiredStatus:  repository.ComplexRequiredStatusReady,
+			Position:        1,
+			IsRequired:      true,
+		},
+	); err != nil {
 		t.Fatalf("create complex condition: %v", err)
 	}
 
@@ -6192,7 +8192,10 @@ WHERE workspace_id = $1
   AND platform_id = $4
   AND platform_user_id = $5
 FOR UPDATE`, workspaceID, parentID, identity.AppID, identity.PlatformID, identity.PlatformUserID); err != nil {
-		t.Fatalf("record locked unrelated parent progress before child: %v", err)
+		t.Fatalf(
+			"record locked unrelated parent progress before child: %v",
+			err,
+		)
 	}
 
 	if err := transaction.Commit(); err != nil {
@@ -6231,10 +8234,39 @@ WHERE datname = current_database()
 func TestTasksRecordBroadcastsToIndependentActiveBranches(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
-	identity := internalapi.Identity{WorkspaceID: testsupport.WorkspaceID("workspace-broadcast"), AppID: 1, PlatformID: 1, PlatformUserID: "player"}
-	createStandaloneTask(t, service, identity.WorkspaceID, "earn_big", "earn_coin", 1000, 1)
-	createStandaloneTask(t, service, identity.WorkspaceID, "earn_small", "earn_coin", 200, 2)
-	createStandaloneTask(t, service, identity.WorkspaceID, "earn_mid", "earn_coin", 500, 3)
+	identity := internalapi.Identity{
+		WorkspaceID:    testsupport.WorkspaceID("workspace-broadcast"),
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "player",
+	}
+	createStandaloneTask(
+		t,
+		service,
+		identity.WorkspaceID,
+		"earn_big",
+		"earn_coin",
+		1000,
+		1,
+	)
+	createStandaloneTask(
+		t,
+		service,
+		identity.WorkspaceID,
+		"earn_small",
+		"earn_coin",
+		200,
+		2,
+	)
+	createStandaloneTask(
+		t,
+		service,
+		identity.WorkspaceID,
+		"earn_mid",
+		"earn_coin",
+		500,
+		3,
+	)
 
 	recorded, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity: identity, ActionKey: "earn_coin", Amount: 1500,
@@ -6243,10 +8275,20 @@ func TestTasksRecordBroadcastsToIndependentActiveBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("broadcast record: %v", err)
 	}
-	if recorded.Status != repository.RecordStatusRecorded || recorded.Consumed != 1700 || recorded.Remaining != 500 || len(recorded.Tasks) != 3 {
+	if recorded.Status != repository.RecordStatusRecorded ||
+		recorded.Consumed != 1700 ||
+		recorded.Remaining != 500 ||
+		len(recorded.Tasks) != 3 {
 		t.Fatalf("unexpected broadcast result: %+v", recorded)
 	}
-	list, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity), Locale: "ru", Now: time.Now()})
+	list, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(identity),
+			Locale:   "ru",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
@@ -6259,7 +8301,8 @@ func TestTasksRecordBroadcastsToIndependentActiveBranches(t *testing.T) {
 		{key: "earn_mid", progress: 500},
 	} {
 		task := findTask(t, list, item.key)
-		if task.Progress == nil || task.Progress.Progress != item.progress || task.Progress.Status != repository.StatusReady {
+		if task.Progress == nil || task.Progress.Progress != item.progress ||
+			task.Progress.Status != repository.StatusReady {
 			t.Fatalf("unexpected progress for %s: %+v", item.key, task.Progress)
 		}
 	}
@@ -6268,7 +8311,12 @@ func TestTasksRecordBroadcastsToIndependentActiveBranches(t *testing.T) {
 func TestTasksRecordDoesNotSkipDifferentActiveActionInSequence(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
-	identity := internalapi.Identity{WorkspaceID: testsupport.WorkspaceID("workspace-mixed"), AppID: 1, PlatformID: 1, PlatformUserID: "player"}
+	identity := internalapi.Identity{
+		WorkspaceID:    testsupport.WorkspaceID("workspace-mixed"),
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "player",
+	}
 	createMixedActionChain(t, service, identity.WorkspaceID)
 
 	first, err := service.Internal.Record(ctx, internalapi.RecordParams{
@@ -6278,7 +8326,9 @@ func TestTasksRecordDoesNotSkipDifferentActiveActionInSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first coin record: %v", err)
 	}
-	if first.Consumed != 1000 || len(first.Tasks) != 1 || first.Tasks[0].Task.Key != "coin_1" || !first.Tasks[0].Claimed {
+	if first.Consumed != 1000 || len(first.Tasks) != 1 ||
+		first.Tasks[0].Task.Key != "coin_1" ||
+		!first.Tasks[0].Claimed {
 		t.Fatalf("unexpected first mixed result: %+v", first)
 	}
 
@@ -6289,26 +8339,53 @@ func TestTasksRecordDoesNotSkipDifferentActiveActionInSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second coin record: %v", err)
 	}
-	if second.Status != repository.RecordStatusNoTasks || len(second.Tasks) != 0 {
-		t.Fatalf("coin event must be blocked by active crystal task: %+v", second)
+	if second.Status != repository.RecordStatusNoTasks ||
+		len(second.Tasks) != 0 {
+		t.Fatalf(
+			"coin event must be blocked by active crystal task: %+v",
+			second,
+		)
 	}
-	list, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity), Locale: "ru", Now: time.Now()})
+	list, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(identity),
+			Locale:   "ru",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
 	if crystal := findTask(t, list, "crystal_1"); crystal.Progress != nil {
-		t.Fatalf("crystal task must not get coin progress: %+v", crystal.Progress)
+		t.Fatalf(
+			"crystal task must not get coin progress: %+v",
+			crystal.Progress,
+		)
 	}
 	if coin := findTask(t, list, "coin_2"); coin.Progress != nil {
-		t.Fatalf("later coin task must not be reached before crystal is done: %+v", coin.Progress)
+		t.Fatalf(
+			"later coin task must not be reached before crystal is done: %+v",
+			coin.Progress,
+		)
 	}
 }
 
 func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
-	identity := user.Identity{WorkspaceID: testsupport.WorkspaceID("workspace-invalid"), AppID: 1, PlatformID: 1, PlatformUserID: "player"}
-	createEarnChain(t, service, identity.WorkspaceID, repository.ClaimModeManual)
+	identity := user.Identity{
+		WorkspaceID:    testsupport.WorkspaceID("workspace-invalid"),
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "player",
+	}
+	createEarnChain(
+		t,
+		service,
+		identity.WorkspaceID,
+		repository.ClaimModeManual,
+	)
 
 	unknown, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity: identity, TaskRef: "missing", OperationID: "missing-op",
@@ -6320,13 +8397,22 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 		t.Fatalf("unknown claim status = %q", unknown.Status)
 	}
 
-	list, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: identity, Locale: "ru", Now: time.Now()})
+	list, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: identity,
+			Locale:   "ru",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
 	first := findTask(t, list, "earn_1")
 	notReady, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: identity, TaskRef: fmt.Sprintf("%d", first.ID), OperationID: "too-early",
+		Identity:    identity,
+		TaskRef:     fmt.Sprintf("%d", first.ID),
+		OperationID: "too-early",
 	})
 	if err != nil {
 		t.Fatalf("not ready claim: %v", err)
@@ -6335,9 +8421,17 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 		t.Fatalf("not ready claim status = %q", notReady.Status)
 	}
 
-	otherWorkspace, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity{
-		WorkspaceID: testsupport.WorkspaceID("workspace-other"), AppID: 1, PlatformID: 1, PlatformUserID: "player",
-	}, Locale: "ru", Now: time.Now()})
+	otherWorkspace, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{Identity: user.Identity{
+			WorkspaceID: testsupport.WorkspaceID(
+				"workspace-other",
+			),
+			AppID:          1,
+			PlatformID:     1,
+			PlatformUserID: "player",
+		}, Locale: "ru", Now: time.Now()},
+	)
 	if err != nil {
 		t.Fatalf("other workspace list: %v", err)
 	}
@@ -6346,19 +8440,28 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 	}
 
 	if _, err := service.Internal.Record(ctx, internalapi.RecordParams{
-		Identity: internalapi.Identity(identity), ActionKey: "earn_coin", Amount: 1000,
-		Source: "game", ExternalEventKey: "ready-once",
+		Identity: internalapi.Identity(
+			identity,
+		),
+		ActionKey:        "earn_coin",
+		Amount:           1000,
+		Source:           "game",
+		ExternalEventKey: "ready-once",
 	}); err != nil {
 		t.Fatalf("record ready: %v", err)
 	}
 	claimed, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: identity, TaskRef: fmt.Sprintf("%d", first.ID), OperationID: "claim-once",
+		Identity:    identity,
+		TaskRef:     fmt.Sprintf("%d", first.ID),
+		OperationID: "claim-once",
 	})
 	if err != nil || claimed.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim once: %+v err=%v", claimed, err)
 	}
 	repeated, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: identity, TaskRef: fmt.Sprintf("%d", first.ID), OperationID: "claim-once",
+		Identity:    identity,
+		TaskRef:     fmt.Sprintf("%d", first.ID),
+		OperationID: "claim-once",
 	})
 	if err != nil || repeated.Status != repository.ClaimStatusAlreadyDone {
 		t.Fatalf("repeated claim: %+v err=%v", repeated, err)
@@ -6372,7 +8475,10 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 		TaskRef:     fmt.Sprintf("%d", first.ID),
 		OperationID: "claim-changed",
 	}); !errors.Is(err, repository.ErrOperationIDConflict) {
-		t.Fatalf("changed claim operation error = %v, want ErrOperationIDConflict", err)
+		t.Fatalf(
+			"changed claim operation error = %v, want ErrOperationIDConflict",
+			err,
+		)
 	}
 }
 
@@ -6380,30 +8486,38 @@ func TestTasksPartnerClaimOperationIDIsImmutable(t *testing.T) {
 
 	service := newPartnerCallbackTestService(t)
 	identity := user.Identity{
-		WorkspaceID:    testsupport.WorkspaceID("partner-claim-operation-immutable"),
+		WorkspaceID: testsupport.WorkspaceID(
+			"partner-claim-operation-immutable",
+		),
 		AppID:          1,
 		PlatformID:     2,
 		Platform:       "telegram",
 		PlatformUserID: "partner-operation-user",
 	}
 	createPartnerConfigAndReward(t, service, identity.WorkspaceID)
-	items, err := service.User.ListPartner(context.Background(), user.PartnerListParams{
-		Identity: identity,
-		Provider: "fake",
-		GroupKey: "daily",
-		Platform: "telegram",
-	})
+	items, err := service.User.ListPartner(
+		context.Background(),
+		user.PartnerListParams{
+			Identity: identity,
+			Provider: "fake",
+			GroupKey: "daily",
+			Platform: "telegram",
+		},
+	)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list partner task: items=%+v err=%v", items, err)
 	}
-	if _, err := service.Internal.OnPartnerCallback(context.Background(), internalapi.PartnerCallbackParams{
-		WorkspaceID: identity.WorkspaceID,
-		Provider:    "fake",
-		GroupKey:    "daily",
-		Platform:    "telegram",
-		IssueRef:    items[0].Key,
-		Status:      "step_completed",
-	}); err != nil {
+	if _, err := service.Internal.OnPartnerCallback(
+		context.Background(),
+		internalapi.PartnerCallbackParams{
+			WorkspaceID: identity.WorkspaceID,
+			Provider:    "fake",
+			GroupKey:    "daily",
+			Platform:    "telegram",
+			IssueRef:    items[0].Key,
+			Status:      "step_completed",
+		},
+	); err != nil {
 		t.Fatalf("complete partner task: %v", err)
 	}
 
@@ -6430,7 +8544,10 @@ func TestTasksPartnerClaimOperationIDIsImmutable(t *testing.T) {
 		TaskRef:     items[0].Key,
 		OperationID: "partner-operation-changed",
 	}); !errors.Is(err, repository.ErrOperationIDConflict) {
-		t.Fatalf("changed partner operation error = %v, want ErrOperationIDConflict", err)
+		t.Fatalf(
+			"changed partner operation error = %v, want ErrOperationIDConflict",
+			err,
+		)
 	}
 
 }
@@ -6445,8 +8562,24 @@ func TestTasksClaimOperationIDCannotRewardTwoTasks(t *testing.T) {
 		PlatformID:     1,
 		PlatformUserID: "operation-user",
 	}
-	createStandaloneTask(t, service, identity.WorkspaceID, "operation-first", "operation.first", 1, 1)
-	createStandaloneTask(t, service, identity.WorkspaceID, "operation-second", "operation.second", 1, 2)
+	createStandaloneTask(
+		t,
+		service,
+		identity.WorkspaceID,
+		"operation-first",
+		"operation.first",
+		1,
+		1,
+	)
+	createStandaloneTask(
+		t,
+		service,
+		identity.WorkspaceID,
+		"operation-second",
+		"operation.second",
+		1,
+		2,
+	)
 
 	for _, actionKey := range []string{"operation.first", "operation.second"} {
 		if _, err := service.Internal.Record(ctx, internalapi.RecordParams{
@@ -6475,7 +8608,10 @@ func TestTasksClaimOperationIDCannotRewardTwoTasks(t *testing.T) {
 		TaskRef:     "operation-second",
 		OperationID: operationID,
 	}); !errors.Is(err, repository.ErrOperationIDConflict) {
-		t.Fatalf("duplicate operation error = %v, want ErrOperationIDConflict", err)
+		t.Fatalf(
+			"duplicate operation error = %v, want ErrOperationIDConflict",
+			err,
+		)
 	}
 
 	list, err := service.User.ListActive(ctx, user.ListActiveParams{
@@ -6487,8 +8623,12 @@ func TestTasksClaimOperationIDCannotRewardTwoTasks(t *testing.T) {
 		t.Fatalf("list tasks after operation conflict: %v", err)
 	}
 	second := findTask(t, list, "operation-second")
-	if second.Progress == nil || second.Progress.Status != repository.StatusReady {
-		t.Fatalf("second task changed after operation conflict: %+v", second.Progress)
+	if second.Progress == nil ||
+		second.Progress.Status != repository.StatusReady {
+		t.Fatalf(
+			"second task changed after operation conflict: %+v",
+			second.Progress,
+		)
 	}
 
 	if _, err := service.User.Claim(ctx, user.ClaimParams{
@@ -6511,7 +8651,15 @@ func TestTasksClaimOperationIDIsSharedByTaskAndPartnerRewards(t *testing.T) {
 		Platform:       "telegram",
 		PlatformUserID: "operation-partner-user",
 	}
-	createStandaloneTask(t, service, identity.WorkspaceID, "ordinary-reward", "ordinary.reward", 1, 1)
+	createStandaloneTask(
+		t,
+		service,
+		identity.WorkspaceID,
+		"ordinary-reward",
+		"ordinary.reward",
+		1,
+		1,
+	)
 	if _, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity:         internalapi.Identity(identity),
 		ActionKey:        "ordinary.reward",
@@ -6541,15 +8689,18 @@ func TestTasksClaimOperationIDIsSharedByTaskAndPartnerRewards(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list partner reward: items=%+v err=%v", items, err)
 	}
-	if _, err := service.Internal.OnPartnerCallback(ctx, internalapi.PartnerCallbackParams{
-		WorkspaceID: identity.WorkspaceID,
-		Provider:    "fake",
-		GroupKey:    "daily",
-		Platform:    "telegram",
-		IssueRef:    items[0].Key,
-		Status:      "step_completed",
-		Now:         time.Now(),
-	}); err != nil {
+	if _, err := service.Internal.OnPartnerCallback(
+		ctx,
+		internalapi.PartnerCallbackParams{
+			WorkspaceID: identity.WorkspaceID,
+			Provider:    "fake",
+			GroupKey:    "daily",
+			Platform:    "telegram",
+			IssueRef:    items[0].Key,
+			Status:      "step_completed",
+			Now:         time.Now(),
+		},
+	); err != nil {
 		t.Fatalf("complete partner issue: %v", err)
 	}
 
@@ -6558,7 +8709,10 @@ func TestTasksClaimOperationIDIsSharedByTaskAndPartnerRewards(t *testing.T) {
 		TaskRef:     items[0].Key,
 		OperationID: operationID,
 	}); !errors.Is(err, repository.ErrOperationIDConflict) {
-		t.Fatalf("cross-source operation error = %v, want ErrOperationIDConflict", err)
+		t.Fatalf(
+			"cross-source operation error = %v, want ErrOperationIDConflict",
+			err,
+		)
 	}
 
 }
@@ -6566,8 +8720,18 @@ func TestTasksClaimOperationIDIsSharedByTaskAndPartnerRewards(t *testing.T) {
 func TestTasksConcurrentRecordSameUser(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
-	identity := internalapi.Identity{WorkspaceID: testsupport.WorkspaceID("workspace-race"), AppID: 1, PlatformID: 1, PlatformUserID: "player"}
-	createEarnChain(t, service, identity.WorkspaceID, repository.ClaimModeManual)
+	identity := internalapi.Identity{
+		WorkspaceID:    testsupport.WorkspaceID("workspace-race"),
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "player",
+	}
+	createEarnChain(
+		t,
+		service,
+		identity.WorkspaceID,
+		repository.ClaimModeManual,
+	)
 
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
@@ -6590,17 +8754,28 @@ func TestTasksConcurrentRecordSameUser(t *testing.T) {
 			t.Fatalf("concurrent record: %v", err)
 		}
 	}
-	list, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity), Locale: "ru", Now: time.Now()})
+	list, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: user.Identity(identity),
+			Locale:   "ru",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("list after concurrent record: %v", err)
 	}
 	first := findTask(t, list, "earn_1")
 	second := findTask(t, list, "earn_2")
-	if first.Progress == nil || first.Progress.Progress != 1000 || first.Progress.Status != repository.StatusReady {
+	if first.Progress == nil || first.Progress.Progress != 1000 ||
+		first.Progress.Status != repository.StatusReady {
 		t.Fatalf("first progress after concurrent record: %+v", first.Progress)
 	}
 	if second.Progress != nil {
-		t.Fatalf("manual ready task must block carry under concurrency: %+v", second.Progress)
+		t.Fatalf(
+			"manual ready task must block carry under concurrency: %+v",
+			second.Progress,
+		)
 	}
 	callbacks := countTaskCallbacks(t, tasksTestDB)
 	if callbacks != 0 {
@@ -6619,7 +8794,13 @@ func TestTasksRecordUsesDeltaAndPreservesRewardSnapshot(t *testing.T) {
 		PlatformUserID: "player",
 	}
 
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
 
@@ -6672,7 +8853,8 @@ func TestTasksRecordUsesDeltaAndPreservesRewardSnapshot(t *testing.T) {
 			t.Fatalf("list after event %d: %v", event, err)
 		}
 		progress := findTask(t, groups, "delta_snapshot").Progress
-		if progress == nil || progress.Progress != uint64(event) || progress.Status != repository.StatusOpen {
+		if progress == nil || progress.Progress != uint64(event) ||
+			progress.Status != repository.StatusOpen {
 			t.Fatalf("progress after event %d = %+v", event, progress)
 		}
 	}
@@ -6705,8 +8887,12 @@ func TestTasksRecordUsesDeltaAndPreservesRewardSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claim task: %v", err)
 	}
-	if len(claimed.Task.Rewards) != 1 || claimed.Task.Rewards[0].Quantity != 10 {
-		t.Fatalf("claim rewards = %+v, want snapshotted quantity 10", claimed.Task.Rewards)
+	if len(claimed.Task.Rewards) != 1 ||
+		claimed.Task.Rewards[0].Quantity != 10 {
+		t.Fatalf(
+			"claim rewards = %+v, want snapshotted quantity 10",
+			claimed.Task.Rewards,
+		)
 	}
 }
 
@@ -6714,48 +8900,116 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("workspace-cache")
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
-	if err := service.Admin.UpsertGroupLocalization(ctx, workspaceID, "main", "ru", "Old group", "Old group description"); err != nil {
+	if err := service.Admin.UpsertGroupLocalization(
+		ctx,
+		workspaceID,
+		"main",
+		"ru",
+		"Old group",
+		"Old group description",
+	); err != nil {
 		t.Fatalf("group localization: %v", err)
 	}
 	id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
-		WorkspaceID: workspaceID, Key: "cached_task", GroupKey: "main",
-		ActionKey: "cache_action", ActionKind: repository.ActionKindAmountAction,
-		ClaimMode: repository.ClaimModeManual, TargetCount: 1,
-		ResetUnit: repository.ResetNever, ResetEvery: 1,
-		Position: 1, IsVisible: true, IsActive: true,
+		WorkspaceID: workspaceID,
+		Key:         "cached_task",
+		GroupKey:    "main",
+		ActionKey:   "cache_action",
+		ActionKind:  repository.ActionKindAmountAction,
+		ClaimMode:   repository.ClaimModeManual,
+		TargetCount: 1,
+		ResetUnit:   repository.ResetNever,
+		ResetEvery:  1,
+		Position:    1,
+		IsVisible:   true,
+		IsActive:    true,
 	})
 	if err != nil {
 		t.Fatalf("task: %v", err)
 	}
-	if err := service.Admin.UpsertTaskLocalization(ctx, workspaceID, id, "ru", "Old title", "Old description"); err != nil {
+	if err := service.Admin.UpsertTaskLocalization(
+		ctx,
+		workspaceID,
+		id,
+		"ru",
+		"Old title",
+		"Old description",
+	); err != nil {
 		t.Fatalf("localization: %v", err)
 	}
 
-	identity := user.Identity{WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "cache-user"}
-	list, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: identity, Locale: "ru", Now: time.Now()})
+	identity := user.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "cache-user",
+	}
+	list, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: identity,
+			Locale:   "ru",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("first list: %v", err)
 	}
 	if got := findTask(t, list, "cached_task").Title; got != "Old title" {
 		t.Fatalf("initial title = %q", got)
 	}
-	if len(list) != 1 || list[0].Key != "main" || list[0].Title != "Old group" || list[0].Description != "Old group description" {
+	if len(list) != 1 || list[0].Key != "main" ||
+		list[0].Title != "Old group" ||
+		list[0].Description != "Old group description" {
 		t.Fatalf("initial group = %+v", list)
 	}
 
-	if err := service.Admin.UpsertGroupLocalization(ctx, workspaceID, "main", "ru", "New group", "New group description"); err != nil {
+	if err := service.Admin.UpsertGroupLocalization(
+		ctx,
+		workspaceID,
+		"main",
+		"ru",
+		"New group",
+		"New group description",
+	); err != nil {
 		t.Fatalf("group localization update: %v", err)
 	}
-	if err := service.Admin.UpsertTaskLocalization(ctx, workspaceID, id, "ru", "New title", "New description"); err != nil {
+	if err := service.Admin.UpsertTaskLocalization(
+		ctx,
+		workspaceID,
+		id,
+		"ru",
+		"New title",
+		"New description",
+	); err != nil {
 		t.Fatalf("localization update: %v", err)
 	}
-	if err := service.Admin.UpsertReward(ctx, workspaceID, id, admin.RewardModel{Key: "coin", Quantity: 7}, 1); err != nil {
+	if err := service.Admin.UpsertReward(
+		ctx,
+		workspaceID,
+		id,
+		admin.RewardModel{Key: "coin", Quantity: 7},
+		1,
+	); err != nil {
 		t.Fatalf("reward update: %v", err)
 	}
-	list, err = service.User.ListActive(ctx, user.ListActiveParams{Identity: identity, Locale: "ru", Now: time.Now()})
+	list, err = service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: identity,
+			Locale:   "ru",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("second list: %v", err)
 	}
@@ -6763,17 +9017,26 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	if task.Title != "New title" {
 		t.Fatalf("updated title = %q", task.Title)
 	}
-	if len(task.Rewards) != 1 || task.Rewards[0].Key != "coin" || task.Rewards[0].Quantity != 7 {
+	if len(task.Rewards) != 1 || task.Rewards[0].Key != "coin" ||
+		task.Rewards[0].Quantity != 7 {
 		t.Fatalf("updated rewards = %+v", task.Rewards)
 	}
-	if len(list) != 1 || list[0].Title != "New group" || list[0].Description != "New group description" {
+	if len(list) != 1 || list[0].Title != "New group" ||
+		list[0].Description != "New group description" {
 		t.Fatalf("updated group = %+v", list)
 	}
 
 	if _, err := service.Admin.DeleteTask(ctx, workspaceID, id); err != nil {
 		t.Fatalf("delete task: %v", err)
 	}
-	list, err = service.User.ListActive(ctx, user.ListActiveParams{Identity: identity, Locale: "ru", Now: time.Now()})
+	list, err = service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: identity,
+			Locale:   "ru",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("third list: %v", err)
 	}
@@ -6790,44 +9053,110 @@ func TestTasksListActiveFiltersByGroup(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("workspace-group-filter")
-	identity := user.Identity{WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "player"}
+	identity := user.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "player",
+	}
 
-	createStandaloneTask(t, service, workspaceID, "main_task", "main_action", 1, 1)
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "bonus", 2, true); err != nil {
+	createStandaloneTask(
+		t,
+		service,
+		workspaceID,
+		"main_task",
+		"main_action",
+		1,
+		1,
+	)
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"bonus",
+		2,
+		true,
+	); err != nil {
 		t.Fatalf("bonus group: %v", err)
 	}
-	if err := service.Admin.UpsertGroupLocalization(ctx, workspaceID, "bonus", "ru", "Бонусные", "Бонусные задания"); err != nil {
+	if err := service.Admin.UpsertGroupLocalization(
+		ctx,
+		workspaceID,
+		"bonus",
+		"ru",
+		"Бонусные",
+		"Бонусные задания",
+	); err != nil {
 		t.Fatalf("bonus group localization: %v", err)
 	}
 	bonusID, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
-		WorkspaceID: workspaceID, Key: "bonus_task", GroupKey: "bonus",
-		ActionKey: "bonus_action", ActionKind: repository.ActionKindAmountAction,
-		ClaimMode: repository.ClaimModeManual, TargetCount: 1,
-		ResetUnit: repository.ResetNever, ResetEvery: 1,
-		Position: 1, IsVisible: true, IsActive: true,
+		WorkspaceID: workspaceID,
+		Key:         "bonus_task",
+		GroupKey:    "bonus",
+		ActionKey:   "bonus_action",
+		ActionKind:  repository.ActionKindAmountAction,
+		ClaimMode:   repository.ClaimModeManual,
+		TargetCount: 1,
+		ResetUnit:   repository.ResetNever,
+		ResetEvery:  1,
+		Position:    1,
+		IsVisible:   true,
+		IsActive:    true,
 	})
 	if err != nil {
 		t.Fatalf("bonus task: %v", err)
 	}
-	if err := service.Admin.UpsertTaskLocalization(ctx, workspaceID, bonusID, "ru", "Bonus", "Bonus"); err != nil {
+	if err := service.Admin.UpsertTaskLocalization(
+		ctx,
+		workspaceID,
+		bonusID,
+		"ru",
+		"Bonus",
+		"Bonus",
+	); err != nil {
 		t.Fatalf("bonus localization: %v", err)
 	}
 
-	all, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: identity, Locale: "ru", Now: time.Now()})
+	all, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: identity,
+			Locale:   "ru",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("list all: %v", err)
 	}
 	if len(all) != 2 {
 		t.Fatalf("all groups = %+v", all)
 	}
-	bonus, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: identity, Locale: "ru", GroupKey: "bonus", Now: time.Now()})
+	bonus, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: identity,
+			Locale:   "ru",
+			GroupKey: "bonus",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("list bonus: %v", err)
 	}
-	if len(bonus) != 1 || bonus[0].Key != "bonus" || bonus[0].Title != "Бонусные" || len(bonus[0].Tasks) != 1 || bonus[0].Tasks[0].Key != "bonus_task" {
+	if len(bonus) != 1 || bonus[0].Key != "bonus" ||
+		bonus[0].Title != "Бонусные" ||
+		len(bonus[0].Tasks) != 1 ||
+		bonus[0].Tasks[0].Key != "bonus_task" {
 		t.Fatalf("filtered bonus groups = %+v", bonus)
 	}
-	missing, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: identity, Locale: "ru", GroupKey: "missing", Now: time.Now()})
+	missing, err := service.User.ListActive(
+		ctx,
+		user.ListActiveParams{
+			Identity: identity,
+			Locale:   "ru",
+			GroupKey: "missing",
+			Now:      time.Now(),
+		},
+	)
 	if err != nil {
 		t.Fatalf("list missing: %v", err)
 	}
@@ -6840,8 +9169,19 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("workspace-record-cache")
-	identity := internalapi.Identity{WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "player"}
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	identity := internalapi.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "player",
+	}
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
 
@@ -6857,16 +9197,29 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 	}
 
 	taskID, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
-		WorkspaceID: workspaceID, Key: "cached_record_task", GroupKey: "main",
-		ActionKey: "cached_action", ActionKind: repository.ActionKindAmountAction,
-		ClaimMode: repository.ClaimModeManual, TargetCount: 1,
-		ResetUnit: repository.ResetNever, ResetEvery: 1,
-		Position: 1, IsVisible: true, IsActive: true,
+		WorkspaceID: workspaceID,
+		Key:         "cached_record_task",
+		GroupKey:    "main",
+		ActionKey:   "cached_action",
+		ActionKind:  repository.ActionKindAmountAction,
+		ClaimMode:   repository.ClaimModeManual,
+		TargetCount: 1,
+		ResetUnit:   repository.ResetNever,
+		ResetEvery:  1,
+		Position:    1,
+		IsVisible:   true,
+		IsActive:    true,
 	})
 	if err != nil {
 		t.Fatalf("task: %v", err)
 	}
-	if err := service.Admin.UpsertReward(ctx, workspaceID, taskID, admin.RewardModel{Key: "coin", Quantity: 1}, 1); err != nil {
+	if err := service.Admin.UpsertReward(
+		ctx,
+		workspaceID,
+		taskID,
+		admin.RewardModel{Key: "coin", Quantity: 1},
+		1,
+	); err != nil {
 		t.Fatalf("reward: %v", err)
 	}
 
@@ -6882,7 +9235,11 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 	}
 
 	claimed, err := service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(identity), TaskRef: fmt.Sprintf("%d", taskID), OperationID: "claim-old-reward",
+		Identity: user.Identity(
+			identity,
+		),
+		TaskRef:     fmt.Sprintf("%d", taskID),
+		OperationID: "claim-old-reward",
 	})
 	if err != nil {
 		t.Fatalf("claim old reward: %v", err)
@@ -6891,8 +9248,19 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 		t.Fatalf("old claim rewards = %+v", claimed.Task.Rewards)
 	}
 
-	secondIdentity := internalapi.Identity{WorkspaceID: workspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "player-2"}
-	if err := service.Admin.UpsertReward(ctx, workspaceID, taskID, admin.RewardModel{Key: "coin", Quantity: 7}, 1); err != nil {
+	secondIdentity := internalapi.Identity{
+		WorkspaceID:    workspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "player-2",
+	}
+	if err := service.Admin.UpsertReward(
+		ctx,
+		workspaceID,
+		taskID,
+		admin.RewardModel{Key: "coin", Quantity: 7},
+		1,
+	); err != nil {
 		t.Fatalf("reward update: %v", err)
 	}
 	if _, err := service.Internal.Record(ctx, internalapi.RecordParams{
@@ -6902,7 +9270,11 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 		t.Fatalf("record after reward update: %v", err)
 	}
 	claimed, err = service.User.Claim(ctx, user.ClaimParams{
-		Identity: user.Identity(secondIdentity), TaskRef: fmt.Sprintf("%d", taskID), OperationID: "claim-new-reward",
+		Identity: user.Identity(
+			secondIdentity,
+		),
+		TaskRef:     fmt.Sprintf("%d", taskID),
+		OperationID: "claim-new-reward",
 	})
 	if err != nil {
 		t.Fatalf("claim new reward: %v", err)
@@ -6938,7 +9310,11 @@ func TestTasksQueryTimeout(t *testing.T) {
 	if err := service.Admin.Bootstrap(ctx); err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
-	timeoutService, err := NewWithDatabase(ctx, db, Options{QueryTimeout: time.Nanosecond})
+	timeoutService, err := NewWithDatabase(
+		ctx,
+		db,
+		Options{QueryTimeout: time.Nanosecond},
+	)
 	if err != nil {
 		t.Fatalf("create timeout tasks service: %v", err)
 	}
@@ -6948,46 +9324,102 @@ func TestTasksQueryTimeout(t *testing.T) {
 		_ = client.Close()
 	})
 
-	err = timeoutService.Admin.UpsertGroup(ctx, testsupport.WorkspaceID("timeout-workspace"), "main", 1, true)
+	err = timeoutService.Admin.UpsertGroup(
+		ctx,
+		testsupport.WorkspaceID("timeout-workspace"),
+		"main",
+		1,
+		true,
+	)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected query timeout, got %v", err)
 	}
 }
 
-func createEarnChain(t testing.TB, service *Tasks, workspaceID, claimMode string) {
+func createEarnChain(
+	t testing.TB,
+	service *Tasks,
+	workspaceID, claimMode string,
+) {
 	t.Helper()
 	ctx := context.Background()
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
-	if err := service.Admin.UpsertSequence(ctx, workspaceID, "earn_chain", 1, true); err != nil {
+	if err := service.Admin.UpsertSequence(
+		ctx,
+		workspaceID,
+		"earn_chain",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("sequence: %v", err)
 	}
 	for i := 1; i <= 2; i++ {
 		pos := uint32(i)
 		id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
-			WorkspaceID: workspaceID, Key: fmt.Sprintf("earn_%d", i),
-			GroupKey: "main", SequenceKey: strPtr("earn_chain"), SequencePosition: &pos,
-			ActionKey: "earn_coin", ActionKind: repository.ActionKindAmountAction,
-			ClaimMode: claimMode, TargetCount: 1000, ResetUnit: repository.ResetNever,
-			ResetEvery: 1, Position: int32(i), IsVisible: true, IsActive: true,
+			WorkspaceID:      workspaceID,
+			Key:              fmt.Sprintf("earn_%d", i),
+			GroupKey:         "main",
+			SequenceKey:      strPtr("earn_chain"),
+			SequencePosition: &pos,
+			ActionKey:        "earn_coin",
+			ActionKind:       repository.ActionKindAmountAction,
+			ClaimMode:        claimMode,
+			TargetCount:      1000,
+			ResetUnit:        repository.ResetNever,
+			ResetEvery:       1,
+			Position:         int32(i),
+			IsVisible:        true,
+			IsActive:         true,
 		})
 		if err != nil {
 			t.Fatalf("task %d: %v", i, err)
 		}
-		if err := service.Admin.UpsertTaskLocalization(ctx, workspaceID, id, "ru", fmt.Sprintf("Earn %d", i), "Coins"); err != nil {
+		if err := service.Admin.UpsertTaskLocalization(
+			ctx,
+			workspaceID,
+			id,
+			"ru",
+			fmt.Sprintf("Earn %d", i),
+			"Coins",
+		); err != nil {
 			t.Fatalf("localization: %v", err)
 		}
-		if err := service.Admin.UpsertReward(ctx, workspaceID, id, admin.RewardModel{Key: "coin", Quantity: int64(i)}, 1); err != nil {
+		if err := service.Admin.UpsertReward(
+			ctx,
+			workspaceID,
+			id,
+			admin.RewardModel{Key: "coin", Quantity: int64(i)},
+			1,
+		); err != nil {
 			t.Fatalf("reward: %v", err)
 		}
 	}
 }
 
-func createStandaloneTask(t testing.TB, service *Tasks, workspaceID, key, actionKey string, target uint64, position int32) {
+func createStandaloneTask(
+	t testing.TB,
+	service *Tasks,
+	workspaceID, key, actionKey string,
+	target uint64,
+	position int32,
+) {
 	t.Helper()
 	ctx := context.Background()
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
 	id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
@@ -7000,7 +9432,14 @@ func createStandaloneTask(t testing.TB, service *Tasks, workspaceID, key, action
 	if err != nil {
 		t.Fatalf("standalone task %s: %v", key, err)
 	}
-	if err := service.Admin.UpsertTaskLocalization(ctx, workspaceID, id, "ru", key, key); err != nil {
+	if err := service.Admin.UpsertTaskLocalization(
+		ctx,
+		workspaceID,
+		id,
+		"ru",
+		key,
+		key,
+	); err != nil {
 		t.Fatalf("standalone localization %s: %v", key, err)
 	}
 }
@@ -7008,10 +9447,22 @@ func createStandaloneTask(t testing.TB, service *Tasks, workspaceID, key, action
 func createMixedActionChain(t testing.TB, service *Tasks, workspaceID string) {
 	t.Helper()
 	ctx := context.Background()
-	if err := service.Admin.UpsertGroup(ctx, workspaceID, "main", 1, true); err != nil {
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		workspaceID,
+		"main",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
-	if err := service.Admin.UpsertSequence(ctx, workspaceID, "mixed_chain", 1, true); err != nil {
+	if err := service.Admin.UpsertSequence(
+		ctx,
+		workspaceID,
+		"mixed_chain",
+		1,
+		true,
+	); err != nil {
 		t.Fatalf("sequence: %v", err)
 	}
 	definitions := []struct {
@@ -7020,33 +9471,73 @@ func createMixedActionChain(t testing.TB, service *Tasks, workspaceID string) {
 		claimMode string
 		position  uint32
 	}{
-		{key: "coin_1", actionKey: "earn_coin", claimMode: repository.ClaimModeAuto, position: 1},
-		{key: "crystal_1", actionKey: "earn_crystal", claimMode: repository.ClaimModeManual, position: 2},
-		{key: "coin_2", actionKey: "earn_coin", claimMode: repository.ClaimModeManual, position: 3},
+		{
+			key:       "coin_1",
+			actionKey: "earn_coin",
+			claimMode: repository.ClaimModeAuto,
+			position:  1,
+		},
+		{
+			key:       "crystal_1",
+			actionKey: "earn_crystal",
+			claimMode: repository.ClaimModeManual,
+			position:  2,
+		},
+		{
+			key:       "coin_2",
+			actionKey: "earn_coin",
+			claimMode: repository.ClaimModeManual,
+			position:  3,
+		},
 	}
 	for _, definition := range definitions {
 		pos := definition.position
 		id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
-			WorkspaceID: workspaceID, Key: definition.key, GroupKey: "main",
-			SequenceKey: strPtr("mixed_chain"), SequencePosition: &pos,
-			ActionKey: definition.actionKey, ActionKind: repository.ActionKindAmountAction,
-			ClaimMode: definition.claimMode, TargetCount: 1000,
-			ResetUnit: repository.ResetNever, ResetEvery: 1, Position: int32(definition.position),
-			IsVisible: true, IsActive: true,
+			WorkspaceID:      workspaceID,
+			Key:              definition.key,
+			GroupKey:         "main",
+			SequenceKey:      strPtr("mixed_chain"),
+			SequencePosition: &pos,
+			ActionKey:        definition.actionKey,
+			ActionKind:       repository.ActionKindAmountAction,
+			ClaimMode:        definition.claimMode,
+			TargetCount:      1000,
+			ResetUnit:        repository.ResetNever,
+			ResetEvery:       1,
+			Position:         int32(definition.position),
+			IsVisible:        true,
+			IsActive:         true,
 		})
 		if err != nil {
 			t.Fatalf("mixed task %s: %v", definition.key, err)
 		}
-		if err := service.Admin.UpsertTaskLocalization(ctx, workspaceID, id, "ru", definition.key, definition.key); err != nil {
+		if err := service.Admin.UpsertTaskLocalization(
+			ctx,
+			workspaceID,
+			id,
+			"ru",
+			definition.key,
+			definition.key,
+		); err != nil {
 			t.Fatalf("mixed localization %s: %v", definition.key, err)
 		}
-		if err := service.Admin.UpsertReward(ctx, workspaceID, id, admin.RewardModel{Key: definition.key, Quantity: 1}, int32(definition.position)); err != nil {
+		if err := service.Admin.UpsertReward(
+			ctx,
+			workspaceID,
+			id,
+			admin.RewardModel{Key: definition.key, Quantity: 1},
+			int32(definition.position),
+		); err != nil {
 			t.Fatalf("mixed reward %s: %v", definition.key, err)
 		}
 	}
 }
 
-func findTask(t testing.TB, list []user.TaskGroupModel, key string) user.TaskModel {
+func findTask(
+	t testing.TB,
+	list []user.TaskGroupModel,
+	key string,
+) user.TaskModel {
 	t.Helper()
 	for _, group := range list {
 		for _, task := range group.Tasks {
@@ -7124,14 +9615,17 @@ func TestTasksPartnerSecretIsEncryptedAtRest(t *testing.T) {
 	service := newTasksTestService(t)
 	workspaceID := testsupport.WorkspaceID("partner-secret-encryption")
 	secret := "partner-api-secret"
-	if err := service.Admin.SavePartnerConfig(context.Background(), admin.PartnerConfigModel{
-		WorkspaceID: workspaceID,
-		Provider:    "encrypted",
-		GroupKey:    "daily",
-		Platform:    "telegram",
-		IsEnabled:   true,
-		Secret:      &secret,
-	}); err != nil {
+	if err := service.Admin.SavePartnerConfig(
+		context.Background(),
+		admin.PartnerConfigModel{
+			WorkspaceID: workspaceID,
+			Provider:    "encrypted",
+			GroupKey:    "daily",
+			Platform:    "telegram",
+			IsEnabled:   true,
+			Secret:      &secret,
+		},
+	); err != nil {
 		t.Fatalf("save partner config: %v", err)
 	}
 
@@ -7139,16 +9633,29 @@ func TestTasksPartnerSecretIsEncryptedAtRest(t *testing.T) {
 	if err := service.client.DB().QueryRowContext(context.Background(), `
 SELECT secret FROM task_partner_config
 WHERE workspace_id = $1 AND provider = $2 AND group_key = $3 AND platform = $4`,
-		workspaceID, "encrypted", "daily", "telegram").Scan(&stored); err != nil {
+		workspaceID, "encrypted", "daily", "telegram").
+		Scan(&stored); err != nil {
 		t.Fatalf("read stored secret: %v", err)
 	}
 	if stored == secret || !strings.HasPrefix(stored, "v1:") {
 		t.Fatalf("partner secret stored insecurely: %q", stored)
 	}
 
-	config, found, err := service.Admin.GetPartnerConfig(context.Background(), workspaceID, "encrypted", "daily", "telegram")
-	if err != nil || !found || config.Secret == nil || *config.Secret != secret {
-		t.Fatalf("decrypted partner config = %#v, found=%v, err=%v", config, found, err)
+	config, found, err := service.Admin.GetPartnerConfig(
+		context.Background(),
+		workspaceID,
+		"encrypted",
+		"daily",
+		"telegram",
+	)
+	if err != nil || !found || config.Secret == nil ||
+		*config.Secret != secret {
+		t.Fatalf(
+			"decrypted partner config = %#v, found=%v, err=%v",
+			config,
+			found,
+			err,
+		)
 	}
 
 }
@@ -7156,10 +9663,13 @@ WHERE workspace_id = $1 AND provider = $2 AND group_key = $3 AND platform = $4`,
 func TestTasksPartnerWebhookRejectsOversizedBody(t *testing.T) {
 
 	service := newPartnerCallbackTestService(t)
-	_, err := service.Internal.HandlePartnerWebhook(context.Background(), internalapi.PartnerWebhookParams{
-		WorkspaceID: testsupport.WorkspaceID("partner-webhook-size"),
-		Body:        make([]byte, internalapi.MaxPartnerWebhookBodyBytes+1),
-	})
+	_, err := service.Internal.HandlePartnerWebhook(
+		context.Background(),
+		internalapi.PartnerWebhookParams{
+			WorkspaceID: testsupport.WorkspaceID("partner-webhook-size"),
+			Body:        make([]byte, internalapi.MaxPartnerWebhookBodyBytes+1),
+		},
+	)
 	if err == nil {
 		t.Fatal("oversized partner webhook body was accepted")
 	}
@@ -7181,21 +9691,27 @@ func TestPartnerIssueIsScopedByApplication(t *testing.T) {
 	secondIdentity := firstIdentity
 	secondIdentity.AppID = 2
 
-	first, err := service.User.ListPartner(context.Background(), user.PartnerListParams{
-		Identity: firstIdentity,
-		Provider: "fake",
-		GroupKey: "daily",
-		Platform: "telegram",
-	})
+	first, err := service.User.ListPartner(
+		context.Background(),
+		user.PartnerListParams{
+			Identity: firstIdentity,
+			Provider: "fake",
+			GroupKey: "daily",
+			Platform: "telegram",
+		},
+	)
 	if err != nil || len(first) != 1 {
 		t.Fatalf("first app partner list: %+v err=%v", first, err)
 	}
-	second, err := service.User.ListPartner(context.Background(), user.PartnerListParams{
-		Identity: secondIdentity,
-		Provider: "fake",
-		GroupKey: "daily",
-		Platform: "telegram",
-	})
+	second, err := service.User.ListPartner(
+		context.Background(),
+		user.PartnerListParams{
+			Identity: secondIdentity,
+			Provider: "fake",
+			GroupKey: "daily",
+			Platform: "telegram",
+		},
+	)
 	if err != nil || len(second) != 1 {
 		t.Fatalf("second app partner list: %+v err=%v", second, err)
 	}
@@ -7203,12 +9719,19 @@ func TestPartnerIssueIsScopedByApplication(t *testing.T) {
 		t.Fatalf("two apps received the same partner issue: %s", first[0].Key)
 	}
 
-	checked, err := service.User.CheckPartner(context.Background(), user.PartnerCheckParams{
-		Identity: secondIdentity,
-		IssueRef: second[0].Key,
-	})
+	checked, err := service.User.CheckPartner(
+		context.Background(),
+		user.PartnerCheckParams{
+			Identity: secondIdentity,
+			IssueRef: second[0].Key,
+		},
+	)
 	if err != nil || checked.Status == user.PartnerStatusNotFound {
-		t.Fatalf("second app cannot use its listed issue: %+v err=%v", checked, err)
+		t.Fatalf(
+			"second app cannot use its listed issue: %+v err=%v",
+			checked,
+			err,
+		)
 	}
 }
 
@@ -7232,7 +9755,11 @@ func openTasksPostgres(database string) (*sql.DB, error) {
 	return db, nil
 }
 
-func recreateTasksDatabase(ctx context.Context, adminDB *sql.DB, database string) error {
+func recreateTasksDatabase(
+	ctx context.Context,
+	adminDB *sql.DB,
+	database string,
+) error {
 	if _, err := adminDB.ExecContext(
 		ctx,
 		"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
@@ -7240,10 +9767,16 @@ func recreateTasksDatabase(ctx context.Context, adminDB *sql.DB, database string
 	); err != nil {
 		return err
 	}
-	if _, err := adminDB.ExecContext(ctx, fmt.Sprintf("DROP DATABASE IF EXISTS %s", database)); err != nil {
+	if _, err := adminDB.ExecContext(
+		ctx,
+		fmt.Sprintf("DROP DATABASE IF EXISTS %s", database),
+	); err != nil {
 		return err
 	}
-	_, err := adminDB.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", database))
+	_, err := adminDB.ExecContext(
+		ctx,
+		fmt.Sprintf("CREATE DATABASE %s", database),
+	)
 	return err
 }
 
@@ -7255,7 +9788,8 @@ func countTaskCallbacks(t testing.TB, database string) int {
 	}
 	defer func() { _ = db.Close() }()
 	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM tasks_clb_event WHERE source_service = 'tasks'").Scan(&count); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM tasks_clb_event WHERE source_service = 'tasks'").
+		Scan(&count); err != nil {
 		t.Fatalf("count callbacks: %v", err)
 	}
 	return count
@@ -7300,19 +9834,32 @@ func TestTgrassProviderLiveManual(t *testing.T) {
 			PrivatePayload: []byte(`{"offer_id":` + offerID + `}`),
 		}}
 	}
-	t.Logf("external_id=%s external_type=%s public_payload=%s", tasks[0].ExternalID, tasks[0].ExternalType, string(tasks[0].PublicPayload))
-	check, err := provider.CheckPartnerTask(context.Background(), user.PartnerCheckProviderParams{
-		Identity: params.Identity,
-		Config:   params.Config,
-		Issue: repository.PartnerIssue{
-			ExternalID:     tasks[0].ExternalID,
-			ExternalType:   tasks[0].ExternalType,
-			PrivatePayload: tasks[0].PrivatePayload,
+	t.Logf(
+		"external_id=%s external_type=%s public_payload=%s",
+		tasks[0].ExternalID,
+		tasks[0].ExternalType,
+		string(tasks[0].PublicPayload),
+	)
+	check, err := provider.CheckPartnerTask(
+		context.Background(),
+		user.PartnerCheckProviderParams{
+			Identity: params.Identity,
+			Config:   params.Config,
+			Issue: repository.PartnerIssue{
+				ExternalID:     tasks[0].ExternalID,
+				ExternalType:   tasks[0].ExternalType,
+				PrivatePayload: tasks[0].PrivatePayload,
+			},
+			Now: params.Now,
 		},
-		Now: params.Now,
-	})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("check completed=%t status=%s payload=%s", check.Completed, check.Status, string(check.Payload))
+	t.Logf(
+		"check completed=%t status=%s payload=%s",
+		check.Completed,
+		check.Status,
+		string(check.Payload),
+	)
 }

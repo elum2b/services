@@ -6,16 +6,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/elum2b/services/internal/testsupport"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/reference/repository"
 	"github.com/elum2b/services/reference/service/admin"
 	"github.com/elum2b/services/reference/service/user"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"strings"
-	"sync"
-	"testing"
-	"time"
 )
 
 func TestIsReady(t *testing.T) {
@@ -76,7 +78,13 @@ func TestReferenceRunBlocksUntilContextCanceled(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if err := service.Run(context.Background(), params); !errors.Is(err, ErrServiceRunning) {
+	if err := service.Run(
+		context.Background(),
+		params,
+	); !errors.Is(
+		err,
+		ErrServiceRunning,
+	) {
 		cancel()
 		t.Fatalf("second Run error = %v, want ErrServiceRunning", err)
 	}
@@ -107,7 +115,11 @@ func TestReferenceCacheVersionInvalidatesOtherNode(t *testing.T) {
 		t.Fatalf("open second reference node database: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	nodeB, err := NewWithDatabase(context.Background(), db, referenceTestOptions(options))
+	nodeB, err := NewWithDatabase(
+		context.Background(),
+		db,
+		referenceTestOptions(options),
+	)
 	if err != nil {
 		t.Fatalf("create second reference node: %v", err)
 	}
@@ -122,31 +134,40 @@ func TestReferenceCacheVersionInvalidatesOtherNode(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create cached reference item: %v", err)
 	}
-	if err := nodeA.Admin.UpsertLocalization(context.Background(), admin.SaveLocalizationParams{
-		WorkspaceID: workspaceID,
-		ItemKey:     "stars",
-		Locale:      "ru",
-		Title:       "Old title",
-	}); err != nil {
+	if err := nodeA.Admin.UpsertLocalization(
+		context.Background(),
+		admin.SaveLocalizationParams{
+			WorkspaceID: workspaceID,
+			ItemKey:     "stars",
+			Locale:      "ru",
+			Title:       "Old title",
+		},
+	); err != nil {
 		t.Fatalf("create cached reference localization: %v", err)
 	}
 
 	warmReferenceReads(t, nodeB, workspaceID, "Old title", 1)
 
-	if _, err := nodeA.Admin.UpdateItem(context.Background(), admin.UpdateItemParams{
-		WorkspaceID: workspaceID,
-		Key:         "stars",
-		Payload:     json.RawMessage(`{"version":2}`),
-		IsActive:    true,
-	}); err != nil {
+	if _, err := nodeA.Admin.UpdateItem(
+		context.Background(),
+		admin.UpdateItemParams{
+			WorkspaceID: workspaceID,
+			Key:         "stars",
+			Payload:     json.RawMessage(`{"version":2}`),
+			IsActive:    true,
+		},
+	); err != nil {
 		t.Fatalf("update cached reference item: %v", err)
 	}
-	if err := nodeA.Admin.UpsertLocalization(context.Background(), admin.SaveLocalizationParams{
-		WorkspaceID: workspaceID,
-		ItemKey:     "stars",
-		Locale:      "ru",
-		Title:       "New title",
-	}); err != nil {
+	if err := nodeA.Admin.UpsertLocalization(
+		context.Background(),
+		admin.SaveLocalizationParams{
+			WorkspaceID: workspaceID,
+			ItemKey:     "stars",
+			Locale:      "ru",
+			Title:       "New title",
+		},
+	); err != nil {
 		t.Fatalf("update cached reference localization: %v", err)
 	}
 
@@ -188,10 +209,12 @@ func TestReferenceResolveCachePreservesRequestedOrder(t *testing.T) {
 		t.Fatalf("second resolve: %v", err)
 	}
 
-	if len(first.Items) != 2 || first.Items[0].Key != "alpha" || first.Items[1].Key != "beta" {
+	if len(first.Items) != 2 || first.Items[0].Key != "alpha" ||
+		first.Items[1].Key != "beta" {
 		t.Fatalf("first order: %+v", first.Items)
 	}
-	if len(second.Items) != 2 || second.Items[0].Key != "beta" || second.Items[1].Key != "alpha" {
+	if len(second.Items) != 2 || second.Items[0].Key != "beta" ||
+		second.Items[1].Key != "alpha" {
 		t.Fatalf("cached second order: %+v", second.Items)
 	}
 }
@@ -225,7 +248,11 @@ func TestReferenceImportBatchesLargePackage(t *testing.T) {
 		t.Fatalf("import large reference package: %v", err)
 	}
 	if result.Imported.Items != itemCount {
-		t.Fatalf("imported items = %d, want %d", result.Imported.Items, itemCount)
+		t.Fatalf(
+			"imported items = %d, want %d",
+			result.Imported.Items,
+			itemCount,
+		)
 	}
 }
 
@@ -259,7 +286,12 @@ func TestReferenceImportSerializesWithAdminWrite(t *testing.T) {
 				Format:  repository.ExportFormat,
 				Service: "reference",
 				Items: []repository.ExportItem{
-					{Key: "import.item", Type: repository.ItemTypeQuantity, Payload: json.RawMessage(`{}`), IsActive: true},
+					{
+						Key:      "import.item",
+						Type:     repository.ItemTypeQuantity,
+						Payload:  json.RawMessage(`{}`),
+						IsActive: true,
+					},
 				},
 			},
 			ConflictStrategy: repository.ImportConflictUpdate,
@@ -318,13 +350,22 @@ WHERE datname = current_database()
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("reference lock waiters = %d, want at least %d", waiting, minimum)
+			t.Fatalf(
+				"reference lock waiters = %d, want at least %d",
+				waiting,
+				minimum,
+			)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
-func warmReferenceReads(t *testing.T, service *Reference, workspaceID, title string, version int) {
+func warmReferenceReads(
+	t *testing.T,
+	service *Reference,
+	workspaceID, title string,
+	version int,
+) {
 	t.Helper()
 	ctx := context.Background()
 	item, err := service.User.Get(ctx, user.GetParams{
@@ -332,22 +373,38 @@ func warmReferenceReads(t *testing.T, service *Reference, workspaceID, title str
 		Key:         "stars",
 		Locale:      "ru",
 	})
-	if err != nil || item.Localization == nil || item.Localization.Title != title ||
+	if err != nil || item.Localization == nil ||
+		item.Localization.Title != title ||
 		referencePayloadVersion(item.Payload) != version {
-		t.Fatalf("reference Get returned stale data: item=%+v err=%v", item, err)
+		t.Fatalf(
+			"reference Get returned stale data: item=%+v err=%v",
+			item,
+			err,
+		)
 	}
 	resolved, err := service.User.Resolve(ctx, user.ResolveParams{
 		WorkspaceID: workspaceID,
 		Keys:        []string{"stars"},
 		Locale:      "ru",
 	})
-	if err != nil || len(resolved.Items) != 1 || resolved.Items[0].Localization == nil ||
-		resolved.Items[0].Localization.Title != title || referencePayloadVersion(resolved.Items[0].Payload) != version {
-		t.Fatalf("reference Resolve returned stale data: result=%+v err=%v", resolved, err)
+	if err != nil || len(resolved.Items) != 1 ||
+		resolved.Items[0].Localization == nil ||
+		resolved.Items[0].Localization.Title != title ||
+		referencePayloadVersion(resolved.Items[0].Payload) != version {
+		t.Fatalf(
+			"reference Resolve returned stale data: result=%+v err=%v",
+			resolved,
+			err,
+		)
 	}
 	adminItem, err := service.Admin.GetItem(ctx, workspaceID, "stars")
-	if err != nil || adminItem.Localizations[0].Title != title || referencePayloadVersion(adminItem.Payload) != version {
-		t.Fatalf("reference admin GetItem returned stale data: item=%+v err=%v", adminItem, err)
+	if err != nil || adminItem.Localizations[0].Title != title ||
+		referencePayloadVersion(adminItem.Payload) != version {
+		t.Fatalf(
+			"reference admin GetItem returned stale data: item=%+v err=%v",
+			adminItem,
+			err,
+		)
 	}
 }
 
@@ -372,21 +429,30 @@ type referenceSharedCache struct {
 }
 
 func newReferenceSharedCache() *referenceSharedCache {
-	return &referenceSharedCache{entries: make(map[string]referenceSharedCacheEntry)}
+	return &referenceSharedCache{
+		entries: make(map[string]referenceSharedCacheEntry),
+	}
 }
 
-func (c *referenceSharedCache) GetWithTTL(key string) ([]byte, time.Duration, error) {
+func (c *referenceSharedCache) GetWithTTL(
+	key string,
+) ([]byte, time.Duration, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	entry, exists := c.entries[key]
-	if !exists || (!entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt)) {
+	if !exists ||
+		(!entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt)) {
 		delete(c.entries, key)
 		return nil, 0, nil
 	}
 	return append([]byte(nil), entry.value...), time.Until(entry.expiresAt), nil
 }
 
-func (c *referenceSharedCache) Set(key string, value []byte, expiration time.Duration) error {
+func (c *referenceSharedCache) Set(
+	key string,
+	value []byte,
+	expiration time.Duration,
+) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	entry := referenceSharedCacheEntry{value: append([]byte(nil), value...)}
@@ -430,14 +496,22 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	workspaceB := testsupport.WorkspaceID("workspace-b")
 
 	if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
-		WorkspaceID: workspaceA, Key: "Coin", Type: repository.ItemTypeQuantity,
-		Payload: json.RawMessage(`{"icon":"coin.png","decimals":0}`), IsActive: true,
+		WorkspaceID: workspaceA,
+		Key:         "Coin",
+		Type:        repository.ItemTypeQuantity,
+		Payload: json.RawMessage(
+			`{"icon":"coin.png","decimals":0}`,
+		),
+		IsActive: true,
 	}); err != nil {
 		t.Fatalf("create quantity item: %v", err)
 	}
 	if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
-		WorkspaceID: workspaceA, Key: "premium", Type: repository.ItemTypeDuration,
-		Payload: json.RawMessage(`{"icon":"premium.png"}`), IsActive: true,
+		WorkspaceID: workspaceA,
+		Key:         "premium",
+		Type:        repository.ItemTypeDuration,
+		Payload:     json.RawMessage(`{"icon":"premium.png"}`),
+		IsActive:    true,
 	}); err != nil {
 		t.Fatalf("create duration item: %v", err)
 	}
@@ -446,15 +520,27 @@ func TestReferenceFullLifecycle(t *testing.T) {
 		{WorkspaceID: workspaceA, ItemKey: "coin", Locale: "en", Title: "Coins", Description: "Game currency"},
 		{WorkspaceID: workspaceA, ItemKey: "premium", Locale: "ru", Title: "Премиум", Description: "Премиум-доступ"},
 	} {
-		if err := service.Admin.UpsertLocalization(ctx, localization); err != nil {
+		if err := service.Admin.UpsertLocalization(
+			ctx,
+			localization,
+		); err != nil {
 			t.Fatalf("upsert localization: %v", err)
 		}
 	}
-	localization, err := service.Admin.GetLocalization(ctx, workspaceA, "coin", "ru")
+	localization, err := service.Admin.GetLocalization(
+		ctx,
+		workspaceA,
+		"coin",
+		"ru",
+	)
 	if err != nil || localization.Title != "Монеты" {
 		t.Fatalf("get localization: value=%+v err=%v", localization, err)
 	}
-	localizations, err := service.Admin.ListLocalizations(ctx, workspaceA, "coin")
+	localizations, err := service.Admin.ListLocalizations(
+		ctx,
+		workspaceA,
+		"coin",
+	)
 	if err != nil || len(localizations) != 2 {
 		t.Fatalf("list localizations: values=%+v err=%v", localizations, err)
 	}
@@ -500,8 +586,12 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	}
 
 	if _, err := service.Admin.UpdateItem(ctx, admin.UpdateItemParams{
-		WorkspaceID: workspaceA, Key: "coin",
-		Payload: json.RawMessage(`{"icon":"coin-v2.png","decimals":0}`), IsActive: true,
+		WorkspaceID: workspaceA,
+		Key:         "coin",
+		Payload: json.RawMessage(
+			`{"icon":"coin-v2.png","decimals":0}`,
+		),
+		IsActive: true,
 	}); err != nil {
 		t.Fatalf("update item: %v", err)
 	}
@@ -516,12 +606,27 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	if err != nil || len(adminItem.Localizations) != 2 {
 		t.Fatalf("admin item: %#v err=%v", adminItem, err)
 	}
-	if changed, err := service.Admin.DeleteLocalization(ctx, workspaceA, "coin", "en"); err != nil || changed != 1 {
+	if changed, err := service.Admin.DeleteLocalization(
+		ctx,
+		workspaceA,
+		"coin",
+		"en",
+	); err != nil ||
+		changed != 1 {
 		t.Fatalf("delete localization: changed=%d err=%v", changed, err)
 	}
-	localizations, err = service.Admin.ListLocalizations(ctx, workspaceA, "coin")
-	if err != nil || len(localizations) != 1 || localizations[0].Locale != "ru" {
-		t.Fatalf("localizations after delete: values=%+v err=%v", localizations, err)
+	localizations, err = service.Admin.ListLocalizations(
+		ctx,
+		workspaceA,
+		"coin",
+	)
+	if err != nil || len(localizations) != 1 ||
+		localizations[0].Locale != "ru" {
+		t.Fatalf(
+			"localizations after delete: values=%+v err=%v",
+			localizations,
+			err,
+		)
 	}
 	stats, err := service.Admin.GetStats(ctx, workspaceA)
 	if err != nil {
@@ -545,7 +650,11 @@ func TestReferenceFullLifecycle(t *testing.T) {
 		t.Fatalf("workspace isolation: %#v err=%v", isolated, err)
 	}
 
-	if _, err := service.Admin.SoftDeleteItem(ctx, workspaceA, "coin"); err != nil {
+	if _, err := service.Admin.SoftDeleteItem(
+		ctx,
+		workspaceA,
+		"coin",
+	); err != nil {
 		t.Fatalf("soft delete: %v", err)
 	}
 	if _, err := service.User.Get(ctx, user.GetParams{
@@ -553,7 +662,12 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	}); !errors.Is(err, repository.ErrItemNotFound) {
 		t.Fatalf("deleted item must be hidden, err=%v", err)
 	}
-	if _, err := service.Admin.RestoreItem(ctx, workspaceA, "coin", true); err != nil {
+	if _, err := service.Admin.RestoreItem(
+		ctx,
+		workspaceA,
+		"coin",
+		true,
+	); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
 	if _, err := service.User.Get(ctx, user.GetParams{
@@ -569,18 +683,30 @@ func TestReferenceImportExportCycle(t *testing.T) {
 	exportWorkspaceID := testsupport.WorkspaceID("workspace-export")
 	importWorkspaceID := testsupport.WorkspaceID("workspace-import")
 	if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
-		WorkspaceID: exportWorkspaceID, Key: "coin", Type: repository.ItemTypeQuantity,
-		Payload: json.RawMessage(`{"icon":"coin.png","scale":2}`), IsActive: true,
+		WorkspaceID: exportWorkspaceID,
+		Key:         "coin",
+		Type:        repository.ItemTypeQuantity,
+		Payload: json.RawMessage(
+			`{"icon":"coin.png","scale":2}`,
+		),
+		IsActive: true,
 	}); err != nil {
 		t.Fatalf("create item: %v", err)
 	}
-	if err := service.Admin.UpsertLocalization(ctx, admin.SaveLocalizationParams{
-		WorkspaceID: exportWorkspaceID, ItemKey: "coin", Locale: "ru",
-		Title: "Монеты", Description: "Игровая валюта",
-	}); err != nil {
+	if err := service.Admin.UpsertLocalization(
+		ctx,
+		admin.SaveLocalizationParams{
+			WorkspaceID: exportWorkspaceID, ItemKey: "coin", Locale: "ru",
+			Title: "Монеты", Description: "Игровая валюта",
+		},
+	); err != nil {
 		t.Fatalf("upsert localization: %v", err)
 	}
-	pkg, err := service.Admin.Export(ctx, exportWorkspaceID, admin.ExportRequest{})
+	pkg, err := service.Admin.Export(
+		ctx,
+		exportWorkspaceID,
+		admin.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
@@ -588,19 +714,28 @@ func TestReferenceImportExportCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preview import: %v", err)
 	}
-	if preview.Counts.Items != 1 || preview.Counts.Localizations != 1 || len(preview.Conflicts) != 0 {
+	if preview.Counts.Items != 1 || preview.Counts.Localizations != 1 ||
+		len(preview.Conflicts) != 0 {
 		t.Fatalf("unexpected preview: %+v", preview)
 	}
-	result, err := service.Admin.Import(ctx, importWorkspaceID, admin.ImportRequest{
-		Package: pkg, ConflictStrategy: repository.ImportConflictUpdate,
-	})
+	result, err := service.Admin.Import(
+		ctx,
+		importWorkspaceID,
+		admin.ImportRequest{
+			Package: pkg, ConflictStrategy: repository.ImportConflictUpdate,
+		},
+	)
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
 	if result.Imported.Items != 1 || result.Imported.Localizations != 1 {
 		t.Fatalf("unexpected import result: %+v", result)
 	}
-	imported, err := service.Admin.Export(ctx, importWorkspaceID, admin.ExportRequest{})
+	imported, err := service.Admin.Export(
+		ctx,
+		importWorkspaceID,
+		admin.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export imported: %v", err)
 	}
@@ -611,18 +746,29 @@ func TestReferenceImportExportCycle(t *testing.T) {
 	}
 
 	pkg.Items[0].Localization = nil
-	if _, err := service.Admin.Import(ctx, importWorkspaceID, admin.ImportRequest{
-		Package:          pkg,
-		ConflictStrategy: repository.ImportConflictUpdate,
-	}); err != nil {
+	if _, err := service.Admin.Import(
+		ctx,
+		importWorkspaceID,
+		admin.ImportRequest{
+			Package:          pkg,
+			ConflictStrategy: repository.ImportConflictUpdate,
+		},
+	); err != nil {
 		t.Fatalf("replace imported item: %v", err)
 	}
-	replaced, err := service.Admin.Export(ctx, importWorkspaceID, admin.ExportRequest{})
+	replaced, err := service.Admin.Export(
+		ctx,
+		importWorkspaceID,
+		admin.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export replaced item: %v", err)
 	}
 	if len(replaced.Items) != 1 || len(replaced.Items[0].Localization) != 0 {
-		t.Fatalf("update_existing kept removed localizations: %+v", replaced.Items)
+		t.Fatalf(
+			"update_existing kept removed localizations: %+v",
+			replaced.Items,
+		)
 	}
 }
 
@@ -631,22 +777,39 @@ func TestReferenceImmutableKeyAndDangerousTypeChange(t *testing.T) {
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("workspace")
 	if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
-		WorkspaceID: workspaceID, Key: "fixed-key", Type: repository.ItemTypeQuantity,
-		Payload: json.RawMessage(`{}`), IsActive: true,
+		WorkspaceID: workspaceID,
+		Key:         "fixed-key",
+		Type:        repository.ItemTypeQuantity,
+		Payload:     json.RawMessage(`{}`),
+		IsActive:    true,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Admin.UpsertLocalization(ctx, admin.SaveLocalizationParams{
-		WorkspaceID: workspaceID, ItemKey: "fixed-key", Locale: "en", Title: "Fixed",
-	}); err != nil {
+	if err := service.Admin.UpsertLocalization(
+		ctx,
+		admin.SaveLocalizationParams{
+			WorkspaceID: workspaceID,
+			ItemKey:     "fixed-key",
+			Locale:      "en",
+			Title:       "Fixed",
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 
 	params := admin.DangerousChangeTypeParams{
-		WorkspaceID: workspaceID, Key: "fixed-key",
-		CurrentType: repository.ItemTypeQuantity, NewType: repository.ItemTypeDuration,
+		WorkspaceID: workspaceID,
+		Key:         "fixed-key",
+		CurrentType: repository.ItemTypeQuantity,
+		NewType:     repository.ItemTypeDuration,
 	}
-	if _, err := service.Admin.DangerousChangeType(ctx, params); !errors.Is(err, admin.ErrTypeChangeNotConfirmed) {
+	if _, err := service.Admin.DangerousChangeType(
+		ctx,
+		params,
+	); !errors.Is(
+		err,
+		admin.ErrTypeChangeNotConfirmed,
+	) {
 		t.Fatalf("unconfirmed change: %v", err)
 	}
 	params.Confirmation = admin.DangerousTypeConfirmation
@@ -665,7 +828,11 @@ func TestReferenceImmutableKeyAndDangerousTypeChange(t *testing.T) {
 	params.CurrentType = repository.ItemTypeQuantity
 	rows, err = service.Admin.DangerousChangeType(ctx, params)
 	if err != nil || rows != 0 {
-		t.Fatalf("stale expected type must not update: rows=%d err=%v", rows, err)
+		t.Fatalf(
+			"stale expected type must not update: rows=%d err=%v",
+			rows,
+			err,
+		)
 	}
 
 }
@@ -675,17 +842,43 @@ func TestReferenceValidationAndContext(t *testing.T) {
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("workspace")
 	cases := []admin.SaveItemParams{
-		{WorkspaceID: "", Key: "coin", Type: repository.ItemTypeQuantity, Payload: json.RawMessage(`{}`)},
-		{WorkspaceID: workspaceID, Key: "bad key", Type: repository.ItemTypeQuantity, Payload: json.RawMessage(`{}`)},
-		{WorkspaceID: workspaceID, Key: "coin", Type: "unknown", Payload: json.RawMessage(`{}`)},
-		{WorkspaceID: workspaceID, Key: "coin", Type: repository.ItemTypeQuantity, Payload: json.RawMessage(`{`)},
+		{
+			WorkspaceID: "",
+			Key:         "coin",
+			Type:        repository.ItemTypeQuantity,
+			Payload:     json.RawMessage(`{}`),
+		},
+		{
+			WorkspaceID: workspaceID,
+			Key:         "bad key",
+			Type:        repository.ItemTypeQuantity,
+			Payload:     json.RawMessage(`{}`),
+		},
+		{
+			WorkspaceID: workspaceID,
+			Key:         "coin",
+			Type:        "unknown",
+			Payload:     json.RawMessage(`{}`),
+		},
+		{
+			WorkspaceID: workspaceID,
+			Key:         "coin",
+			Type:        repository.ItemTypeQuantity,
+			Payload:     json.RawMessage(`{`),
+		},
 	}
 	for _, params := range cases {
 		if err := service.Admin.CreateItem(ctx, params); err == nil {
 			t.Fatalf("expected validation error for %#v", params)
 		}
 	}
-	if _, err := service.User.Resolve(ctx, user.ResolveParams{WorkspaceID: workspaceID}); !errors.Is(err, user.ErrKeysRequired) {
+	if _, err := service.User.Resolve(
+		ctx,
+		user.ResolveParams{WorkspaceID: workspaceID},
+	); !errors.Is(
+		err,
+		user.ErrKeysRequired,
+	) {
 		t.Fatalf("empty resolve: %v", err)
 	}
 	tooMany := make([]string, 1001)
@@ -700,7 +893,17 @@ func TestReferenceValidationAndContext(t *testing.T) {
 
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := service.User.List(canceled, user.ListParams{WorkspaceID: workspaceID, Locale: "en", Page: user.Page{}}); !errors.Is(err, context.Canceled) {
+	if _, err := service.User.List(
+		canceled,
+		user.ListParams{
+			WorkspaceID: workspaceID,
+			Locale:      "en",
+			Page:        user.Page{},
+		},
+	); !errors.Is(
+		err,
+		context.Canceled,
+	) {
 		t.Fatalf("canceled request: %v", err)
 	}
 }
@@ -713,18 +916,32 @@ func TestReferenceOpenBootstrapsSchema(t *testing.T) {
 		t.Fatalf("open admin postgres: %v", err)
 	}
 	terminateReferenceConnections(ctx, t, adminDB, database)
-	if _, err := adminDB.ExecContext(ctx, fmt.Sprintf("DROP DATABASE IF EXISTS %s", database)); err != nil {
+	if _, err := adminDB.ExecContext(
+		ctx,
+		fmt.Sprintf("DROP DATABASE IF EXISTS %s", database),
+	); err != nil {
 		t.Fatalf("drop database: %v", err)
 	}
-	if _, err := adminDB.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", database)); err != nil {
+	if _, err := adminDB.ExecContext(
+		ctx,
+		fmt.Sprintf("CREATE DATABASE %s", database),
+	); err != nil {
 		t.Fatalf("create database: %v", err)
 	}
 	_ = adminDB.Close()
 	t.Cleanup(func() {
 		adminDB, err := openReferencePostgres("")
 		if err == nil {
-			terminateReferenceConnections(context.Background(), t, adminDB, database)
-			_, _ = adminDB.ExecContext(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %s", database))
+			terminateReferenceConnections(
+				context.Background(),
+				t,
+				adminDB,
+				database,
+			)
+			_, _ = adminDB.ExecContext(
+				context.Background(),
+				fmt.Sprintf("DROP DATABASE IF EXISTS %s", database),
+			)
 			_ = adminDB.Close()
 		}
 	})
@@ -743,14 +960,23 @@ func TestReferenceOpenBootstrapsSchema(t *testing.T) {
 		t.Fatalf("bootstrap reference: %v", err)
 	}
 	defer repo.Close()
-	service, err := NewWithDatabase(ctx, db, referenceTestOptions(Options{CacheSize: 100}))
+	service, err := NewWithDatabase(
+		ctx,
+		db,
+		referenceTestOptions(Options{CacheSize: 100}),
+	)
 	if err != nil {
 		t.Fatalf("create reference: %v", err)
 	}
 	defer service.Close()
 	if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
-		WorkspaceID: testsupport.WorkspaceID("workspace"), Key: "coin", Type: repository.ItemTypeQuantity,
-		Payload: json.RawMessage(`{}`), IsActive: true,
+		WorkspaceID: testsupport.WorkspaceID(
+			"workspace",
+		),
+		Key:      "coin",
+		Type:     repository.ItemTypeQuantity,
+		Payload:  json.RawMessage(`{}`),
+		IsActive: true,
 	}); err != nil {
 		t.Fatalf("schema was not bootstrapped: %v", err)
 	}
@@ -760,7 +986,11 @@ func newReferenceTestService(t testing.TB) *Reference {
 	return newReferenceTestServiceWithOptions(t, referenceTestDB, Options{})
 }
 
-func newReferenceTestServiceWithOptions(t testing.TB, database string, options Options) *Reference {
+func newReferenceTestServiceWithOptions(
+	t testing.TB,
+	database string,
+	options Options,
+) *Reference {
 	t.Helper()
 	ctx := context.Background()
 	adminDB, err := openReferencePostgres("")
@@ -768,10 +998,16 @@ func newReferenceTestServiceWithOptions(t testing.TB, database string, options O
 		t.Fatalf("open admin postgres: %v", err)
 	}
 	terminateReferenceConnections(ctx, t, adminDB, database)
-	if _, err := adminDB.ExecContext(ctx, fmt.Sprintf("DROP DATABASE IF EXISTS %s", database)); err != nil {
+	if _, err := adminDB.ExecContext(
+		ctx,
+		fmt.Sprintf("DROP DATABASE IF EXISTS %s", database),
+	); err != nil {
 		t.Fatalf("drop database: %v", err)
 	}
-	if _, err := adminDB.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", database)); err != nil {
+	if _, err := adminDB.ExecContext(
+		ctx,
+		fmt.Sprintf("CREATE DATABASE %s", database),
+	); err != nil {
 		t.Fatalf("create database: %v", err)
 	}
 	_ = adminDB.Close()
@@ -816,7 +1052,12 @@ func referenceTestOptions(options Options) Options {
 	return options
 }
 
-func terminateReferenceConnections(ctx context.Context, t testing.TB, db *sql.DB, database string) {
+func terminateReferenceConnections(
+	ctx context.Context,
+	t testing.TB,
+	db *sql.DB,
+	database string,
+) {
 	t.Helper()
 	_, err := db.ExecContext(ctx, `
 SELECT pg_terminate_backend(pid)

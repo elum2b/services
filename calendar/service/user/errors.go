@@ -7,5 +7,8 @@ var (
 		serviceerrors.CodeInvalidFields,
 		"calendar user identity, calendar and operation are required",
 	)
-	ErrWorkspaceRequired = serviceerrors.New(serviceerrors.CodeInvalidFields, "calendar workspace is required")
+	ErrWorkspaceRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"calendar workspace is required",
+	)
 )

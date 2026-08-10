@@ -28,7 +28,11 @@ func (a *Refund) refundAttempt(
 		return attempt, nil
 	}
 
-	attempt, err := a.repository.GetRefundAttempt(ctx, order.WorkspaceID, order.ID)
+	attempt, err := a.repository.GetRefundAttempt(
+		ctx,
+		order.WorkspaceID,
+		order.ID,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return repository.Attempt{}, ErrAttemptRequired
 	}

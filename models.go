@@ -9,11 +9,26 @@ import (
 )
 
 var (
-	ErrIdentityWorkspaceRequired      = serviceerrors.New(serviceerrors.CodeInvalidFields, "identity workspace id is required")
-	ErrIdentityWorkspaceInvalid       = serviceerrors.New(serviceerrors.CodeInvalidFields, "identity workspace id must be a canonical UUID")
-	ErrIdentityAppIDInvalid           = serviceerrors.New(serviceerrors.CodeInvalidFields, "identity app id must be positive")
-	ErrIdentityPlatformIDInvalid      = serviceerrors.New(serviceerrors.CodeInvalidFields, "identity platform id must be positive")
-	ErrIdentityPlatformUserIDRequired = serviceerrors.New(serviceerrors.CodeInvalidFields, "identity platform user id is required")
+	ErrIdentityWorkspaceRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"identity workspace id is required",
+	)
+	ErrIdentityWorkspaceInvalid = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"identity workspace id must be a canonical UUID",
+	)
+	ErrIdentityAppIDInvalid = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"identity app id must be positive",
+	)
+	ErrIdentityPlatformIDInvalid = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"identity platform id must be positive",
+	)
+	ErrIdentityPlatformUserIDRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"identity platform user id is required",
+	)
 )
 
 // ValidateWorkspaceID verifies the shared canonical workspace identifier contract.

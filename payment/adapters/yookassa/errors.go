@@ -8,13 +8,34 @@ import (
 )
 
 var (
-	ErrNotInitialized          = serviceerrors.New(serviceerrors.CodeNotReady, "yookassa adapter is not initialized")
-	ErrCredentialsRequired     = serviceerrors.New(serviceerrors.CodeInvalidFields, "yookassa shop id and secret key are required")
-	ErrWebhookSignatureInvalid = serviceerrors.New(serviceerrors.CodeUnauthorized, "yookassa webhook signature is invalid")
-	ErrPaymentIDRequired       = serviceerrors.New(serviceerrors.CodeInvalidFields, "yookassa payment id is required")
-	ErrCreatePaymentEmptyID    = serviceerrors.New(serviceerrors.CodeInternalError, "yookassa create payment response has empty id")
-	ErrIdempotencyKeyRequired  = serviceerrors.New(serviceerrors.CodeInvalidFields, "yookassa idempotency key is required")
-	ErrPaymentAttemptState     = serviceerrors.New(serviceerrors.CodeFailedPrecondition, "yookassa payment attempt cannot be reused")
+	ErrNotInitialized = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"yookassa adapter is not initialized",
+	)
+	ErrCredentialsRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"yookassa shop id and secret key are required",
+	)
+	ErrWebhookSignatureInvalid = serviceerrors.New(
+		serviceerrors.CodeUnauthorized,
+		"yookassa webhook signature is invalid",
+	)
+	ErrPaymentIDRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"yookassa payment id is required",
+	)
+	ErrCreatePaymentEmptyID = serviceerrors.New(
+		serviceerrors.CodeInternalError,
+		"yookassa create payment response has empty id",
+	)
+	ErrIdempotencyKeyRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"yookassa idempotency key is required",
+	)
+	ErrPaymentAttemptState = serviceerrors.New(
+		serviceerrors.CodeFailedPrecondition,
+		"yookassa payment attempt cannot be reused",
+	)
 )
 
 type apiError struct {
@@ -35,5 +56,6 @@ func wrapAPIError(action string, status int, _ string) error {
 
 func isDefinitiveAPIError(err error) bool {
 	var target *apiError
-	return errors.As(err, &target) && target.status >= 400 && target.status < 500
+	return errors.As(err, &target) && target.status >= 400 &&
+		target.status < 500
 }

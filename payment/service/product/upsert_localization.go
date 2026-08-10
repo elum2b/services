@@ -13,15 +13,21 @@ type UpsertLocalizationParams struct {
 	Value           string
 }
 
-func (a *Product) UpsertLocalization(ctx context.Context, params UpsertLocalizationParams) error {
+func (a *Product) UpsertLocalization(
+	ctx context.Context,
+	params UpsertLocalizationParams,
+) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 
-	return a.repository.UpsertLocalization(ctx, repository.LocalizationUpsertParams{
-		Locale:          params.Locale,
-		WorkspaceID:     params.WorkspaceID,
-		LocalizationKey: params.LocalizationKey,
-		Value:           params.Value,
-	})
+	return a.repository.UpsertLocalization(
+		ctx,
+		repository.LocalizationUpsertParams{
+			Locale:          params.Locale,
+			WorkspaceID:     params.WorkspaceID,
+			LocalizationKey: params.LocalizationKey,
+			Value:           params.Value,
+		},
+	)
 }

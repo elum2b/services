@@ -14,8 +14,16 @@ type Admin struct {
 	rootCtx    context.Context
 }
 
-func NewWithRepositoryOptions(ctx context.Context, db *sqlwrap.Client, options repository.Options) *Admin {
-	repo, err := repository.NewPreparedWithOptions(contextutil.Normalize(ctx), db, options)
+func NewWithRepositoryOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options repository.Options,
+) *Admin {
+	repo, err := repository.NewPreparedWithOptions(
+		contextutil.Normalize(ctx),
+		db,
+		options,
+	)
 	if err != nil {
 		repo = repository.NewWithOptions(db, options)
 	}
@@ -35,7 +43,9 @@ func (a *Admin) Close() error {
 	return a.repository.Close()
 }
 
-func (a *Admin) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (a *Admin) withContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	return contextutil.Merge(a.rootCtx, ctx)
 }
 

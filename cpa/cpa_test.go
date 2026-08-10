@@ -50,22 +50,38 @@ func TestCPA_NewWithDatabaseAppliesDefaultCache(t *testing.T) {
 
 	upsertSharedOffer(t, env, "cache_offer", true)
 
-	if _, err := env.Service.Admin.GetOffer(env.Context, cpaTestWorkspaceID, "cache_offer"); err != nil {
+	if _, err := env.Service.Admin.GetOffer(
+		env.Context,
+		cpaTestWorkspaceID,
+		"cache_offer",
+	); err != nil {
 		t.Fatalf("get offer on cache miss: %v", err)
 	}
 	setsAfterFirstRead := cache.DataSetCalls()
 	if setsAfterFirstRead == 0 {
-		t.Fatal("service created with CacheEnabled must populate the configured cache")
+		t.Fatal(
+			"service created with CacheEnabled must populate the configured cache",
+		)
 	}
 	if cache.DataLastTTL() <= 0 {
-		t.Fatal("service created with CacheEnabled must apply a positive default cache TTL")
+		t.Fatal(
+			"service created with CacheEnabled must apply a positive default cache TTL",
+		)
 	}
 
-	if _, err := env.Service.Admin.GetOffer(env.Context, cpaTestWorkspaceID, "cache_offer"); err != nil {
+	if _, err := env.Service.Admin.GetOffer(
+		env.Context,
+		cpaTestWorkspaceID,
+		"cache_offer",
+	); err != nil {
 		t.Fatalf("get offer on cache hit: %v", err)
 	}
 	if got := cache.DataSetCalls(); got != setsAfterFirstRead {
-		t.Fatalf("second read repopulated cache: got %d writes, want %d", got, setsAfterFirstRead)
+		t.Fatalf(
+			"second read repopulated cache: got %d writes, want %d",
+			got,
+			setsAfterFirstRead,
+		)
 	}
 }
 
@@ -77,7 +93,9 @@ func TestCPA_PublicStatusContractsSerializeAsStrings(t *testing.T) {
 	}{
 		Assignment: user.AssignmentModel{Status: cpa.AssignmentStatusIssued},
 		Code:       admin.CodeModel{Status: cpa.CodeStatusAvailable},
-		Event:      admin.AssignmentEventModel{EventType: cpa.AssignmentEventTypeCompleted},
+		Event: admin.AssignmentEventModel{
+			EventType: cpa.AssignmentEventTypeCompleted,
+		},
 	}
 
 	raw, err := json.Marshal(value)
@@ -118,10 +136,18 @@ func TestCPA_CacheVersionsInvalidateReadsOnOtherNode(t *testing.T) {
 	upsertSharedOffer(t, env, "distributed_offer", true)
 	upsertLocalization(t, env, "distributed_offer", "ru", "Old title")
 
-	if _, err := nodeB.Admin.GetOffer(env.Context, cpaTestWorkspaceID, "distributed_offer"); err != nil {
+	if _, err := nodeB.Admin.GetOffer(
+		env.Context,
+		cpaTestWorkspaceID,
+		"distributed_offer",
+	); err != nil {
 		t.Fatalf("warm offer cache on node B: %v", err)
 	}
-	if _, err := nodeB.Admin.ListOffers(env.Context, cpaTestWorkspaceID, admin.Page{Limit: 10}); err != nil {
+	if _, err := nodeB.Admin.ListOffers(
+		env.Context,
+		cpaTestWorkspaceID,
+		admin.Page{Limit: 10},
+	); err != nil {
 		t.Fatalf("warm admin list cache on node B: %v", err)
 	}
 	if _, err := nodeB.User.ListActive(env.Context, user.ListActiveParams{
@@ -131,32 +157,53 @@ func TestCPA_CacheVersionsInvalidateReadsOnOtherNode(t *testing.T) {
 		t.Fatalf("warm user list cache on node B: %v", err)
 	}
 
-	if err := env.Service.Admin.UpsertOffer(env.Context, admin.UpsertOfferParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		ID:          "distributed_offer",
-		Payload:     json.RawMessage(`{"kind":"updated"}`),
-		CodeMode:    repository.CodeModeShared,
-		SharedCode:  stringPointer("SHARED-distributed_offer"),
-		IsActive:    true,
-	}); err != nil {
+	if err := env.Service.Admin.UpsertOffer(
+		env.Context,
+		admin.UpsertOfferParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			ID:          "distributed_offer",
+			Payload:     json.RawMessage(`{"kind":"updated"}`),
+			CodeMode:    repository.CodeModeShared,
+			SharedCode:  stringPointer("SHARED-distributed_offer"),
+			IsActive:    true,
+		},
+	); err != nil {
 		t.Fatalf("update offer on node A: %v", err)
 	}
 	upsertLocalization(t, env, "distributed_offer", "ru", "New title")
 
-	offer, err := nodeB.Admin.GetOffer(env.Context, cpaTestWorkspaceID, "distributed_offer")
+	offer, err := nodeB.Admin.GetOffer(
+		env.Context,
+		cpaTestWorkspaceID,
+		"distributed_offer",
+	)
 	if err != nil || payloadKind(t, offer.Payload) != "updated" {
 		t.Fatalf("node B returned stale offer: offer=%+v err=%v", offer, err)
 	}
-	adminOffers, err := nodeB.Admin.ListOffers(env.Context, cpaTestWorkspaceID, admin.Page{Limit: 10})
-	if err != nil || len(adminOffers) != 1 || payloadKind(t, adminOffers[0].Payload) != "updated" {
-		t.Fatalf("node B returned stale admin list: offers=%+v err=%v", adminOffers, err)
+	adminOffers, err := nodeB.Admin.ListOffers(
+		env.Context,
+		cpaTestWorkspaceID,
+		admin.Page{Limit: 10},
+	)
+	if err != nil || len(adminOffers) != 1 ||
+		payloadKind(t, adminOffers[0].Payload) != "updated" {
+		t.Fatalf(
+			"node B returned stale admin list: offers=%+v err=%v",
+			adminOffers,
+			err,
+		)
 	}
 	userOffers, err := nodeB.User.ListActive(env.Context, user.ListActiveParams{
 		Identity: cpaTestIdentity("user-1"),
 		Locale:   "ru",
 	})
-	if err != nil || len(userOffers) != 1 || userOffers[0].Title != "New title" {
-		t.Fatalf("node B returned stale user list: offers=%+v err=%v", userOffers, err)
+	if err != nil || len(userOffers) != 1 ||
+		userOffers[0].Title != "New title" {
+		t.Fatalf(
+			"node B returned stale user list: offers=%+v err=%v",
+			userOffers,
+			err,
+		)
 	}
 }
 
@@ -186,7 +233,11 @@ func TestCPA_UserGetCodeReusesExistingAssignment(t *testing.T) {
 		t.Fatalf("read existing code: %v", err)
 	}
 	if !second.AlreadyIssued || second.Assignment.ID != first.Assignment.ID {
-		t.Fatalf("assignment is not idempotent: first=%+v second=%+v", first, second)
+		t.Fatalf(
+			"assignment is not idempotent: first=%+v second=%+v",
+			first,
+			second,
+		)
 	}
 
 	status, err := env.Service.User.GetStatus(env.Context, user.GetStatusParams{
@@ -203,10 +254,30 @@ func TestCPAIdentityCollisionIsolation(t *testing.T) {
 	upsertSharedOffer(t, env, "identity_collision_offer", true)
 
 	identities := []user.Identity{
-		{WorkspaceID: cpaTestWorkspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "shared-user"},
-		{WorkspaceID: cpaTestWorkspaceID, AppID: 101, PlatformID: 200, PlatformUserID: "shared-user"},
-		{WorkspaceID: cpaTestWorkspaceID, AppID: 100, PlatformID: 201, PlatformUserID: "shared-user"},
-		{WorkspaceID: cpaTestWorkspaceID, AppID: 100, PlatformID: 200, PlatformUserID: "other-user"},
+		{
+			WorkspaceID:    cpaTestWorkspaceID,
+			AppID:          100,
+			PlatformID:     200,
+			PlatformUserID: "shared-user",
+		},
+		{
+			WorkspaceID:    cpaTestWorkspaceID,
+			AppID:          101,
+			PlatformID:     200,
+			PlatformUserID: "shared-user",
+		},
+		{
+			WorkspaceID:    cpaTestWorkspaceID,
+			AppID:          100,
+			PlatformID:     201,
+			PlatformUserID: "shared-user",
+		},
+		{
+			WorkspaceID:    cpaTestWorkspaceID,
+			AppID:          100,
+			PlatformID:     200,
+			PlatformUserID: "other-user",
+		},
 	}
 	assignments := make(map[uint64]struct{}, len(identities))
 	for _, identity := range identities {
@@ -218,28 +289,46 @@ func TestCPAIdentityCollisionIsolation(t *testing.T) {
 			t.Fatalf("issue code for %#v: %v", identity, err)
 		}
 		if issued.AlreadyIssued {
-			t.Fatalf("identity %#v reused another assignment: %+v", identity, issued)
+			t.Fatalf(
+				"identity %#v reused another assignment: %+v",
+				identity,
+				issued,
+			)
 		}
 		if _, exists := assignments[issued.Assignment.ID]; exists {
-			t.Fatalf("assignment %d reused across identities", issued.Assignment.ID)
+			t.Fatalf(
+				"assignment %d reused across identities",
+				issued.Assignment.ID,
+			)
 		}
 		assignments[issued.Assignment.ID] = struct{}{}
 
-		repeated, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
-			Identity: identity,
-			CPAID:    "identity_collision_offer",
-		})
+		repeated, err := env.Service.User.GetCode(
+			env.Context,
+			user.GetCodeParams{
+				Identity: identity,
+				CPAID:    "identity_collision_offer",
+			},
+		)
 		if err != nil {
 			t.Fatalf("repeat code lookup for %#v: %v", identity, err)
 		}
-		if !repeated.AlreadyIssued || repeated.Assignment.ID != issued.Assignment.ID {
-			t.Fatalf("identity %#v did not retain its assignment: %+v", identity, repeated)
+		if !repeated.AlreadyIssued ||
+			repeated.Assignment.ID != issued.Assignment.ID {
+			t.Fatalf(
+				"identity %#v did not retain its assignment: %+v",
+				identity,
+				repeated,
+			)
 		}
 
-		status, err := env.Service.User.GetStatus(env.Context, user.GetStatusParams{
-			Identity: identity,
-			CPAID:    "identity_collision_offer",
-		})
+		status, err := env.Service.User.GetStatus(
+			env.Context,
+			user.GetStatusParams{
+				Identity: identity,
+				CPAID:    "identity_collision_offer",
+			},
+		)
 		if err != nil || status == nil || status.ID != issued.Assignment.ID {
 			t.Fatalf("identity %#v status=%+v err=%v", identity, status, err)
 		}
@@ -253,7 +342,8 @@ func TestCPA_AssignmentKeepsRewardSnapshotAfterCatalogChanges(t *testing.T) {
 
 	identity := cpaTestIdentity("snapshot-user")
 	issued := issueCode(t, env, identity, "snapshot_offer")
-	if len(issued.Rewards) != 1 || issued.Rewards[0].Key != "stars" || issued.Rewards[0].Quantity != 25 {
+	if len(issued.Rewards) != 1 || issued.Rewards[0].Key != "stars" ||
+		issued.Rewards[0].Quantity != 25 {
 		t.Fatalf("issued reward snapshot = %+v", issued.Rewards)
 	}
 
@@ -261,42 +351,79 @@ func TestCPA_AssignmentKeepsRewardSnapshotAfterCatalogChanges(t *testing.T) {
 	upsertReward(t, env, "snapshot_offer", "bonus", 1, 0)
 
 	repeated := issueCode(t, env, identity, "snapshot_offer")
-	if len(repeated.Rewards) != 1 || repeated.Rewards[0].Key != "stars" || repeated.Rewards[0].Quantity != 25 {
-		t.Fatalf("existing assignment used current rewards: %+v", repeated.Rewards)
+	if len(repeated.Rewards) != 1 || repeated.Rewards[0].Key != "stars" ||
+		repeated.Rewards[0].Quantity != 25 {
+		t.Fatalf(
+			"existing assignment used current rewards: %+v",
+			repeated.Rewards,
+		)
 	}
 
-	offers, err := env.Service.User.ListActive(env.Context, user.ListActiveParams{
-		Identity: identity,
-		Locale:   "ru",
-	})
-	if err != nil || len(offers) != 1 || len(offers[0].Rewards) != 1 || offers[0].Rewards[0].Quantity != 25 {
-		t.Fatalf("list active did not use assignment snapshot: offers=%+v err=%v", offers, err)
+	offers, err := env.Service.User.ListActive(
+		env.Context,
+		user.ListActiveParams{
+			Identity: identity,
+			Locale:   "ru",
+		},
+	)
+	if err != nil || len(offers) != 1 || len(offers[0].Rewards) != 1 ||
+		offers[0].Rewards[0].Quantity != 25 {
+		t.Fatalf(
+			"list active did not use assignment snapshot: offers=%+v err=%v",
+			offers,
+			err,
+		)
 	}
 
-	completed, err := env.Service.Admin.Complete(env.Context, admin.CompleteParams{
-		Identity: identity,
-		CPAID:    "snapshot_offer",
-	})
-	if err != nil || len(completed.Rewards) != 1 || completed.Rewards[0].Quantity != 25 {
-		t.Fatalf("completion reward snapshot: result=%+v err=%v", completed, err)
+	completed, err := env.Service.Admin.Complete(
+		env.Context,
+		admin.CompleteParams{
+			Identity: identity,
+			CPAID:    "snapshot_offer",
+		},
+	)
+	if err != nil || len(completed.Rewards) != 1 ||
+		completed.Rewards[0].Quantity != 25 {
+		t.Fatalf(
+			"completion reward snapshot: result=%+v err=%v",
+			completed,
+			err,
+		)
 	}
 
-	if _, err := env.Service.Admin.DeleteReward(env.Context, cpaTestWorkspaceID, "snapshot_offer", "stars"); err != nil {
+	if _, err := env.Service.Admin.DeleteReward(
+		env.Context,
+		cpaTestWorkspaceID,
+		"snapshot_offer",
+		"stars",
+	); err != nil {
 		t.Fatalf("delete catalog reward: %v", err)
 	}
-	completedAgain, err := env.Service.Admin.Complete(env.Context, admin.CompleteParams{
-		Identity: identity,
-		CPAID:    "snapshot_offer",
-	})
-	if err != nil || !completedAgain.AlreadyDone || len(completedAgain.Rewards) != 1 || completedAgain.Rewards[0].Quantity != 25 {
-		t.Fatalf("idempotent completion changed rewards: result=%+v err=%v", completedAgain, err)
+	completedAgain, err := env.Service.Admin.Complete(
+		env.Context,
+		admin.CompleteParams{
+			Identity: identity,
+			CPAID:    "snapshot_offer",
+		},
+	)
+	if err != nil || !completedAgain.AlreadyDone ||
+		len(completedAgain.Rewards) != 1 ||
+		completedAgain.Rewards[0].Quantity != 25 {
+		t.Fatalf(
+			"idempotent completion changed rewards: result=%+v err=%v",
+			completedAgain,
+			err,
+		)
 	}
 
-	events, err := env.Service.Admin.ListCallbackEvents(env.Context, admin.CallbackEventListParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		EventType:   cpa.CallbackEventCompleted,
-		Page:        admin.Page{Limit: 10},
-	})
+	events, err := env.Service.Admin.ListCallbackEvents(
+		env.Context,
+		admin.CallbackEventListParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			EventType:   cpa.CallbackEventCompleted,
+			Page:        admin.Page{Limit: 10},
+		},
+	)
 	if err != nil || len(events) != 1 {
 		t.Fatalf("list completed callbacks: events=%+v err=%v", events, err)
 	}
@@ -305,7 +432,10 @@ func TestCPA_AssignmentKeepsRewardSnapshotAfterCatalogChanges(t *testing.T) {
 		t.Fatalf("decode completed callback: %v", err)
 	}
 	if len(payload.Rewards) != 1 || payload.Rewards[0].Quantity != 25 {
-		t.Fatalf("completed callback changed reward snapshot: %+v", payload.Rewards)
+		t.Fatalf(
+			"completed callback changed reward snapshot: %+v",
+			payload.Rewards,
+		)
 	}
 }
 
@@ -372,30 +502,39 @@ func TestCPA_UserMethodsRejectInvalidIdentity(t *testing.T) {
 		{
 			name: "list active",
 			call: func(identity user.Identity) error {
-				_, err := env.Service.User.ListActive(env.Context, user.ListActiveParams{
-					Identity: identity,
-					Locale:   "ru",
-				})
+				_, err := env.Service.User.ListActive(
+					env.Context,
+					user.ListActiveParams{
+						Identity: identity,
+						Locale:   "ru",
+					},
+				)
 				return err
 			},
 		},
 		{
 			name: "get code",
 			call: func(identity user.Identity) error {
-				_, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
-					Identity: identity,
-					CPAID:    "offer",
-				})
+				_, err := env.Service.User.GetCode(
+					env.Context,
+					user.GetCodeParams{
+						Identity: identity,
+						CPAID:    "offer",
+					},
+				)
 				return err
 			},
 		},
 		{
 			name: "get status",
 			call: func(identity user.Identity) error {
-				_, err := env.Service.User.GetStatus(env.Context, user.GetStatusParams{
-					Identity: identity,
-					CPAID:    "offer",
-				})
+				_, err := env.Service.User.GetStatus(
+					env.Context,
+					user.GetStatusParams{
+						Identity: identity,
+						CPAID:    "offer",
+					},
+				)
 				return err
 			},
 		},
@@ -406,8 +545,15 @@ func TestCPA_UserMethodsRejectInvalidIdentity(t *testing.T) {
 			for _, methodTest := range methodTests {
 				t.Run(methodTest.name, func(t *testing.T) {
 					err := methodTest.call(identityTest.identity)
-					if serviceerrors.CodeOf(err) != serviceerrors.CodeInvalidFields {
-						t.Fatalf("invalid identity error code = %q, want %q; err=%v", serviceerrors.CodeOf(err), serviceerrors.CodeInvalidFields, err)
+					if serviceerrors.CodeOf(
+						err,
+					) != serviceerrors.CodeInvalidFields {
+						t.Fatalf(
+							"invalid identity error code = %q, want %q; err=%v",
+							serviceerrors.CodeOf(err),
+							serviceerrors.CodeInvalidFields,
+							err,
+						)
 					}
 				})
 			}
@@ -419,36 +565,58 @@ func TestCPA_UserCodeMethodsRejectEmptyOfferID(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	identity := cpaTestIdentity("empty-offer-user")
 
-	_, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{Identity: identity})
+	_, err := env.Service.User.GetCode(
+		env.Context,
+		user.GetCodeParams{Identity: identity},
+	)
 	if serviceerrors.CodeOf(err) != serviceerrors.CodeInvalidFields {
-		t.Fatalf("get code without offer id error code = %q, want %q; err=%v", serviceerrors.CodeOf(err), serviceerrors.CodeInvalidFields, err)
+		t.Fatalf(
+			"get code without offer id error code = %q, want %q; err=%v",
+			serviceerrors.CodeOf(err),
+			serviceerrors.CodeInvalidFields,
+			err,
+		)
 	}
 
-	_, err = env.Service.User.GetStatus(env.Context, user.GetStatusParams{Identity: identity})
+	_, err = env.Service.User.GetStatus(
+		env.Context,
+		user.GetStatusParams{Identity: identity},
+	)
 	if serviceerrors.CodeOf(err) != serviceerrors.CodeInvalidFields {
-		t.Fatalf("get status without offer id error code = %q, want %q; err=%v", serviceerrors.CodeOf(err), serviceerrors.CodeInvalidFields, err)
+		t.Fatalf(
+			"get status without offer id error code = %q, want %q; err=%v",
+			serviceerrors.CodeOf(err),
+			serviceerrors.CodeInvalidFields,
+			err,
+		)
 	}
 }
 
 func TestCPA_UserListActiveAppliesTarget(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	upsertSharedOffer(t, env, "public_offer", true)
-	if err := env.Service.Admin.UpsertOffer(env.Context, admin.UpsertOfferParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		ID:          "premium_offer",
-		Payload:     json.RawMessage(`{"kind":"premium"}`),
-		Target:      json.RawMessage(`{"is_premium":true}`),
-		CodeMode:    repository.CodeModeShared,
-		SharedCode:  stringPointer("PREMIUM"),
-		IsActive:    true,
-	}); err != nil {
+	if err := env.Service.Admin.UpsertOffer(
+		env.Context,
+		admin.UpsertOfferParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			ID:          "premium_offer",
+			Payload:     json.RawMessage(`{"kind":"premium"}`),
+			Target:      json.RawMessage(`{"is_premium":true}`),
+			CodeMode:    repository.CodeModeShared,
+			SharedCode:  stringPointer("PREMIUM"),
+			IsActive:    true,
+		},
+	); err != nil {
 		t.Fatalf("upsert premium offer: %v", err)
 	}
 
-	offers, err := env.Service.User.ListActive(env.Context, user.ListActiveParams{
-		Identity: cpaTestIdentity("user-1"),
-		Locale:   "ru",
-	})
+	offers, err := env.Service.User.ListActive(
+		env.Context,
+		user.ListActiveParams{
+			Identity: cpaTestIdentity("user-1"),
+			Locale:   "ru",
+		},
+	)
 	if err != nil {
 		t.Fatalf("list active offers: %v", err)
 	}
@@ -460,15 +628,18 @@ func TestCPA_UserListActiveAppliesTarget(t *testing.T) {
 func TestCPA_UserListActiveReevaluatesTimeWindowOnCacheHit(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	endAt := time.Now().UTC().Add(500 * time.Millisecond)
-	if err := env.Service.Admin.UpsertOffer(env.Context, admin.UpsertOfferParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		ID:          "expiring-offer",
-		Payload:     json.RawMessage(`{}`),
-		CodeMode:    repository.CodeModeShared,
-		SharedCode:  stringPointer("EXPIRING"),
-		IsActive:    true,
-		EndAt:       &endAt,
-	}); err != nil {
+	if err := env.Service.Admin.UpsertOffer(
+		env.Context,
+		admin.UpsertOfferParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			ID:          "expiring-offer",
+			Payload:     json.RawMessage(`{}`),
+			CodeMode:    repository.CodeModeShared,
+			SharedCode:  stringPointer("EXPIRING"),
+			IsActive:    true,
+			EndAt:       &endAt,
+		},
+	); err != nil {
 		t.Fatalf("upsert expiring offer: %v", err)
 	}
 
@@ -478,27 +649,38 @@ func TestCPA_UserListActiveReevaluatesTimeWindowOnCacheHit(t *testing.T) {
 	}
 	items, err := env.Service.User.ListActive(env.Context, params)
 	if err != nil || len(items) != 1 {
-		t.Fatalf("list active offer before expiration: items=%+v err=%v", items, err)
+		t.Fatalf(
+			"list active offer before expiration: items=%+v err=%v",
+			items,
+			err,
+		)
 	}
 
 	time.Sleep(750 * time.Millisecond)
 	items, err = env.Service.User.ListActive(env.Context, params)
 	if err != nil || len(items) != 0 {
-		t.Fatalf("expired offer remained visible from cache: items=%+v err=%v", items, err)
+		t.Fatalf(
+			"expired offer remained visible from cache: items=%+v err=%v",
+			items,
+			err,
+		)
 	}
 }
 
 func TestCPA_UserGetCodeAllocatesDifferentPoolCodes(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	pool := repository.CodeSourcePool
-	if err := env.Service.Admin.UpsertOffer(env.Context, admin.UpsertOfferParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		ID:          "pool_offer",
-		Payload:     json.RawMessage(`{}`),
-		CodeMode:    repository.CodeModePersonal,
-		CodeSource:  &pool,
-		IsActive:    true,
-	}); err != nil {
+	if err := env.Service.Admin.UpsertOffer(
+		env.Context,
+		admin.UpsertOfferParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			ID:          "pool_offer",
+			Payload:     json.RawMessage(`{}`),
+			CodeMode:    repository.CodeModePersonal,
+			CodeSource:  &pool,
+			IsActive:    true,
+		},
+	); err != nil {
 		t.Fatalf("upsert pool offer: %v", err)
 	}
 	added, err := env.Service.Admin.AddCodes(env.Context, admin.AddCodesParams{
@@ -538,15 +720,31 @@ func TestCPA_AdminDeleteCodesKeepsIssuedAndCompletedAssignments(t *testing.T) {
 		identity := cpaTestIdentity("issued-user")
 		issued := issueCode(t, env, identity, "issued_offer")
 
-		deleted, err := env.Service.Admin.DeleteIssuedCodes(env.Context, cpaTestWorkspaceID, "issued_offer")
+		deleted, err := env.Service.Admin.DeleteIssuedCodes(
+			env.Context,
+			cpaTestWorkspaceID,
+			"issued_offer",
+		)
 		if err != nil || deleted != 1 {
 			t.Fatalf("delete issued code: deleted=%d err=%v", deleted, err)
 		}
 		repeated := issueCode(t, env, identity, "issued_offer")
-		if !repeated.AlreadyIssued || repeated.Assignment.ID != issued.Assignment.ID || repeated.Assignment.Code != issued.Assignment.Code {
-			t.Fatalf("issued assignment was not preserved: first=%+v repeated=%+v", issued, repeated)
+		if !repeated.AlreadyIssued ||
+			repeated.Assignment.ID != issued.Assignment.ID ||
+			repeated.Assignment.Code != issued.Assignment.Code {
+			t.Fatalf(
+				"issued assignment was not preserved: first=%+v repeated=%+v",
+				issued,
+				repeated,
+			)
 		}
-		assertAssignmentIsVisible(t, env, identity, "issued_offer", issued.Assignment.ID)
+		assertAssignmentIsVisible(
+			t,
+			env,
+			identity,
+			"issued_offer",
+			issued.Assignment.ID,
+		)
 	})
 
 	t.Run("completed assignment", func(t *testing.T) {
@@ -554,33 +752,62 @@ func TestCPA_AdminDeleteCodesKeepsIssuedAndCompletedAssignments(t *testing.T) {
 		addPoolCode(t, env, "completed_offer", "COMPLETED-1")
 		identity := cpaTestIdentity("completed-user")
 		completed := issueCode(t, env, identity, "completed_offer")
-		if _, err := env.Service.Admin.Complete(env.Context, admin.CompleteParams{
-			Identity: identity,
-			CPAID:    "completed_offer",
-		}); err != nil {
+		if _, err := env.Service.Admin.Complete(
+			env.Context,
+			admin.CompleteParams{
+				Identity: identity,
+				CPAID:    "completed_offer",
+			},
+		); err != nil {
 			t.Fatalf("complete assignment: %v", err)
 		}
 
-		deleted, err := env.Service.Admin.DeleteCompletedCodes(env.Context, cpaTestWorkspaceID, "completed_offer")
+		deleted, err := env.Service.Admin.DeleteCompletedCodes(
+			env.Context,
+			cpaTestWorkspaceID,
+			"completed_offer",
+		)
 		if err != nil || deleted != 1 {
 			t.Fatalf("delete completed code: deleted=%d err=%v", deleted, err)
 		}
 		repeated := issueCode(t, env, identity, "completed_offer")
-		if !repeated.AlreadyIssued || repeated.Assignment.ID != completed.Assignment.ID || repeated.Assignment.Status != cpa.AssignmentStatusCompleted {
-			t.Fatalf("completed assignment was not preserved: first=%+v repeated=%+v", completed, repeated)
+		if !repeated.AlreadyIssued ||
+			repeated.Assignment.ID != completed.Assignment.ID ||
+			repeated.Assignment.Status != cpa.AssignmentStatusCompleted {
+			t.Fatalf(
+				"completed assignment was not preserved: first=%+v repeated=%+v",
+				completed,
+				repeated,
+			)
 		}
-		assertAssignmentIsVisible(t, env, identity, "completed_offer", completed.Assignment.ID)
+		assertAssignmentIsVisible(
+			t,
+			env,
+			identity,
+			"completed_offer",
+			completed.Assignment.ID,
+		)
 	})
 }
 
-func TestCPA_AdminDeleteOfferReturnsDomainErrorWhenAssignmentExists(t *testing.T) {
+func TestCPA_AdminDeleteOfferReturnsDomainErrorWhenAssignmentExists(
+	t *testing.T,
+) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	upsertSharedOffer(t, env, "used_offer", true)
 	issueCode(t, env, cpaTestIdentity("used-offer-user"), "used_offer")
 
-	deleted, err := env.Service.Admin.DeleteOffer(env.Context, cpaTestWorkspaceID, "used_offer")
+	deleted, err := env.Service.Admin.DeleteOffer(
+		env.Context,
+		cpaTestWorkspaceID,
+		"used_offer",
+	)
 	if deleted != 0 || !errors.Is(err, repository.ErrOfferInUse) {
-		t.Fatalf("delete used offer: rows=%d err=%v, want ErrOfferInUse", deleted, err)
+		t.Fatalf(
+			"delete used offer: rows=%d err=%v, want ErrOfferInUse",
+			deleted,
+			err,
+		)
 	}
 }
 
@@ -632,7 +859,10 @@ WHERE workspace_id = $1 AND id = $2`, cpaTestWorkspaceID, "mode_race_offer"); er
 	}
 
 	if err := <-result; !errors.Is(err, repository.ErrCodeUploadMode) {
-		t.Fatalf("AddCodes after mode switch error = %v, want ErrCodeUploadMode", err)
+		t.Fatalf(
+			"AddCodes after mode switch error = %v, want ErrCodeUploadMode",
+			err,
+		)
 	}
 }
 
@@ -647,36 +877,52 @@ func TestCPA_NestedCatalogMutationsUseWorkspaceLock(t *testing.T) {
 		{
 			name: "upsert localization",
 			call: func() error {
-				return env.Service.Admin.UpsertLocalization(env.Context, admin.UpsertLocalizationParams{
-					WorkspaceID: cpaTestWorkspaceID,
-					CPAID:       "locked_nested_offer",
-					Locale:      "ru",
-					Title:       "Locked",
-				})
+				return env.Service.Admin.UpsertLocalization(
+					env.Context,
+					admin.UpsertLocalizationParams{
+						WorkspaceID: cpaTestWorkspaceID,
+						CPAID:       "locked_nested_offer",
+						Locale:      "ru",
+						Title:       "Locked",
+					},
+				)
 			},
 		},
 		{
 			name: "delete localization",
 			call: func() error {
-				_, err := env.Service.Admin.DeleteLocalization(env.Context, cpaTestWorkspaceID, "locked_nested_offer", "ru")
+				_, err := env.Service.Admin.DeleteLocalization(
+					env.Context,
+					cpaTestWorkspaceID,
+					"locked_nested_offer",
+					"ru",
+				)
 				return err
 			},
 		},
 		{
 			name: "upsert reward",
 			call: func() error {
-				return env.Service.Admin.UpsertReward(env.Context, admin.UpsertRewardParams{
-					WorkspaceID: cpaTestWorkspaceID,
-					CPAID:       "locked_nested_offer",
-					Key:         "stars",
-					Quantity:    1,
-				})
+				return env.Service.Admin.UpsertReward(
+					env.Context,
+					admin.UpsertRewardParams{
+						WorkspaceID: cpaTestWorkspaceID,
+						CPAID:       "locked_nested_offer",
+						Key:         "stars",
+						Quantity:    1,
+					},
+				)
 			},
 		},
 		{
 			name: "delete reward",
 			call: func() error {
-				_, err := env.Service.Admin.DeleteReward(env.Context, cpaTestWorkspaceID, "locked_nested_offer", "stars")
+				_, err := env.Service.Admin.DeleteReward(
+					env.Context,
+					cpaTestWorkspaceID,
+					"locked_nested_offer",
+					"stars",
+				)
 				return err
 			},
 		},
@@ -730,10 +976,13 @@ func TestCPA_UserGetCodeIsConcurrentAndIdempotent(t *testing.T) {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			result, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
-				Identity: identity,
-				CPAID:    "concurrent_offer",
-			})
+			result, err := env.Service.User.GetCode(
+				env.Context,
+				user.GetCodeParams{
+					Identity: identity,
+					CPAID:    "concurrent_offer",
+				},
+			)
 			results <- result
 			errs <- err
 		}()
@@ -754,12 +1003,18 @@ func TestCPA_UserGetCodeIsConcurrentAndIdempotent(t *testing.T) {
 			continue
 		}
 		if result.Assignment.ID != assignmentID {
-			t.Fatalf("concurrent requests created different assignments: %d and %d", assignmentID, result.Assignment.ID)
+			t.Fatalf(
+				"concurrent requests created different assignments: %d and %d",
+				assignmentID,
+				result.Assignment.ID,
+			)
 		}
 	}
 }
 
-func TestCPA_UserGetCodeIssuesPopularOfferForDifferentUsersInParallel(t *testing.T) {
+func TestCPA_UserGetCodeIssuesPopularOfferForDifferentUsersInParallel(
+	t *testing.T,
+) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	upsertSharedOffer(t, env, "parallel_offer", true)
 
@@ -771,10 +1026,15 @@ func TestCPA_UserGetCodeIssuesPopularOfferForDifferentUsersInParallel(t *testing
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			result, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
-				Identity: cpaTestIdentity(fmt.Sprintf("parallel-user-%d", index)),
-				CPAID:    "parallel_offer",
-			})
+			result, err := env.Service.User.GetCode(
+				env.Context,
+				user.GetCodeParams{
+					Identity: cpaTestIdentity(
+						fmt.Sprintf("parallel-user-%d", index),
+					),
+					CPAID: "parallel_offer",
+				},
+			)
 			results <- result
 			errs <- err
 		}()
@@ -793,7 +1053,11 @@ func TestCPA_UserGetCodeIssuesPopularOfferForDifferentUsersInParallel(t *testing
 		assignmentIDs[result.Assignment.ID] = struct{}{}
 	}
 	if len(assignmentIDs) != workers {
-		t.Fatalf("parallel issues created %d assignments, want %d", len(assignmentIDs), workers)
+		t.Fatalf(
+			"parallel issues created %d assignments, want %d",
+			len(assignmentIDs),
+			workers,
+		)
 	}
 }
 
@@ -812,7 +1076,8 @@ func TestCPA_AdminCompleteIsIdempotentAndUpdatesDailyStats(t *testing.T) {
 		Identity: identity,
 		CPAID:    "complete_offer",
 	})
-	if err != nil || first.AlreadyDone || first.Assignment.Status != cpa.AssignmentStatusCompleted {
+	if err != nil || first.AlreadyDone ||
+		first.Assignment.Status != cpa.AssignmentStatusCompleted {
 		t.Fatalf("complete assignment: result=%+v err=%v", first, err)
 	}
 	second, err := env.Service.Admin.Complete(env.Context, admin.CompleteParams{
@@ -820,15 +1085,31 @@ func TestCPA_AdminCompleteIsIdempotentAndUpdatesDailyStats(t *testing.T) {
 		CPAID:    "complete_offer",
 	})
 	if err != nil || !second.AlreadyDone {
-		t.Fatalf("repeat completion must be idempotent: result=%+v err=%v", second, err)
+		t.Fatalf(
+			"repeat completion must be idempotent: result=%+v err=%v",
+			second,
+			err,
+		)
 	}
 
 	now := time.Now().UTC()
-	if err := env.Service.Admin.RefreshDailyStats(env.Context, cpaTestWorkspaceID, now.Add(-time.Hour), now.Add(time.Hour)); err != nil {
+	if err := env.Service.Admin.RefreshDailyStats(
+		env.Context,
+		cpaTestWorkspaceID,
+		now.Add(-time.Hour),
+		now.Add(time.Hour),
+	); err != nil {
 		t.Fatalf("refresh daily stats: %v", err)
 	}
-	stats, err := env.Service.Admin.ListDailyStats(env.Context, cpaTestWorkspaceID, "complete_offer", now, now)
-	if err != nil || len(stats) != 1 || stats[0].IssuedCount != 1 || stats[0].CompletedCount != 1 {
+	stats, err := env.Service.Admin.ListDailyStats(
+		env.Context,
+		cpaTestWorkspaceID,
+		"complete_offer",
+		now,
+		now,
+	)
+	if err != nil || len(stats) != 1 || stats[0].IssuedCount != 1 ||
+		stats[0].CompletedCount != 1 {
 		t.Fatalf("unexpected daily stats: stats=%+v err=%v", stats, err)
 	}
 }
@@ -847,17 +1128,32 @@ WHERE workspace_id = $2 AND cpa_id = $3`, eventTime, cpaTestWorkspaceID, "utc_st
 	}
 
 	env.Database.SetMaxOpenConns(1)
-	if _, err := env.Database.ExecContext(env.Context, "SET TIME ZONE 'America/Los_Angeles'"); err != nil {
+	if _, err := env.Database.ExecContext(
+		env.Context,
+		"SET TIME ZONE 'America/Los_Angeles'",
+	); err != nil {
 		t.Fatalf("set non-UTC session timezone: %v", err)
 	}
 
 	from := time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC)
 	until := from.Add(24 * time.Hour)
-	if err := env.Service.Admin.RefreshDailyStats(env.Context, cpaTestWorkspaceID, from, until); err != nil {
+	if err := env.Service.Admin.RefreshDailyStats(
+		env.Context,
+		cpaTestWorkspaceID,
+		from,
+		until,
+	); err != nil {
 		t.Fatalf("refresh UTC daily stats: %v", err)
 	}
-	stats, err := env.Service.Admin.ListDailyStats(env.Context, cpaTestWorkspaceID, "utc_stats_offer", from, from)
-	if err != nil || len(stats) != 1 || stats[0].Date.Day() != 2 || stats[0].IssuedCount != 1 {
+	stats, err := env.Service.Admin.ListDailyStats(
+		env.Context,
+		cpaTestWorkspaceID,
+		"utc_stats_offer",
+		from,
+		from,
+	)
+	if err != nil || len(stats) != 1 || stats[0].Date.Day() != 2 ||
+		stats[0].IssuedCount != 1 {
 		t.Fatalf("UTC daily stats: values=%+v err=%v", stats, err)
 	}
 }
@@ -912,11 +1208,13 @@ func TestCPA_AdminUpsertOfferRejectsInvalidConfiguration(t *testing.T) {
 		{
 			name: "generated alphabet needs distinct symbols",
 			params: admin.UpsertOfferParams{
-				WorkspaceID:       cpaTestWorkspaceID,
-				ID:                "duplicate_alphabet",
-				Payload:           json.RawMessage(`{}`),
-				CodeMode:          repository.CodeModePersonal,
-				CodeSource:        stringPointer(repository.CodeSourceGenerated),
+				WorkspaceID: cpaTestWorkspaceID,
+				ID:          "duplicate_alphabet",
+				Payload:     json.RawMessage(`{}`),
+				CodeMode:    repository.CodeModePersonal,
+				CodeSource: stringPointer(
+					repository.CodeSourceGenerated,
+				),
 				GeneratedLength:   int16Pointer(8),
 				GeneratedAlphabet: stringPointer("aa"),
 			},
@@ -924,11 +1222,13 @@ func TestCPA_AdminUpsertOfferRejectsInvalidConfiguration(t *testing.T) {
 		{
 			name: "generated code needs sufficient entropy",
 			params: admin.UpsertOfferParams{
-				WorkspaceID:       cpaTestWorkspaceID,
-				ID:                "weak_generated_code",
-				Payload:           json.RawMessage(`{}`),
-				CodeMode:          repository.CodeModePersonal,
-				CodeSource:        stringPointer(repository.CodeSourceGenerated),
+				WorkspaceID: cpaTestWorkspaceID,
+				ID:          "weak_generated_code",
+				Payload:     json.RawMessage(`{}`),
+				CodeMode:    repository.CodeModePersonal,
+				CodeSource: stringPointer(
+					repository.CodeSourceGenerated,
+				),
 				GeneratedLength:   int16Pointer(1),
 				GeneratedAlphabet: stringPointer("ab"),
 			},
@@ -936,11 +1236,13 @@ func TestCPA_AdminUpsertOfferRejectsInvalidConfiguration(t *testing.T) {
 		{
 			name: "generated code exceeds stored code length",
 			params: admin.UpsertOfferParams{
-				WorkspaceID:       cpaTestWorkspaceID,
-				ID:                "long_generated_code",
-				Payload:           json.RawMessage(`{}`),
-				CodeMode:          repository.CodeModePersonal,
-				CodeSource:        stringPointer(repository.CodeSourceGenerated),
+				WorkspaceID: cpaTestWorkspaceID,
+				ID:          "long_generated_code",
+				Payload:     json.RawMessage(`{}`),
+				CodeMode:    repository.CodeModePersonal,
+				CodeSource: stringPointer(
+					repository.CodeSourceGenerated,
+				),
 				GeneratedLength:   int16Pointer(513),
 				GeneratedAlphabet: stringPointer("ab"),
 			},
@@ -959,7 +1261,10 @@ func TestCPA_AdminUpsertOfferRejectsInvalidConfiguration(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if err := env.Service.Admin.UpsertOffer(env.Context, test.params); err == nil {
+			if err := env.Service.Admin.UpsertOffer(
+				env.Context,
+				test.params,
+			); err == nil {
 				t.Fatal("invalid offer configuration must be rejected")
 			}
 		})
@@ -981,13 +1286,16 @@ func TestCPA_AdminUpsertRewardRejectsInvalidConfiguration(t *testing.T) {
 		t.Fatal("zero reward quantity must be rejected")
 	}
 
-	if err := env.Service.Admin.UpsertReward(env.Context, admin.UpsertRewardParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		CPAID:       "reward_offer",
-		Key:         "max-scale",
-		Quantity:    1,
-		Scale:       ^uint16(0),
-	}); err != nil {
+	if err := env.Service.Admin.UpsertReward(
+		env.Context,
+		admin.UpsertRewardParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			CPAID:       "reward_offer",
+			Key:         "max-scale",
+			Quantity:    1,
+			Scale:       ^uint16(0),
+		},
+	); err != nil {
 		t.Fatalf("uint16 scale must fit the SQL contract: %v", err)
 	}
 }
@@ -1012,208 +1320,316 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 		{
 			name: "list offers without workspace",
 			call: func() error {
-				_, err := env.Service.Admin.ListOffers(env.Context, "", admin.Page{})
+				_, err := env.Service.Admin.ListOffers(
+					env.Context,
+					"",
+					admin.Page{},
+				)
 				return err
 			},
 		},
 		{
 			name: "delete offer without id",
 			call: func() error {
-				_, err := env.Service.Admin.DeleteOffer(env.Context, cpaTestWorkspaceID, "")
+				_, err := env.Service.Admin.DeleteOffer(
+					env.Context,
+					cpaTestWorkspaceID,
+					"",
+				)
 				return err
 			},
 		},
 		{
 			name: "add codes without offer id",
 			call: func() error {
-				_, err := env.Service.Admin.AddCodes(env.Context, admin.AddCodesParams{
-					WorkspaceID: cpaTestWorkspaceID,
-					Codes:       []string{"CODE"},
-				})
+				_, err := env.Service.Admin.AddCodes(
+					env.Context,
+					admin.AddCodesParams{
+						WorkspaceID: cpaTestWorkspaceID,
+						Codes:       []string{"CODE"},
+					},
+				)
 				return err
 			},
 		},
 		{
 			name: "add empty code list",
 			call: func() error {
-				_, err := env.Service.Admin.AddCodes(env.Context, admin.AddCodesParams{
-					WorkspaceID: cpaTestWorkspaceID,
-					CPAID:       "invalid-input-pool",
-				})
+				_, err := env.Service.Admin.AddCodes(
+					env.Context,
+					admin.AddCodesParams{
+						WorkspaceID: cpaTestWorkspaceID,
+						CPAID:       "invalid-input-pool",
+					},
+				)
 				return err
 			},
 		},
 		{
 			name: "add blank code",
 			call: func() error {
-				_, err := env.Service.Admin.AddCodes(env.Context, admin.AddCodesParams{
-					WorkspaceID: cpaTestWorkspaceID,
-					CPAID:       "invalid-input-pool",
-					Codes:       []string{" "},
-				})
+				_, err := env.Service.Admin.AddCodes(
+					env.Context,
+					admin.AddCodesParams{
+						WorkspaceID: cpaTestWorkspaceID,
+						CPAID:       "invalid-input-pool",
+						Codes:       []string{" "},
+					},
+				)
 				return err
 			},
 		},
 		{
 			name: "delete available codes without offer id",
 			call: func() error {
-				_, err := env.Service.Admin.DeleteAvailableCodes(env.Context, cpaTestWorkspaceID, "")
+				_, err := env.Service.Admin.DeleteAvailableCodes(
+					env.Context,
+					cpaTestWorkspaceID,
+					"",
+				)
 				return err
 			},
 		},
 		{
 			name: "delete issued codes without offer id",
 			call: func() error {
-				_, err := env.Service.Admin.DeleteIssuedCodes(env.Context, cpaTestWorkspaceID, "")
+				_, err := env.Service.Admin.DeleteIssuedCodes(
+					env.Context,
+					cpaTestWorkspaceID,
+					"",
+				)
 				return err
 			},
 		},
 		{
 			name: "delete completed codes without offer id",
 			call: func() error {
-				_, err := env.Service.Admin.DeleteCompletedCodes(env.Context, cpaTestWorkspaceID, "")
+				_, err := env.Service.Admin.DeleteCompletedCodes(
+					env.Context,
+					cpaTestWorkspaceID,
+					"",
+				)
 				return err
 			},
 		},
 		{
 			name: "complete without offer id",
 			call: func() error {
-				_, err := env.Service.Admin.Complete(env.Context, admin.CompleteParams{
-					Identity: validIdentity,
-				})
+				_, err := env.Service.Admin.Complete(
+					env.Context,
+					admin.CompleteParams{
+						Identity: validIdentity,
+					},
+				)
 				return err
 			},
 		},
 		{
 			name: "get user assignment without identity",
 			call: func() error {
-				_, err := env.Service.Admin.GetUserAssignment(env.Context, user.GetStatusParams{CPAID: "offer"})
+				_, err := env.Service.Admin.GetUserAssignment(
+					env.Context,
+					user.GetStatusParams{CPAID: "offer"},
+				)
 				return err
 			},
 		},
 		{
 			name: "list assignments without offer id",
 			call: func() error {
-				_, err := env.Service.Admin.ListAssignments(env.Context, admin.AssignmentListParams{WorkspaceID: cpaTestWorkspaceID})
+				_, err := env.Service.Admin.ListAssignments(
+					env.Context,
+					admin.AssignmentListParams{WorkspaceID: cpaTestWorkspaceID},
+				)
 				return err
 			},
 		},
 		{
 			name: "list codes without offer id",
 			call: func() error {
-				_, err := env.Service.Admin.ListCodes(env.Context, admin.CodeListParams{WorkspaceID: cpaTestWorkspaceID})
+				_, err := env.Service.Admin.ListCodes(
+					env.Context,
+					admin.CodeListParams{WorkspaceID: cpaTestWorkspaceID},
+				)
 				return err
 			},
 		},
 		{
 			name: "list assignment events without offer id",
 			call: func() error {
-				_, err := env.Service.Admin.ListAssignmentEvents(env.Context, admin.AssignmentEventListParams{WorkspaceID: cpaTestWorkspaceID})
+				_, err := env.Service.Admin.ListAssignmentEvents(
+					env.Context,
+					admin.AssignmentEventListParams{
+						WorkspaceID: cpaTestWorkspaceID,
+					},
+				)
 				return err
 			},
 		},
 		{
 			name: "list localizations without offer id",
 			call: func() error {
-				_, err := env.Service.Admin.ListLocalizations(env.Context, cpaTestWorkspaceID, "")
+				_, err := env.Service.Admin.ListLocalizations(
+					env.Context,
+					cpaTestWorkspaceID,
+					"",
+				)
 				return err
 			},
 		},
 		{
 			name: "delete localization without locale",
 			call: func() error {
-				_, err := env.Service.Admin.DeleteLocalization(env.Context, cpaTestWorkspaceID, "offer", "")
+				_, err := env.Service.Admin.DeleteLocalization(
+					env.Context,
+					cpaTestWorkspaceID,
+					"offer",
+					"",
+				)
 				return err
 			},
 		},
 		{
 			name: "list rewards without offer id",
 			call: func() error {
-				_, err := env.Service.Admin.ListRewards(env.Context, cpaTestWorkspaceID, "")
+				_, err := env.Service.Admin.ListRewards(
+					env.Context,
+					cpaTestWorkspaceID,
+					"",
+				)
 				return err
 			},
 		},
 		{
 			name: "delete reward without key",
 			call: func() error {
-				_, err := env.Service.Admin.DeleteReward(env.Context, cpaTestWorkspaceID, "offer", "")
+				_, err := env.Service.Admin.DeleteReward(
+					env.Context,
+					cpaTestWorkspaceID,
+					"offer",
+					"",
+				)
 				return err
 			},
 		},
 		{
 			name: "get stats without offer id",
 			call: func() error {
-				_, err := env.Service.Admin.GetStats(env.Context, cpaTestWorkspaceID, "")
+				_, err := env.Service.Admin.GetStats(
+					env.Context,
+					cpaTestWorkspaceID,
+					"",
+				)
 				return err
 			},
 		},
 		{
 			name: "list daily stats with inverted range",
 			call: func() error {
-				_, err := env.Service.Admin.ListDailyStats(env.Context, cpaTestWorkspaceID, "offer", now, now.Add(-time.Hour))
+				_, err := env.Service.Admin.ListDailyStats(
+					env.Context,
+					cpaTestWorkspaceID,
+					"offer",
+					now,
+					now.Add(-time.Hour),
+				)
 				return err
 			},
 		},
 		{
 			name: "refresh daily stats with empty range",
 			call: func() error {
-				return env.Service.Admin.RefreshDailyStats(env.Context, cpaTestWorkspaceID, time.Time{}, now)
+				return env.Service.Admin.RefreshDailyStats(
+					env.Context,
+					cpaTestWorkspaceID,
+					time.Time{},
+					now,
+				)
 			},
 		},
 		{
 			name: "export without workspace",
 			call: func() error {
-				_, err := env.Service.Admin.Export(env.Context, "", admin.ExportRequest{})
+				_, err := env.Service.Admin.Export(
+					env.Context,
+					"",
+					admin.ExportRequest{},
+				)
 				return err
 			},
 		},
 		{
 			name: "preview import without workspace",
 			call: func() error {
-				_, err := env.Service.Admin.PreviewImport(env.Context, "", admin.ExportPackage{
-					Format:  repository.ExportFormat,
-					Service: "cpa",
-				})
+				_, err := env.Service.Admin.PreviewImport(
+					env.Context,
+					"",
+					admin.ExportPackage{
+						Format:  repository.ExportFormat,
+						Service: "cpa",
+					},
+				)
 				return err
 			},
 		},
 		{
 			name: "import without workspace",
 			call: func() error {
-				_, err := env.Service.Admin.Import(env.Context, "", admin.ImportRequest{
-					Package: admin.ExportPackage{
-						Format:  repository.ExportFormat,
-						Service: "cpa",
+				_, err := env.Service.Admin.Import(
+					env.Context,
+					"",
+					admin.ImportRequest{
+						Package: admin.ExportPackage{
+							Format:  repository.ExportFormat,
+							Service: "cpa",
+						},
 					},
-				})
+				)
 				return err
 			},
 		},
 		{
 			name: "get callback event without id",
 			call: func() error {
-				_, err := env.Service.Admin.GetCallbackEvent(env.Context, cpaTestWorkspaceID, 0)
+				_, err := env.Service.Admin.GetCallbackEvent(
+					env.Context,
+					cpaTestWorkspaceID,
+					0,
+				)
 				return err
 			},
 		},
 		{
 			name: "retry callback event without id",
 			call: func() error {
-				_, err := env.Service.Admin.RetryCallbackEventNow(env.Context, cpaTestWorkspaceID, 0)
+				_, err := env.Service.Admin.RetryCallbackEventNow(
+					env.Context,
+					cpaTestWorkspaceID,
+					0,
+				)
 				return err
 			},
 		},
 		{
 			name: "mark callback event ok without id",
 			call: func() error {
-				_, err := env.Service.Admin.MarkCallbackEventOK(env.Context, cpaTestWorkspaceID, 0)
+				_, err := env.Service.Admin.MarkCallbackEventOK(
+					env.Context,
+					cpaTestWorkspaceID,
+					0,
+				)
 				return err
 			},
 		},
 		{
 			name: "reject callback event without reason",
 			call: func() error {
-				_, err := env.Service.Admin.MarkCallbackEventReject(env.Context, cpaTestWorkspaceID, 1, "")
+				_, err := env.Service.Admin.MarkCallbackEventReject(
+					env.Context,
+					cpaTestWorkspaceID,
+					1,
+					"",
+				)
 				return err
 			},
 		},
@@ -1221,8 +1637,15 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if err := test.call(); serviceerrors.CodeOf(err) != serviceerrors.CodeInvalidFields {
-				t.Fatalf("invalid input error code = %q, want %q; err=%v", serviceerrors.CodeOf(err), serviceerrors.CodeInvalidFields, err)
+			if err := test.call(); serviceerrors.CodeOf(
+				err,
+			) != serviceerrors.CodeInvalidFields {
+				t.Fatalf(
+					"invalid input error code = %q, want %q; err=%v",
+					serviceerrors.CodeOf(err),
+					serviceerrors.CodeInvalidFields,
+					err,
+				)
 			}
 		})
 	}
@@ -1237,11 +1660,20 @@ func TestCPA_AdminMethodsManageOfferState(t *testing.T) {
 	upsertLocalization(t, env, poolOfferID, "ru", "Pool offer")
 	upsertReward(t, env, poolOfferID, "stars", 25, 2)
 
-	localizations, err := env.Service.Admin.ListLocalizations(env.Context, cpaTestWorkspaceID, poolOfferID)
-	if err != nil || len(localizations) != 1 || localizations[0].Title != "Pool offer" {
+	localizations, err := env.Service.Admin.ListLocalizations(
+		env.Context,
+		cpaTestWorkspaceID,
+		poolOfferID,
+	)
+	if err != nil || len(localizations) != 1 ||
+		localizations[0].Title != "Pool offer" {
 		t.Fatalf("list localizations: values=%+v err=%v", localizations, err)
 	}
-	rewards, err := env.Service.Admin.ListRewards(env.Context, cpaTestWorkspaceID, poolOfferID)
+	rewards, err := env.Service.Admin.ListRewards(
+		env.Context,
+		cpaTestWorkspaceID,
+		poolOfferID,
+	)
 	if err != nil || len(rewards) != 1 || rewards[0].Key != "stars" {
 		t.Fatalf("list rewards: values=%+v err=%v", rewards, err)
 	}
@@ -1264,72 +1696,132 @@ func TestCPA_AdminMethodsManageOfferState(t *testing.T) {
 	}
 
 	issued := issueCode(t, env, identity, poolOfferID)
-	assignment, err := env.Service.Admin.GetUserAssignment(env.Context, user.GetStatusParams{
-		Identity: identity,
-		CPAID:    poolOfferID,
-	})
-	if err != nil || assignment == nil || assignment.ID != issued.Assignment.ID {
+	assignment, err := env.Service.Admin.GetUserAssignment(
+		env.Context,
+		user.GetStatusParams{
+			Identity: identity,
+			CPAID:    poolOfferID,
+		},
+	)
+	if err != nil || assignment == nil ||
+		assignment.ID != issued.Assignment.ID {
 		t.Fatalf("get user assignment: assignment=%+v err=%v", assignment, err)
 	}
 
-	assignments, err := env.Service.Admin.ListAssignments(env.Context, admin.AssignmentListParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		CPAID:       poolOfferID,
-	})
-	if err != nil || len(assignments) != 1 || assignments[0].ID != issued.Assignment.ID {
+	assignments, err := env.Service.Admin.ListAssignments(
+		env.Context,
+		admin.AssignmentListParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			CPAID:       poolOfferID,
+		},
+	)
+	if err != nil || len(assignments) != 1 ||
+		assignments[0].ID != issued.Assignment.ID {
 		t.Fatalf("list assignments: values=%+v err=%v", assignments, err)
 	}
 
-	events, err := env.Service.Admin.ListAssignmentEvents(env.Context, admin.AssignmentEventListParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		CPAID:       poolOfferID,
-		EventType:   cpa.AssignmentEventTypeIssued,
-	})
-	if err != nil || len(events) != 1 || events[0].AssignmentID != issued.Assignment.ID {
+	events, err := env.Service.Admin.ListAssignmentEvents(
+		env.Context,
+		admin.AssignmentEventListParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			CPAID:       poolOfferID,
+			EventType:   cpa.AssignmentEventTypeIssued,
+		},
+	)
+	if err != nil || len(events) != 1 ||
+		events[0].AssignmentID != issued.Assignment.ID {
 		t.Fatalf("list assignment events: values=%+v err=%v", events, err)
 	}
 
-	deletedAvailable, err := env.Service.Admin.DeleteAvailableCodes(env.Context, cpaTestWorkspaceID, poolOfferID)
+	deletedAvailable, err := env.Service.Admin.DeleteAvailableCodes(
+		env.Context,
+		cpaTestWorkspaceID,
+		poolOfferID,
+	)
 	if err != nil || deletedAvailable != 1 {
-		t.Fatalf("delete available codes: rows=%d err=%v", deletedAvailable, err)
+		t.Fatalf(
+			"delete available codes: rows=%d err=%v",
+			deletedAvailable,
+			err,
+		)
 	}
-	deletedIssued, err := env.Service.Admin.DeleteIssuedCodes(env.Context, cpaTestWorkspaceID, poolOfferID)
+	deletedIssued, err := env.Service.Admin.DeleteIssuedCodes(
+		env.Context,
+		cpaTestWorkspaceID,
+		poolOfferID,
+	)
 	if err != nil || deletedIssued != 1 {
 		t.Fatalf("delete issued codes: rows=%d err=%v", deletedIssued, err)
 	}
 
-	completed, err := env.Service.Admin.Complete(env.Context, admin.CompleteParams{
-		Identity: identity,
-		CPAID:    poolOfferID,
-	})
-	if err != nil || completed.AlreadyDone || completed.Assignment.Status != cpa.AssignmentStatusCompleted {
+	completed, err := env.Service.Admin.Complete(
+		env.Context,
+		admin.CompleteParams{
+			Identity: identity,
+			CPAID:    poolOfferID,
+		},
+	)
+	if err != nil || completed.AlreadyDone ||
+		completed.Assignment.Status != cpa.AssignmentStatusCompleted {
 		t.Fatalf("complete assignment: result=%+v err=%v", completed, err)
 	}
 
-	stats, err := env.Service.Admin.GetStats(env.Context, cpaTestWorkspaceID, poolOfferID)
+	stats, err := env.Service.Admin.GetStats(
+		env.Context,
+		cpaTestWorkspaceID,
+		poolOfferID,
+	)
 	if err != nil || stats.AssignmentsTotal != 1 || stats.CompletedTotal != 1 {
 		t.Fatalf("get stats: stats=%+v err=%v", stats, err)
 	}
 
 	now := time.Now().UTC()
-	if err := env.Service.Admin.RefreshDailyStats(env.Context, cpaTestWorkspaceID, now.Add(-time.Hour), now.Add(time.Hour)); err != nil {
+	if err := env.Service.Admin.RefreshDailyStats(
+		env.Context,
+		cpaTestWorkspaceID,
+		now.Add(-time.Hour),
+		now.Add(time.Hour),
+	); err != nil {
 		t.Fatalf("refresh daily stats: %v", err)
 	}
-	dailyStats, err := env.Service.Admin.ListDailyStats(env.Context, cpaTestWorkspaceID, poolOfferID, now, now)
+	dailyStats, err := env.Service.Admin.ListDailyStats(
+		env.Context,
+		cpaTestWorkspaceID,
+		poolOfferID,
+		now,
+		now,
+	)
 	if err != nil || len(dailyStats) != 1 || dailyStats[0].CompletedCount != 1 {
 		t.Fatalf("list daily stats: values=%+v err=%v", dailyStats, err)
 	}
 
-	if deleted, err := env.Service.Admin.DeleteLocalization(env.Context, cpaTestWorkspaceID, poolOfferID, "ru"); err != nil || deleted != 1 {
+	if deleted, err := env.Service.Admin.DeleteLocalization(
+		env.Context,
+		cpaTestWorkspaceID,
+		poolOfferID,
+		"ru",
+	); err != nil ||
+		deleted != 1 {
 		t.Fatalf("delete localization: rows=%d err=%v", deleted, err)
 	}
-	if deleted, err := env.Service.Admin.DeleteReward(env.Context, cpaTestWorkspaceID, poolOfferID, "stars"); err != nil || deleted != 1 {
+	if deleted, err := env.Service.Admin.DeleteReward(
+		env.Context,
+		cpaTestWorkspaceID,
+		poolOfferID,
+		"stars",
+	); err != nil ||
+		deleted != 1 {
 		t.Fatalf("delete reward: rows=%d err=%v", deleted, err)
 	}
 
 	standaloneOfferID := "admin-methods-delete"
 	upsertSharedOffer(t, env, standaloneOfferID, true)
-	if deleted, err := env.Service.Admin.DeleteOffer(env.Context, cpaTestWorkspaceID, standaloneOfferID); err != nil || deleted != 1 {
+	if deleted, err := env.Service.Admin.DeleteOffer(
+		env.Context,
+		cpaTestWorkspaceID,
+		standaloneOfferID,
+	); err != nil ||
+		deleted != 1 {
 		t.Fatalf("delete offer: rows=%d err=%v", deleted, err)
 	}
 }
@@ -1338,46 +1830,108 @@ func TestCPA_AdminCallbackMethodsManageCallbackEvents(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	upsertSharedOffer(t, env, "callback-admin-offer", true)
 
-	issueCode(t, env, cpaTestIdentity("callback-admin-user-1"), "callback-admin-offer")
-	events, err := env.Service.Admin.ListCallbackEvents(env.Context, admin.CallbackEventListParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		EventType:   cpa.CallbackEventIssued,
-		Page:        admin.Page{Limit: 10},
-	})
+	issueCode(
+		t,
+		env,
+		cpaTestIdentity("callback-admin-user-1"),
+		"callback-admin-offer",
+	)
+	events, err := env.Service.Admin.ListCallbackEvents(
+		env.Context,
+		admin.CallbackEventListParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			EventType:   cpa.CallbackEventIssued,
+			Page:        admin.Page{Limit: 10},
+		},
+	)
 	if err != nil || len(events) != 1 {
 		t.Fatalf("list callback events: values=%+v err=%v", events, err)
 	}
 
-	first, err := env.Service.Admin.GetCallbackEvent(env.Context, cpaTestWorkspaceID, events[0].ID)
+	first, err := env.Service.Admin.GetCallbackEvent(
+		env.Context,
+		cpaTestWorkspaceID,
+		events[0].ID,
+	)
 	if err != nil || first.EventType != cpa.CallbackEventIssued {
 		t.Fatalf("get callback event: event=%+v err=%v", first, err)
 	}
-	if _, err := env.Service.Admin.GetCallbackEvent(env.Context, cpaOtherWorkspaceID, first.ID); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("cross-workspace callback read error = %v, want sql.ErrNoRows", err)
+	if _, err := env.Service.Admin.GetCallbackEvent(
+		env.Context,
+		cpaOtherWorkspaceID,
+		first.ID,
+	); !errors.Is(
+		err,
+		sql.ErrNoRows,
+	) {
+		t.Fatalf(
+			"cross-workspace callback read error = %v, want sql.ErrNoRows",
+			err,
+		)
 	}
-	if affected, err := env.Service.Admin.MarkCallbackEventOK(env.Context, cpaOtherWorkspaceID, first.ID); err != nil || affected != 0 {
-		t.Fatalf("cross-workspace callback update: rows=%d err=%v", affected, err)
+	if affected, err := env.Service.Admin.MarkCallbackEventOK(
+		env.Context,
+		cpaOtherWorkspaceID,
+		first.ID,
+	); err != nil ||
+		affected != 0 {
+		t.Fatalf(
+			"cross-workspace callback update: rows=%d err=%v",
+			affected,
+			err,
+		)
 	}
-	if affected, err := env.Service.Admin.RetryCallbackEventNow(env.Context, cpaTestWorkspaceID, first.ID); err != nil || affected != 1 {
+	if affected, err := env.Service.Admin.RetryCallbackEventNow(
+		env.Context,
+		cpaTestWorkspaceID,
+		first.ID,
+	); err != nil ||
+		affected != 1 {
 		t.Fatalf("retry callback event: rows=%d err=%v", affected, err)
 	}
-	if affected, err := env.Service.Admin.MarkCallbackEventOK(env.Context, cpaTestWorkspaceID, first.ID); err != nil || affected != 1 {
+	if affected, err := env.Service.Admin.MarkCallbackEventOK(
+		env.Context,
+		cpaTestWorkspaceID,
+		first.ID,
+	); err != nil ||
+		affected != 1 {
 		t.Fatalf("mark callback event ok: rows=%d err=%v", affected, err)
 	}
 
-	issueCode(t, env, cpaTestIdentity("callback-admin-user-2"), "callback-admin-offer")
-	events, err = env.Service.Admin.ListCallbackEvents(env.Context, admin.CallbackEventListParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		EventType:   cpa.CallbackEventIssued,
-		Page:        admin.Page{Limit: 10},
-	})
+	issueCode(
+		t,
+		env,
+		cpaTestIdentity("callback-admin-user-2"),
+		"callback-admin-offer",
+	)
+	events, err = env.Service.Admin.ListCallbackEvents(
+		env.Context,
+		admin.CallbackEventListParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			EventType:   cpa.CallbackEventIssued,
+			Page:        admin.Page{Limit: 10},
+		},
+	)
 	if err != nil || len(events) != 2 {
-		t.Fatalf("list callback events after second issue: values=%+v err=%v", events, err)
+		t.Fatalf(
+			"list callback events after second issue: values=%+v err=%v",
+			events,
+			err,
+		)
 	}
-	if affected, err := env.Service.Admin.MarkCallbackEventReject(env.Context, cpaTestWorkspaceID, events[0].ID, "test rejection"); err != nil || affected != 1 {
+	if affected, err := env.Service.Admin.MarkCallbackEventReject(
+		env.Context,
+		cpaTestWorkspaceID,
+		events[0].ID,
+		"test rejection",
+	); err != nil ||
+		affected != 1 {
 		t.Fatalf("reject callback event: rows=%d err=%v", affected, err)
 	}
-	if _, err := env.Service.Admin.ResetExpiredCallbackProcessing(env.Context, cpaTestWorkspaceID); err != nil {
+	if _, err := env.Service.Admin.ResetExpiredCallbackProcessing(
+		env.Context,
+		cpaTestWorkspaceID,
+	); err != nil {
 		t.Fatalf("reset expired callback processing: %v", err)
 	}
 }
@@ -1388,7 +1942,11 @@ func TestCPA_AdminExportAndImportPreserveOffer(t *testing.T) {
 	upsertLocalization(t, env, "export_offer", "en", "Export offer")
 	upsertReward(t, env, "export_offer", "stars", 25, 2)
 
-	pkg, err := env.Service.Admin.Export(env.Context, cpaTestWorkspaceID, admin.ExportRequest{})
+	pkg, err := env.Service.Admin.Export(
+		env.Context,
+		cpaTestWorkspaceID,
+		admin.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export offers: %v", err)
 	}
@@ -1403,93 +1961,132 @@ func TestCPA_AdminExportAndImportPreserveOffer(t *testing.T) {
 	if _, exists := exportObject["items"]; exists {
 		t.Fatal("CPA export must not duplicate reference items")
 	}
-	preview, err := env.Service.Admin.PreviewImport(env.Context, cpaImportWorkspaceID, pkg)
+	preview, err := env.Service.Admin.PreviewImport(
+		env.Context,
+		cpaImportWorkspaceID,
+		pkg,
+	)
 	if err != nil || preview.Counts.Offers != 1 || len(preview.Conflicts) != 0 {
 		t.Fatalf("preview import: preview=%+v err=%v", preview, err)
 	}
-	if _, err := env.Service.Admin.Import(env.Context, cpaImportWorkspaceID, admin.ImportRequest{
-		Package:          pkg,
-		ConflictStrategy: repository.ImportConflictUpdate,
-	}); err != nil {
+	if _, err := env.Service.Admin.Import(
+		env.Context,
+		cpaImportWorkspaceID,
+		admin.ImportRequest{
+			Package:          pkg,
+			ConflictStrategy: repository.ImportConflictUpdate,
+		},
+	); err != nil {
 		t.Fatalf("import offers: %v", err)
 	}
-	imported, err := env.Service.Admin.GetOffer(env.Context, cpaImportWorkspaceID, "export_offer")
+	imported, err := env.Service.Admin.GetOffer(
+		env.Context,
+		cpaImportWorkspaceID,
+		"export_offer",
+	)
 	if err != nil {
 		t.Fatalf("read imported offer: %v", err)
 	}
-	if len(imported.Localizations) != 1 || len(imported.Rewards) != 1 || imported.Rewards[0].Scale != 2 {
+	if len(imported.Localizations) != 1 || len(imported.Rewards) != 1 ||
+		imported.Rewards[0].Scale != 2 {
 		t.Fatalf("import did not preserve nested data: %+v", imported)
 	}
 }
 
 func TestCPA_AdminImportUpdateReplacesNestedOfferSnapshot(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
-	if err := env.Service.Admin.UpsertOffer(env.Context, admin.UpsertOfferParams{
-		WorkspaceID: cpaImportWorkspaceID,
-		ID:          "replace_nested_offer",
-		Payload:     json.RawMessage(`{"version":"old"}`),
-		CodeMode:    repository.CodeModeShared,
-		SharedCode:  stringPointer("OLD"),
-		IsActive:    true,
-	}); err != nil {
+	if err := env.Service.Admin.UpsertOffer(
+		env.Context,
+		admin.UpsertOfferParams{
+			WorkspaceID: cpaImportWorkspaceID,
+			ID:          "replace_nested_offer",
+			Payload:     json.RawMessage(`{"version":"old"}`),
+			CodeMode:    repository.CodeModeShared,
+			SharedCode:  stringPointer("OLD"),
+			IsActive:    true,
+		},
+	); err != nil {
 		t.Fatalf("seed imported offer: %v", err)
 	}
 	for locale, title := range map[string]string{"ru": "Старый", "en": "Old"} {
-		if err := env.Service.Admin.UpsertLocalization(env.Context, admin.UpsertLocalizationParams{
-			WorkspaceID: cpaImportWorkspaceID,
-			CPAID:       "replace_nested_offer",
-			Locale:      locale,
-			Title:       title,
-			Description: title,
-		}); err != nil {
+		if err := env.Service.Admin.UpsertLocalization(
+			env.Context,
+			admin.UpsertLocalizationParams{
+				WorkspaceID: cpaImportWorkspaceID,
+				CPAID:       "replace_nested_offer",
+				Locale:      locale,
+				Title:       title,
+				Description: title,
+			},
+		); err != nil {
 			t.Fatalf("seed localization %s: %v", locale, err)
 		}
 	}
 	for key, quantity := range map[string]int64{"stars": 10, "obsolete": 99} {
-		if err := env.Service.Admin.UpsertReward(env.Context, admin.UpsertRewardParams{
-			WorkspaceID: cpaImportWorkspaceID,
-			CPAID:       "replace_nested_offer",
-			Key:         key,
-			Quantity:    quantity,
-		}); err != nil {
+		if err := env.Service.Admin.UpsertReward(
+			env.Context,
+			admin.UpsertRewardParams{
+				WorkspaceID: cpaImportWorkspaceID,
+				CPAID:       "replace_nested_offer",
+				Key:         key,
+				Quantity:    quantity,
+			},
+		); err != nil {
 			t.Fatalf("seed reward %s: %v", key, err)
 		}
 	}
 
-	_, err := env.Service.Admin.Import(env.Context, cpaImportWorkspaceID, admin.ImportRequest{
-		Package: admin.ExportPackage{
-			Format:  repository.ExportFormat,
-			Service: "cpa",
-			Offers: []admin.ExportOffer{
-				{
-					ID:         "replace_nested_offer",
-					Payload:    json.RawMessage(`{"version":"new"}`),
-					CodeMode:   repository.CodeModeShared,
-					SharedCode: stringPointer("NEW"),
-					IsActive:   true,
-					Localization: map[string]admin.ExportText{
-						"ru": {Title: "Новый", Description: "Новый"},
-					},
-					Rewards: []admin.ExportReward{
-						{Key: "stars", Type: "quantity", Quantity: 25, Scale: 2},
+	_, err := env.Service.Admin.Import(
+		env.Context,
+		cpaImportWorkspaceID,
+		admin.ImportRequest{
+			Package: admin.ExportPackage{
+				Format:  repository.ExportFormat,
+				Service: "cpa",
+				Offers: []admin.ExportOffer{
+					{
+						ID:         "replace_nested_offer",
+						Payload:    json.RawMessage(`{"version":"new"}`),
+						CodeMode:   repository.CodeModeShared,
+						SharedCode: stringPointer("NEW"),
+						IsActive:   true,
+						Localization: map[string]admin.ExportText{
+							"ru": {Title: "Новый", Description: "Новый"},
+						},
+						Rewards: []admin.ExportReward{
+							{
+								Key:      "stars",
+								Type:     "quantity",
+								Quantity: 25,
+								Scale:    2,
+							},
+						},
 					},
 				},
 			},
+			ConflictStrategy: repository.ImportConflictUpdate,
 		},
-		ConflictStrategy: repository.ImportConflictUpdate,
-	})
+	)
 	if err != nil {
 		t.Fatalf("update existing import: %v", err)
 	}
 
-	offer, err := env.Service.Admin.GetOffer(env.Context, cpaImportWorkspaceID, "replace_nested_offer")
+	offer, err := env.Service.Admin.GetOffer(
+		env.Context,
+		cpaImportWorkspaceID,
+		"replace_nested_offer",
+	)
 	if err != nil {
 		t.Fatalf("get replaced offer: %v", err)
 	}
 	if len(offer.Localizations) != 1 || offer.Localizations[0].Locale != "ru" {
-		t.Fatalf("stale localization remained after import: %+v", offer.Localizations)
+		t.Fatalf(
+			"stale localization remained after import: %+v",
+			offer.Localizations,
+		)
 	}
-	if len(offer.Rewards) != 1 || offer.Rewards[0].Key != "stars" || offer.Rewards[0].Quantity != 25 {
+	if len(offer.Rewards) != 1 || offer.Rewards[0].Key != "stars" ||
+		offer.Rewards[0].Quantity != 25 {
 		t.Fatalf("stale reward remained after import: %+v", offer.Rewards)
 	}
 }
@@ -1500,7 +2097,11 @@ func TestCPA_AdminExportAndFailOnConflictInspectAllOffers(t *testing.T) {
 		upsertSharedOffer(t, env, fmt.Sprintf("offer-%04d", index), true)
 	}
 
-	pkg, err := env.Service.Admin.Export(env.Context, cpaTestWorkspaceID, admin.ExportRequest{})
+	pkg, err := env.Service.Admin.Export(
+		env.Context,
+		cpaTestWorkspaceID,
+		admin.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export all offers: %v", err)
 	}
@@ -1508,27 +2109,35 @@ func TestCPA_AdminExportAndFailOnConflictInspectAllOffers(t *testing.T) {
 		t.Fatalf("exported offers = %d, want 1001", len(pkg.Offers))
 	}
 
-	_, err = env.Service.Admin.Import(env.Context, cpaTestWorkspaceID, admin.ImportRequest{
-		Package: admin.ExportPackage{
-			Format:  repository.ExportFormat,
-			Service: "cpa",
-			Offers: []admin.ExportOffer{
-				{
-					ID:         "offer-0000",
-					Payload:    json.RawMessage(`{}`),
-					CodeMode:   repository.CodeModeShared,
-					SharedCode: stringPointer("CONFLICT"),
+	_, err = env.Service.Admin.Import(
+		env.Context,
+		cpaTestWorkspaceID,
+		admin.ImportRequest{
+			Package: admin.ExportPackage{
+				Format:  repository.ExportFormat,
+				Service: "cpa",
+				Offers: []admin.ExportOffer{
+					{
+						ID:         "offer-0000",
+						Payload:    json.RawMessage(`{}`),
+						CodeMode:   repository.CodeModeShared,
+						SharedCode: stringPointer("CONFLICT"),
+					},
 				},
 			},
+			ConflictStrategy: repository.ImportConflictFail,
 		},
-		ConflictStrategy: repository.ImportConflictFail,
-	})
+	)
 	if err == nil {
-		t.Fatal("fail_on_conflict must find an offer beyond the first 1000 rows")
+		t.Fatal(
+			"fail_on_conflict must find an offer beyond the first 1000 rows",
+		)
 	}
 }
 
-func TestCPA_AdminImportFailOnConflictIsAtomicAgainstConcurrentOfferWrite(t *testing.T) {
+func TestCPA_AdminImportFailOnConflictIsAtomicAgainstConcurrentOfferWrite(
+	t *testing.T,
+) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	transaction, err := env.Database.BeginTx(env.Context, nil)
 	if err != nil {
@@ -1546,14 +2155,20 @@ func TestCPA_AdminImportFailOnConflictIsAtomicAgainstConcurrentOfferWrite(t *tes
 
 	result := make(chan error, 1)
 	go func() {
-		_, err := env.Service.Admin.Import(env.Context, cpaTestWorkspaceID, admin.ImportRequest{
-			Package: admin.ExportPackage{
-				Format:  repository.ExportFormat,
-				Service: "cpa",
-				Offers:  []admin.ExportOffer{cpaTestExportOffer("concurrent-offer")},
+		_, err := env.Service.Admin.Import(
+			env.Context,
+			cpaTestWorkspaceID,
+			admin.ImportRequest{
+				Package: admin.ExportPackage{
+					Format:  repository.ExportFormat,
+					Service: "cpa",
+					Offers: []admin.ExportOffer{
+						cpaTestExportOffer("concurrent-offer"),
+					},
+				},
+				ConflictStrategy: repository.ImportConflictFail,
 			},
-			ConflictStrategy: repository.ImportConflictFail,
-		})
+		)
 		result <- err
 	}()
 
@@ -1595,20 +2210,33 @@ INSERT INTO cpa_offer (
 		t.Fatalf("concurrent fail_on_conflict error = %v", err)
 	}
 
-	offer, err := env.Service.Admin.GetOffer(env.Context, cpaTestWorkspaceID, "concurrent-offer")
-	if err != nil || offer.SharedCode == nil || *offer.SharedCode != "CONCURRENT" {
-		t.Fatalf("concurrent offer was changed by failed import: offer=%+v err=%v", offer, err)
+	offer, err := env.Service.Admin.GetOffer(
+		env.Context,
+		cpaTestWorkspaceID,
+		"concurrent-offer",
+	)
+	if err != nil || offer.SharedCode == nil ||
+		*offer.SharedCode != "CONCURRENT" {
+		t.Fatalf(
+			"concurrent offer was changed by failed import: offer=%+v err=%v",
+			offer,
+			err,
+		)
 	}
 }
 
 func TestCPA_AdminImportRejectsUnsupportedPackage(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
-	_, err := env.Service.Admin.Import(env.Context, cpaTestWorkspaceID, admin.ImportRequest{
-		Package: admin.ExportPackage{
-			Format:  "unknown.export.v1",
-			Service: "cpa",
+	_, err := env.Service.Admin.Import(
+		env.Context,
+		cpaTestWorkspaceID,
+		admin.ImportRequest{
+			Package: admin.ExportPackage{
+				Format:  "unknown.export.v1",
+				Service: "cpa",
+			},
 		},
-	})
+	)
 	if err == nil {
 		t.Fatal("import must reject an unsupported package format")
 	}
@@ -1616,37 +2244,55 @@ func TestCPA_AdminImportRejectsUnsupportedPackage(t *testing.T) {
 
 func TestCPA_AdminImportRejectsInvalidOfferBeforeWrite(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
-	_, err := env.Service.Admin.Import(env.Context, cpaImportWorkspaceID, admin.ImportRequest{
-		Package: admin.ExportPackage{
-			Format:  repository.ExportFormat,
-			Service: "cpa",
-			Offers: []admin.ExportOffer{
-				{
-					ID:         "valid-offer",
-					Payload:    json.RawMessage(`{}`),
-					CodeMode:   repository.CodeModeShared,
-					SharedCode: stringPointer("VALID"),
-				},
-				{
-					ID:       "invalid-offer",
-					Payload:  json.RawMessage(`{}`),
-					CodeMode: repository.CodeModeShared,
+	_, err := env.Service.Admin.Import(
+		env.Context,
+		cpaImportWorkspaceID,
+		admin.ImportRequest{
+			Package: admin.ExportPackage{
+				Format:  repository.ExportFormat,
+				Service: "cpa",
+				Offers: []admin.ExportOffer{
+					{
+						ID:         "valid-offer",
+						Payload:    json.RawMessage(`{}`),
+						CodeMode:   repository.CodeModeShared,
+						SharedCode: stringPointer("VALID"),
+					},
+					{
+						ID:       "invalid-offer",
+						Payload:  json.RawMessage(`{}`),
+						CodeMode: repository.CodeModeShared,
+					},
 				},
 			},
 		},
-	})
+	)
 	if serviceerrors.CodeOf(err) != serviceerrors.CodeInvalidFields {
-		t.Fatalf("invalid import error code = %q, want %q; err=%v", serviceerrors.CodeOf(err), serviceerrors.CodeInvalidFields, err)
+		t.Fatalf(
+			"invalid import error code = %q, want %q; err=%v",
+			serviceerrors.CodeOf(err),
+			serviceerrors.CodeInvalidFields,
+			err,
+		)
 	}
 	var validationErr *repository.ImportValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("import error must expose ImportValidationError: %v", err)
 	}
 	if validationErr.OfferIndex != 1 || validationErr.Field != "shared_code" {
-		t.Fatalf("invalid import context = %+v, want offer[1].shared_code", validationErr)
+		t.Fatalf(
+			"invalid import context = %+v, want offer[1].shared_code",
+			validationErr,
+		)
 	}
-	if _, getErr := env.Service.Admin.GetOffer(env.Context, cpaImportWorkspaceID, "valid-offer"); getErr == nil {
-		t.Fatal("invalid import must not write offers before validation completes")
+	if _, getErr := env.Service.Admin.GetOffer(
+		env.Context,
+		cpaImportWorkspaceID,
+		"valid-offer",
+	); getErr == nil {
+		t.Fatal(
+			"invalid import must not write offers before validation completes",
+		)
 	}
 }
 
@@ -1722,25 +2368,47 @@ func TestCPA_AdminImportRejectsInvalidNestedDataBeforeWrite(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			env := newCPATestEnvironment(t, testCPAOptions())
-			_, err := env.Service.Admin.Import(env.Context, cpaImportWorkspaceID, admin.ImportRequest{
-				Package: admin.ExportPackage{
-					Format:  repository.ExportFormat,
-					Service: "cpa",
-					Offers:  test.offers,
+			_, err := env.Service.Admin.Import(
+				env.Context,
+				cpaImportWorkspaceID,
+				admin.ImportRequest{
+					Package: admin.ExportPackage{
+						Format:  repository.ExportFormat,
+						Service: "cpa",
+						Offers:  test.offers,
+					},
 				},
-			})
+			)
 			if serviceerrors.CodeOf(err) != serviceerrors.CodeInvalidFields {
-				t.Fatalf("invalid import error code = %q, want %q; err=%v", serviceerrors.CodeOf(err), serviceerrors.CodeInvalidFields, err)
+				t.Fatalf(
+					"invalid import error code = %q, want %q; err=%v",
+					serviceerrors.CodeOf(err),
+					serviceerrors.CodeInvalidFields,
+					err,
+				)
 			}
 			var validationErr *repository.ImportValidationError
 			if !errors.As(err, &validationErr) {
-				t.Fatalf("import error must expose ImportValidationError: %v", err)
+				t.Fatalf(
+					"import error must expose ImportValidationError: %v",
+					err,
+				)
 			}
 			if validationErr.Field != test.wantField {
-				t.Fatalf("invalid import field = %q, want %q", validationErr.Field, test.wantField)
+				t.Fatalf(
+					"invalid import field = %q, want %q",
+					validationErr.Field,
+					test.wantField,
+				)
 			}
-			if _, getErr := env.Service.Admin.GetOffer(env.Context, cpaImportWorkspaceID, test.absentOffer); getErr == nil {
-				t.Fatal("invalid import must not write any offer before validation completes")
+			if _, getErr := env.Service.Admin.GetOffer(
+				env.Context,
+				cpaImportWorkspaceID,
+				test.absentOffer,
+			); getErr == nil {
+				t.Fatal(
+					"invalid import must not write any offer before validation completes",
+				)
 			}
 		})
 	}
@@ -1764,20 +2432,26 @@ func TestCPA_AdminListAssignmentEventsFiltersByEventType(t *testing.T) {
 		t.Fatalf("complete assignment: %v", err)
 	}
 
-	events, err := env.Service.Admin.ListAssignmentEvents(env.Context, admin.AssignmentEventListParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		CPAID:       "event-filter-offer",
-		EventType:   cpa.AssignmentEventTypeCompleted,
-	})
+	events, err := env.Service.Admin.ListAssignmentEvents(
+		env.Context,
+		admin.AssignmentEventListParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			CPAID:       "event-filter-offer",
+			EventType:   cpa.AssignmentEventTypeCompleted,
+		},
+	)
 	if err != nil {
 		t.Fatalf("list completed events: %v", err)
 	}
-	if len(events) != 1 || events[0].EventType != cpa.AssignmentEventTypeCompleted {
+	if len(events) != 1 ||
+		events[0].EventType != cpa.AssignmentEventTypeCompleted {
 		t.Fatalf("completed events = %+v, want one completed event", events)
 	}
 }
 
-func TestCPA_AdminImportBatchesPackageBeyondPostgreSQLParameterLimit(t *testing.T) {
+func TestCPA_AdminImportBatchesPackageBeyondPostgreSQLParameterLimit(
+	t *testing.T,
+) {
 	const offerCount = 5500
 	env := newCPATestEnvironment(t, testCPAOptions())
 	pkg := admin.ExportPackage{
@@ -1795,22 +2469,38 @@ func TestCPA_AdminImportBatchesPackageBeyondPostgreSQLParameterLimit(t *testing.
 		})
 	}
 
-	result, err := env.Service.Admin.Import(env.Context, cpaImportWorkspaceID, admin.ImportRequest{
-		Package:          pkg,
-		ConflictStrategy: repository.ImportConflictUpdate,
-	})
+	result, err := env.Service.Admin.Import(
+		env.Context,
+		cpaImportWorkspaceID,
+		admin.ImportRequest{
+			Package:          pkg,
+			ConflictStrategy: repository.ImportConflictUpdate,
+		},
+	)
 	if err != nil {
 		t.Fatalf("import %d offers: %v", offerCount, err)
 	}
 	if result.Imported.Offers != offerCount {
-		t.Fatalf("imported offers = %d, want %d", result.Imported.Offers, offerCount)
+		t.Fatalf(
+			"imported offers = %d, want %d",
+			result.Imported.Offers,
+			offerCount,
+		)
 	}
-	exported, err := env.Service.Admin.Export(env.Context, cpaImportWorkspaceID, admin.ExportRequest{})
+	exported, err := env.Service.Admin.Export(
+		env.Context,
+		cpaImportWorkspaceID,
+		admin.ExportRequest{},
+	)
 	if err != nil {
 		t.Fatalf("export imported offers: %v", err)
 	}
 	if len(exported.Offers) != offerCount {
-		t.Fatalf("exported offers = %d, want %d", len(exported.Offers), offerCount)
+		t.Fatalf(
+			"exported offers = %d, want %d",
+			len(exported.Offers),
+			offerCount,
+		)
 	}
 }
 
@@ -1830,24 +2520,36 @@ func TestCPA_WriteSucceedsWhenCacheInvalidationFails(t *testing.T) {
 		},
 	})
 
-	if err := env.Service.Admin.UpsertOffer(env.Context, admin.UpsertOfferParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		ID:          "cache-failure-offer",
-		Payload:     json.RawMessage(`{}`),
-		CodeMode:    repository.CodeModeShared,
-		SharedCode:  stringPointer("CACHE-FAILURE"),
-		IsActive:    true,
-	}); err != nil {
-		t.Fatalf("write must not fail because cache invalidation failed: %v", err)
+	if err := env.Service.Admin.UpsertOffer(
+		env.Context,
+		admin.UpsertOfferParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			ID:          "cache-failure-offer",
+			Payload:     json.RawMessage(`{}`),
+			CodeMode:    repository.CodeModeShared,
+			SharedCode:  stringPointer("CACHE-FAILURE"),
+			IsActive:    true,
+		},
+	); err != nil {
+		t.Fatalf(
+			"write must not fail because cache invalidation failed: %v",
+			err,
+		)
 	}
 
 	mu.Lock()
 	err := diagnostic
 	mu.Unlock()
 	if err == nil {
-		t.Fatal("cache invalidation failure must be reported through the diagnostic callback")
+		t.Fatal(
+			"cache invalidation failure must be reported through the diagnostic callback",
+		)
 	}
-	if _, err := env.Service.Admin.GetOffer(env.Context, cpaTestWorkspaceID, "cache-failure-offer"); err != nil {
+	if _, err := env.Service.Admin.GetOffer(
+		env.Context,
+		cpaTestWorkspaceID,
+		"cache-failure-offer",
+	); err != nil {
 		t.Fatalf("offer write was not committed: %v", err)
 	}
 }
@@ -1917,7 +2619,13 @@ func TestCPA_RunBlocksUntilContextCanceled(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if err := service.Run(context.Background(), params); !errors.Is(err, cpa.ErrServiceRunning) {
+	if err := service.Run(
+		context.Background(),
+		params,
+	); !errors.Is(
+		err,
+		cpa.ErrServiceRunning,
+	) {
 		cancel()
 		t.Fatalf("second Run error = %v, want ErrServiceRunning", err)
 	}
@@ -1938,9 +2646,20 @@ func TestCPA_IsReadyReflectsInitialization(t *testing.T) {
 	if service.Admin == nil || service.User == nil || service.IsReady() {
 		t.Fatal("new CPA public facades are invalid")
 	}
-	if _, err := service.User.ListActive(context.Background(), user.ListActiveParams{
-		Identity: user.Identity{WorkspaceID: cpaTestWorkspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "user"},
-	}); !errors.Is(err, sqlwrap.ErrServiceNotReady) {
+	if _, err := service.User.ListActive(
+		context.Background(),
+		user.ListActiveParams{
+			Identity: user.Identity{
+				WorkspaceID:    cpaTestWorkspaceID,
+				AppID:          1,
+				PlatformID:     1,
+				PlatformUserID: "user",
+			},
+		},
+	); !errors.Is(
+		err,
+		sqlwrap.ErrServiceNotReady,
+	) {
 		t.Fatalf("unready CPA user error = %v", err)
 	}
 	if cpa.New().IsReady() {
@@ -1952,7 +2671,10 @@ func TestCPA_IsReadyReflectsInitialization(t *testing.T) {
 	}
 }
 
-func newCPATestEnvironment(tb testing.TB, options cpa.Options) cpaTestEnvironment {
+func newCPATestEnvironment(
+	tb testing.TB,
+	options cpa.Options,
+) cpaTestEnvironment {
 	tb.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	tb.Cleanup(cancel)
@@ -1968,12 +2690,22 @@ func newCPATestEnvironment(tb testing.TB, options cpa.Options) cpaTestEnvironmen
 		time.Now().UnixNano(),
 		cpaTestDatabaseSequence.Add(1),
 	)
-	if _, err := adminDB.ExecContext(ctx, "CREATE DATABASE "+database); err != nil {
+	if _, err := adminDB.ExecContext(
+		ctx,
+		"CREATE DATABASE "+database,
+	); err != nil {
 		tb.Fatalf("create test database: %v", err)
 	}
 	tb.Cleanup(func() {
-		_, _ = adminDB.ExecContext(context.Background(), "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()", database)
-		_, _ = adminDB.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+database)
+		_, _ = adminDB.ExecContext(
+			context.Background(),
+			"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
+			database,
+		)
+		_, _ = adminDB.ExecContext(
+			context.Background(),
+			"DROP DATABASE IF EXISTS "+database,
+		)
 	})
 
 	appDB, err := openCPATestPostgres(database)
@@ -2006,7 +2738,11 @@ func newCPATestEnvironment(tb testing.TB, options cpa.Options) cpaTestEnvironmen
 	}
 }
 
-func newCPAAdditionalNode(tb testing.TB, env cpaTestEnvironment, options cpa.Options) *cpa.CPA {
+func newCPAAdditionalNode(
+	tb testing.TB,
+	env cpaTestEnvironment,
+	options cpa.Options,
+) *cpa.CPA {
 	tb.Helper()
 	service, err := cpa.NewWithDatabase(env.Context, env.Database, options)
 	if err != nil {
@@ -2049,16 +2785,24 @@ func cpaTestIdentity(platformUserID string) user.Identity {
 	}
 }
 
-func upsertSharedOffer(tb testing.TB, env cpaTestEnvironment, id string, active bool) {
+func upsertSharedOffer(
+	tb testing.TB,
+	env cpaTestEnvironment,
+	id string,
+	active bool,
+) {
 	tb.Helper()
-	if err := env.Service.Admin.UpsertOffer(env.Context, admin.UpsertOfferParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		ID:          id,
-		Payload:     json.RawMessage(`{"kind":"offer"}`),
-		CodeMode:    repository.CodeModeShared,
-		SharedCode:  stringPointer("SHARED-" + id),
-		IsActive:    active,
-	}); err != nil {
+	if err := env.Service.Admin.UpsertOffer(
+		env.Context,
+		admin.UpsertOfferParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			ID:          id,
+			Payload:     json.RawMessage(`{"kind":"offer"}`),
+			CodeMode:    repository.CodeModeShared,
+			SharedCode:  stringPointer("SHARED-" + id),
+			IsActive:    active,
+		},
+	); err != nil {
 		tb.Fatalf("upsert shared offer %q: %v", id, err)
 	}
 }
@@ -2075,14 +2819,17 @@ func cpaTestExportOffer(id string) admin.ExportOffer {
 func upsertPoolOffer(tb testing.TB, env cpaTestEnvironment, id string) {
 	tb.Helper()
 	pool := repository.CodeSourcePool
-	if err := env.Service.Admin.UpsertOffer(env.Context, admin.UpsertOfferParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		ID:          id,
-		Payload:     json.RawMessage(`{"kind":"pool"}`),
-		CodeMode:    repository.CodeModePersonal,
-		CodeSource:  &pool,
-		IsActive:    true,
-	}); err != nil {
+	if err := env.Service.Admin.UpsertOffer(
+		env.Context,
+		admin.UpsertOfferParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			ID:          id,
+			Payload:     json.RawMessage(`{"kind":"pool"}`),
+			CodeMode:    repository.CodeModePersonal,
+			CodeSource:  &pool,
+			IsActive:    true,
+		},
+	); err != nil {
 		tb.Fatalf("upsert pool offer %q: %v", id, err)
 	}
 }
@@ -2099,7 +2846,12 @@ func addPoolCode(tb testing.TB, env cpaTestEnvironment, cpaID, code string) {
 	}
 }
 
-func issueCode(tb testing.TB, env cpaTestEnvironment, identity user.Identity, cpaID string) user.GetCodeResult {
+func issueCode(
+	tb testing.TB,
+	env cpaTestEnvironment,
+	identity user.Identity,
+	cpaID string,
+) user.GetCodeResult {
 	tb.Helper()
 	result, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
 		Identity: identity,
@@ -2124,45 +2876,69 @@ func assertAssignmentIsVisible(
 		CPAID:    cpaID,
 	})
 	if err != nil || status == nil || status.ID != assignmentID {
-		tb.Fatalf("assignment status disappeared: status=%+v err=%v", status, err)
+		tb.Fatalf(
+			"assignment status disappeared: status=%+v err=%v",
+			status,
+			err,
+		)
 	}
-	offers, err := env.Service.User.ListActive(env.Context, user.ListActiveParams{
-		Identity: identity,
-		Locale:   "ru",
-	})
+	offers, err := env.Service.User.ListActive(
+		env.Context,
+		user.ListActiveParams{
+			Identity: identity,
+			Locale:   "ru",
+		},
+	)
 	if err != nil {
 		tb.Fatalf("list active offers: %v", err)
 	}
 	for _, offer := range offers {
-		if offer.ID == cpaID && offer.Assignment != nil && offer.Assignment.ID == assignmentID {
+		if offer.ID == cpaID && offer.Assignment != nil &&
+			offer.Assignment.ID == assignmentID {
 			return
 		}
 	}
 	tb.Fatalf("assignment %d is missing from active offers", assignmentID)
 }
 
-func upsertLocalization(tb testing.TB, env cpaTestEnvironment, cpaID, locale, title string) {
+func upsertLocalization(
+	tb testing.TB,
+	env cpaTestEnvironment,
+	cpaID, locale, title string,
+) {
 	tb.Helper()
-	if err := env.Service.Admin.UpsertLocalization(env.Context, admin.UpsertLocalizationParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		CPAID:       cpaID,
-		Locale:      locale,
-		Title:       title,
-		Description: title + " description",
-	}); err != nil {
+	if err := env.Service.Admin.UpsertLocalization(
+		env.Context,
+		admin.UpsertLocalizationParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			CPAID:       cpaID,
+			Locale:      locale,
+			Title:       title,
+			Description: title + " description",
+		},
+	); err != nil {
 		tb.Fatalf("upsert localization: %v", err)
 	}
 }
 
-func upsertReward(tb testing.TB, env cpaTestEnvironment, cpaID, key string, quantity int64, scale uint16) {
+func upsertReward(
+	tb testing.TB,
+	env cpaTestEnvironment,
+	cpaID, key string,
+	quantity int64,
+	scale uint16,
+) {
 	tb.Helper()
-	if err := env.Service.Admin.UpsertReward(env.Context, admin.UpsertRewardParams{
-		WorkspaceID: cpaTestWorkspaceID,
-		CPAID:       cpaID,
-		Key:         key,
-		Quantity:    quantity,
-		Scale:       scale,
-	}); err != nil {
+	if err := env.Service.Admin.UpsertReward(
+		env.Context,
+		admin.UpsertRewardParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			CPAID:       cpaID,
+			Key:         key,
+			Quantity:    quantity,
+			Scale:       scale,
+		},
+	); err != nil {
 		tb.Fatalf("upsert reward: %v", err)
 	}
 }
@@ -2204,7 +2980,11 @@ type failingCPAVersionCache struct {
 	*cpaTestCache
 }
 
-func (c *failingCPAVersionCache) Set(key string, value []byte, expiration time.Duration) error {
+func (c *failingCPAVersionCache) Set(
+	key string,
+	value []byte,
+	expiration time.Duration,
+) error {
 	if strings.HasPrefix(key, "cache_version:") {
 		return errors.New("cache version backend is unavailable")
 	}
@@ -2229,7 +3009,11 @@ func (c *cpaTestCache) GetWithTTL(key string) ([]byte, time.Duration, error) {
 	return append([]byte(nil), entry.value...), time.Until(entry.expiresAt), nil
 }
 
-func (c *cpaTestCache) Set(key string, value []byte, expiration time.Duration) error {
+func (c *cpaTestCache) Set(
+	key string,
+	value []byte,
+	expiration time.Duration,
+) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	entry := cpaTestCacheEntry{value: append([]byte(nil), value...)}

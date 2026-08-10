@@ -1,8 +1,9 @@
 package repository
 
 import (
-	json "github.com/goccy/go-json"
 	"time"
+
+	json "github.com/goccy/go-json"
 )
 
 const (

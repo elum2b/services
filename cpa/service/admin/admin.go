@@ -21,14 +21,26 @@ func New(ctx context.Context, db *sqlwrap.Client) *Admin {
 	return NewWithOptions(ctx, db, 0)
 }
 
-func NewWithOptions(ctx context.Context, db *sqlwrap.Client, queryTimeout time.Duration) *Admin {
+func NewWithOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	queryTimeout time.Duration,
+) *Admin {
 	return NewWithRepositoryOptions(ctx, db, repository.Options{
 		QueryTimeout: queryTimeout,
 	})
 }
 
-func NewWithRepositoryOptions(ctx context.Context, db *sqlwrap.Client, options repository.Options) *Admin {
-	repo, err := repository.NewPreparedWithOptions(context.Background(), db, options)
+func NewWithRepositoryOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options repository.Options,
+) *Admin {
+	repo, err := repository.NewPreparedWithOptions(
+		context.Background(),
+		db,
+		options,
+	)
 	if err != nil {
 		repo = repository.NewWithOptions(db, options)
 	}
@@ -53,6 +65,8 @@ func (a *Admin) Close() error {
 	return err
 }
 
-func (a *Admin) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (a *Admin) withContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	return contextutil.Merge(a.rootCtx, ctx)
 }

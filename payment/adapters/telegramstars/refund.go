@@ -4,7 +4,10 @@ import (
 	"context"
 )
 
-func (a *TelegramStars) Execute(ctx context.Context, params RefundParams) (RefundResult, error) {
+func (a *TelegramStars) Execute(
+	ctx context.Context,
+	params RefundParams,
+) (RefundResult, error) {
 	if a == nil {
 		return RefundResult{}, ErrNotInitialized
 	}
@@ -12,7 +15,9 @@ func (a *TelegramStars) Execute(ctx context.Context, params RefundParams) (Refun
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	if err := NewClient(params.Credentials).RefundStarPayment(ctx, refundStarPaymentRequest{
+	if err := NewClient(
+		params.Credentials,
+	).RefundStarPayment(ctx, refundStarPaymentRequest{
 		UserID:                  params.UserID,
 		TelegramPaymentChargeID: params.TelegramPaymentChargeID,
 	}); err != nil {

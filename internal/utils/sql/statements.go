@@ -49,7 +49,9 @@ func SplitStatements(raw string) ([]string, error) {
 					index += len(delimiter) - 1
 				}
 			case ';':
-				if statement := strings.TrimSpace(raw[start:index]); statement != "" {
+				if statement := strings.TrimSpace(
+					raw[start:index],
+				); statement != "" {
 					result = append(result, statement)
 				}
 				start = index + 1
@@ -138,7 +140,8 @@ func dollarQuoteDelimiter(value string) (string, bool) {
 }
 
 func isDollarQuoteIdentifierStart(value byte) bool {
-	return value == '_' || value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z'
+	return value == '_' || value >= 'a' && value <= 'z' ||
+		value >= 'A' && value <= 'Z'
 }
 
 func isDollarQuoteIdentifierPart(value byte) bool {

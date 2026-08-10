@@ -7,8 +7,14 @@ import (
 
 func TestDefaultOptions(t *testing.T) {
 	opt := defaultOptions()
-	if opt.MaxConnections != 20 || opt.CacheSize != 1000 || opt.CacheTTLCheck != 5*time.Minute {
-		t.Fatalf("unexpected defaults: connections=%d size=%d ttl=%s", opt.MaxConnections, opt.CacheSize, opt.CacheTTLCheck)
+	if opt.MaxConnections != 20 || opt.CacheSize != 1000 ||
+		opt.CacheTTLCheck != 5*time.Minute {
+		t.Fatalf(
+			"unexpected defaults: connections=%d size=%d ttl=%s",
+			opt.MaxConnections,
+			opt.CacheSize,
+			opt.CacheTTLCheck,
+		)
 	}
 }
 
@@ -33,7 +39,11 @@ func TestDefaultOptions_Merge(t *testing.T) {
 		t.Fatal("expected cache object merged")
 	}
 	if opt.CacheSize != 7 || opt.CacheTTLCheck != 2*time.Minute {
-		t.Fatalf("unexpected cache opts: size=%d ttl=%s", opt.CacheSize, opt.CacheTTLCheck)
+		t.Fatalf(
+			"unexpected cache opts: size=%d ttl=%s",
+			opt.CacheSize,
+			opt.CacheTTLCheck,
+		)
 	}
 	if opt.MaxConnections != 9 {
 		t.Fatalf("unexpected max connections: %d", opt.MaxConnections)

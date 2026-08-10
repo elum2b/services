@@ -21,13 +21,16 @@ func (a *Product) AddItem(ctx context.Context, params AddItemParams) error {
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 
-	return a.repository.UpsertProductItem(ctx, repository.ProductItemUpsertParams{
-		ProductID:    params.ProductID,
-		WorkspaceID:  params.WorkspaceID,
-		ItemID:       params.ItemID,
-		RewardType:   params.RewardType,
-		Quantity:     params.Quantity,
-		Scale:        params.Scale,
-		DurationUnit: params.DurationUnit,
-	})
+	return a.repository.UpsertProductItem(
+		ctx,
+		repository.ProductItemUpsertParams{
+			ProductID:    params.ProductID,
+			WorkspaceID:  params.WorkspaceID,
+			ItemID:       params.ItemID,
+			RewardType:   params.RewardType,
+			Quantity:     params.Quantity,
+			Scale:        params.Scale,
+			DurationUnit: params.DurationUnit,
+		},
+	)
 }

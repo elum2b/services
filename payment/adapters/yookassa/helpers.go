@@ -10,8 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	utils "github.com/elum2b/services/internal/utils"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	utils "github.com/elum2b/services/internal/utils"
 )
 
 func formatRubMinor(amountMinor uint64) string {
@@ -34,7 +35,10 @@ func parseRubAmount(value string) (uint64, error) {
 		fraction += "0"
 	}
 	if len(fraction) > 2 {
-		return 0, fmt.Errorf("yookassa: invalid RUB amount precision: %s", value)
+		return 0, fmt.Errorf(
+			"yookassa: invalid RUB amount precision: %s",
+			value,
+		)
 	}
 	major, err := strconv.ParseUint(whole, 10, 64)
 	if err != nil {
@@ -52,7 +56,10 @@ func parseRubAmount(value string) (uint64, error) {
 }
 
 func webhookEventID(webhook webhookPayload) string {
-	return strings.Join([]string{webhook.Event, webhook.Object.ID, webhook.Object.Status}, ":")
+	return strings.Join(
+		[]string{webhook.Event, webhook.Object.ID, webhook.Object.Status},
+		":",
+	)
 }
 
 func sha256Hex(raw []byte) string {

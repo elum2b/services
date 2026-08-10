@@ -107,14 +107,24 @@ func New(db *sql.DB) *Store {
 
 func NewWithTable(db *sql.DB, tableName string) *Store {
 	tableName = normalizeTableName(tableName)
-	return &Store{db: db, executor: db, tableName: tableName, postgres: isPostgresDB(db)}
+	return &Store{
+		db:        db,
+		executor:  db,
+		tableName: tableName,
+		postgres:  isPostgresDB(db),
+	}
 }
 
 func (s *Store) WithTx(tx *sql.Tx) *Store {
 	if s == nil {
 		return nil
 	}
-	return &Store{db: s.db, executor: tx, tableName: s.tableName, postgres: s.postgres}
+	return &Store{
+		db:        s.db,
+		executor:  tx,
+		tableName: s.tableName,
+		postgres:  s.postgres,
+	}
 }
 
 func (s *Store) Close() error { return nil }
@@ -134,7 +144,10 @@ func BootstrapTable(ctx context.Context, db *sql.DB, tableName string) error {
 	return bootstrapMySQLTable(ctx, db, tableName)
 }
 
-func (s *Store) CreateEvent(ctx context.Context, params CreateParams) (uint64, error) {
+func (s *Store) CreateEvent(
+	ctx context.Context,
+	params CreateParams,
+) (uint64, error) {
 	if err := s.validate(); err != nil {
 		return 0, err
 	}
@@ -164,14 +177,22 @@ func (s *Store) CreateEvent(ctx context.Context, params CreateParams) (uint64, e
 		return 0, errors.New("callback: idempotency key is required")
 	}
 	if !s.postgres {
-		result, err := s.executor.ExecContext(ctx, fmt.Sprintf(`
+		result, err := s.executor.ExecContext(
+			ctx,
+			fmt.Sprintf(`
 INSERT INTO %s (
     workspace_id, source_service, event_type, event_key, idempotency_key,
     payload, payload_content_type, next_attempt_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`, s.table()),
-			workspaceID, sourceService, params.EventType, params.EventKey, idempotencyKey,
-			params.Payload, contentType, nextAttemptAt,
+			workspaceID,
+			sourceService,
+			params.EventType,
+			params.EventKey,
+			idempotencyKey,
+			params.Payload,
+			contentType,
+			nextAttemptAt,
 		)
 		if err != nil {
 			return 0, err
@@ -180,7 +201,9 @@ ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`, s.table()),
 		return uint64(id), err
 	}
 	var id int64
-	err = s.executor.QueryRowContext(ctx, fmt.Sprintf(`
+	err = s.executor.QueryRowContext(
+		ctx,
+		fmt.Sprintf(`
 INSERT INTO %s (
     workspace_id, source_service, event_type, event_key, idempotency_key,
     payload, payload_content_type, next_attempt_at
@@ -188,13 +211,23 @@ INSERT INTO %s (
 ON CONFLICT (idempotency_key) DO UPDATE SET
     idempotency_key = EXCLUDED.idempotency_key
 RETURNING id`, s.table()),
-		workspaceID, sourceService, params.EventType, params.EventKey, idempotencyKey,
-		params.Payload, contentType, nextAttemptAt,
+		workspaceID,
+		sourceService,
+		params.EventType,
+		params.EventKey,
+		idempotencyKey,
+		params.Payload,
+		contentType,
+		nextAttemptAt,
 	).Scan(&id)
 	return uint64(id), err
 }
 
-func (s *Store) GetEvent(ctx context.Context, workspaceID string, id uint64) (Event, error) {
+func (s *Store) GetEvent(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (Event, error) {
 	if err := s.validate(); err != nil {
 		return Event{}, err
 	}
@@ -215,7 +248,10 @@ SELECT %s FROM %s WHERE workspace_id = ? AND id = ? LIMIT 1`, eventColumns, s.ta
 	return mapEvent(value), nil
 }
 
-func (s *Store) AdminListEvents(ctx context.Context, params AdminListEventsParams) ([]Event, error) {
+func (s *Store) AdminListEvents(
+	ctx context.Context,
+	params AdminListEventsParams,
+) ([]Event, error) {
 	if err := s.validate(); err != nil {
 		return nil, err
 	}
@@ -257,7 +293,11 @@ LIMIT ? OFFSET ?`, eventColumns, s.table())
 	return result, rows.Err()
 }
 
-func (s *Store) AdminRetryEventNow(ctx context.Context, workspaceID string, id uint64) (int64, error) {
+func (s *Store) AdminRetryEventNow(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (int64, error) {
 	workspaceID, err := requireWorkspaceID(workspaceID)
 	if err != nil {
 		return 0, err
@@ -268,7 +308,11 @@ SET status = 'pending', next_attempt_at = NOW(), locked_by = NULL,
 WHERE workspace_id = ? AND id = ? AND status IN ('pending', 'processing')`, workspaceID, int64(id))
 }
 
-func (s *Store) AdminMarkEventOK(ctx context.Context, workspaceID string, id uint64) (int64, error) {
+func (s *Store) AdminMarkEventOK(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (int64, error) {
 	workspaceID, err := requireWorkspaceID(workspaceID)
 	if err != nil {
 		return 0, err
@@ -279,7 +323,12 @@ SET status = 'ok', delivered_at = NOW(), locked_by = NULL,
 WHERE workspace_id = ? AND id = ? AND status IN ('pending', 'processing')`, workspaceID, int64(id))
 }
 
-func (s *Store) AdminMarkEventReject(ctx context.Context, workspaceID string, id uint64, reason string) (int64, error) {
+func (s *Store) AdminMarkEventReject(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+	reason string,
+) (int64, error) {
 	workspaceID, err := requireWorkspaceID(workspaceID)
 	if err != nil {
 		return 0, err
@@ -290,7 +339,10 @@ SET status = 'reject', rejected_at = NOW(), reject_reason = ?,
 WHERE workspace_id = ? AND id = ? AND status IN ('pending', 'processing')`, nullableString(reason), workspaceID, int64(id))
 }
 
-func (s *Store) AdminResetExpiredProcessing(ctx context.Context, workspaceID string) (int64, error) {
+func (s *Store) AdminResetExpiredProcessing(
+	ctx context.Context,
+	workspaceID string,
+) (int64, error) {
 	workspaceID, err := requireWorkspaceID(workspaceID)
 	if err != nil {
 		return 0, err
@@ -301,7 +353,10 @@ SET status = 'pending', locked_by = NULL, locked_until = NULL,
 WHERE workspace_id = ? AND status = 'processing' AND locked_until IS NOT NULL AND locked_until <= NOW()`, workspaceID)
 }
 
-func (s *Store) LeaseEvents(ctx context.Context, params LeaseParams) ([]storedEvent, error) {
+func (s *Store) LeaseEvents(
+	ctx context.Context,
+	params LeaseParams,
+) ([]storedEvent, error) {
 	if err := s.validate(); err != nil {
 		return nil, err
 	}
@@ -353,7 +408,10 @@ FOR UPDATE SKIP LOCKED`, eventColumns, txStore.table())
 		}
 
 		lockedBy := sql.NullString{String: workerID, Valid: true}
-		lockedUntil := sql.NullTime{Time: time.Now().UTC().Add(leaseTimeout), Valid: true}
+		lockedUntil := sql.NullTime{
+			Time:  time.Now().UTC().Add(leaseTimeout),
+			Valid: true,
+		}
 		for _, row := range candidates {
 			affected, err := txStore.execRows(ctx, `
 SET status = 'processing', locked_by = ?, locked_until = ?, updated_at = NOW()
@@ -389,7 +447,12 @@ WHERE id = ? AND status = 'processing' AND locked_by = ?`,
 	return leasedResult(rows, err)
 }
 
-func (s *Store) MarkReject(ctx context.Context, id uint64, workerID string, reason string) error {
+func (s *Store) MarkReject(
+	ctx context.Context,
+	id uint64,
+	workerID string,
+	reason string,
+) error {
 	rows, err := s.execRows(ctx, `
 SET status = 'reject', rejected_at = NOW(), reject_reason = ?,
     locked_by = NULL, locked_until = NULL, updated_at = NOW()
@@ -478,7 +541,11 @@ func (s *Store) withTx(ctx context.Context, fn func(*Store) error) error {
 	return tx.Commit()
 }
 
-func (s *Store) execRows(ctx context.Context, update string, args ...any) (int64, error) {
+func (s *Store) execRows(
+	ctx context.Context,
+	update string,
+	args ...any,
+) (int64, error) {
 	if err := s.validate(); err != nil {
 		return 0, err
 	}
@@ -531,7 +598,9 @@ func isPostgresDB(db *sql.DB) bool {
 		return false
 	}
 	driverName := fmt.Sprintf("%T", db.Driver())
-	return strings.Contains(driverName, "pgx") || strings.Contains(driverName, "pq") || strings.Contains(driverName, "stdlib")
+	return strings.Contains(driverName, "pgx") ||
+		strings.Contains(driverName, "pq") ||
+		strings.Contains(driverName, "stdlib")
 }
 
 func rewriteQuestionPlaceholders(query string) string {
@@ -550,7 +619,11 @@ func rewriteQuestionPlaceholders(query string) string {
 	return builder.String()
 }
 
-func bootstrapMySQLTable(ctx context.Context, db *sql.DB, tableName string) error {
+func bootstrapMySQLTable(
+	ctx context.Context,
+	db *sql.DB,
+	tableName string,
+) error {
 	table := quoteIdentifier(tableName)
 	statement := fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS %s (
@@ -579,12 +652,20 @@ CREATE TABLE IF NOT EXISTS %s (
     KEY callback_type_idx (event_type, status, created_at)
 )`, table)
 	if _, err := db.ExecContext(ctx, statement); err != nil {
-		return fmt.Errorf("callback schema statement failed for %s: %w", tableName, err)
+		return fmt.Errorf(
+			"callback schema statement failed for %s: %w",
+			tableName,
+			err,
+		)
 	}
 	return nil
 }
 
-func bootstrapPostgresTable(ctx context.Context, db *sql.DB, tableName string) error {
+func bootstrapPostgresTable(
+	ctx context.Context,
+	db *sql.DB,
+	tableName string,
+) error {
 	table := quotePostgresIdentifier(tableName)
 	statement := fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS %s (
@@ -612,21 +693,44 @@ CREATE TABLE IF NOT EXISTS %s (
     CONSTRAINT %s_idempotency_key_uq UNIQUE (idempotency_key)
 )`, table, tableName, tableName, tableName)
 	if _, err := db.ExecContext(ctx, statement); err != nil {
-		return fmt.Errorf("callback schema statement failed for %s: %w", tableName, err)
+		return fmt.Errorf(
+			"callback schema statement failed for %s: %w",
+			tableName,
+			err,
+		)
 	}
 	if _, err := db.ExecContext(
 		ctx,
-		fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(36) NOT NULL DEFAULT ''`, table),
+		fmt.Sprintf(
+			`ALTER TABLE %s ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(36) NOT NULL DEFAULT ''`,
+			table,
+		),
 	); err != nil {
-		return fmt.Errorf("callback workspace migration failed for %s: %w", tableName, err)
+		return fmt.Errorf(
+			"callback workspace migration failed for %s: %w",
+			tableName,
+			err,
+		)
 	}
 	indexes := []string{
-		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_due_idx ON %s (status, next_attempt_at, locked_until, id)`, tableName, table),
-		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_workspace_type_idx ON %s (workspace_id, event_type, status, created_at)`, tableName, table),
+		fmt.Sprintf(
+			`CREATE INDEX IF NOT EXISTS %s_due_idx ON %s (status, next_attempt_at, locked_until, id)`,
+			tableName,
+			table,
+		),
+		fmt.Sprintf(
+			`CREATE INDEX IF NOT EXISTS %s_workspace_type_idx ON %s (workspace_id, event_type, status, created_at)`,
+			tableName,
+			table,
+		),
 	}
 	for _, statement := range indexes {
 		if _, err := db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("callback schema statement failed for %s: %w", tableName, err)
+			return fmt.Errorf(
+				"callback schema statement failed for %s: %w",
+				tableName,
+				err,
+			)
 		}
 	}
 	return nil

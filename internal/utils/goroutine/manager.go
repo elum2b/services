@@ -41,7 +41,12 @@ func (m *Manager) Go(name string, fn func()) bool {
 	return true
 }
 
-func (m *Manager) GoRestart(ctx context.Context, name string, delay time.Duration, fn func()) bool {
+func (m *Manager) GoRestart(
+	ctx context.Context,
+	name string,
+	delay time.Duration,
+	fn func(),
+) bool {
 	if m == nil {
 		return false
 	}

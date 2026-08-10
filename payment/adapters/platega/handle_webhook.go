@@ -3,12 +3,16 @@ package platega
 import (
 	"context"
 
+	json "github.com/goccy/go-json"
+
 	utils "github.com/elum2b/services/internal/utils"
 	"github.com/elum2b/services/payment/repository"
-	json "github.com/goccy/go-json"
 )
 
-func (a *Platega) HandleWebhook(ctx context.Context, request WebhookRequest) (*WebhookResult, error) {
+func (a *Platega) HandleWebhook(
+	ctx context.Context,
+	request WebhookRequest,
+) (*WebhookResult, error) {
 
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
@@ -59,7 +63,8 @@ func (a *Platega) handlePayload(
 		return nil, ErrTransactionStateUnknown
 	}
 	amountMinor := uint64(0)
-	if payload.Status == StatusConfirmed || payload.Status == StatusChargebacked {
+	if payload.Status == StatusConfirmed ||
+		payload.Status == StatusChargebacked {
 		var err error
 		amountMinor, err = rubMinorFromMajor(payload.Amount)
 		if err != nil || amountMinor == 0 {
@@ -79,18 +84,21 @@ func (a *Platega) handlePayload(
 	}
 
 	eventID := webhookEventID(payload)
-	eventDBID, err := a.repository.CreateEvent(ctx, repository.EventCreateParams{
-		WorkspaceID:       workspaceID,
-		ProviderCode:      ProviderCode,
-		AttemptID:         utils.Ref(int64(attempt.ID)),
-		OrderID:           utils.Ref(int64(attempt.OrderID)),
-		ProviderEventID:   utils.Ref(eventID),
-		ProviderPaymentID: utils.Ref(payload.ID),
-		EventType:         "payment_status",
-		EventStatus:       utils.Ref(string(payload.Status)),
-		PayloadHash:       sha256Hex(raw),
-		SignatureValid:    utils.Ref(signatureValid),
-	})
+	eventDBID, err := a.repository.CreateEvent(
+		ctx,
+		repository.EventCreateParams{
+			WorkspaceID:       workspaceID,
+			ProviderCode:      ProviderCode,
+			AttemptID:         utils.Ref(int64(attempt.ID)),
+			OrderID:           utils.Ref(int64(attempt.OrderID)),
+			ProviderEventID:   utils.Ref(eventID),
+			ProviderPaymentID: utils.Ref(payload.ID),
+			EventType:         "payment_status",
+			EventStatus:       utils.Ref(string(payload.Status)),
+			PayloadHash:       sha256Hex(raw),
+			SignatureValid:    utils.Ref(signatureValid),
+		},
+	)
 	if err != nil && !isDuplicateEntry(err) {
 		return nil, err
 	}
@@ -112,23 +120,29 @@ func (a *Platega) handlePayload(
 		)
 		return result, err
 	case StatusCanceled, StatusExpired, StatusFailed:
-		err := a.repository.FinalizeProviderAttempt(ctx, repository.ProviderAttemptTerminalParams{
-			WorkspaceID:       workspaceID,
-			AttemptID:         attempt.ID,
-			ProviderCode:      ProviderCode,
-			ProviderPaymentID: payload.ID,
-			Status:            terminalStatus(payload.Status),
-		})
+		err := a.repository.FinalizeProviderAttempt(
+			ctx,
+			repository.ProviderAttemptTerminalParams{
+				WorkspaceID:       workspaceID,
+				AttemptID:         attempt.ID,
+				ProviderCode:      ProviderCode,
+				ProviderPaymentID: payload.ID,
+				Status:            terminalStatus(payload.Status),
+			},
+		)
 		return result, err
 	case StatusChargebacked:
-		chargeback, err := a.repository.ApplyProviderChargeback(ctx, repository.ProviderChargebackParams{
-			WorkspaceID:       workspaceID,
-			ProviderCode:      ProviderCode,
-			ProviderPaymentID: payload.ID,
-			AmountMinor:       amountMinor,
-			AssetCode:         payload.Currency,
-			Reason:            "provider_chargeback",
-		})
+		chargeback, err := a.repository.ApplyProviderChargeback(
+			ctx,
+			repository.ProviderChargebackParams{
+				WorkspaceID:       workspaceID,
+				ProviderCode:      ProviderCode,
+				ProviderPaymentID: payload.ID,
+				AmountMinor:       amountMinor,
+				AssetCode:         payload.Currency,
+				Reason:            "provider_chargeback",
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -142,14 +156,17 @@ func (a *Platega) handlePayload(
 		return result, nil
 	}
 
-	completed, err := a.repository.CompleteAttempt(ctx, repository.CompleteAttemptParams{
-		WorkspaceID:       attempt.WorkspaceID,
-		AttemptID:         attempt.ID,
-		ProviderCode:      ProviderCode,
-		ProviderPaymentID: utils.Ref(payload.ID),
-		AmountMinor:       amountMinor,
-		AssetCode:         payload.Currency,
-	})
+	completed, err := a.repository.CompleteAttempt(
+		ctx,
+		repository.CompleteAttemptParams{
+			WorkspaceID:       attempt.WorkspaceID,
+			AttemptID:         attempt.ID,
+			ProviderCode:      ProviderCode,
+			ProviderPaymentID: utils.Ref(payload.ID),
+			AmountMinor:       amountMinor,
+			AssetCode:         payload.Currency,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}

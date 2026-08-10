@@ -7,119 +7,189 @@ import (
 	refsqlc "github.com/elum2b/services/reference/sqlc"
 )
 
-func (r *Repository) CreateItem(ctx context.Context, params SaveItemParams) error {
+func (r *Repository) CreateItem(
+	ctx context.Context,
+	params SaveItemParams,
+) error {
 	if err := requireWorkspace(params.WorkspaceID); err != nil {
 		return err
 	}
-	err := r.withWorkspaceMutation(ctx, params.WorkspaceID, func(txRepo *Repository) error {
-		return txRepo.q.AdminCreateItem(ctx, refsqlc.AdminCreateItemParams{
-			WorkspaceID: params.WorkspaceID,
-			Key:         params.Key,
-			ItemType:    params.Type,
-			Payload:     params.Payload,
-			IsActive:    params.IsActive,
-		})
-	})
+	err := r.withWorkspaceMutation(
+		ctx,
+		params.WorkspaceID,
+		func(txRepo *Repository) error {
+			return txRepo.q.AdminCreateItem(ctx, refsqlc.AdminCreateItemParams{
+				WorkspaceID: params.WorkspaceID,
+				Key:         params.Key,
+				ItemType:    params.Type,
+				Payload:     params.Payload,
+				IsActive:    params.IsActive,
+			})
+		},
+	)
 	if err != nil {
 		return err
 	}
-	return r.bumpReferenceCacheVersions(params.WorkspaceID, referenceItemMutationCacheMethods...)
+	return r.bumpReferenceCacheVersions(
+		params.WorkspaceID,
+		referenceItemMutationCacheMethods...)
 }
 
-func (r *Repository) UpdateItem(ctx context.Context, params SaveItemParams) (int64, error) {
+func (r *Repository) UpdateItem(
+	ctx context.Context,
+	params SaveItemParams,
+) (int64, error) {
 	if err := requireWorkspace(params.WorkspaceID); err != nil {
 		return 0, err
 	}
 	var rows int64
-	err := r.withWorkspaceMutation(ctx, params.WorkspaceID, func(txRepo *Repository) error {
-		var err error
-		rows, err = txRepo.q.AdminUpdateItem(ctx, refsqlc.AdminUpdateItemParams{
-			Payload:     params.Payload,
-			IsActive:    params.IsActive,
-			WorkspaceID: params.WorkspaceID,
-			Key:         params.Key,
-		})
-		return err
-	})
+	err := r.withWorkspaceMutation(
+		ctx,
+		params.WorkspaceID,
+		func(txRepo *Repository) error {
+			var err error
+			rows, err = txRepo.q.AdminUpdateItem(
+				ctx,
+				refsqlc.AdminUpdateItemParams{
+					Payload:     params.Payload,
+					IsActive:    params.IsActive,
+					WorkspaceID: params.WorkspaceID,
+					Key:         params.Key,
+				},
+			)
+			return err
+		},
+	)
 	if err != nil || rows == 0 {
 		return rows, err
 	}
-	return rows, r.bumpReferenceCacheVersions(params.WorkspaceID, referenceItemMutationCacheMethods...)
+	return rows, r.bumpReferenceCacheVersions(
+		params.WorkspaceID,
+		referenceItemMutationCacheMethods...)
 }
 
-func (r *Repository) DangerousChangeType(ctx context.Context, params DangerousChangeTypeParams) (int64, error) {
+func (r *Repository) DangerousChangeType(
+	ctx context.Context,
+	params DangerousChangeTypeParams,
+) (int64, error) {
 	if err := requireWorkspace(params.WorkspaceID); err != nil {
 		return 0, err
 	}
 	var rows int64
-	err := r.withWorkspaceMutation(ctx, params.WorkspaceID, func(txRepo *Repository) error {
-		var err error
-		rows, err = txRepo.q.AdminDangerousChangeType(ctx, refsqlc.AdminDangerousChangeTypeParams{
-			ItemType:    params.NewType,
-			WorkspaceID: params.WorkspaceID,
-			Key:         params.Key,
-			ItemType_2:  params.CurrentType,
-		})
-		return err
-	})
+	err := r.withWorkspaceMutation(
+		ctx,
+		params.WorkspaceID,
+		func(txRepo *Repository) error {
+			var err error
+			rows, err = txRepo.q.AdminDangerousChangeType(
+				ctx,
+				refsqlc.AdminDangerousChangeTypeParams{
+					ItemType:    params.NewType,
+					WorkspaceID: params.WorkspaceID,
+					Key:         params.Key,
+					ItemType_2:  params.CurrentType,
+				},
+			)
+			return err
+		},
+	)
 	if err != nil || rows == 0 {
 		return rows, err
 	}
-	return rows, r.bumpReferenceCacheVersions(params.WorkspaceID, referenceItemMutationCacheMethods...)
+	return rows, r.bumpReferenceCacheVersions(
+		params.WorkspaceID,
+		referenceItemMutationCacheMethods...)
 }
 
-func (r *Repository) SoftDeleteItem(ctx context.Context, workspaceID, key string) (int64, error) {
+func (r *Repository) SoftDeleteItem(
+	ctx context.Context,
+	workspaceID, key string,
+) (int64, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return 0, err
 	}
 	var rows int64
-	err := r.withWorkspaceMutation(ctx, workspaceID, func(txRepo *Repository) error {
-		var err error
-		rows, err = txRepo.q.AdminSoftDeleteItem(ctx, refsqlc.AdminSoftDeleteItemParams{
-			WorkspaceID: workspaceID,
-			Key:         key,
-		})
-		return err
-	})
+	err := r.withWorkspaceMutation(
+		ctx,
+		workspaceID,
+		func(txRepo *Repository) error {
+			var err error
+			rows, err = txRepo.q.AdminSoftDeleteItem(
+				ctx,
+				refsqlc.AdminSoftDeleteItemParams{
+					WorkspaceID: workspaceID,
+					Key:         key,
+				},
+			)
+			return err
+		},
+	)
 	if err != nil || rows == 0 {
 		return rows, err
 	}
-	return rows, r.bumpReferenceCacheVersions(workspaceID, referenceItemMutationCacheMethods...)
+	return rows, r.bumpReferenceCacheVersions(
+		workspaceID,
+		referenceItemMutationCacheMethods...)
 }
 
-func (r *Repository) RestoreItem(ctx context.Context, workspaceID, key string, active bool) (int64, error) {
+func (r *Repository) RestoreItem(
+	ctx context.Context,
+	workspaceID, key string,
+	active bool,
+) (int64, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return 0, err
 	}
 	var rows int64
-	err := r.withWorkspaceMutation(ctx, workspaceID, func(txRepo *Repository) error {
-		var err error
-		rows, err = txRepo.q.AdminRestoreItem(ctx, refsqlc.AdminRestoreItemParams{
-			IsActive:    active,
-			WorkspaceID: workspaceID,
-			Key:         key,
-		})
-		return err
-	})
+	err := r.withWorkspaceMutation(
+		ctx,
+		workspaceID,
+		func(txRepo *Repository) error {
+			var err error
+			rows, err = txRepo.q.AdminRestoreItem(
+				ctx,
+				refsqlc.AdminRestoreItemParams{
+					IsActive:    active,
+					WorkspaceID: workspaceID,
+					Key:         key,
+				},
+			)
+			return err
+		},
+	)
 	if err != nil || rows == 0 {
 		return rows, err
 	}
-	return rows, r.bumpReferenceCacheVersions(workspaceID, referenceItemMutationCacheMethods...)
+	return rows, r.bumpReferenceCacheVersions(
+		workspaceID,
+		referenceItemMutationCacheMethods...)
 }
 
-func (r *Repository) AdminGetItem(ctx context.Context, workspaceID, key string) (Item, error) {
+func (r *Repository) AdminGetItem(
+	ctx context.Context,
+	workspaceID, key string,
+) (Item, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return Item{}, err
 	}
 	cacheKey := r.referenceCacheKey(referenceCacheAdminGet, workspaceID, key)
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key: cacheKey, Timeout: r.timeout, CacheVersionScope: referenceCacheScope(referenceCacheAdminGet, workspaceID),
-		CacheL1Delay: r.cacheL1, CacheL2Delay: r.cacheL2,
+		Key:     cacheKey,
+		Timeout: r.timeout,
+		CacheVersionScope: referenceCacheScope(
+			referenceCacheAdminGet,
+			workspaceID,
+		),
+		CacheL1Delay: r.cacheL1,
+		CacheL2Delay: r.cacheL2,
 	}, func(ctx context.Context) (Item, error) {
-		rows, err := r.q.AdminGetItemBundle(ctx, refsqlc.AdminGetItemBundleParams{
-			WorkspaceID: workspaceID,
-			Key:         key,
-		})
+		rows, err := r.q.AdminGetItemBundle(
+			ctx,
+			refsqlc.AdminGetItemBundleParams{
+				WorkspaceID: workspaceID,
+				Key:         key,
+			},
+		)
 		if err != nil {
 			return Item{}, err
 		}
@@ -153,7 +223,10 @@ func (r *Repository) AdminGetItem(ctx context.Context, workspaceID, key string) 
 	})
 }
 
-func (r *Repository) AdminListItems(ctx context.Context, params ListItemsParams) ([]Item, error) {
+func (r *Repository) AdminListItems(
+	ctx context.Context,
+	params ListItemsParams,
+) ([]Item, error) {
 	if err := requireWorkspace(params.WorkspaceID); err != nil {
 		return nil, err
 	}
@@ -162,8 +235,14 @@ func (r *Repository) AdminListItems(ctx context.Context, params ListItemsParams)
 		params.OnlyNotDeleted, params.Limit, params.Offset,
 	)
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key: cacheKey, Timeout: r.timeout, CacheVersionScope: referenceCacheScope(referenceCacheAdminList, params.WorkspaceID),
-		CacheL1Delay: r.cacheL1, CacheL2Delay: r.cacheL2,
+		Key:     cacheKey,
+		Timeout: r.timeout,
+		CacheVersionScope: referenceCacheScope(
+			referenceCacheAdminList,
+			params.WorkspaceID,
+		),
+		CacheL1Delay: r.cacheL1,
+		CacheL2Delay: r.cacheL2,
 	}, func(ctx context.Context) ([]Item, error) {
 		rows, err := r.q.AdminListItems(ctx, refsqlc.AdminListItemsParams{
 			WorkspaceID: params.WorkspaceID,
@@ -193,41 +272,70 @@ func (r *Repository) AdminListItems(ctx context.Context, params ListItemsParams)
 	})
 }
 
-func (r *Repository) UpsertLocalization(ctx context.Context, value Localization) error {
+func (r *Repository) UpsertLocalization(
+	ctx context.Context,
+	value Localization,
+) error {
 	if err := requireWorkspace(value.WorkspaceID); err != nil {
 		return err
 	}
 
-	err := r.withWorkspaceMutation(ctx, value.WorkspaceID, func(txRepo *Repository) error {
-		return txRepo.q.AdminUpsertLocalization(ctx, refsqlc.AdminUpsertLocalizationParams{
-			WorkspaceID: value.WorkspaceID,
-			ItemKey:     value.ItemKey,
-			Locale:      value.Locale,
-			Title:       value.Title,
-			Description: value.Description,
-		})
-	})
+	err := r.withWorkspaceMutation(
+		ctx,
+		value.WorkspaceID,
+		func(txRepo *Repository) error {
+			return txRepo.q.AdminUpsertLocalization(
+				ctx,
+				refsqlc.AdminUpsertLocalizationParams{
+					WorkspaceID: value.WorkspaceID,
+					ItemKey:     value.ItemKey,
+					Locale:      value.Locale,
+					Title:       value.Title,
+					Description: value.Description,
+				},
+			)
+		},
+	)
 	if err != nil {
 		return err
 	}
 
-	return r.bumpReferenceCacheVersions(value.WorkspaceID, referenceLocalizationMutationCacheMethods...)
+	return r.bumpReferenceCacheVersions(
+		value.WorkspaceID,
+		referenceLocalizationMutationCacheMethods...)
 }
 
-func (r *Repository) GetLocalization(ctx context.Context, workspaceID, key, locale string) (Localization, error) {
+func (r *Repository) GetLocalization(
+	ctx context.Context,
+	workspaceID, key, locale string,
+) (Localization, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return Localization{}, err
 	}
-	cacheKey := r.referenceCacheKey(referenceCacheAdminGetLocalization, workspaceID, key, locale)
+	cacheKey := r.referenceCacheKey(
+		referenceCacheAdminGetLocalization,
+		workspaceID,
+		key,
+		locale,
+	)
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key: cacheKey, Timeout: r.timeout, CacheVersionScope: referenceCacheScope(referenceCacheAdminGetLocalization, workspaceID),
-		CacheL1Delay: r.cacheL1, CacheL2Delay: r.cacheL2,
+		Key:     cacheKey,
+		Timeout: r.timeout,
+		CacheVersionScope: referenceCacheScope(
+			referenceCacheAdminGetLocalization,
+			workspaceID,
+		),
+		CacheL1Delay: r.cacheL1,
+		CacheL2Delay: r.cacheL2,
 	}, func(ctx context.Context) (Localization, error) {
-		row, err := r.q.AdminGetLocalization(ctx, refsqlc.AdminGetLocalizationParams{
-			WorkspaceID: workspaceID,
-			ItemKey:     key,
-			Locale:      locale,
-		})
+		row, err := r.q.AdminGetLocalization(
+			ctx,
+			refsqlc.AdminGetLocalizationParams{
+				WorkspaceID: workspaceID,
+				ItemKey:     key,
+				Locale:      locale,
+			},
+		)
 		if err != nil {
 			return Localization{}, err
 		}
@@ -235,19 +343,35 @@ func (r *Repository) GetLocalization(ctx context.Context, workspaceID, key, loca
 	})
 }
 
-func (r *Repository) ListLocalizations(ctx context.Context, workspaceID, key string) ([]Localization, error) {
+func (r *Repository) ListLocalizations(
+	ctx context.Context,
+	workspaceID, key string,
+) ([]Localization, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
-	cacheKey := r.referenceCacheKey(referenceCacheAdminListLocalizations, workspaceID, key)
+	cacheKey := r.referenceCacheKey(
+		referenceCacheAdminListLocalizations,
+		workspaceID,
+		key,
+	)
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key: cacheKey, Timeout: r.timeout, CacheVersionScope: referenceCacheScope(referenceCacheAdminListLocalizations, workspaceID),
-		CacheL1Delay: r.cacheL1, CacheL2Delay: r.cacheL2,
+		Key:     cacheKey,
+		Timeout: r.timeout,
+		CacheVersionScope: referenceCacheScope(
+			referenceCacheAdminListLocalizations,
+			workspaceID,
+		),
+		CacheL1Delay: r.cacheL1,
+		CacheL2Delay: r.cacheL2,
 	}, func(ctx context.Context) ([]Localization, error) {
-		rows, err := r.q.AdminListLocalizations(ctx, refsqlc.AdminListLocalizationsParams{
-			WorkspaceID: workspaceID,
-			ItemKey:     key,
-		})
+		rows, err := r.q.AdminListLocalizations(
+			ctx,
+			refsqlc.AdminListLocalizationsParams{
+				WorkspaceID: workspaceID,
+				ItemKey:     key,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -259,36 +383,57 @@ func (r *Repository) ListLocalizations(ctx context.Context, workspaceID, key str
 	})
 }
 
-func (r *Repository) DeleteLocalization(ctx context.Context, workspaceID, key, locale string) (int64, error) {
+func (r *Repository) DeleteLocalization(
+	ctx context.Context,
+	workspaceID, key, locale string,
+) (int64, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return 0, err
 	}
 
 	var rows int64
-	err := r.withWorkspaceMutation(ctx, workspaceID, func(txRepo *Repository) error {
-		var err error
-		rows, err = txRepo.q.AdminDeleteLocalization(ctx, refsqlc.AdminDeleteLocalizationParams{
-			WorkspaceID: workspaceID,
-			ItemKey:     key,
-			Locale:      locale,
-		})
-		return err
-	})
+	err := r.withWorkspaceMutation(
+		ctx,
+		workspaceID,
+		func(txRepo *Repository) error {
+			var err error
+			rows, err = txRepo.q.AdminDeleteLocalization(
+				ctx,
+				refsqlc.AdminDeleteLocalizationParams{
+					WorkspaceID: workspaceID,
+					ItemKey:     key,
+					Locale:      locale,
+				},
+			)
+			return err
+		},
+	)
 	if err != nil || rows == 0 {
 		return rows, err
 	}
 
-	return rows, r.bumpReferenceCacheVersions(workspaceID, referenceLocalizationMutationCacheMethods...)
+	return rows, r.bumpReferenceCacheVersions(
+		workspaceID,
+		referenceLocalizationMutationCacheMethods...)
 }
 
-func (r *Repository) GetStats(ctx context.Context, workspaceID string) (Stats, error) {
+func (r *Repository) GetStats(
+	ctx context.Context,
+	workspaceID string,
+) (Stats, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return Stats{}, err
 	}
 	cacheKey := r.referenceCacheKey(referenceCacheAdminStats, workspaceID)
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
-		Key: cacheKey, Timeout: r.timeout, CacheVersionScope: referenceCacheScope(referenceCacheAdminStats, workspaceID),
-		CacheL1Delay: r.cacheL1, CacheL2Delay: r.cacheL2,
+		Key:     cacheKey,
+		Timeout: r.timeout,
+		CacheVersionScope: referenceCacheScope(
+			referenceCacheAdminStats,
+			workspaceID,
+		),
+		CacheL1Delay: r.cacheL1,
+		CacheL2Delay: r.cacheL2,
 	}, func(ctx context.Context) (Stats, error) {
 		row, err := r.q.AdminGetStats(ctx, workspaceID)
 		if err != nil {

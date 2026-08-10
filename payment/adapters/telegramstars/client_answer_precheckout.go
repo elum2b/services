@@ -5,7 +5,12 @@ import (
 	"net/http"
 )
 
-func (c *Client) AnswerPreCheckoutQuery(ctx context.Context, queryID string, ok bool, errorMessage string) error {
+func (c *Client) AnswerPreCheckoutQuery(
+	ctx context.Context,
+	queryID string,
+	ok bool,
+	errorMessage string,
+) error {
 	if err := c.requireCredentials(); err != nil {
 		return err
 	}
@@ -24,8 +29,17 @@ func (c *Client) AnswerPreCheckoutQuery(ctx context.Context, queryID string, ok 
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusMultipleChoices || !result.OK || !result.Result {
-		return wrapAPIError("answerPreCheckoutQuery", resp.StatusCode(), result.ErrorCode, result.Description, resp.String())
+	if resp.StatusCode() < http.StatusOK ||
+		resp.StatusCode() >= http.StatusMultipleChoices ||
+		!result.OK ||
+		!result.Result {
+		return wrapAPIError(
+			"answerPreCheckoutQuery",
+			resp.StatusCode(),
+			result.ErrorCode,
+			result.Description,
+			resp.String(),
+		)
 	}
 	return nil
 }

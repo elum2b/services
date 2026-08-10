@@ -2,7 +2,10 @@ package admin
 
 import "context"
 
-func (a *Admin) GetStats(ctx context.Context, workspaceID string) (StatsModel, error) {
+func (a *Admin) GetStats(
+	ctx context.Context,
+	workspaceID string,
+) (StatsModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	value, err := a.repository.GetStats(mergedCtx, workspaceID)

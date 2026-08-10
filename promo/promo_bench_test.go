@@ -4,20 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"sync/atomic"
+	"testing"
+	"time"
 
 	"github.com/elum2b/services/internal/testsupport"
 	"github.com/elum2b/services/promo/repository"
 	"github.com/elum2b/services/promo/service/admin"
 	"github.com/elum2b/services/promo/service/user"
-	"strconv"
-	"sync/atomic"
-	"testing"
-	"time"
 )
 
 var (
-	promoBenchWorkspace      = testsupport.WorkspaceID("promo-benchmark-workspace")
-	promoBenchWriteWorkspace = testsupport.WorkspaceID("promo-benchmark-write-workspace")
+	promoBenchWorkspace = testsupport.WorkspaceID(
+		"promo-benchmark-workspace",
+	)
+	promoBenchWriteWorkspace = testsupport.WorkspaceID(
+		"promo-benchmark-write-workspace",
+	)
 )
 
 const (
@@ -93,9 +97,13 @@ func BenchmarkPromoServiceMethods(b *testing.B) {
 
 	b.Run("Admin.ListPromos", func(b *testing.B) {
 		for range b.N {
-			_, err := env.api.Admin.ListPromos(env.ctx, promoBenchWorkspace, admin.Page{
-				Limit: 100,
-			})
+			_, err := env.api.Admin.ListPromos(
+				env.ctx,
+				promoBenchWorkspace,
+				admin.Page{
+					Limit: 100,
+				},
+			)
 			promoBenchNoError(b, err)
 		}
 	})
@@ -115,10 +123,12 @@ func BenchmarkPromoServiceMethods(b *testing.B) {
 	b.Run("Admin.UpdatePromo", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_, err := env.api.Admin.UpdatePromo(env.ctx, admin.SavePromoParams{
-				ID:             writeID,
-				WorkspaceID:    promoBenchWriteWorkspace,
-				Code:           writeCode,
-				Payload:        json.RawMessage(`{"benchmark":true,"updated":true}`),
+				ID:          writeID,
+				WorkspaceID: promoBenchWriteWorkspace,
+				Code:        writeCode,
+				Payload: json.RawMessage(
+					`{"benchmark":true,"updated":true}`,
+				),
 				MaxActivations: 0,
 				IsActive:       true,
 			})
@@ -128,13 +138,16 @@ func BenchmarkPromoServiceMethods(b *testing.B) {
 
 	b.Run("Admin.UpsertLocalization", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			err := env.api.Admin.UpsertLocalization(env.ctx, admin.SaveLocalizationParams{
-				WorkspaceID: promoBenchWriteWorkspace,
-				PromoID:     writeID,
-				Locale:      "bench-" + strconv.Itoa(i),
-				Title:       "Benchmark promo",
-				Description: "Benchmark promo description",
-			})
+			err := env.api.Admin.UpsertLocalization(
+				env.ctx,
+				admin.SaveLocalizationParams{
+					WorkspaceID: promoBenchWriteWorkspace,
+					PromoID:     writeID,
+					Locale:      "bench-" + strconv.Itoa(i),
+					Title:       "Benchmark promo",
+					Description: "Benchmark promo description",
+				},
+			)
 			promoBenchNoError(b, err)
 		}
 	})
@@ -176,16 +189,25 @@ func BenchmarkPromoServiceMethods(b *testing.B) {
 
 	b.Run("Admin.GetStats", func(b *testing.B) {
 		for range b.N {
-			_, err := env.api.Admin.GetStats(env.ctx, promoBenchWorkspace, promoID)
+			_, err := env.api.Admin.GetStats(
+				env.ctx,
+				promoBenchWorkspace,
+				promoID,
+			)
 			promoBenchNoError(b, err)
 		}
 	})
 
 	b.Run("Admin.ListRedemptions", func(b *testing.B) {
 		for range b.N {
-			_, err := env.api.Admin.ListRedemptions(env.ctx, promoBenchWorkspace, promoID, admin.Page{
-				Limit: 100,
-			})
+			_, err := env.api.Admin.ListRedemptions(
+				env.ctx,
+				promoBenchWorkspace,
+				promoID,
+				admin.Page{
+					Limit: 100,
+				},
+			)
 			promoBenchNoError(b, err)
 		}
 	})
@@ -194,14 +216,23 @@ func BenchmarkPromoServiceMethods(b *testing.B) {
 		from := time.Now().Add(-24 * time.Hour)
 		until := time.Now().Add(24 * time.Hour)
 		for range b.N {
-			err := env.api.Admin.RefreshDailyStats(env.ctx, promoBenchWorkspace, from, until)
+			err := env.api.Admin.RefreshDailyStats(
+				env.ctx,
+				promoBenchWorkspace,
+				from,
+				until,
+			)
 			promoBenchNoError(b, err)
 		}
 	})
 
 	b.Run("Admin.Export", func(b *testing.B) {
 		for range b.N {
-			_, err := env.api.Admin.Export(env.ctx, promoBenchWorkspace, admin.ExportRequest{})
+			_, err := env.api.Admin.Export(
+				env.ctx,
+				promoBenchWorkspace,
+				admin.ExportRequest{},
+			)
 			promoBenchNoError(b, err)
 		}
 	})
@@ -256,20 +287,29 @@ func seedPromoBenchmark(b *testing.B, env *promoBenchmarkEnv) {
 		promoBenchNoError(b, err)
 		env.ids = append(env.ids, id)
 		env.codes = append(env.codes, code)
-		promoBenchNoError(b, env.api.Admin.UpsertLocalization(env.ctx, admin.SaveLocalizationParams{
-			WorkspaceID: promoBenchWorkspace,
-			PromoID:     id,
-			Locale:      "ru",
-			Title:       "Benchmark promo",
-			Description: "Benchmark promo description",
-		}))
-		promoBenchNoError(b, env.api.Admin.UpsertReward(env.ctx, admin.SaveRewardParams{
-			WorkspaceID: promoBenchWorkspace,
-			PromoID:     id,
-			Key:         "stars",
-			Quantity:    100,
-			Scale:       2,
-		}))
+		promoBenchNoError(
+			b,
+			env.api.Admin.UpsertLocalization(
+				env.ctx,
+				admin.SaveLocalizationParams{
+					WorkspaceID: promoBenchWorkspace,
+					PromoID:     id,
+					Locale:      "ru",
+					Title:       "Benchmark promo",
+					Description: "Benchmark promo description",
+				},
+			),
+		)
+		promoBenchNoError(
+			b,
+			env.api.Admin.UpsertReward(env.ctx, admin.SaveRewardParams{
+				WorkspaceID: promoBenchWorkspace,
+				PromoID:     id,
+				Key:         "stars",
+				Quantity:    100,
+				Scale:       2,
+			}),
+		)
 	}
 	for i := 0; i < promoBenchUsers; i++ {
 		_, err := env.api.User.Apply(env.ctx, user.ApplyParams{

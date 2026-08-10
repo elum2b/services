@@ -67,7 +67,12 @@ func Query[T any](
 			}()
 			versionState = client.prepareCacheVersion(params.CacheVersionScope)
 		}
-		key = CreateKey("versioned_cache", params.CacheVersionScope, versionState.version, key)
+		key = CreateKey(
+			"versioned_cache",
+			params.CacheVersionScope,
+			versionState.version,
+			key,
+		)
 	}
 
 	if useCache && key != "" {
@@ -103,7 +108,9 @@ func Query[T any](
 			cacheStored = true
 		}
 		if l2TTL > 0 && client.cache != nil {
-			if data, encodeErr := client.codec.Marshal(value); encodeErr == nil {
+			if data, encodeErr := client.codec.Marshal(
+				value,
+			); encodeErr == nil {
 				if setErr := client.cache.Set(key, data, l2TTL); setErr == nil {
 					client.rememberL2Expiry(key, l2TTL)
 					cacheStored = true
@@ -128,9 +135,14 @@ func Exec(
 	if loader == nil {
 		return errors.New("sqlcwrap: loader is nil")
 	}
-	_, err := Query(ctx, client, Params{Timeout: params.Timeout}, func(ctx context.Context) (struct{}, error) {
-		return struct{}{}, loader(ctx)
-	})
+	_, err := Query(
+		ctx,
+		client,
+		Params{Timeout: params.Timeout},
+		func(ctx context.Context) (struct{}, error) {
+			return struct{}{}, loader(ctx)
+		},
+	)
 	return err
 }
 
@@ -176,7 +188,11 @@ func Transaction[T any](
 	return out, nil
 }
 
-func checkCaches[T any](client *Client, key string, l1TTL, l2TTL time.Duration) (T, bool) {
+func checkCaches[T any](
+	client *Client,
+	key string,
+	l1TTL, l2TTL time.Duration,
+) (T, bool) {
 	var zero T
 	if l1TTL > 0 {
 		if value, ok := client.inMemory.Get(key); ok {
@@ -190,7 +206,10 @@ func checkCaches[T any](client *Client, key string, l1TTL, l2TTL time.Duration) 
 		data, l2RemainingTTL, err := getL2Value(client, key, l2TTL)
 		if err == nil && len(data) > 0 {
 			var value T
-			if decodeErr := client.codec.Unmarshal(data, &value); decodeErr == nil {
+			if decodeErr := client.codec.Unmarshal(
+				data,
+				&value,
+			); decodeErr == nil {
 				l1EffectiveTTL := effectiveL1TTL(l1TTL, l2RemainingTTL)
 				if l1EffectiveTTL > 0 {
 					client.inMemory.Set(key, value, l1EffectiveTTL)
@@ -202,7 +221,11 @@ func checkCaches[T any](client *Client, key string, l1TTL, l2TTL time.Duration) 
 	return zero, false
 }
 
-func getL2Value(client *Client, key string, fallbackTTL time.Duration) ([]byte, time.Duration, error) {
+func getL2Value(
+	client *Client,
+	key string,
+	fallbackTTL time.Duration,
+) ([]byte, time.Duration, error) {
 	data, ttl, err := client.cache.GetWithTTL(key)
 	if err != nil {
 		return nil, 0, err

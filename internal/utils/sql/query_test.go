@@ -55,7 +55,9 @@ type expiringCacheItem struct {
 	expires time.Time
 }
 
-func (m *expiringMemCache) GetWithTTL(key string) ([]byte, time.Duration, error) {
+func (m *expiringMemCache) GetWithTTL(
+	key string,
+) ([]byte, time.Duration, error) {
 	it, ok := m.data[key]
 	if !ok {
 		return nil, 0, errors.New("miss")
@@ -73,7 +75,11 @@ func (m *expiringMemCache) GetWithTTL(key string) ([]byte, time.Duration, error)
 	return cp, time.Until(it.expires), nil
 }
 
-func (m *expiringMemCache) Set(key string, val []byte, exp time.Duration) error {
+func (m *expiringMemCache) Set(
+	key string,
+	val []byte,
+	exp time.Duration,
+) error {
 	if m.data == nil {
 		m.data = make(map[string]expiringCacheItem)
 	}
@@ -146,7 +152,11 @@ func TestQuery_Errors(t *testing.T) {
 		t.Fatalf("expected ErrNilDB, got %v", err)
 	}
 
-	c := &Client{db: &sql.DB{}, inMemory: newL1Cache(10, time.Minute), codec: MsgpackCodec{}}
+	c := &Client{
+		db:       &sql.DB{},
+		inMemory: newL1Cache(10, time.Minute),
+		codec:    MsgpackCodec{},
+	}
 	_, err = Query[testModel](context.Background(), c, Params{}, nil)
 	if err == nil || err.Error() != "sqlcwrap: loader is nil" {
 		t.Fatalf("expected loader nil error, got %v", err)
@@ -196,7 +206,11 @@ func TestQuery_KeyPartsAndL2HitWarmsL1(t *testing.T) {
 		return testModel{ID: 5}, nil
 	}
 
-	params := Params{KeyParts: []any{"users", 5}, CacheL2Delay: time.Minute, CacheL1Delay: time.Minute}
+	params := Params{
+		KeyParts:     []any{"users", 5},
+		CacheL2Delay: time.Minute,
+		CacheL1Delay: time.Minute,
+	}
 	key := CreateKey(params.KeyParts...)
 
 	if _, err := Query(context.Background(), c, params, loader); err != nil {
@@ -232,10 +246,15 @@ func TestQuery_L2DecodeFailFallsBackToLoader(t *testing.T) {
 	}
 
 	calls := 0
-	_, err := Query(context.Background(), c, Params{Key: "bad", CacheL2Delay: time.Minute}, func(context.Context) (testModel, error) {
-		calls++
-		return testModel{ID: 9}, nil
-	})
+	_, err := Query(
+		context.Background(),
+		c,
+		Params{Key: "bad", CacheL2Delay: time.Minute},
+		func(context.Context) (testModel, error) {
+			calls++
+			return testModel{ID: 9}, nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -254,9 +273,14 @@ func TestQuery_L2EncodeFailIsBestEffort(t *testing.T) {
 		CacheEnabled: true,
 	}
 
-	_, err := Query(context.Background(), c, Params{Key: "k", CacheL2Delay: time.Minute}, func(context.Context) (testModel, error) {
-		return testModel{ID: 1}, nil
-	})
+	_, err := Query(
+		context.Background(),
+		c,
+		Params{Key: "k", CacheL2Delay: time.Minute},
+		func(context.Context) (testModel, error) {
+			return testModel{ID: 1}, nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -273,19 +297,29 @@ func TestQuery_TimeoutRespectsParent(t *testing.T) {
 		CacheEnabled: false,
 	}
 
-	_, err := Query(context.Background(), c, Params{Timeout: 15 * time.Millisecond}, func(ctx context.Context) (testModel, error) {
-		<-ctx.Done()
-		return testModel{}, ctx.Err()
-	})
+	_, err := Query(
+		context.Background(),
+		c,
+		Params{Timeout: 15 * time.Millisecond},
+		func(ctx context.Context) (testModel, error) {
+			<-ctx.Done()
+			return testModel{}, ctx.Err()
+		},
+	)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected deadline exceeded, got %v", err)
 	}
 
 	parent, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err = Query(parent, c, Params{Timeout: time.Second}, func(ctx context.Context) (testModel, error) {
-		return testModel{}, ctx.Err()
-	})
+	_, err = Query(
+		parent,
+		c,
+		Params{Timeout: time.Second},
+		func(ctx context.Context) (testModel, error) {
+			return testModel{}, ctx.Err()
+		},
+	)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected canceled, got %v", err)
 	}
@@ -301,10 +335,15 @@ func TestTransaction(t *testing.T) {
 	}
 
 	var gotTx bool
-	_, err := Transaction(context.Background(), c, Params{}, func(_ context.Context, tx *sql.Tx) (testModel, error) {
-		gotTx = tx != nil
-		return testModel{ID: 42}, nil
-	})
+	_, err := Transaction(
+		context.Background(),
+		c,
+		Params{},
+		func(_ context.Context, tx *sql.Tx) (testModel, error) {
+			gotTx = tx != nil
+			return testModel{ID: 42}, nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -321,11 +360,20 @@ func TestTransaction(t *testing.T) {
 
 func TestTransactionRollbackOnError(t *testing.T) {
 	db, stats := openTestDB(t)
-	c := &Client{db: db, inMemory: newL1Cache(10, time.Minute), codec: MsgpackCodec{}}
+	c := &Client{
+		db:       db,
+		inMemory: newL1Cache(10, time.Minute),
+		codec:    MsgpackCodec{},
+	}
 
-	_, err := Transaction(context.Background(), c, Params{}, func(context.Context, *sql.Tx) (testModel, error) {
-		return testModel{}, errors.New("boom")
-	})
+	_, err := Transaction(
+		context.Background(),
+		c,
+		Params{},
+		func(context.Context, *sql.Tx) (testModel, error) {
+			return testModel{}, errors.New("boom")
+		},
+	)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -336,7 +384,11 @@ func TestTransactionRollbackOnError(t *testing.T) {
 
 func TestTransactionRollbackOnPanic(t *testing.T) {
 	db, stats := openTestDB(t)
-	c := &Client{db: db, inMemory: newL1Cache(10, time.Minute), codec: MsgpackCodec{}}
+	c := &Client{
+		db:       db,
+		inMemory: newL1Cache(10, time.Minute),
+		codec:    MsgpackCodec{},
+	}
 
 	defer func() {
 		if p := recover(); p == nil {
@@ -347,30 +399,53 @@ func TestTransactionRollbackOnPanic(t *testing.T) {
 		}
 	}()
 
-	_, _ = Transaction(context.Background(), c, Params{}, func(context.Context, *sql.Tx) (testModel, error) {
-		panic("panic")
-	})
+	_, _ = Transaction(
+		context.Background(),
+		c,
+		Params{},
+		func(context.Context, *sql.Tx) (testModel, error) {
+			panic("panic")
+		},
+	)
 }
 
 func TestTransactionBeginAndCommitFail(t *testing.T) {
 	stats := &txStats{failBegin: true}
 	db := openTestDBWithStats(t, stats)
-	c := &Client{db: db, inMemory: newL1Cache(10, time.Minute), codec: MsgpackCodec{}}
+	c := &Client{
+		db:       db,
+		inMemory: newL1Cache(10, time.Minute),
+		codec:    MsgpackCodec{},
+	}
 
-	_, err := Transaction(context.Background(), c, Params{}, func(context.Context, *sql.Tx) (testModel, error) {
-		return testModel{ID: 1}, nil
-	})
+	_, err := Transaction(
+		context.Background(),
+		c,
+		Params{},
+		func(context.Context, *sql.Tx) (testModel, error) {
+			return testModel{ID: 1}, nil
+		},
+	)
 	if err == nil {
 		t.Fatal("expected begin error")
 	}
 
 	stats = &txStats{failCommit: true}
 	db = openTestDBWithStats(t, stats)
-	c = &Client{db: db, inMemory: newL1Cache(10, time.Minute), codec: MsgpackCodec{}}
+	c = &Client{
+		db:       db,
+		inMemory: newL1Cache(10, time.Minute),
+		codec:    MsgpackCodec{},
+	}
 
-	_, err = Transaction(context.Background(), c, Params{}, func(context.Context, *sql.Tx) (testModel, error) {
-		return testModel{ID: 1}, nil
-	})
+	_, err = Transaction(
+		context.Background(),
+		c,
+		Params{},
+		func(context.Context, *sql.Tx) (testModel, error) {
+			return testModel{ID: 1}, nil
+		},
+	)
 	if err == nil || err.Error() != "failed to commit tx: commit fail" {
 		t.Fatalf("expected wrapped commit error, got %v", err)
 	}
@@ -467,9 +542,14 @@ func TestQuery_L1TTLIsCappedByL2TTL(t *testing.T) {
 		CacheL2Delay: 5 * time.Minute,
 	}
 
-	_, err := Query(context.Background(), c, params, func(context.Context) (testModel, error) {
-		return testModel{ID: 1}, nil
-	})
+	_, err := Query(
+		context.Background(),
+		c,
+		params,
+		func(context.Context) (testModel, error) {
+			return testModel{ID: 1}, nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -578,10 +658,15 @@ func TestQuery_L1UsesTTLFromL2Provider(t *testing.T) {
 		CacheL1Delay: 5 * time.Second,
 		CacheL2Delay: 5 * time.Second,
 	}
-	got, err := Query(context.Background(), c, params, func(context.Context) (testModel, error) {
-		calls++
-		return testModel{ID: 1}, nil
-	})
+	got, err := Query(
+		context.Background(),
+		c,
+		params,
+		func(context.Context) (testModel, error) {
+			calls++
+			return testModel{ID: 1}, nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("unexpected query error: %v", err)
 	}

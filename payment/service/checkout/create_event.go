@@ -6,7 +6,10 @@ import (
 	"github.com/elum2b/services/payment/repository"
 )
 
-func (a *Checkout) CreateEvent(ctx context.Context, params CreateEventParams) (uint64, error) {
+func (a *Checkout) CreateEvent(
+	ctx context.Context,
+	params CreateEventParams,
+) (uint64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx

@@ -7,13 +7,34 @@ import (
 )
 
 var (
-	ErrServiceNil                  = serviceerrors.New(serviceerrors.CodeNotReady, "cpa service is nil")
-	ErrServiceRunning              = serviceerrors.New(serviceerrors.CodeConflict, "cpa service is already running")
-	ErrDatabaseUserRequired        = serviceerrors.New(serviceerrors.CodeInvalidFields, "cpa database user is required")
-	ErrDatabaseNameRequired        = serviceerrors.New(serviceerrors.CodeInvalidFields, "cpa database name is required")
-	ErrCallbackHandlerNil          = serviceerrors.New(serviceerrors.CodeInvalidFields, "cpa callback handler is nil")
-	ErrCallbacksRegistrationClosed = serviceerrors.New(serviceerrors.CodeFailedPrecondition, "cpa callbacks must be registered before Run")
-	ErrCallbacksNotConfigured      = serviceerrors.New(serviceerrors.CodeNotReady, "cpa callback store is not configured")
+	ErrServiceNil = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"cpa service is nil",
+	)
+	ErrServiceRunning = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"cpa service is already running",
+	)
+	ErrDatabaseUserRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"cpa database user is required",
+	)
+	ErrDatabaseNameRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"cpa database name is required",
+	)
+	ErrCallbackHandlerNil = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"cpa callback handler is nil",
+	)
+	ErrCallbacksRegistrationClosed = serviceerrors.New(
+		serviceerrors.CodeFailedPrecondition,
+		"cpa callbacks must be registered before Run",
+	)
+	ErrCallbacksNotConfigured = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"cpa callback store is not configured",
+	)
 )
 
 func wrapLifecycleError(err error) error {
@@ -30,5 +51,9 @@ func wrapLifecycleError(err error) error {
 		serviceerrors.IsStructured(err) {
 		return err
 	}
-	return serviceerrors.Wrap(serviceerrors.CodeInternalError, "cpa operation failed", err)
+	return serviceerrors.Wrap(
+		serviceerrors.CodeInternalError,
+		"cpa operation failed",
+		err,
+	)
 }

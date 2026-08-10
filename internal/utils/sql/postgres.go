@@ -37,7 +37,10 @@ func PostgresDSN(params PostgresParams) (string, error) {
 		}
 	}
 	if !validPostgresSSLMode(sslMode) {
-		return "", fmt.Errorf("unsupported PostgreSQL SSL mode %q", params.SSLMode)
+		return "", fmt.Errorf(
+			"unsupported PostgreSQL SSL mode %q",
+			params.SSLMode,
+		)
 	}
 
 	values := url.Values{"sslmode": []string{sslMode}}
@@ -69,6 +72,7 @@ func validPostgresSSLMode(value string) bool {
 func isLocalPostgresHost(host string) bool {
 
 	host = strings.Trim(host, "[]")
-	return strings.EqualFold(host, "localhost") || host == "127.0.0.1" || host == "::1"
+	return strings.EqualFold(host, "localhost") || host == "127.0.0.1" ||
+		host == "::1"
 
 }

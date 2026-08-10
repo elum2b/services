@@ -6,31 +6,55 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/elum-utils/sign/vkmashop"
+
 	utils "github.com/elum2b/services/internal/utils"
 	"github.com/elum2b/services/payment/repository"
-
-	"github.com/elum-utils/sign/vkmashop"
 )
 
-func (a *VKMA) Active(ctx context.Context, workspaceID string, params vkmashop.Params) (*SubscriptionStatusResponse, error) {
+func (a *VKMA) Active(
+	ctx context.Context,
+	workspaceID string,
+	params vkmashop.Params,
+) (*SubscriptionStatusResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.updateSubscriptionStatus(ctx, workspaceID, params, "active", nil)
 }
 
-func (a *VKMA) Canceled(ctx context.Context, workspaceID string, params vkmashop.Params) (*SubscriptionStatusResponse, error) {
+func (a *VKMA) Canceled(
+	ctx context.Context,
+	workspaceID string,
+	params vkmashop.Params,
+) (*SubscriptionStatusResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	return a.updateSubscriptionStatus(ctx, workspaceID, params, "canceled", utils.Ref(time.Now()))
+	return a.updateSubscriptionStatus(
+		ctx,
+		workspaceID,
+		params,
+		"canceled",
+		utils.Ref(time.Now()),
+	)
 }
 
-func (a *VKMA) Refunded(ctx context.Context, workspaceID string, params vkmashop.Params) (*SubscriptionStatusResponse, error) {
+func (a *VKMA) Refunded(
+	ctx context.Context,
+	workspaceID string,
+	params vkmashop.Params,
+) (*SubscriptionStatusResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	return a.updateSubscriptionStatus(ctx, workspaceID, params, "refunded", utils.Ref(time.Now()))
+	return a.updateSubscriptionStatus(
+		ctx,
+		workspaceID,
+		params,
+		"refunded",
+		utils.Ref(time.Now()),
+	)
 }
 
 func (a *VKMA) updateSubscriptionStatus(
@@ -43,14 +67,17 @@ func (a *VKMA) updateSubscriptionStatus(
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
-	rows, err := a.repository.UpdateSubscriptionStatusByProvider(ctx, repository.SubscriptionStatusUpdateParams{
-		WorkspaceID:            workspaceID,
-		ProviderCode:           ProviderCode,
-		ProviderSubscriptionID: strconv.Itoa(params.SubscriptionID),
-		Status:                 status,
-		CancelReason:           cancelReasonPtr(params.CancelReason),
-		EndedAt:                endedAt,
-	})
+	rows, err := a.repository.UpdateSubscriptionStatusByProvider(
+		ctx,
+		repository.SubscriptionStatusUpdateParams{
+			WorkspaceID:            workspaceID,
+			ProviderCode:           ProviderCode,
+			ProviderSubscriptionID: strconv.Itoa(params.SubscriptionID),
+			Status:                 status,
+			CancelReason:           cancelReasonPtr(params.CancelReason),
+			EndedAt:                endedAt,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}

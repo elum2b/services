@@ -14,7 +14,10 @@ type UpsertLocalizationParams struct {
 	Description string
 }
 
-func (a *Admin) UpsertLocalization(ctx context.Context, params UpsertLocalizationParams) error {
+func (a *Admin) UpsertLocalization(
+	ctx context.Context,
+	params UpsertLocalizationParams,
+) error {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -29,7 +32,10 @@ func (a *Admin) UpsertLocalization(ctx context.Context, params UpsertLocalizatio
 
 }
 
-func (a *Admin) ListLocalizations(ctx context.Context, workspaceID, cpaID string) ([]LocalizationModel, error) {
+func (a *Admin) ListLocalizations(
+	ctx context.Context,
+	workspaceID, cpaID string,
+) ([]LocalizationModel, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -52,11 +58,19 @@ func (a *Admin) ListLocalizations(ctx context.Context, workspaceID, cpaID string
 
 }
 
-func (a *Admin) DeleteLocalization(ctx context.Context, workspaceID, cpaID, locale string) (int64, error) {
+func (a *Admin) DeleteLocalization(
+	ctx context.Context,
+	workspaceID, cpaID, locale string,
+) (int64, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	return a.repository.DeleteLocalization(mergedCtx, workspaceID, cpaID, locale)
+	return a.repository.DeleteLocalization(
+		mergedCtx,
+		workspaceID,
+		cpaID,
+		locale,
+	)
 
 }

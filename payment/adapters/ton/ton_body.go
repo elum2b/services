@@ -3,8 +3,9 @@ package ton
 import (
 	"encoding/base64"
 
-	serviceerrors "github.com/elum2b/services/errors"
 	"github.com/xssnick/tonutils-go/tlb"
+
+	serviceerrors "github.com/elum2b/services/errors"
 )
 
 type RootTON struct {
@@ -28,10 +29,17 @@ type Ton struct {
 	TxHash  string `json:"tx_hash"`
 }
 
-func (s *Sub) TonBody(ti *tlb.InternalMessage, txHash []byte) (*RootTON, error) {
+func (s *Sub) TonBody(
+	ti *tlb.InternalMessage,
+	txHash []byte,
+) (*RootTON, error) {
 	payload, err := ti.Body.BeginParse()
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, ErrBodyParseFailed.Message(), err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			ErrBodyParseFailed.Message(),
+			err,
+		)
 	}
 
 	text := ""
@@ -40,11 +48,19 @@ func (s *Sub) TonBody(ti *tlb.InternalMessage, txHash []byte) (*RootTON, error) 
 		if err == nil && sumType == 0x00000000 {
 			value, err := payload.LoadStringSnake()
 			if err != nil {
-				return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, ErrTextCommentReadFailed.Message(), err)
+				return nil, serviceerrors.Wrap(
+					serviceerrors.CodeInternalError,
+					ErrTextCommentReadFailed.Message(),
+					err,
+				)
 			}
 			text = value
 		} else if err != nil {
-			return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, ErrSumTypeReadFailed.Message(), err)
+			return nil, serviceerrors.Wrap(
+				serviceerrors.CodeInternalError,
+				ErrSumTypeReadFailed.Message(),
+				err,
+			)
 		}
 	}
 

@@ -230,6 +230,22 @@ CREATE TABLE IF NOT EXISTS control_application_platform (
 CREATE INDEX IF NOT EXISTS control_application_platform_workspace_idx
     ON control_application_platform (workspace_id, created_at DESC, app_id, platform_id);
 
+CREATE TABLE IF NOT EXISTS control_application_delivery (
+    workspace_id VARCHAR(36) NOT NULL,
+    app_id BIGINT NOT NULL,
+    platform_id BIGINT NOT NULL,
+    url VARCHAR(2048) NOT NULL,
+    encrypted_secret TEXT NOT NULL,
+    is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (workspace_id, app_id, platform_id),
+    CONSTRAINT control_application_delivery_application_fk
+        FOREIGN KEY (workspace_id, app_id, platform_id)
+        REFERENCES control_application_platform (workspace_id, app_id, platform_id)
+        ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS control_workspace_member (
     workspace_id VARCHAR(36) NOT NULL,
     account_id VARCHAR(64) NOT NULL,

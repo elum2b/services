@@ -38,7 +38,11 @@ func New(ctx context.Context, db *sqlwrap.Client) *User {
 	)
 }
 
-func NewWithOptions(ctx context.Context, db *sqlwrap.Client, options repository.Options) *User {
+func NewWithOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options repository.Options,
+) *User {
 	return newUser(
 		ctx,
 		repository.NewWithOptions(db, options),
@@ -46,7 +50,11 @@ func NewWithOptions(ctx context.Context, db *sqlwrap.Client, options repository.
 	)
 }
 
-func NewWithServiceOptions(ctx context.Context, db *sqlwrap.Client, options Options) *User {
+func NewWithServiceOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options Options,
+) *User {
 	return newUser(
 		ctx,
 		repository.NewWithOptions(db, options.RepositoryOptions),
@@ -69,14 +77,18 @@ func newUser(
 	}
 
 	return &User{
-		rootCtx:                   rootCtx,
-		rootCancel:                rootCancel,
-		repository:                repo,
-		runtime:                   options.Runtime,
-		providers:                 defaultPartnerProviders(options.PartnerProviders),
-		goroutines:                manager,
-		ownsGoroutines:            ownsGoroutines,
-		partnerStartLeaseDuration: normalizePartnerStartLeaseDuration(options.PartnerStartLeaseDuration),
+		rootCtx:    rootCtx,
+		rootCancel: rootCancel,
+		repository: repo,
+		runtime:    options.Runtime,
+		providers: defaultPartnerProviders(
+			options.PartnerProviders,
+		),
+		goroutines:     manager,
+		ownsGoroutines: ownsGoroutines,
+		partnerStartLeaseDuration: normalizePartnerStartLeaseDuration(
+			options.PartnerStartLeaseDuration,
+		),
 	}
 }
 
@@ -97,14 +109,18 @@ func (u *User) Close() error {
 	return u.repository.Close()
 }
 
-func (u *User) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (u *User) withContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	if u == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}
 	return contextutil.Merge(u.rootCtx, ctx)
 }
 
-func clonePartnerProviders(values map[string]PartnerProvider) map[string]PartnerProvider {
+func clonePartnerProviders(
+	values map[string]PartnerProvider,
+) map[string]PartnerProvider {
 	result := make(map[string]PartnerProvider, len(values))
 	for key, value := range values {
 		result[key] = value
@@ -125,7 +141,9 @@ func (u *User) partnerProvider(provider string) PartnerProvider {
 	return nil
 }
 
-func defaultPartnerProviders(overrides map[string]PartnerProvider) map[string]PartnerProvider {
+func defaultPartnerProviders(
+	overrides map[string]PartnerProvider,
+) map[string]PartnerProvider {
 	result := make(map[string]PartnerProvider, len(overrides))
 	for key, value := range overrides {
 		if value == nil {

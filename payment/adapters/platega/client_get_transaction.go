@@ -6,7 +6,10 @@ import (
 	"net/url"
 )
 
-func (c *Client) GetTransaction(ctx context.Context, transactionID string) (transactionStatusResponse, error) {
+func (c *Client) GetTransaction(
+	ctx context.Context,
+	transactionID string,
+) (transactionStatusResponse, error) {
 	if err := c.requireCredentials(); err != nil {
 		return transactionStatusResponse{}, err
 	}
@@ -19,8 +22,13 @@ func (c *Client) GetTransaction(ctx context.Context, transactionID string) (tran
 	if err != nil {
 		return transactionStatusResponse{}, err
 	}
-	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusMultipleChoices {
-		return transactionStatusResponse{}, wrapAPIError("get transaction", resp.StatusCode(), resp.String())
+	if resp.StatusCode() < http.StatusOK ||
+		resp.StatusCode() >= http.StatusMultipleChoices {
+		return transactionStatusResponse{}, wrapAPIError(
+			"get transaction",
+			resp.StatusCode(),
+			resp.String(),
+		)
 	}
 	return result, nil
 }

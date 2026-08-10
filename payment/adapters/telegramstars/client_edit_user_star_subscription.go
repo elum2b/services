@@ -5,7 +5,10 @@ import (
 	"net/http"
 )
 
-func (c *Client) EditUserStarSubscription(ctx context.Context, payload editUserStarSubscriptionRequest) error {
+func (c *Client) EditUserStarSubscription(
+	ctx context.Context,
+	payload editUserStarSubscriptionRequest,
+) error {
 	if err := c.requireCredentials(); err != nil {
 		return err
 	}
@@ -20,8 +23,17 @@ func (c *Client) EditUserStarSubscription(ctx context.Context, payload editUserS
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusMultipleChoices || !result.OK || !result.Result {
-		return wrapAPIError("editUserStarSubscription", resp.StatusCode(), result.ErrorCode, result.Description, resp.String())
+	if resp.StatusCode() < http.StatusOK ||
+		resp.StatusCode() >= http.StatusMultipleChoices ||
+		!result.OK ||
+		!result.Result {
+		return wrapAPIError(
+			"editUserStarSubscription",
+			resp.StatusCode(),
+			result.ErrorCode,
+			result.Description,
+			resp.String(),
+		)
 	}
 	return nil
 }

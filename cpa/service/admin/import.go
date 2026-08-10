@@ -2,7 +2,11 @@ package admin
 
 import "context"
 
-func (a *Admin) PreviewImport(ctx context.Context, workspaceID string, pkg ExportPackage) (ImportPreview, error) {
+func (a *Admin) PreviewImport(
+	ctx context.Context,
+	workspaceID string,
+	pkg ExportPackage,
+) (ImportPreview, error) {
 
 	if a == nil || a.repository == nil {
 		return ImportPreview{}, ErrRepositoryNotConfigured
@@ -15,7 +19,11 @@ func (a *Admin) PreviewImport(ctx context.Context, workspaceID string, pkg Expor
 
 }
 
-func (a *Admin) Import(ctx context.Context, workspaceID string, req ImportRequest) (ImportResult, error) {
+func (a *Admin) Import(
+	ctx context.Context,
+	workspaceID string,
+	req ImportRequest,
+) (ImportResult, error) {
 
 	if a == nil || a.repository == nil {
 		return ImportResult{}, ErrRepositoryNotConfigured

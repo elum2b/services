@@ -6,6 +6,8 @@ import (
 	"errors"
 	"sync"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/elum2b/services/calendar/repository"
 	"github.com/elum2b/services/calendar/service/admin"
 	"github.com/elum2b/services/calendar/service/user"
@@ -14,7 +16,6 @@ import (
 	"github.com/elum2b/services/internal/utils/contextutil"
 	goroutinemanager "github.com/elum2b/services/internal/utils/goroutine"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type Calendar struct {
@@ -34,13 +35,26 @@ type Calendar struct {
 }
 
 func New() *Calendar {
-	return newCalendar(context.Background(), sqlwrap.NewUnavailable(), true, Options{})
+	return newCalendar(
+		context.Background(),
+		sqlwrap.NewUnavailable(),
+		true,
+		Options{},
+	)
 }
 
-func NewWithDatabase(ctx context.Context, db *sql.DB, options Options) (*Calendar, error) {
+func NewWithDatabase(
+	ctx context.Context,
+	db *sql.DB,
+	options Options,
+) (*Calendar, error) {
 	client, err := sqlwrap.New(db, toSQLWrapOptions(options))
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "calendar sql client initialization failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"calendar sql client initialization failed",
+			err,
+		)
 	}
 	return newCalendar(ctx, client, false, options), nil
 }
@@ -98,12 +112,20 @@ func open(ctx context.Context, params DatabaseParams) (*Calendar, error) {
 	}
 	db, err := openPostgres(ctx, params)
 	if err != nil {
-		return nil, serviceerrors.Wrap(serviceerrors.CodeUnavailable, "calendar database connection failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeUnavailable,
+			"calendar database connection failed",
+			err,
+		)
 	}
 	client, err := sqlwrap.New(db, toSQLWrapOptions(params.Options))
 	if err != nil {
 		_ = db.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "calendar sql client initialization failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"calendar sql client initialization failed",
+			err,
+		)
 	}
 	bootstrap := repository.NewWithOptions(client, repository.Options{
 		QueryTimeout:             params.Options.QueryTimeout,
@@ -114,11 +136,19 @@ func open(ctx context.Context, params DatabaseParams) (*Calendar, error) {
 	if err := bootstrap.Bootstrap(ctx); err != nil {
 		_ = bootstrap.Close()
 		_ = client.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "calendar bootstrap failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"calendar bootstrap failed",
+			err,
+		)
 	}
 	if err := bootstrap.Close(); err != nil {
 		_ = client.Close()
-		return nil, serviceerrors.Wrap(serviceerrors.CodeInternalError, "calendar bootstrap shutdown failed", err)
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInternalError,
+			"calendar bootstrap shutdown failed",
+			err,
+		)
 	}
 	return newCalendar(ctx, client, true, params.Options), nil
 }
@@ -133,8 +163,13 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 		port = 5432
 	}
 	dsn, err := sqlwrap.PostgresDSN(sqlwrap.PostgresParams{
-		User: params.User, Password: params.Password, Database: params.Database,
-		Host: host, Port: port, SSLMode: params.SSLMode, SSLRootCert: params.SSLRootCert,
+		User:        params.User,
+		Password:    params.Password,
+		Database:    params.Database,
+		Host:        host,
+		Port:        port,
+		SSLMode:     params.SSLMode,
+		SSLRootCert: params.SSLRootCert,
 	})
 	if err != nil {
 		return nil, err
@@ -159,7 +194,12 @@ func (c *Calendar) adopt(running *Calendar) {
 	c.goroutines = running.goroutines
 }
 
-func newCalendar(ctx context.Context, db *sqlwrap.Client, ownsClient bool, options Options) *Calendar {
+func newCalendar(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	ownsClient bool,
+	options Options,
+) *Calendar {
 	rootCtx, cancel := context.WithCancel(contextutil.Normalize(ctx))
 	repositoryOptions := repository.Options{
 		QueryTimeout:             options.QueryTimeout,
@@ -168,9 +208,20 @@ func newCalendar(ctx context.Context, db *sqlwrap.Client, ownsClient bool, optio
 		OnCacheInvalidationError: options.OnCacheInvalidationError,
 	}
 	return &Calendar{
-		Admin:      admin.NewWithRepositoryOptions(rootCtx, db, repositoryOptions),
-		User:       user.NewWithRepositoryOptions(rootCtx, db, repositoryOptions),
-		callbacks:  callbackutil.NewWithTable(db.DB(), callbackutil.CalendarTable),
+		Admin: admin.NewWithRepositoryOptions(
+			rootCtx,
+			db,
+			repositoryOptions,
+		),
+		User: user.NewWithRepositoryOptions(
+			rootCtx,
+			db,
+			repositoryOptions,
+		),
+		callbacks: callbackutil.NewWithTable(
+			db.DB(),
+			callbackutil.CalendarTable,
+		),
 		client:     db,
 		ownsClient: ownsClient,
 		rootCtx:    rootCtx,
@@ -212,10 +263,15 @@ func (c *Calendar) IsReady() bool {
 	}
 	c.lifecycleMu.Lock()
 	defer c.lifecycleMu.Unlock()
-	return c.rootCtx != nil && c.rootCtx.Err() == nil && !c.client.IsUnavailable() && c.Admin != nil && c.User != nil
+	return c.rootCtx != nil && c.rootCtx.Err() == nil &&
+		!c.client.IsUnavailable() &&
+		c.Admin != nil &&
+		c.User != nil
 }
 
-func (c *Calendar) bindContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (c *Calendar) bindContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	if c == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}

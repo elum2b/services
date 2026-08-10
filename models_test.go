@@ -8,7 +8,9 @@ import (
 )
 
 func TestValidateWorkspaceIDRequiresCanonicalUUID(t *testing.T) {
-	if err := ValidateWorkspaceID("00000000-0000-0000-0000-000000000001"); err != nil {
+	if err := ValidateWorkspaceID(
+		"00000000-0000-0000-0000-000000000001",
+	); err != nil {
 		t.Fatalf("validate canonical UUID: %v", err)
 	}
 

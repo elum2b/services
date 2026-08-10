@@ -28,7 +28,10 @@ func (c *Client) prepareCacheVersion(parts []any) cacheVersionState {
 	}
 	key := cacheVersionKey(parts...)
 	if c.cache != nil {
-		if data, _, err := c.cache.GetWithTTL(key); err == nil && len(data) > 0 {
+		if data, _, err := c.cache.GetWithTTL(
+			key,
+		); err == nil &&
+			len(data) > 0 {
 			version := string(data)
 			c.cacheVersions.Store(key, version)
 			return cacheVersionState{key: key, version: version}

@@ -2,8 +2,9 @@ package internalapi
 
 import (
 	"context"
-	json "github.com/goccy/go-json"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	"github.com/elum2b/services/tasks/repository"
 )
@@ -22,7 +23,10 @@ type RecordParams struct {
 
 type RecordResult = repository.RecordResult
 
-func (i *Internal) Record(ctx context.Context, params RecordParams) (RecordResult, error) {
+func (i *Internal) Record(
+	ctx context.Context,
+	params RecordParams,
+) (RecordResult, error) {
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
 	return i.repository.Record(mergedCtx, repository.RecordParams(params))

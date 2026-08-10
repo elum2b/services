@@ -11,7 +11,10 @@ type ListActiveParams struct {
 	Locale   string
 }
 
-func (u *User) ListActive(ctx context.Context, params ListActiveParams) ([]OfferModel, error) {
+func (u *User) ListActive(
+	ctx context.Context,
+	params ListActiveParams,
+) ([]OfferModel, error) {
 
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
@@ -20,7 +23,11 @@ func (u *User) ListActive(ctx context.Context, params ListActiveParams) ([]Offer
 		return nil, err
 	}
 
-	bundles, err := u.repository.ListActiveForUser(mergedCtx, scope(params.Identity, ""), params.Locale)
+	bundles, err := u.repository.ListActiveForUser(
+		mergedCtx,
+		scope(params.Identity, ""),
+		params.Locale,
+	)
 	if err != nil {
 		return nil, err
 	}

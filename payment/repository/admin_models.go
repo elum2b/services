@@ -3,10 +3,11 @@ package repository
 import (
 	"time"
 
+	json "github.com/goccy/go-json"
+
 	"github.com/elum2b/services"
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
 	"github.com/elum2b/services/payment/tonconnect"
-	json "github.com/goccy/go-json"
 )
 
 type NullableString struct {
@@ -509,7 +510,9 @@ func mapAdminAsset(row paymentsqlc.PaymentAsset) AdminAssetModel {
 	}
 }
 
-func mapAdminProviderAsset(row paymentsqlc.PaymentProviderAsset) AdminProviderAssetModel {
+func mapAdminProviderAsset(
+	row paymentsqlc.PaymentProviderAsset,
+) AdminProviderAssetModel {
 	return AdminProviderAssetModel{
 		ProviderCode:    row.ProviderCode,
 		AssetCode:       row.AssetCode,
@@ -542,7 +545,9 @@ func mapAdminAssetRate(row paymentsqlc.PaymentAssetRate) AdminAssetRateModel {
 	}
 }
 
-func mapAdminProductGroup(row paymentsqlc.PaymentProductGroup) AdminProductGroupModel {
+func mapAdminProductGroup(
+	row paymentsqlc.PaymentProductGroup,
+) AdminProductGroupModel {
 	return AdminProductGroupModel{
 		WorkspaceID:    row.WorkspaceID,
 		Code:           row.Code,
@@ -555,7 +560,9 @@ func mapAdminProductGroup(row paymentsqlc.PaymentProductGroup) AdminProductGroup
 	}
 }
 
-func mapAdminLocalization(row paymentsqlc.PaymentLocalization) AdminLocalizationModel {
+func mapAdminLocalization(
+	row paymentsqlc.PaymentLocalization,
+) AdminLocalizationModel {
 	return AdminLocalizationModel(row)
 }
 
@@ -593,10 +600,15 @@ func mapAdminProduct(row paymentsqlc.PaymentProduct) AdminProductModel {
 	}
 }
 
-func mapAdminProductItem(row paymentsqlc.PaymentProductItem) AdminProductItemModel {
+func mapAdminProductItem(
+	row paymentsqlc.PaymentProductItem,
+) AdminProductItemModel {
 	unit := NullableString{}
 	if row.DurationUnit.Valid {
-		unit = NullableString{String: string(row.DurationUnit.PaymentProductItemDurationUnit), Valid: true}
+		unit = NullableString{
+			String: string(row.DurationUnit.PaymentProductItemDurationUnit),
+			Valid:  true,
+		}
 	}
 	return AdminProductItemModel{
 		ID:           row.ID,
@@ -614,26 +626,32 @@ func mapAdminProductItem(row paymentsqlc.PaymentProductItem) AdminProductItemMod
 
 func mapAdminPrice(row paymentsqlc.PaymentPrice) AdminPriceModel {
 	return AdminPriceModel{
-		ID:                           row.ID,
-		WorkspaceID:                  row.WorkspaceID,
-		ProductID:                    row.ProductID,
-		AssetCode:                    row.AssetCode,
-		ListAmountMinor:              row.ListAmountMinor,
-		DiscountAmountMinor:          row.DiscountAmountMinor,
-		PricingMode:                  string(row.PricingMode),
-		ReferenceAssetCode:           NullableString(row.ReferenceAssetCode),
-		ReferenceListAmountMinor:     NullableInt64(row.ReferenceListAmountMinor),
-		ReferenceDiscountAmountMinor: NullableInt64(row.ReferenceDiscountAmountMinor),
-		Coefficient:                  NullableString(row.Coefficient),
-		IsPromotion:                  row.IsPromotion,
-		StartsAt:                     row.StartsAt,
-		EndsAt:                       row.EndsAt,
-		CreatedAt:                    row.CreatedAt,
-		UpdatedAt:                    row.UpdatedAt,
+		ID:                  row.ID,
+		WorkspaceID:         row.WorkspaceID,
+		ProductID:           row.ProductID,
+		AssetCode:           row.AssetCode,
+		ListAmountMinor:     row.ListAmountMinor,
+		DiscountAmountMinor: row.DiscountAmountMinor,
+		PricingMode:         string(row.PricingMode),
+		ReferenceAssetCode:  NullableString(row.ReferenceAssetCode),
+		ReferenceListAmountMinor: NullableInt64(
+			row.ReferenceListAmountMinor,
+		),
+		ReferenceDiscountAmountMinor: NullableInt64(
+			row.ReferenceDiscountAmountMinor,
+		),
+		Coefficient: NullableString(row.Coefficient),
+		IsPromotion: row.IsPromotion,
+		StartsAt:    row.StartsAt,
+		EndsAt:      row.EndsAt,
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
 	}
 }
 
-func mapAdminProductLimitCounter(row paymentsqlc.PaymentProductLimitCounter) AdminProductLimitCounterModel {
+func mapAdminProductLimitCounter(
+	row paymentsqlc.PaymentProductLimitCounter,
+) AdminProductLimitCounterModel {
 	return AdminProductLimitCounterModel{
 		WorkspaceID:    row.WorkspaceID,
 		AppID:          row.AppID,
@@ -649,7 +667,9 @@ func mapAdminProductLimitCounter(row paymentsqlc.PaymentProductLimitCounter) Adm
 	}
 }
 
-func mapAdminPurchaseKey(row paymentsqlc.PaymentPurchaseKey) AdminPurchaseKeyModel {
+func mapAdminPurchaseKey(
+	row paymentsqlc.PaymentPurchaseKey,
+) AdminPurchaseKeyModel {
 	return AdminPurchaseKeyModel{
 		ID:             row.ID,
 		WorkspaceID:    row.WorkspaceID,
@@ -695,23 +715,27 @@ func mapAdminOrder(row paymentsqlc.PaymentOrder) AdminOrderModel {
 		GlobalLimitSnapshot:         row.GlobalLimitSnapshot,
 		GlobalIntervalSnapshot:      row.GlobalIntervalSnapshot,
 		GlobalIntervalCountSnapshot: row.GlobalIntervalCountSnapshot,
-		GlobalWindowStartSnapshot:   NullableTime(row.GlobalWindowStartSnapshot),
-		GlobalWindowEndSnapshot:     NullableTime(row.GlobalWindowEndSnapshot),
-		UserLimitSnapshot:           row.UserLimitSnapshot,
-		UserIntervalSnapshot:        row.UserIntervalSnapshot,
-		UserIntervalCountSnapshot:   row.UserIntervalCountSnapshot,
-		UserWindowStartSnapshot:     NullableTime(row.UserWindowStartSnapshot),
-		UserWindowEndSnapshot:       NullableTime(row.UserWindowEndSnapshot),
-		PaidAt:                      NullableTime(row.PaidAt),
-		FulfilledAt:                 NullableTime(row.FulfilledAt),
-		CanceledAt:                  NullableTime(row.CanceledAt),
-		ExpiresAt:                   NullableTime(row.ExpiresAt),
-		CreatedAt:                   row.CreatedAt,
-		UpdatedAt:                   row.UpdatedAt,
+		GlobalWindowStartSnapshot: NullableTime(
+			row.GlobalWindowStartSnapshot,
+		),
+		GlobalWindowEndSnapshot:   NullableTime(row.GlobalWindowEndSnapshot),
+		UserLimitSnapshot:         row.UserLimitSnapshot,
+		UserIntervalSnapshot:      row.UserIntervalSnapshot,
+		UserIntervalCountSnapshot: row.UserIntervalCountSnapshot,
+		UserWindowStartSnapshot:   NullableTime(row.UserWindowStartSnapshot),
+		UserWindowEndSnapshot:     NullableTime(row.UserWindowEndSnapshot),
+		PaidAt:                    NullableTime(row.PaidAt),
+		FulfilledAt:               NullableTime(row.FulfilledAt),
+		CanceledAt:                NullableTime(row.CanceledAt),
+		ExpiresAt:                 NullableTime(row.ExpiresAt),
+		CreatedAt:                 row.CreatedAt,
+		UpdatedAt:                 row.UpdatedAt,
 	}
 }
 
-func mapAdminPaymentAttempt(row paymentsqlc.PaymentAttempt) AdminPaymentAttemptModel {
+func mapAdminPaymentAttempt(
+	row paymentsqlc.PaymentAttempt,
+) AdminPaymentAttemptModel {
 	return AdminPaymentAttemptModel{
 		ID:                     row.ID,
 		OrderID:                row.OrderID,
@@ -751,7 +775,9 @@ func mapAdminPaymentEvent(row paymentsqlc.PaymentEvent) AdminPaymentEventModel {
 	}
 }
 
-func mapAdminSubscription(row paymentsqlc.PaymentSubscription) AdminSubscriptionModel {
+func mapAdminSubscription(
+	row paymentsqlc.PaymentSubscription,
+) AdminSubscriptionModel {
 	return AdminSubscriptionModel{
 		ID:                     row.ID,
 		WorkspaceID:            row.WorkspaceID,
@@ -773,7 +799,9 @@ func mapAdminSubscription(row paymentsqlc.PaymentSubscription) AdminSubscription
 	}
 }
 
-func mapAdminFulfillment(row paymentsqlc.PaymentFulfillment) AdminFulfillmentModel {
+func mapAdminFulfillment(
+	row paymentsqlc.PaymentFulfillment,
+) AdminFulfillmentModel {
 	return AdminFulfillmentModel{
 		ID:             row.ID,
 		OrderID:        row.OrderID,
@@ -788,10 +816,15 @@ func mapAdminFulfillment(row paymentsqlc.PaymentFulfillment) AdminFulfillmentMod
 	}
 }
 
-func mapAdminFulfillmentItem(row paymentsqlc.PaymentFulfillmentItem) AdminFulfillmentItemModel {
+func mapAdminFulfillmentItem(
+	row paymentsqlc.PaymentFulfillmentItem,
+) AdminFulfillmentItemModel {
 	unit := NullableString{}
 	if row.DurationUnit.Valid {
-		unit = NullableString{String: string(row.DurationUnit.PaymentFulfillmentItemDurationUnit), Valid: true}
+		unit = NullableString{
+			String: string(row.DurationUnit.PaymentFulfillmentItemDurationUnit),
+			Valid:  true,
+		}
 	}
 	return AdminFulfillmentItemModel{
 		ID:            row.ID,
@@ -823,11 +856,15 @@ func mapAdminRefund(row paymentsqlc.PaymentRefund) AdminRefundModel {
 	}
 }
 
-func mapAdminProviderCursor(row paymentsqlc.PaymentProviderCursor) AdminProviderCursorModel {
+func mapAdminProviderCursor(
+	row paymentsqlc.PaymentProviderCursor,
+) AdminProviderCursorModel {
 	return AdminProviderCursorModel(row)
 }
 
-func mapAdminProviderTransaction(row paymentsqlc.PaymentProviderTransaction) AdminProviderTransactionModel {
+func mapAdminProviderTransaction(
+	row paymentsqlc.PaymentProviderTransaction,
+) AdminProviderTransactionModel {
 	return AdminProviderTransactionModel{
 		ID:                    row.ID,
 		WorkspaceID:           row.WorkspaceID,
@@ -878,7 +915,11 @@ func mapAdminSlice[S any, D any](rows []S, mapper func(S) D) []D {
 	return result
 }
 
-func mapAdminResult[S any, D any](row S, err error, mapper func(S) D) (D, error) {
+func mapAdminResult[S any, D any](
+	row S,
+	err error,
+	mapper func(S) D,
+) (D, error) {
 	if err != nil {
 		var zero D
 		return zero, err

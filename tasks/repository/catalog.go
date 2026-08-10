@@ -14,7 +14,10 @@ type nextSequenceTask struct {
 	Exists bool
 }
 
-func (r *Repository) listRecordCatalog(ctx context.Context, workspaceID, actionKey string) ([]Task, error) {
+func (r *Repository) listRecordCatalog(
+	ctx context.Context,
+	workspaceID, actionKey string,
+) ([]Task, error) {
 	key := recordCatalogCacheKey(workspaceID, actionKey)
 	out, err := repositoryQuery[[]Task](ctx, r, sqlwrap.Params{
 		Key:               key,
@@ -22,10 +25,13 @@ func (r *Repository) listRecordCatalog(ctx context.Context, workspaceID, actionK
 		CacheL2Delay:      r.cacheL2Delay,
 		CacheVersionScope: taskCatalogCacheScope(workspaceID),
 	}, func(ctx context.Context) ([]Task, error) {
-		rows, err := r.q.ListRecordCatalog(ctx, tasksqlc.ListRecordCatalogParams{
-			WorkspaceID: workspaceID,
-			ActionKey:   actionKey,
-		})
+		rows, err := r.q.ListRecordCatalog(
+			ctx,
+			tasksqlc.ListRecordCatalogParams{
+				WorkspaceID: workspaceID,
+				ActionKey:   actionKey,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -41,7 +47,11 @@ func (r *Repository) listRecordCatalog(ctx context.Context, workspaceID, actionK
 	return out, nil
 }
 
-func (r *Repository) claimCatalogByID(ctx context.Context, workspaceID string, id uint64) (Task, error) {
+func (r *Repository) claimCatalogByID(
+	ctx context.Context,
+	workspaceID string,
+	id uint64,
+) (Task, error) {
 	key := claimCatalogByIDCacheKey(workspaceID, id)
 	out, err := repositoryQuery[Task](ctx, r, sqlwrap.Params{
 		Key:               key,
@@ -49,10 +59,13 @@ func (r *Repository) claimCatalogByID(ctx context.Context, workspaceID string, i
 		CacheL2Delay:      r.cacheL2Delay,
 		CacheVersionScope: taskCatalogCacheScope(workspaceID),
 	}, func(ctx context.Context) (Task, error) {
-		rows, err := r.q.GetClaimCatalogByID(ctx, tasksqlc.GetClaimCatalogByIDParams{
-			WorkspaceID: workspaceID,
-			ID:          int64(id),
-		})
+		rows, err := r.q.GetClaimCatalogByID(
+			ctx,
+			tasksqlc.GetClaimCatalogByIDParams{
+				WorkspaceID: workspaceID,
+				ID:          int64(id),
+			},
+		)
 		if err != nil {
 			return Task{}, err
 		}
@@ -67,7 +80,10 @@ func (r *Repository) claimCatalogByID(ctx context.Context, workspaceID string, i
 	return out, nil
 }
 
-func (r *Repository) claimCatalogByKey(ctx context.Context, workspaceID, taskKey string) (Task, error) {
+func (r *Repository) claimCatalogByKey(
+	ctx context.Context,
+	workspaceID, taskKey string,
+) (Task, error) {
 	key := claimCatalogByKeyCacheKey(workspaceID, taskKey)
 	out, err := repositoryQuery[Task](ctx, r, sqlwrap.Params{
 		Key:               key,
@@ -75,10 +91,13 @@ func (r *Repository) claimCatalogByKey(ctx context.Context, workspaceID, taskKey
 		CacheL2Delay:      r.cacheL2Delay,
 		CacheVersionScope: taskCatalogCacheScope(workspaceID),
 	}, func(ctx context.Context) (Task, error) {
-		rows, err := r.q.GetClaimCatalogByKey(ctx, tasksqlc.GetClaimCatalogByKeyParams{
-			WorkspaceID: workspaceID,
-			Key:         taskKey,
-		})
+		rows, err := r.q.GetClaimCatalogByKey(
+			ctx,
+			tasksqlc.GetClaimCatalogByKeyParams{
+				WorkspaceID: workspaceID,
+				Key:         taskKey,
+			},
+		)
 		if err != nil {
 			return Task{}, err
 		}
@@ -107,10 +126,13 @@ func (r *Repository) IntegrationCheckTask(
 			CacheL2Delay:      r.cacheL2Delay,
 			CacheVersionScope: taskCatalogCacheScope(workspaceID),
 		}, func(ctx context.Context) (Task, error) {
-			row, err := r.q.GetIntegrationCheckTaskByID(ctx, tasksqlc.GetIntegrationCheckTaskByIDParams{
-				WorkspaceID: workspaceID,
-				ID:          int64(id),
-			})
+			row, err := r.q.GetIntegrationCheckTaskByID(
+				ctx,
+				tasksqlc.GetIntegrationCheckTaskByIDParams{
+					WorkspaceID: workspaceID,
+					ID:          int64(id),
+				},
+			)
 			if err != nil {
 				return Task{}, err
 			}
@@ -131,10 +153,13 @@ func (r *Repository) IntegrationCheckTask(
 		CacheL2Delay:      r.cacheL2Delay,
 		CacheVersionScope: taskCatalogCacheScope(workspaceID),
 	}, func(ctx context.Context) (Task, error) {
-		row, err := r.q.GetIntegrationCheckTaskByKey(ctx, tasksqlc.GetIntegrationCheckTaskByKeyParams{
-			WorkspaceID: workspaceID,
-			Key:         keyValue,
-		})
+		row, err := r.q.GetIntegrationCheckTaskByKey(
+			ctx,
+			tasksqlc.GetIntegrationCheckTaskByKeyParams{
+				WorkspaceID: workspaceID,
+				Key:         keyValue,
+			},
+		)
 		if err != nil {
 			return Task{}, err
 		}
@@ -149,7 +174,11 @@ func (r *Repository) IntegrationCheckTask(
 	return out, true, nil
 }
 
-func (r *Repository) rewardsCatalog(ctx context.Context, workspaceID string, taskID uint64) ([]Reward, error) {
+func (r *Repository) rewardsCatalog(
+	ctx context.Context,
+	workspaceID string,
+	taskID uint64,
+) ([]Reward, error) {
 	key := rewardsCatalogCacheKey(workspaceID, taskID)
 	out, err := repositoryQuery[[]Reward](ctx, r, sqlwrap.Params{
 		Key:               key,
@@ -157,10 +186,13 @@ func (r *Repository) rewardsCatalog(ctx context.Context, workspaceID string, tas
 		CacheL2Delay:      r.cacheL2Delay,
 		CacheVersionScope: taskCatalogCacheScope(workspaceID),
 	}, func(ctx context.Context) ([]Reward, error) {
-		rows, err := r.q.ListRewardsCatalog(ctx, tasksqlc.ListRewardsCatalogParams{
-			WorkspaceID: workspaceID,
-			TaskID:      int64(taskID),
-		})
+		rows, err := r.q.ListRewardsCatalog(
+			ctx,
+			tasksqlc.ListRewardsCatalogParams{
+				WorkspaceID: workspaceID,
+				TaskID:      int64(taskID),
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -194,11 +226,17 @@ func (r *Repository) nextSequenceTask(
 		CacheL2Delay:      r.cacheL2Delay,
 		CacheVersionScope: taskCatalogCacheScope(workspaceID),
 	}, func(ctx context.Context) (nextSequenceTask, error) {
-		id, err := r.q.GetNextSequenceTaskID(ctx, tasksqlc.GetNextSequenceTaskIDParams{
-			WorkspaceID:      workspaceID,
-			SequenceKey:      sql.NullString{String: sequenceKey, Valid: true},
-			SequencePosition: sql.NullInt32{Int32: int32(sequencePosition), Valid: true},
-		})
+		id, err := r.q.GetNextSequenceTaskID(
+			ctx,
+			tasksqlc.GetNextSequenceTaskIDParams{
+				WorkspaceID: workspaceID,
+				SequenceKey: sql.NullString{String: sequenceKey, Valid: true},
+				SequencePosition: sql.NullInt32{
+					Int32: int32(sequencePosition),
+					Valid: true,
+				},
+			},
+		)
 		if err != nil {
 			if isNoRows(err) {
 				return nextSequenceTask{}, nil
@@ -214,5 +252,6 @@ func (r *Repository) nextSequenceTask(
 }
 
 func taskVisibleAt(task Task, now time.Time) bool {
-	return (task.StartAt == nil || !task.StartAt.After(now)) && (task.EndAt == nil || task.EndAt.After(now))
+	return (task.StartAt == nil || !task.StartAt.After(now)) &&
+		(task.EndAt == nil || task.EndAt.After(now))
 }

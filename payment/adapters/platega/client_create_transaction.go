@@ -5,7 +5,10 @@ import (
 	"net/http"
 )
 
-func (c *Client) CreateTransaction(ctx context.Context, payload createTransactionRequest) (createTransactionResponse, error) {
+func (c *Client) CreateTransaction(
+	ctx context.Context,
+	payload createTransactionRequest,
+) (createTransactionResponse, error) {
 	if err := c.requireCredentials(); err != nil {
 		return createTransactionResponse{}, err
 	}
@@ -25,8 +28,13 @@ func (c *Client) CreateTransaction(ctx context.Context, payload createTransactio
 	if err != nil {
 		return createTransactionResponse{}, err
 	}
-	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusMultipleChoices {
-		return createTransactionResponse{}, wrapAPIError("create transaction", resp.StatusCode(), resp.String())
+	if resp.StatusCode() < http.StatusOK ||
+		resp.StatusCode() >= http.StatusMultipleChoices {
+		return createTransactionResponse{}, wrapAPIError(
+			"create transaction",
+			resp.StatusCode(),
+			resp.String(),
+		)
 	}
 	return result, nil
 }

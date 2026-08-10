@@ -14,11 +14,21 @@ type Admin struct {
 }
 
 func New(ctx context.Context, db *sqlwrap.Client) *Admin {
-	return &Admin{rootCtx: contextutil.Normalize(ctx), repository: repository.New(db)}
+	return &Admin{
+		rootCtx:    contextutil.Normalize(ctx),
+		repository: repository.New(db),
+	}
 }
 
-func NewWithOptions(ctx context.Context, db *sqlwrap.Client, options repository.Options) *Admin {
-	return &Admin{rootCtx: contextutil.Normalize(ctx), repository: repository.NewWithOptions(db, options)}
+func NewWithOptions(
+	ctx context.Context,
+	db *sqlwrap.Client,
+	options repository.Options,
+) *Admin {
+	return &Admin{
+		rootCtx:    contextutil.Normalize(ctx),
+		repository: repository.NewWithOptions(db, options),
+	}
 }
 
 func (a *Admin) Close() error {
@@ -28,7 +38,9 @@ func (a *Admin) Close() error {
 	return a.repository.Close()
 }
 
-func (a *Admin) withContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (a *Admin) withContext(
+	ctx context.Context,
+) (context.Context, context.CancelFunc) {
 	if a == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}

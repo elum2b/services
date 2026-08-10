@@ -11,7 +11,10 @@ var (
 		serviceerrors.CodeInvalidFields,
 		"promo admin locale and title are required",
 	)
-	ErrPromoIDRequired    = serviceerrors.New(serviceerrors.CodeInvalidFields, "promo admin promo id is required")
+	ErrPromoIDRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"promo admin promo id is required",
+	)
 	ErrPromoScopeRequired = serviceerrors.New(
 		serviceerrors.CodeInvalidFields,
 		"promo admin workspace and code are required",

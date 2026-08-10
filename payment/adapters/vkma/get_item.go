@@ -4,26 +4,38 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/elum2b/services/payment/repository"
-
 	"github.com/elum-utils/sign/vkmashop"
+
+	"github.com/elum2b/services/payment/repository"
 )
 
-func (a *VKMA) GetItemForWorkspace(ctx context.Context, workspaceID string, params vkmashop.Params) (*ItemResponse, error) {
+func (a *VKMA) GetItemForWorkspace(
+	ctx context.Context,
+	workspaceID string,
+	params vkmashop.Params,
+) (*ItemResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.getProduct(ctx, workspaceID, params)
 }
 
-func (a *VKMA) GetSubscriptionForWorkspace(ctx context.Context, workspaceID string, params vkmashop.Params) (*ItemResponse, error) {
+func (a *VKMA) GetSubscriptionForWorkspace(
+	ctx context.Context,
+	workspaceID string,
+	params vkmashop.Params,
+) (*ItemResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	return a.getProduct(ctx, workspaceID, params)
 }
 
-func (a *VKMA) getProduct(ctx context.Context, workspaceID string, params vkmashop.Params) (*ItemResponse, error) {
+func (a *VKMA) getProduct(
+	ctx context.Context,
+	workspaceID string,
+	params vkmashop.Params,
+) (*ItemResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx

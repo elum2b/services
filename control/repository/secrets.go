@@ -24,7 +24,10 @@ func (r *Repository) encryptSecret(value string) (string, error) {
 	}
 
 	sealed := aead.Seal(nonce, nonce, []byte(value), nil)
-	return encryptedSecretPrefix + base64.RawURLEncoding.EncodeToString(sealed), nil
+
+	return encryptedSecretPrefix + base64.RawURLEncoding.EncodeToString(
+		sealed,
+	), nil
 }
 
 func (r *Repository) decryptSecret(value string) (string, error) {
@@ -32,22 +35,30 @@ func (r *Repository) decryptSecret(value string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if !strings.HasPrefix(value, encryptedSecretPrefix) {
 		return "", fmt.Errorf("control encrypted secret has unsupported format")
 	}
 
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, encryptedSecretPrefix))
+	raw, err := base64.RawURLEncoding.DecodeString(
+		strings.TrimPrefix(value, encryptedSecretPrefix),
+	)
 	if err != nil {
 		return "", fmt.Errorf("control encrypted secret decode failed: %w", err)
 	}
+
 	if len(raw) < aead.NonceSize() {
 		return "", fmt.Errorf("control encrypted secret is truncated")
 	}
 
 	nonce := raw[:aead.NonceSize()]
+
 	plain, err := aead.Open(nil, nonce, raw[aead.NonceSize():], nil)
 	if err != nil {
-		return "", fmt.Errorf("control encrypted secret authentication failed: %w", err)
+		return "", fmt.Errorf(
+			"control encrypted secret authentication failed: %w",
+			err,
+		)
 	}
 
 	return string(plain), nil
@@ -60,7 +71,10 @@ func (r *Repository) secretAEAD() (cipher.AEAD, error) {
 
 	block, err := aes.NewCipher(r.secretEncryptionKey)
 	if err != nil {
-		return nil, fmt.Errorf("control secret cipher initialization failed: %w", err)
+		return nil, fmt.Errorf(
+			"control secret cipher initialization failed: %w",
+			err,
+		)
 	}
 
 	return cipher.NewGCM(block)

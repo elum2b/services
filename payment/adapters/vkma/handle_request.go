@@ -12,7 +12,10 @@ type Request struct {
 	Params      vkmashop.Params
 }
 
-func (a *VKMA) HandleRequest(ctx context.Context, request Request) (any, error) {
+func (a *VKMA) HandleRequest(
+	ctx context.Context,
+	request Request,
+) (any, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
@@ -30,7 +33,8 @@ func (a *VKMA) HandleRequest(ctx context.Context, request Request) (any, error) 
 		case vkmashop.Refunded:
 			return a.RefundOrderForWorkspace(ctx, workspaceID, params)
 		}
-	case vkmashop.SubscriptionStatusChange, vkmashop.SubscriptionStatusChangeTest:
+	case vkmashop.SubscriptionStatusChange,
+		vkmashop.SubscriptionStatusChangeTest:
 		switch params.Status {
 		case vkmashop.Chargeable:
 			return a.ChargeableForWorkspace(ctx, workspaceID, params)

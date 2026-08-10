@@ -2,8 +2,9 @@ package admin
 
 import (
 	"context"
-	json "github.com/goccy/go-json"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	"github.com/elum2b/services/calendar/service/user"
 )
@@ -31,7 +32,13 @@ func (a *Admin) ListOperations(
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	limit, offset := normalizePage(page)
-	values, err := a.repository.ListOperations(mergedCtx, workspaceID, calendarID, limit, offset)
+	values, err := a.repository.ListOperations(
+		mergedCtx,
+		workspaceID,
+		calendarID,
+		limit,
+		offset,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -42,20 +49,36 @@ func (a *Admin) ListOperations(
 			return nil, err
 		}
 		result = append(result, OperationModel{
-			ID: value.ID, AppID: value.Identity.AppID, PlatformID: value.Identity.PlatformID,
-			PlatformUserID: value.Identity.PlatformUserID, OperationID: value.OperationID,
-			Granted: value.Granted, Status: value.Status, Position: value.Position,
-			Rewards: rewards, CurrentPosition: value.CurrentPosition,
-			ClaimCount: value.ClaimCount, OccurredAt: value.OccurredAt,
+			ID:              value.ID,
+			AppID:           value.Identity.AppID,
+			PlatformID:      value.Identity.PlatformID,
+			PlatformUserID:  value.Identity.PlatformUserID,
+			OperationID:     value.OperationID,
+			Granted:         value.Granted,
+			Status:          value.Status,
+			Position:        value.Position,
+			Rewards:         rewards,
+			CurrentPosition: value.CurrentPosition,
+			ClaimCount:      value.ClaimCount,
+			OccurredAt:      value.OccurredAt,
 		})
 	}
 	return result, nil
 }
 
-func (a *Admin) GetOperation(ctx context.Context, workspaceID, calendarID string, id uint64) (OperationModel, error) {
+func (a *Admin) GetOperation(
+	ctx context.Context,
+	workspaceID, calendarID string,
+	id uint64,
+) (OperationModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
-	value, err := a.repository.GetOperation(mergedCtx, workspaceID, calendarID, id)
+	value, err := a.repository.GetOperation(
+		mergedCtx,
+		workspaceID,
+		calendarID,
+		id,
+	)
 	if err != nil {
 		return OperationModel{}, err
 	}
@@ -63,10 +86,26 @@ func (a *Admin) GetOperation(ctx context.Context, workspaceID, calendarID string
 	if err := json.Unmarshal(value.Rewards, &rewards); err != nil {
 		return OperationModel{}, err
 	}
-	return OperationModel{ID: value.ID, AppID: value.Identity.AppID, PlatformID: value.Identity.PlatformID, PlatformUserID: value.Identity.PlatformUserID, OperationID: value.OperationID, Granted: value.Granted, Status: value.Status, Position: value.Position, Rewards: rewards, CurrentPosition: value.CurrentPosition, ClaimCount: value.ClaimCount, OccurredAt: value.OccurredAt}, nil
+	return OperationModel{
+		ID:              value.ID,
+		AppID:           value.Identity.AppID,
+		PlatformID:      value.Identity.PlatformID,
+		PlatformUserID:  value.Identity.PlatformUserID,
+		OperationID:     value.OperationID,
+		Granted:         value.Granted,
+		Status:          value.Status,
+		Position:        value.Position,
+		Rewards:         rewards,
+		CurrentPosition: value.CurrentPosition,
+		ClaimCount:      value.ClaimCount,
+		OccurredAt:      value.OccurredAt,
+	}, nil
 }
 
-func (a *Admin) GetStats(ctx context.Context, workspaceID, calendarID string) (StatsModel, error) {
+func (a *Admin) GetStats(
+	ctx context.Context,
+	workspaceID, calendarID string,
+) (StatsModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	value, err := a.repository.GetStats(mergedCtx, workspaceID, calendarID)
@@ -83,7 +122,13 @@ func (a *Admin) ListDailyStats(
 ) ([]DailyStatsModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
-	values, err := a.repository.ListDailyStats(mergedCtx, workspaceID, calendarID, from, until)
+	values, err := a.repository.ListDailyStats(
+		mergedCtx,
+		workspaceID,
+		calendarID,
+		from,
+		until,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +139,11 @@ func (a *Admin) ListDailyStats(
 	return result, nil
 }
 
-func (a *Admin) RefreshDailyStats(ctx context.Context, workspaceID string, from, until time.Time) error {
+func (a *Admin) RefreshDailyStats(
+	ctx context.Context,
+	workspaceID string,
+	from, until time.Time,
+) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 	return a.repository.RefreshDailyStats(mergedCtx, workspaceID, from, until)

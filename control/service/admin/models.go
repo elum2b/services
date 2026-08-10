@@ -3,8 +3,9 @@ package admin
 import (
 	"time"
 
-	controlmodel "github.com/elum2b/services/control/model"
 	json "github.com/goccy/go-json"
+
+	controlmodel "github.com/elum2b/services/control/model"
 )
 
 type AccessScope string
@@ -107,6 +108,37 @@ type ListApplicationPlatformsParams struct {
 }
 
 type DeleteApplicationPlatformParams struct {
+	ActorID     string
+	WorkspaceID string
+	AppID       int64
+	PlatformID  int64
+}
+
+type ApplicationDeliveryModel struct {
+	WorkspaceID string
+	AppID       int64
+	PlatformID  int64
+	URL         string
+	IsEnabled   bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type UpsertApplicationDeliveryParams struct {
+	ActorID     string
+	WorkspaceID string
+	AppID       int64
+	PlatformID  int64
+	URL         string
+	Secret      string
+	IsEnabled   bool
+}
+
+type ListApplicationDeliveriesParams struct {
+	ActorID     string
+	WorkspaceID string
+}
+type DeleteApplicationDeliveryParams struct {
 	ActorID     string
 	WorkspaceID string
 	AppID       int64

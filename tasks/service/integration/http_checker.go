@@ -47,15 +47,32 @@ type HTTPCheckSuccess struct {
 	BodyContains string `json:"body_contains"`
 }
 
-func (h HTTPChecker) CheckExternalTask(ctx context.Context, params ExternalTaskCheckParams) (CheckResult, error) {
-	return h.check(ctx, params.Identity, params.Task, params.Provider, params.Variables, params.OccurredAt)
+func (h HTTPChecker) CheckExternalTask(
+	ctx context.Context,
+	params ExternalTaskCheckParams,
+) (CheckResult, error) {
+	return h.check(
+		ctx,
+		params.Identity,
+		params.Task,
+		params.Provider,
+		params.Variables,
+		params.OccurredAt,
+	)
 }
 
 func (h HTTPChecker) CheckChannelSubscription(
 	ctx context.Context,
 	params ChannelSubscriptionCheckParams,
 ) (CheckResult, error) {
-	return h.check(ctx, params.Identity, params.Task, params.Provider, params.Variables, params.OccurredAt)
+	return h.check(
+		ctx,
+		params.Identity,
+		params.Task,
+		params.Provider,
+		params.Variables,
+		params.OccurredAt,
+	)
 }
 
 func (h HTTPChecker) check(
@@ -74,7 +91,12 @@ func (h HTTPChecker) check(
 		return CheckResult{}, err
 	}
 	values := templateValues(identity, task, provider, variables, now)
-	req, err := buildHTTPCheckRequest(ctx, config.Request, values, h.AllowPrivateHosts)
+	req, err := buildHTTPCheckRequest(
+		ctx,
+		config.Request,
+		values,
+		h.AllowPrivateHosts,
+	)
 	if err != nil {
 		return CheckResult{}, err
 	}
@@ -89,16 +111,27 @@ func (h HTTPChecker) check(
 		return CheckResult{}, err
 	}
 	if len(body) > maxHTTPCheckResponse {
-		return CheckResult{}, fmt.Errorf("HTTP check response body exceeds %d bytes", maxHTTPCheckResponse)
+		return CheckResult{}, fmt.Errorf(
+			"HTTP check response body exceeds %d bytes",
+			maxHTTPCheckResponse,
+		)
 	}
-	completed, reason := matchHTTPCheckSuccess(resp.StatusCode, body, config.Success)
+	completed, reason := matchHTTPCheckSuccess(
+		resp.StatusCode,
+		body,
+		config.Success,
+	)
 	payload, _ := json.Marshal(map[string]any{
 		"provider":    provider,
 		"status_code": resp.StatusCode,
 		"completed":   completed,
 		"reason":      reason,
 	})
-	return CheckResult{Completed: completed, Reason: reason, Payload: payload}, nil
+	return CheckResult{
+		Completed: completed,
+		Reason:    reason,
+		Payload:   payload,
+	}, nil
 }
 
 func buildHTTPCheckRequest(
@@ -126,7 +159,9 @@ func buildHTTPCheckRequest(
 	parsed.RawQuery = query.Encode()
 	var body io.Reader
 	if len(config.Body) > 0 {
-		body = bytes.NewReader([]byte(renderTemplate(string(config.Body), values)))
+		body = bytes.NewReader(
+			[]byte(renderTemplate(string(config.Body), values)),
+		)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, parsed.String(), body)
 	if err != nil {
@@ -135,8 +170,11 @@ func buildHTTPCheckRequest(
 	for key, value := range config.Headers {
 		key = renderTemplate(key, values)
 		value = renderTemplate(value, values)
-		if strings.ContainsAny(key, "\r\n") || strings.ContainsAny(value, "\r\n") {
-			return nil, fmt.Errorf("HTTP check headers cannot contain line breaks")
+		if strings.ContainsAny(key, "\r\n") ||
+			strings.ContainsAny(value, "\r\n") {
+			return nil, fmt.Errorf(
+				"HTTP check headers cannot contain line breaks",
+			)
 		}
 		req.Header.Set(key, value)
 	}
@@ -146,7 +184,11 @@ func buildHTTPCheckRequest(
 	return req, nil
 }
 
-func matchHTTPCheckSuccess(statusCode int, body []byte, success HTTPCheckSuccess) (bool, string) {
+func matchHTTPCheckSuccess(
+	statusCode int,
+	body []byte,
+	success HTTPCheckSuccess,
+) (bool, string) {
 	if len(success.StatusCodes) == 0 {
 		if statusCode < 200 || statusCode >= 300 {
 			return false, "status_code"
@@ -163,7 +205,8 @@ func matchHTTPCheckSuccess(statusCode int, body []byte, success HTTPCheckSuccess
 			return false, "status_code"
 		}
 	}
-	if success.BodyContains != "" && !strings.Contains(string(body), success.BodyContains) {
+	if success.BodyContains != "" &&
+		!strings.Contains(string(body), success.BodyContains) {
 		return false, "body_contains"
 	}
 	if success.JSONPath != "" {

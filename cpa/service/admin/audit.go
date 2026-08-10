@@ -29,7 +29,10 @@ type AssignmentEventListParams struct {
 	Page        Page
 }
 
-func (a *Admin) GetUserAssignment(ctx context.Context, params user.GetStatusParams) (*AssignmentModel, error) {
+func (a *Admin) GetUserAssignment(
+	ctx context.Context,
+	params user.GetStatusParams,
+) (*AssignmentModel, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -50,7 +53,10 @@ func (a *Admin) GetUserAssignment(ctx context.Context, params user.GetStatusPara
 
 }
 
-func (a *Admin) ListAssignments(ctx context.Context, params AssignmentListParams) ([]AssignmentModel, error) {
+func (a *Admin) ListAssignments(
+	ctx context.Context,
+	params AssignmentListParams,
+) ([]AssignmentModel, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -77,7 +83,10 @@ func (a *Admin) ListAssignments(ctx context.Context, params AssignmentListParams
 
 }
 
-func (a *Admin) ListCodes(ctx context.Context, params CodeListParams) ([]CodeModel, error) {
+func (a *Admin) ListCodes(
+	ctx context.Context,
+	params CodeListParams,
+) ([]CodeModel, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
@@ -112,7 +121,10 @@ func (a *Admin) ListCodes(ctx context.Context, params CodeListParams) ([]CodeMod
 
 }
 
-func (a *Admin) ListAssignmentEvents(ctx context.Context, params AssignmentEventListParams) ([]AssignmentEventModel, error) {
+func (a *Admin) ListAssignmentEvents(
+	ctx context.Context,
+	params AssignmentEventListParams,
+) ([]AssignmentEventModel, error) {
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()

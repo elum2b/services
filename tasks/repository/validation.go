@@ -60,7 +60,10 @@ func validateSaveTask(params SaveTaskParams) error {
 		return fmt.Errorf("tasks task_kind %q is unsupported", params.TaskKind)
 	}
 	if !validActionKind(params.ActionKind) {
-		return fmt.Errorf("tasks action_kind %q is unsupported", params.ActionKind)
+		return fmt.Errorf(
+			"tasks action_kind %q is unsupported",
+			params.ActionKind,
+		)
 	}
 	if !validTaskActionKind(params.TaskKind, params.ActionKind) {
 		return fmt.Errorf(
@@ -69,18 +72,27 @@ func validateSaveTask(params SaveTaskParams) error {
 			params.ActionKind,
 		)
 	}
-	if params.ClaimMode != ClaimModeManual && params.ClaimMode != ClaimModeAuto {
-		return fmt.Errorf("tasks claim_mode %q is unsupported", params.ClaimMode)
+	if params.ClaimMode != ClaimModeManual &&
+		params.ClaimMode != ClaimModeAuto {
+		return fmt.Errorf(
+			"tasks claim_mode %q is unsupported",
+			params.ClaimMode,
+		)
 	}
-	if params.ClaimMode == ClaimModeAuto && params.TaskKind != TaskKindInternal {
+	if params.ClaimMode == ClaimModeAuto &&
+		params.TaskKind != TaskKindInternal {
 		return fmt.Errorf(
 			"tasks claim_mode %q is unsupported for task_kind %q",
 			params.ClaimMode,
 			params.TaskKind,
 		)
 	}
-	if params.StartMode != StartModeNone && params.StartMode != StartModeRequired {
-		return fmt.Errorf("tasks start_mode %q is unsupported", params.StartMode)
+	if params.StartMode != StartModeNone &&
+		params.StartMode != StartModeRequired {
+		return fmt.Errorf(
+			"tasks start_mode %q is unsupported",
+			params.StartMode,
+		)
 	}
 	if params.TargetCount == 0 {
 		return fmt.Errorf("tasks target_count must be positive")
@@ -89,13 +101,18 @@ func validateSaveTask(params SaveTaskParams) error {
 		return fmt.Errorf("tasks reset configuration is invalid")
 	}
 	if (params.SequenceKey == nil) != (params.SequencePosition == nil) {
-		return fmt.Errorf("tasks sequence_key and sequence_position must be set together")
+		return fmt.Errorf(
+			"tasks sequence_key and sequence_position must be set together",
+		)
 	}
 	if params.SequencePosition != nil &&
 		(*params.SequencePosition == 0 || *params.SequencePosition > math.MaxInt32) {
-		return fmt.Errorf("tasks sequence_position must be positive and fit int32")
+		return fmt.Errorf(
+			"tasks sequence_position must be positive and fit int32",
+		)
 	}
-	if params.StartAt != nil && params.EndAt != nil && !params.StartAt.Before(*params.EndAt) {
+	if params.StartAt != nil && params.EndAt != nil &&
+		!params.StartAt.Before(*params.EndAt) {
 		return fmt.Errorf("tasks start_at must be before end_at")
 	}
 	if !validJSONDocument(params.Payload) {
@@ -206,15 +223,21 @@ func validateComplexCondition(params SaveComplexConditionParams) error {
 	if params.ParentTaskID == 0 || params.ConditionTaskID == 0 {
 		return fmt.Errorf("tasks complex condition task IDs must be positive")
 	}
-	if params.ParentTaskID > math.MaxInt64 || params.ConditionTaskID > math.MaxInt64 {
-		return fmt.Errorf("tasks complex condition task ID is out of database range")
+	if params.ParentTaskID > math.MaxInt64 ||
+		params.ConditionTaskID > math.MaxInt64 {
+		return fmt.Errorf(
+			"tasks complex condition task ID is out of database range",
+		)
 	}
 	if params.ParentTaskID == params.ConditionTaskID {
 		return fmt.Errorf("tasks complex condition cannot reference itself")
 	}
 	if params.RequiredStatus != ComplexRequiredStatusReady &&
 		params.RequiredStatus != ComplexRequiredStatusClaimed {
-		return fmt.Errorf("tasks complex condition required_status %q is unsupported", params.RequiredStatus)
+		return fmt.Errorf(
+			"tasks complex condition required_status %q is unsupported",
+			params.RequiredStatus,
+		)
 	}
 	return nil
 }

@@ -14,13 +14,16 @@ func (o *Operational) UpdateAssetRate(
 	mergedCtx, cancel := contextutil.Merge(o.rootCtx, ctx)
 	defer cancel()
 
-	result, err := o.repository.UpdateAssetRate(mergedCtx, repository.AssetRateUpdateParams{
-		AssetCode:              params.AssetCode,
-		ReferenceAssetCode:     params.ReferenceAssetCode,
-		ReferencePerAssetMinor: params.ReferencePerAssetMinor,
-		Source:                 params.Source,
-		ObservedAt:             params.ObservedAt,
-	})
+	result, err := o.repository.UpdateAssetRate(
+		mergedCtx,
+		repository.AssetRateUpdateParams{
+			AssetCode:              params.AssetCode,
+			ReferenceAssetCode:     params.ReferenceAssetCode,
+			ReferencePerAssetMinor: params.ReferencePerAssetMinor,
+			Source:                 params.Source,
+			ObservedAt:             params.ObservedAt,
+		},
+	)
 	if err != nil {
 		return UpdateAssetRateResult{}, err
 	}
@@ -39,12 +42,15 @@ func (o *Operational) ConfigureAssetRateAutoUpdate(
 	mergedCtx, cancel := contextutil.Merge(o.rootCtx, ctx)
 	defer cancel()
 
-	return o.repository.ConfigureAssetRateAutoUpdate(mergedCtx, repository.AssetRateAutoUpdateParams{
-		AssetCode:          params.AssetCode,
-		ReferenceAssetCode: params.ReferenceAssetCode,
-		Enabled:            params.Enabled,
-		Source:             params.Source,
-		SourceChainID:      params.SourceChainID,
-		SourceTokenAddress: params.SourceTokenAddress,
-	})
+	return o.repository.ConfigureAssetRateAutoUpdate(
+		mergedCtx,
+		repository.AssetRateAutoUpdateParams{
+			AssetCode:          params.AssetCode,
+			ReferenceAssetCode: params.ReferenceAssetCode,
+			Enabled:            params.Enabled,
+			Source:             params.Source,
+			SourceChainID:      params.SourceChainID,
+			SourceTokenAddress: params.SourceTokenAddress,
+		},
+	)
 }

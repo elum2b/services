@@ -34,7 +34,10 @@ var (
 	}
 )
 
-func (r *Repository) referenceCacheKey(method, workspaceID string, parts ...any) string {
+func (r *Repository) referenceCacheKey(
+	method, workspaceID string,
+	parts ...any,
+) string {
 	args := append([]any{"reference", method, workspaceID}, parts...)
 	return sqlwrap.CreateKey(args...)
 }
@@ -43,7 +46,10 @@ func referenceCacheScope(method, workspaceID string) []any {
 	return []any{"reference", method, workspaceID}
 }
 
-func (r *Repository) bumpReferenceCacheVersions(workspaceID string, methods ...string) error {
+func (r *Repository) bumpReferenceCacheVersions(
+	workspaceID string,
+	methods ...string,
+) error {
 	if r == nil || r.db == nil || workspaceID == "" {
 		return nil
 	}
@@ -52,7 +58,9 @@ func (r *Repository) bumpReferenceCacheVersions(workspaceID string, methods ...s
 		if method == "" {
 			continue
 		}
-		if err := r.db.BumpCacheVersion(referenceCacheScope(method, workspaceID)...); err != nil && result == nil {
+		if err := r.db.BumpCacheVersion(
+			referenceCacheScope(method, workspaceID)...); err != nil &&
+			result == nil {
 			result = err
 		}
 	}

@@ -4,44 +4,38 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/google/uuid"
+
 	controlmodel "github.com/elum2b/services/control/model"
 	controlsqlc "github.com/elum2b/services/control/sqlc"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	"github.com/google/uuid"
 )
 
 type auditContextKey struct{}
 
 func WithAudit(ctx context.Context, event AuditEvent) context.Context {
-
 	return context.WithValue(ctx, auditContextKey{}, event)
-
 }
 
 func auditFromContext(ctx context.Context) (AuditEvent, bool) {
-
 	event, ok := ctx.Value(auditContextKey{}).(AuditEvent)
 
 	return event, ok
-
 }
 
 func (r *Repository) withAuditTx(
 	ctx context.Context,
 	write func(*controlsqlc.Queries) error,
 ) error {
-
 	return r.withAuditDBTx(ctx, func(_ *sql.Tx, q *controlsqlc.Queries) error {
 		return write(q)
 	})
-
 }
 
 func (r *Repository) withAuditDBTx(
 	ctx context.Context,
 	write func(*sql.Tx, *controlsqlc.Queries) error,
 ) error {
-
 	event, hasAudit := auditFromContext(ctx)
 
 	return sqlwrap.WithTx(
@@ -54,6 +48,7 @@ func (r *Repository) withAuditDBTx(
 			if err := write(tx, q); err != nil {
 				return err
 			}
+
 			if !hasAudit {
 				return nil
 			}
@@ -61,20 +56,18 @@ func (r *Repository) withAuditDBTx(
 			return appendAudit(ctx, q, event)
 		},
 	)
-
 }
 
 func (r *Repository) AppendAudit(ctx context.Context, event AuditEvent) error {
-
 	if err := validateAuditScope(event); err != nil {
 		return err
 	}
+
 	if err := required(event.MethodKey); err != nil {
 		return err
 	}
 
 	return appendAudit(ctx, r.q, event)
-
 }
 
 func appendAudit(
@@ -82,7 +75,6 @@ func appendAudit(
 	q *controlsqlc.Queries,
 	event AuditEvent,
 ) error {
-
 	if event.Scope == "" {
 		if event.WorkspaceID == "" {
 			event.Scope = ScopeGlobal
@@ -90,13 +82,16 @@ func appendAudit(
 			event.Scope = ScopeWorkspace
 		}
 	}
+
 	if event.Result == "" {
 		event.Result = controlmodel.AuditResultSucceeded
 	}
+
 	if event.Result != controlmodel.AuditResultSucceeded &&
 		event.Result != controlmodel.AuditResultFailed {
 		return ErrInvalidArgument
 	}
+
 	if event.ID == "" {
 		event.ID = uuid.NewString()
 	}
@@ -114,7 +109,6 @@ func appendAudit(
 		Result:      string(event.Result),
 		RequestID:   event.RequestID,
 	})
-
 }
 
 func (r *Repository) ListAudit(
@@ -124,7 +118,6 @@ func (r *Repository) ListAudit(
 	cursor Cursor,
 	limit int32,
 ) ([]AuditEvent, error) {
-
 	if err := validateAuditScope(AuditEvent{
 		Scope:       scope,
 		WorkspaceID: workspaceID,
@@ -162,11 +155,9 @@ func (r *Repository) ListAudit(
 	}
 
 	return result, nil
-
 }
 
 func validateAuditScope(event AuditEvent) error {
-
 	switch event.Scope {
 	case ScopeGlobal:
 		if event.WorkspaceID != "" {
@@ -181,43 +172,34 @@ func validateAuditScope(event AuditEvent) error {
 	}
 
 	return nil
-
 }
 
 func nullableString(value string) sql.NullString {
-
 	return sql.NullString{
 		String: value,
 		Valid:  value != "",
 	}
-
 }
 
 func valueString(value sql.NullString) string {
-
 	if value.Valid {
 		return value.String
 	}
 
 	return ""
-
 }
 
 func nullableCursorTime(cursor Cursor) sql.NullTime {
-
 	return sql.NullTime{
 		Time:  cursor.Time,
 		Valid: !cursor.Time.IsZero(),
 	}
-
 }
 
 func pageLimit(limit int32) int32 {
-
 	if limit <= 0 || limit > 100 {
 		return 100
 	}
 
 	return limit
-
 }

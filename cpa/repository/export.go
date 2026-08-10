@@ -7,7 +7,11 @@ import (
 	services "github.com/elum2b/services"
 )
 
-func (r *Repository) Export(ctx context.Context, workspaceID string, req ExportRequest) (ExportPackage, error) {
+func (r *Repository) Export(
+	ctx context.Context,
+	workspaceID string,
+	req ExportRequest,
+) (ExportPackage, error) {
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return ExportPackage{}, err
 	}
@@ -42,8 +46,11 @@ func (r *Repository) Export(ctx context.Context, workspaceID string, req ExportR
 			IsActive:          bundle.Offer.IsActive,
 			StartAt:           bundle.Offer.StartAt,
 			EndAt:             bundle.Offer.EndAt,
-			Localization:      make(map[string]ExportText, len(bundle.Localizations)),
-			Rewards:           make([]ExportReward, 0, len(bundle.Rewards)),
+			Localization: make(
+				map[string]ExportText,
+				len(bundle.Localizations),
+			),
+			Rewards: make([]ExportReward, 0, len(bundle.Rewards)),
 		}
 		for _, localization := range bundle.Localizations {
 			offer.Localization[localization.Locale] = ExportText{

@@ -114,7 +114,12 @@ func (s *Store) On(ctx context.Context, handler Handler, opts ...Option) error {
 			continue
 		}
 		for _, event := range events {
-			if err := s.handleEvent(ctx, event, options.workerID, handler); err != nil {
+			if err := s.handleEvent(
+				ctx,
+				event,
+				options.workerID,
+				handler,
+			); err != nil {
 				return err
 			}
 		}
@@ -170,7 +175,12 @@ func (ctx Context) mark() error {
 	return nil
 }
 
-func (s *Store) handleEvent(ctx context.Context, event storedEvent, workerID string, handler Handler) error {
+func (s *Store) handleEvent(
+	ctx context.Context,
+	event storedEvent,
+	workerID string,
+	handler Handler,
+) error {
 	marked := false
 	callbackCtx := Context{
 		Context:            ctx,

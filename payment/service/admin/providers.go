@@ -13,7 +13,10 @@ func (a *Admin) ListProviders(ctx context.Context) ([]ProviderModel, error) {
 	return a.repository.ListProviders(ctx)
 }
 
-func (a *Admin) GetProvider(ctx context.Context, code string) (ProviderModel, error) {
+func (a *Admin) GetProvider(
+	ctx context.Context,
+	code string,
+) (ProviderModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
@@ -34,19 +37,25 @@ func (a *Admin) GetAsset(ctx context.Context, code string) (AssetModel, error) {
 	return a.repository.AdminGetAsset(ctx, code)
 }
 
-func (a *Admin) ListProviderAssets(ctx context.Context, params ProviderAssetListParams) ([]ProviderAssetModel, error) {
+func (a *Admin) ListProviderAssets(
+	ctx context.Context,
+	params ProviderAssetListParams,
+) ([]ProviderAssetModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 	ctx = mergedCtx
 	limit, offset := normalizePage(params.Page)
-	return a.repository.AdminListProviderAssets(ctx, paymentsqlc.AdminListProviderAssetsParams{
-		Column1:      params.ProviderCode,
-		ProviderCode: params.ProviderCode,
-		Column3:      params.AssetCode,
-		AssetCode:    params.AssetCode,
-		Limit:        limit,
-		Offset:       offset,
-	})
+	return a.repository.AdminListProviderAssets(
+		ctx,
+		paymentsqlc.AdminListProviderAssetsParams{
+			Column1:      params.ProviderCode,
+			ProviderCode: params.ProviderCode,
+			Column3:      params.AssetCode,
+			AssetCode:    params.AssetCode,
+			Limit:        limit,
+			Offset:       offset,
+		},
+	)
 }
 
 func (a *Admin) GetProviderAsset(

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	services "github.com/elum2b/services"
 	serviceerrors "github.com/elum2b/services/errors"
 	callbackutil "github.com/elum2b/services/internal/utils/callback"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	"github.com/jackc/pgx/v5/pgconn"
-
 	paymentsqlc "github.com/elum2b/services/payment/sqlc"
 )
 
@@ -43,12 +43,30 @@ type Options struct {
 const bootstrapQueryTimeout = 30 * time.Second
 
 var (
-	ErrWorkspaceRequired    = serviceerrors.New(serviceerrors.CodeInvalidFields, "payment workspace id is required")
-	ErrInvalidProvider      = serviceerrors.New(serviceerrors.CodeInvalidFields, "payment provider is invalid")
-	ErrInvalidAsset         = serviceerrors.New(serviceerrors.CodeInvalidFields, "payment asset is invalid")
-	ErrInvalidProviderAsset = serviceerrors.New(serviceerrors.CodeInvalidFields, "payment provider asset is invalid")
-	ErrInvalidDateRange     = serviceerrors.New(serviceerrors.CodeInvalidFields, "payment date range is invalid")
-	ErrPaymentReportInvalid = serviceerrors.New(serviceerrors.CodeInvalidFields, "payment report parameters are invalid")
+	ErrWorkspaceRequired = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"payment workspace id is required",
+	)
+	ErrInvalidProvider = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"payment provider is invalid",
+	)
+	ErrInvalidAsset = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"payment asset is invalid",
+	)
+	ErrInvalidProviderAsset = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"payment provider asset is invalid",
+	)
+	ErrInvalidDateRange = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"payment date range is invalid",
+	)
+	ErrPaymentReportInvalid = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"payment report parameters are invalid",
+	)
 )
 
 func NewPaymentRepository(db *sqlwrap.Client) *PaymentRepository {
@@ -58,13 +76,19 @@ func NewPaymentRepository(db *sqlwrap.Client) *PaymentRepository {
 	})
 }
 
-func NewPaymentRepositoryWithOptions(db *sqlwrap.Client, options Options) *PaymentRepository {
+func NewPaymentRepositoryWithOptions(
+	db *sqlwrap.Client,
+	options Options,
+) *PaymentRepository {
 	timeout := queryTimeout(options.QueryTimeout)
 	executor := db.WithQueryTimeout(timeout)
 	return &PaymentRepository{
-		db:                       db,
-		q:                        paymentsqlc.New(executor),
-		callbacks:                callbackutil.NewWithTable(db.DB(), callbackutil.PaymentTable),
+		db: db,
+		q:  paymentsqlc.New(executor),
+		callbacks: callbackutil.NewWithTable(
+			db.DB(),
+			callbackutil.PaymentTable,
+		),
 		executor:                 executor,
 		timeout:                  timeout,
 		cacheL1:                  options.CacheL1Delay,
@@ -73,7 +97,10 @@ func NewPaymentRepositoryWithOptions(db *sqlwrap.Client, options Options) *Payme
 	}
 }
 
-func NewPreparedPaymentRepository(ctx context.Context, db *sqlwrap.Client) (*PaymentRepository, error) {
+func NewPreparedPaymentRepository(
+	ctx context.Context,
+	db *sqlwrap.Client,
+) (*PaymentRepository, error) {
 	return NewPreparedPaymentRepositoryWithOptions(ctx, db, Options{})
 }
 
@@ -96,7 +123,10 @@ func (r *PaymentRepository) Close() error {
 	return errors.Join(r.q.Close(), callbackErr)
 }
 
-func (r *PaymentRepository) WithTx(ctx context.Context, fn func(*PaymentRepository) error) error {
+func (r *PaymentRepository) WithTx(
+	ctx context.Context,
+	fn func(*PaymentRepository) error,
+) error {
 	pendingWorkspaces := make(map[string]struct{})
 	pendingTONManifests := make(map[string]struct{})
 	pendingInvalidateAll := false
@@ -132,24 +162,36 @@ func (r *PaymentRepository) WithTx(ctx context.Context, fn func(*PaymentReposito
 		cacheErr = InvalidateAllCache(r.db)
 	} else {
 		for workspaceID := range pendingWorkspaces {
-			cacheErr = errors.Join(cacheErr, InvalidateWorkspaceCache(r.db, workspaceID))
+			cacheErr = errors.Join(
+				cacheErr,
+				InvalidateWorkspaceCache(r.db, workspaceID),
+			)
 		}
 	}
 	for workspaceID := range pendingTONManifests {
-		cacheErr = errors.Join(cacheErr, InvalidateTONManifestCache(r.db, workspaceID))
+		cacheErr = errors.Join(
+			cacheErr,
+			InvalidateTONManifestCache(r.db, workspaceID),
+		)
 	}
 	r.reportCacheInvalidationError(cacheErr)
 	return nil
 }
 
-func (r *PaymentRepository) inTransaction(ctx context.Context, fn func(*PaymentRepository) error) error {
+func (r *PaymentRepository) inTransaction(
+	ctx context.Context,
+	fn func(*PaymentRepository) error,
+) error {
 	if r.inTx {
 		return fn(r)
 	}
 	return r.WithTx(ctx, fn)
 }
 
-func (r *PaymentRepository) Bootstrap(ctx context.Context, schemaPath ...string) error {
+func (r *PaymentRepository) Bootstrap(
+	ctx context.Context,
+	schemaPath ...string,
+) error {
 	raw := paymentsqlc.SchemaSQL
 	if len(schemaPath) > 0 && strings.TrimSpace(schemaPath[0]) != "" {
 		data, err := os.ReadFile(schemaPath[0])
@@ -164,10 +206,15 @@ func (r *PaymentRepository) Bootstrap(ctx context.Context, schemaPath ...string)
 		return fmt.Errorf("payment schema SQL parse failed: %w", err)
 	}
 	for _, stmt := range statements {
-		if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
-			_, err := r.db.DB().ExecContext(ctx, stmt)
-			return err
-		}); err != nil {
+		if err := sqlwrap.Exec(
+			ctx,
+			r.db,
+			sqlwrap.Params{Timeout: bootstrapQueryTimeout},
+			func(ctx context.Context) error {
+				_, err := r.db.DB().ExecContext(ctx, stmt)
+				return err
+			},
+		); err != nil {
 			if isDuplicateTypeStatement(stmt, err) {
 				continue
 			}
@@ -178,9 +225,18 @@ func (r *PaymentRepository) Bootstrap(ctx context.Context, schemaPath ...string)
 		return err
 	}
 
-	if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
-		return callbackutil.BootstrapTable(ctx, r.db.DB(), callbackutil.PaymentTable)
-	}); err != nil {
+	if err := sqlwrap.Exec(
+		ctx,
+		r.db,
+		sqlwrap.Params{Timeout: bootstrapQueryTimeout},
+		func(ctx context.Context) error {
+			return callbackutil.BootstrapTable(
+				ctx,
+				r.db.DB(),
+				callbackutil.PaymentTable,
+			)
+		},
+	); err != nil {
 		return err
 	}
 	if err := r.applySQL(ctx, paymentsqlc.TriggerSQL, "trigger"); err != nil {
@@ -190,7 +246,10 @@ func (r *PaymentRepository) Bootstrap(ctx context.Context, schemaPath ...string)
 }
 
 func isDuplicateTypeStatement(stmt string, err error) bool {
-	if !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(stmt)), "CREATE TYPE ") {
+	if !strings.HasPrefix(
+		strings.ToUpper(strings.TrimSpace(stmt)),
+		"CREATE TYPE ",
+	) {
 		return false
 	}
 	var pgErr *pgconn.PgError
@@ -212,17 +271,30 @@ func (r *PaymentRepository) applySchemaUpgrades(ctx context.Context) error {
 	return err
 }
 
-func (r *PaymentRepository) applySQL(ctx context.Context, raw, source string) error {
+func (r *PaymentRepository) applySQL(
+	ctx context.Context,
+	raw, source string,
+) error {
 	statements, err := sqlwrap.SplitStatements(raw)
 	if err != nil {
 		return fmt.Errorf("payment %s SQL parse failed: %w", source, err)
 	}
 	for _, statement := range statements {
-		if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{Timeout: bootstrapQueryTimeout}, func(ctx context.Context) error {
-			_, err := r.db.DB().ExecContext(ctx, statement)
-			return err
-		}); err != nil {
-			return fmt.Errorf("payment %s SQL statement failed: %w\n%s", source, err, statement)
+		if err := sqlwrap.Exec(
+			ctx,
+			r.db,
+			sqlwrap.Params{Timeout: bootstrapQueryTimeout},
+			func(ctx context.Context) error {
+				_, err := r.db.DB().ExecContext(ctx, statement)
+				return err
+			},
+		); err != nil {
+			return fmt.Errorf(
+				"payment %s SQL statement failed: %w\n%s",
+				source,
+				err,
+				statement,
+			)
 		}
 	}
 	return nil
@@ -235,7 +307,9 @@ func queryTimeout(value time.Duration) time.Duration {
 	return value
 }
 
-func (r *PaymentRepository) ListProviders(ctx context.Context) ([]AdminProviderModel, error) {
+func (r *PaymentRepository) ListProviders(
+	ctx context.Context,
+) ([]AdminProviderModel, error) {
 	key := paymentCacheKey("providers")
 	providers, err := queryPaymentCache(
 		ctx,
@@ -252,7 +326,9 @@ func (r *PaymentRepository) ListProviders(ctx context.Context) ([]AdminProviderM
 	return mapAdminSlice(cloneSlice(providers), mapAdminProvider), nil
 }
 
-func (r *PaymentRepository) ListAssets(ctx context.Context) ([]AdminAssetModel, error) {
+func (r *PaymentRepository) ListAssets(
+	ctx context.Context,
+) ([]AdminAssetModel, error) {
 	key := paymentCacheKey("assets")
 	assets, err := queryPaymentCache(
 		ctx,
@@ -280,9 +356,14 @@ type AssetUpsertParams struct {
 	IsActive        bool
 }
 
-func (r *PaymentRepository) UpsertAsset(ctx context.Context, params AssetUpsertParams) error {
-	if strings.TrimSpace(params.Code) == "" || strings.TrimSpace(params.Title) == "" ||
-		params.Scale > 18 || !validAssetKind(params.AssetKind) {
+func (r *PaymentRepository) UpsertAsset(
+	ctx context.Context,
+	params AssetUpsertParams,
+) error {
+	if strings.TrimSpace(params.Code) == "" ||
+		strings.TrimSpace(params.Title) == "" ||
+		params.Scale > 18 ||
+		!validAssetKind(params.AssetKind) {
 		return ErrInvalidAsset
 	}
 	if err := r.q.UpsertAsset(ctx, paymentsqlc.UpsertAssetParams{
@@ -293,12 +374,18 @@ func (r *PaymentRepository) UpsertAsset(ctx context.Context, params AssetUpsertP
 		Chain: sqlwrap.NullFromPtr(params.Chain, func(v string) sql.NullString {
 			return sql.NullString{String: v, Valid: true}
 		}),
-		Network: sqlwrap.NullFromPtr(params.Network, func(v string) sql.NullString {
-			return sql.NullString{String: v, Valid: true}
-		}),
-		ContractAddress: sqlwrap.NullFromPtr(params.ContractAddress, func(v string) sql.NullString {
-			return sql.NullString{String: v, Valid: true}
-		}),
+		Network: sqlwrap.NullFromPtr(
+			params.Network,
+			func(v string) sql.NullString {
+				return sql.NullString{String: v, Valid: true}
+			},
+		),
+		ContractAddress: sqlwrap.NullFromPtr(
+			params.ContractAddress,
+			func(v string) sql.NullString {
+				return sql.NullString{String: v, Valid: true}
+			},
+		),
 		IsActive: params.IsActive,
 	}); err != nil {
 		return err
@@ -306,7 +393,10 @@ func (r *PaymentRepository) UpsertAsset(ctx context.Context, params AssetUpsertP
 	return r.invalidateAllCache()
 }
 
-func (r *PaymentRepository) DeleteAsset(ctx context.Context, code string) (int64, error) {
+func (r *PaymentRepository) DeleteAsset(
+	ctx context.Context,
+	code string,
+) (int64, error) {
 	rows, err := r.q.DeleteAsset(ctx, code)
 	if err != nil {
 		return 0, err
@@ -344,27 +434,43 @@ type ProviderAssetUpsertParams struct {
 	IsActive        bool
 }
 
-func (r *PaymentRepository) UpsertProviderAsset(ctx context.Context, params ProviderAssetUpsertParams) error {
-	if strings.TrimSpace(params.ProviderCode) == "" || strings.TrimSpace(params.AssetCode) == "" ||
+func (r *PaymentRepository) UpsertProviderAsset(
+	ctx context.Context,
+	params ProviderAssetUpsertParams,
+) error {
+	if strings.TrimSpace(params.ProviderCode) == "" ||
+		strings.TrimSpace(params.AssetCode) == "" ||
 		(params.MinAmountMinor != nil && *params.MinAmountMinor < 0) ||
 		(params.MaxAmountMinor != nil && *params.MaxAmountMinor < 0) ||
 		(params.MinAmountMinor != nil && params.MaxAmountMinor != nil && *params.MinAmountMinor > *params.MaxAmountMinor) {
 		return ErrInvalidProviderAsset
 	}
-	if err := r.q.UpsertProviderAsset(ctx, paymentsqlc.UpsertProviderAssetParams{
-		ProviderCode: params.ProviderCode,
-		AssetCode:    params.AssetCode,
-		MinAmountMinor: sqlwrap.NullFromPtr(params.MinAmountMinor, func(v int64) sql.NullInt64 {
-			return sql.NullInt64{Int64: v, Valid: true}
-		}),
-		MaxAmountMinor: sqlwrap.NullFromPtr(params.MaxAmountMinor, func(v int64) sql.NullInt64 {
-			return sql.NullInt64{Int64: v, Valid: true}
-		}),
-		MerchantAccount: sqlwrap.NullFromPtr(params.MerchantAccount, func(v string) sql.NullString {
-			return sql.NullString{String: v, Valid: true}
-		}),
-		IsActive: params.IsActive,
-	}); err != nil {
+	if err := r.q.UpsertProviderAsset(
+		ctx,
+		paymentsqlc.UpsertProviderAssetParams{
+			ProviderCode: params.ProviderCode,
+			AssetCode:    params.AssetCode,
+			MinAmountMinor: sqlwrap.NullFromPtr(
+				params.MinAmountMinor,
+				func(v int64) sql.NullInt64 {
+					return sql.NullInt64{Int64: v, Valid: true}
+				},
+			),
+			MaxAmountMinor: sqlwrap.NullFromPtr(
+				params.MaxAmountMinor,
+				func(v int64) sql.NullInt64 {
+					return sql.NullInt64{Int64: v, Valid: true}
+				},
+			),
+			MerchantAccount: sqlwrap.NullFromPtr(
+				params.MerchantAccount,
+				func(v string) sql.NullString {
+					return sql.NullString{String: v, Valid: true}
+				},
+			),
+			IsActive: params.IsActive,
+		},
+	); err != nil {
 		return err
 	}
 	return r.invalidateAllCache()
@@ -375,10 +481,13 @@ func (r *PaymentRepository) DeleteProviderAsset(
 	providerCode string,
 	assetCode string,
 ) (int64, error) {
-	rows, err := r.q.DeleteProviderAsset(ctx, paymentsqlc.DeleteProviderAssetParams{
-		ProviderCode: providerCode,
-		AssetCode:    assetCode,
-	})
+	rows, err := r.q.DeleteProviderAsset(
+		ctx,
+		paymentsqlc.DeleteProviderAssetParams{
+			ProviderCode: providerCode,
+			AssetCode:    assetCode,
+		},
+	)
 	if err != nil {
 		return 0, err
 	}
