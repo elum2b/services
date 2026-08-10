@@ -57,12 +57,14 @@ func TestCPA_NewWithDatabaseAppliesDefaultCache(t *testing.T) {
 	); err != nil {
 		t.Fatalf("get offer on cache miss: %v", err)
 	}
+
 	setsAfterFirstRead := cache.DataSetCalls()
 	if setsAfterFirstRead == 0 {
 		t.Fatal(
 			"service created with CacheEnabled must populate the configured cache",
 		)
 	}
+
 	if cache.DataLastTTL() <= 0 {
 		t.Fatal(
 			"service created with CacheEnabled must apply a positive default cache TTL",
@@ -76,6 +78,7 @@ func TestCPA_NewWithDatabaseAppliesDefaultCache(t *testing.T) {
 	); err != nil {
 		t.Fatalf("get offer on cache hit: %v", err)
 	}
+
 	if got := cache.DataSetCalls(); got != setsAfterFirstRead {
 		t.Fatalf(
 			"second read repopulated cache: got %d writes, want %d",
@@ -114,9 +117,11 @@ func TestCPA_PublicStatusContractsSerializeAsStrings(t *testing.T) {
 			EventType string `json:"event_type"`
 		} `json:"event"`
 	}
+
 	if err := json.Unmarshal(raw, &result); err != nil {
 		t.Fatalf("decode public status contracts: %v", err)
 	}
+
 	if result.Assignment.Status != "issued" ||
 		result.Code.Status != "available" ||
 		result.Event.EventType != "completed" {
@@ -143,6 +148,7 @@ func TestCPA_CacheVersionsInvalidateReadsOnOtherNode(t *testing.T) {
 	); err != nil {
 		t.Fatalf("warm offer cache on node B: %v", err)
 	}
+
 	if _, err := nodeB.Admin.ListOffers(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -150,6 +156,7 @@ func TestCPA_CacheVersionsInvalidateReadsOnOtherNode(t *testing.T) {
 	); err != nil {
 		t.Fatalf("warm admin list cache on node B: %v", err)
 	}
+
 	if _, err := nodeB.User.ListActive(env.Context, user.ListActiveParams{
 		Identity: cpaTestIdentity("user-1"),
 		Locale:   "ru",
@@ -170,6 +177,7 @@ func TestCPA_CacheVersionsInvalidateReadsOnOtherNode(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update offer on node A: %v", err)
 	}
+
 	upsertLocalization(t, env, "distributed_offer", "ru", "New title")
 
 	offer, err := nodeB.Admin.GetOffer(
@@ -180,6 +188,7 @@ func TestCPA_CacheVersionsInvalidateReadsOnOtherNode(t *testing.T) {
 	if err != nil || payloadKind(t, offer.Payload) != "updated" {
 		t.Fatalf("node B returned stale offer: offer=%+v err=%v", offer, err)
 	}
+
 	adminOffers, err := nodeB.Admin.ListOffers(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -193,6 +202,7 @@ func TestCPA_CacheVersionsInvalidateReadsOnOtherNode(t *testing.T) {
 			err,
 		)
 	}
+
 	userOffers, err := nodeB.User.ListActive(env.Context, user.ListActiveParams{
 		Identity: cpaTestIdentity("user-1"),
 		Locale:   "ru",
@@ -214,6 +224,7 @@ func TestCPA_UserGetCodeReusesExistingAssignment(t *testing.T) {
 	upsertLocalization(t, env, "shared_offer", "ru", "Shared offer")
 
 	identity := cpaTestIdentity("user-1")
+
 	first, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
 		Identity: identity,
 		CPAID:    "shared_offer",
@@ -221,6 +232,7 @@ func TestCPA_UserGetCodeReusesExistingAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue code: %v", err)
 	}
+
 	if first.AlreadyIssued || first.Assignment.Code != "SHARED-shared_offer" {
 		t.Fatalf("unexpected first issue result: %+v", first)
 	}
@@ -232,6 +244,7 @@ func TestCPA_UserGetCodeReusesExistingAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read existing code: %v", err)
 	}
+
 	if !second.AlreadyIssued || second.Assignment.ID != first.Assignment.ID {
 		t.Fatalf(
 			"assignment is not idempotent: first=%+v second=%+v",
@@ -280,6 +293,7 @@ func TestCPAIdentityCollisionIsolation(t *testing.T) {
 		},
 	}
 	assignments := make(map[uint64]struct{}, len(identities))
+
 	for _, identity := range identities {
 		issued, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
 			Identity: identity,
@@ -288,6 +302,7 @@ func TestCPAIdentityCollisionIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("issue code for %#v: %v", identity, err)
 		}
+
 		if issued.AlreadyIssued {
 			t.Fatalf(
 				"identity %#v reused another assignment: %+v",
@@ -295,12 +310,14 @@ func TestCPAIdentityCollisionIsolation(t *testing.T) {
 				issued,
 			)
 		}
+
 		if _, exists := assignments[issued.Assignment.ID]; exists {
 			t.Fatalf(
 				"assignment %d reused across identities",
 				issued.Assignment.ID,
 			)
 		}
+
 		assignments[issued.Assignment.ID] = struct{}{}
 
 		repeated, err := env.Service.User.GetCode(
@@ -313,6 +330,7 @@ func TestCPAIdentityCollisionIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("repeat code lookup for %#v: %v", identity, err)
 		}
+
 		if !repeated.AlreadyIssued ||
 			repeated.Assignment.ID != issued.Assignment.ID {
 			t.Fatalf(
@@ -342,6 +360,7 @@ func TestCPA_AssignmentKeepsRewardSnapshotAfterCatalogChanges(t *testing.T) {
 
 	identity := cpaTestIdentity("snapshot-user")
 	issued := issueCode(t, env, identity, "snapshot_offer")
+
 	if len(issued.Rewards) != 1 || issued.Rewards[0].Key != "stars" ||
 		issued.Rewards[0].Quantity != 25 {
 		t.Fatalf("issued reward snapshot = %+v", issued.Rewards)
@@ -399,6 +418,7 @@ func TestCPA_AssignmentKeepsRewardSnapshotAfterCatalogChanges(t *testing.T) {
 	); err != nil {
 		t.Fatalf("delete catalog reward: %v", err)
 	}
+
 	completedAgain, err := env.Service.Admin.Complete(
 		env.Context,
 		admin.CompleteParams{
@@ -427,10 +447,13 @@ func TestCPA_AssignmentKeepsRewardSnapshotAfterCatalogChanges(t *testing.T) {
 	if err != nil || len(events) != 1 {
 		t.Fatalf("list completed callbacks: events=%+v err=%v", events, err)
 	}
+
 	var payload cpa.CallbackPayload
+
 	if err := json.Unmarshal(events[0].Payload, &payload); err != nil {
 		t.Fatalf("decode completed callback: %v", err)
 	}
+
 	if len(payload.Rewards) != 1 || payload.Rewards[0].Quantity != 25 {
 		t.Fatalf(
 			"completed callback changed reward snapshot: %+v",
@@ -509,6 +532,7 @@ func TestCPA_UserMethodsRejectInvalidIdentity(t *testing.T) {
 						Locale:   "ru",
 					},
 				)
+
 				return err
 			},
 		},
@@ -522,6 +546,7 @@ func TestCPA_UserMethodsRejectInvalidIdentity(t *testing.T) {
 						CPAID:    "offer",
 					},
 				)
+
 				return err
 			},
 		},
@@ -535,6 +560,7 @@ func TestCPA_UserMethodsRejectInvalidIdentity(t *testing.T) {
 						CPAID:    "offer",
 					},
 				)
+
 				return err
 			},
 		},
@@ -595,6 +621,7 @@ func TestCPA_UserCodeMethodsRejectEmptyOfferID(t *testing.T) {
 func TestCPA_UserListActiveAppliesTarget(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	upsertSharedOffer(t, env, "public_offer", true)
+
 	if err := env.Service.Admin.UpsertOffer(
 		env.Context,
 		admin.UpsertOfferParams{
@@ -620,6 +647,7 @@ func TestCPA_UserListActiveAppliesTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active offers: %v", err)
 	}
+
 	if len(offers) != 1 || offers[0].ID != "public_offer" {
 		t.Fatalf("targeted offer leaked to non-premium user: %+v", offers)
 	}
@@ -628,6 +656,7 @@ func TestCPA_UserListActiveAppliesTarget(t *testing.T) {
 func TestCPA_UserListActiveReevaluatesTimeWindowOnCacheHit(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	endAt := time.Now().UTC().Add(500 * time.Millisecond)
+
 	if err := env.Service.Admin.UpsertOffer(
 		env.Context,
 		admin.UpsertOfferParams{
@@ -648,6 +677,7 @@ func TestCPA_UserListActiveReevaluatesTimeWindowOnCacheHit(t *testing.T) {
 		Locale:   "ru",
 	}
 	items, err := env.Service.User.ListActive(env.Context, params)
+
 	if err != nil || len(items) != 1 {
 		t.Fatalf(
 			"list active offer before expiration: items=%+v err=%v",
@@ -657,6 +687,7 @@ func TestCPA_UserListActiveReevaluatesTimeWindowOnCacheHit(t *testing.T) {
 	}
 
 	time.Sleep(750 * time.Millisecond)
+
 	items, err = env.Service.User.ListActive(env.Context, params)
 	if err != nil || len(items) != 0 {
 		t.Fatalf(
@@ -670,6 +701,7 @@ func TestCPA_UserListActiveReevaluatesTimeWindowOnCacheHit(t *testing.T) {
 func TestCPA_UserGetCodeAllocatesDifferentPoolCodes(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	pool := repository.CodeSourcePool
+
 	if err := env.Service.Admin.UpsertOffer(
 		env.Context,
 		admin.UpsertOfferParams{
@@ -683,6 +715,7 @@ func TestCPA_UserGetCodeAllocatesDifferentPoolCodes(t *testing.T) {
 	); err != nil {
 		t.Fatalf("upsert pool offer: %v", err)
 	}
+
 	added, err := env.Service.Admin.AddCodes(env.Context, admin.AddCodesParams{
 		WorkspaceID: cpaTestWorkspaceID,
 		CPAID:       "pool_offer",
@@ -699,6 +732,7 @@ func TestCPA_UserGetCodeAllocatesDifferentPoolCodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue first pool code: %v", err)
 	}
+
 	second, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
 		Identity: cpaTestIdentity("user-2"),
 		CPAID:    "pool_offer",
@@ -706,6 +740,7 @@ func TestCPA_UserGetCodeAllocatesDifferentPoolCodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue second pool code: %v", err)
 	}
+
 	if first.Assignment.Code == second.Assignment.Code {
 		t.Fatalf("pool code was reused: %q", first.Assignment.Code)
 	}
@@ -717,6 +752,7 @@ func TestCPA_AdminDeleteCodesKeepsIssuedAndCompletedAssignments(t *testing.T) {
 	t.Run("issued assignment", func(t *testing.T) {
 		upsertPoolOffer(t, env, "issued_offer")
 		addPoolCode(t, env, "issued_offer", "ISSUED-1")
+
 		identity := cpaTestIdentity("issued-user")
 		issued := issueCode(t, env, identity, "issued_offer")
 
@@ -728,6 +764,7 @@ func TestCPA_AdminDeleteCodesKeepsIssuedAndCompletedAssignments(t *testing.T) {
 		if err != nil || deleted != 1 {
 			t.Fatalf("delete issued code: deleted=%d err=%v", deleted, err)
 		}
+
 		repeated := issueCode(t, env, identity, "issued_offer")
 		if !repeated.AlreadyIssued ||
 			repeated.Assignment.ID != issued.Assignment.ID ||
@@ -738,6 +775,7 @@ func TestCPA_AdminDeleteCodesKeepsIssuedAndCompletedAssignments(t *testing.T) {
 				repeated,
 			)
 		}
+
 		assertAssignmentIsVisible(
 			t,
 			env,
@@ -750,8 +788,10 @@ func TestCPA_AdminDeleteCodesKeepsIssuedAndCompletedAssignments(t *testing.T) {
 	t.Run("completed assignment", func(t *testing.T) {
 		upsertPoolOffer(t, env, "completed_offer")
 		addPoolCode(t, env, "completed_offer", "COMPLETED-1")
+
 		identity := cpaTestIdentity("completed-user")
 		completed := issueCode(t, env, identity, "completed_offer")
+
 		if _, err := env.Service.Admin.Complete(
 			env.Context,
 			admin.CompleteParams{
@@ -770,6 +810,7 @@ func TestCPA_AdminDeleteCodesKeepsIssuedAndCompletedAssignments(t *testing.T) {
 		if err != nil || deleted != 1 {
 			t.Fatalf("delete completed code: deleted=%d err=%v", deleted, err)
 		}
+
 		repeated := issueCode(t, env, identity, "completed_offer")
 		if !repeated.AlreadyIssued ||
 			repeated.Assignment.ID != completed.Assignment.ID ||
@@ -780,6 +821,7 @@ func TestCPA_AdminDeleteCodesKeepsIssuedAndCompletedAssignments(t *testing.T) {
 				repeated,
 			)
 		}
+
 		assertAssignmentIsVisible(
 			t,
 			env,
@@ -819,7 +861,9 @@ func TestCPA_AdminAddCodesRechecksOfferModeInsideWorkspaceLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin mode switch transaction: %v", err)
 	}
+
 	defer func() { _ = tx.Rollback() }()
+
 	if _, err := tx.ExecContext(
 		env.Context,
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
@@ -829,6 +873,7 @@ func TestCPA_AdminAddCodesRechecksOfferModeInsideWorkspaceLock(t *testing.T) {
 	}
 
 	result := make(chan error, 1)
+
 	go func() {
 		_, err := env.Service.Admin.AddCodes(env.Context, admin.AddCodesParams{
 			WorkspaceID: cpaTestWorkspaceID,
@@ -854,6 +899,7 @@ SET code_mode = 'shared_code',
 WHERE workspace_id = $1 AND id = $2`, cpaTestWorkspaceID, "mode_race_offer"); err != nil {
 		t.Fatalf("switch offer mode: %v", err)
 	}
+
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("commit mode switch: %v", err)
 	}
@@ -897,6 +943,7 @@ func TestCPA_NestedCatalogMutationsUseWorkspaceLock(t *testing.T) {
 					"locked_nested_offer",
 					"ru",
 				)
+
 				return err
 			},
 		},
@@ -923,6 +970,7 @@ func TestCPA_NestedCatalogMutationsUseWorkspaceLock(t *testing.T) {
 					"locked_nested_offer",
 					"stars",
 				)
+
 				return err
 			},
 		},
@@ -934,12 +982,14 @@ func TestCPA_NestedCatalogMutationsUseWorkspaceLock(t *testing.T) {
 			if err != nil {
 				t.Fatalf("begin lock transaction: %v", err)
 			}
+
 			if _, err := tx.ExecContext(
 				env.Context,
 				"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
 				"cpa:"+cpaTestWorkspaceID,
 			); err != nil {
 				_ = tx.Rollback()
+
 				t.Fatalf("lock workspace: %v", err)
 			}
 
@@ -949,6 +999,7 @@ func TestCPA_NestedCatalogMutationsUseWorkspaceLock(t *testing.T) {
 			select {
 			case err := <-result:
 				_ = tx.Rollback()
+
 				t.Fatalf("operation bypassed workspace lock: %v", err)
 			case <-time.After(50 * time.Millisecond):
 			}
@@ -956,6 +1007,7 @@ func TestCPA_NestedCatalogMutationsUseWorkspaceLock(t *testing.T) {
 			if err := tx.Rollback(); err != nil {
 				t.Fatalf("release workspace lock: %v", err)
 			}
+
 			if err := <-result; err != nil {
 				t.Fatalf("operation after lock release: %v", err)
 			}
@@ -968,14 +1020,19 @@ func TestCPA_UserGetCodeIsConcurrentAndIdempotent(t *testing.T) {
 	upsertSharedOffer(t, env, "concurrent_offer", true)
 
 	const workers = 8
+
 	identity := cpaTestIdentity("concurrent-user")
 	results := make(chan user.GetCodeResult, workers)
 	errs := make(chan error, workers)
+
 	var group sync.WaitGroup
+
 	for range workers {
 		group.Add(1)
+
 		go func() {
 			defer group.Done()
+
 			result, err := env.Service.User.GetCode(
 				env.Context,
 				user.GetCodeParams{
@@ -984,9 +1041,11 @@ func TestCPA_UserGetCodeIsConcurrentAndIdempotent(t *testing.T) {
 				},
 			)
 			results <- result
+
 			errs <- err
 		}()
 	}
+
 	group.Wait()
 	close(results)
 	close(errs)
@@ -996,12 +1055,15 @@ func TestCPA_UserGetCodeIsConcurrentAndIdempotent(t *testing.T) {
 			t.Fatalf("concurrent issue: %v", err)
 		}
 	}
+
 	var assignmentID uint64
+
 	for result := range results {
 		if assignmentID == 0 {
 			assignmentID = result.Assignment.ID
 			continue
 		}
+
 		if result.Assignment.ID != assignmentID {
 			t.Fatalf(
 				"concurrent requests created different assignments: %d and %d",
@@ -1019,13 +1081,18 @@ func TestCPA_UserGetCodeIssuesPopularOfferForDifferentUsersInParallel(
 	upsertSharedOffer(t, env, "parallel_offer", true)
 
 	const workers = 16
+
 	results := make(chan user.GetCodeResult, workers)
 	errs := make(chan error, workers)
+
 	var group sync.WaitGroup
+
 	for index := range workers {
 		group.Add(1)
+
 		go func() {
 			defer group.Done()
+
 			result, err := env.Service.User.GetCode(
 				env.Context,
 				user.GetCodeParams{
@@ -1036,9 +1103,11 @@ func TestCPA_UserGetCodeIssuesPopularOfferForDifferentUsersInParallel(
 				},
 			)
 			results <- result
+
 			errs <- err
 		}()
 	}
+
 	group.Wait()
 	close(results)
 	close(errs)
@@ -1048,10 +1117,12 @@ func TestCPA_UserGetCodeIssuesPopularOfferForDifferentUsersInParallel(
 			t.Fatalf("parallel issue: %v", err)
 		}
 	}
+
 	assignmentIDs := make(map[uint64]struct{}, workers)
 	for result := range results {
 		assignmentIDs[result.Assignment.ID] = struct{}{}
 	}
+
 	if len(assignmentIDs) != workers {
 		t.Fatalf(
 			"parallel issues created %d assignments, want %d",
@@ -1064,6 +1135,7 @@ func TestCPA_UserGetCodeIssuesPopularOfferForDifferentUsersInParallel(
 func TestCPA_AdminCompleteIsIdempotentAndUpdatesDailyStats(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	upsertSharedOffer(t, env, "complete_offer", true)
+
 	identity := cpaTestIdentity("user-1")
 	if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
 		Identity: identity,
@@ -1080,6 +1152,7 @@ func TestCPA_AdminCompleteIsIdempotentAndUpdatesDailyStats(t *testing.T) {
 		first.Assignment.Status != cpa.AssignmentStatusCompleted {
 		t.Fatalf("complete assignment: result=%+v err=%v", first, err)
 	}
+
 	second, err := env.Service.Admin.Complete(env.Context, admin.CompleteParams{
 		Identity: identity,
 		CPAID:    "complete_offer",
@@ -1101,6 +1174,7 @@ func TestCPA_AdminCompleteIsIdempotentAndUpdatesDailyStats(t *testing.T) {
 	); err != nil {
 		t.Fatalf("refresh daily stats: %v", err)
 	}
+
 	stats, err := env.Service.Admin.ListDailyStats(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1128,6 +1202,7 @@ WHERE workspace_id = $2 AND cpa_id = $3`, eventTime, cpaTestWorkspaceID, "utc_st
 	}
 
 	env.Database.SetMaxOpenConns(1)
+
 	if _, err := env.Database.ExecContext(
 		env.Context,
 		"SET TIME ZONE 'America/Los_Angeles'",
@@ -1137,6 +1212,7 @@ WHERE workspace_id = $2 AND cpa_id = $3`, eventTime, cpaTestWorkspaceID, "utc_st
 
 	from := time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC)
 	until := from.Add(24 * time.Hour)
+
 	if err := env.Service.Admin.RefreshDailyStats(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1145,6 +1221,7 @@ WHERE workspace_id = $2 AND cpa_id = $3`, eventTime, cpaTestWorkspaceID, "utc_st
 	); err != nil {
 		t.Fatalf("refresh UTC daily stats: %v", err)
 	}
+
 	stats, err := env.Service.Admin.ListDailyStats(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1304,6 +1381,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	validIdentity := cpaTestIdentity("invalid-input-user")
 	now := time.Now().UTC()
+
 	upsertPoolOffer(t, env, "invalid-input-pool")
 
 	tests := []struct {
@@ -1325,6 +1403,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					"",
 					admin.Page{},
 				)
+
 				return err
 			},
 		},
@@ -1336,6 +1415,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					cpaTestWorkspaceID,
 					"",
 				)
+
 				return err
 			},
 		},
@@ -1349,6 +1429,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 						Codes:       []string{"CODE"},
 					},
 				)
+
 				return err
 			},
 		},
@@ -1362,6 +1443,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 						CPAID:       "invalid-input-pool",
 					},
 				)
+
 				return err
 			},
 		},
@@ -1376,6 +1458,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 						Codes:       []string{" "},
 					},
 				)
+
 				return err
 			},
 		},
@@ -1387,6 +1470,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					cpaTestWorkspaceID,
 					"",
 				)
+
 				return err
 			},
 		},
@@ -1398,6 +1482,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					cpaTestWorkspaceID,
 					"",
 				)
+
 				return err
 			},
 		},
@@ -1409,6 +1494,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					cpaTestWorkspaceID,
 					"",
 				)
+
 				return err
 			},
 		},
@@ -1421,6 +1507,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 						Identity: validIdentity,
 					},
 				)
+
 				return err
 			},
 		},
@@ -1431,6 +1518,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					env.Context,
 					user.GetStatusParams{CPAID: "offer"},
 				)
+
 				return err
 			},
 		},
@@ -1441,6 +1529,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					env.Context,
 					admin.AssignmentListParams{WorkspaceID: cpaTestWorkspaceID},
 				)
+
 				return err
 			},
 		},
@@ -1451,6 +1540,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					env.Context,
 					admin.CodeListParams{WorkspaceID: cpaTestWorkspaceID},
 				)
+
 				return err
 			},
 		},
@@ -1463,6 +1553,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 						WorkspaceID: cpaTestWorkspaceID,
 					},
 				)
+
 				return err
 			},
 		},
@@ -1474,6 +1565,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					cpaTestWorkspaceID,
 					"",
 				)
+
 				return err
 			},
 		},
@@ -1486,6 +1578,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					"offer",
 					"",
 				)
+
 				return err
 			},
 		},
@@ -1497,6 +1590,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					cpaTestWorkspaceID,
 					"",
 				)
+
 				return err
 			},
 		},
@@ -1509,6 +1603,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					"offer",
 					"",
 				)
+
 				return err
 			},
 		},
@@ -1520,6 +1615,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					cpaTestWorkspaceID,
 					"",
 				)
+
 				return err
 			},
 		},
@@ -1533,6 +1629,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					now,
 					now.Add(-time.Hour),
 				)
+
 				return err
 			},
 		},
@@ -1555,6 +1652,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					"",
 					admin.ExportRequest{},
 				)
+
 				return err
 			},
 		},
@@ -1569,6 +1667,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 						Service: "cpa",
 					},
 				)
+
 				return err
 			},
 		},
@@ -1585,6 +1684,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 						},
 					},
 				)
+
 				return err
 			},
 		},
@@ -1596,6 +1696,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					cpaTestWorkspaceID,
 					0,
 				)
+
 				return err
 			},
 		},
@@ -1607,6 +1708,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					cpaTestWorkspaceID,
 					0,
 				)
+
 				return err
 			},
 		},
@@ -1618,6 +1720,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					cpaTestWorkspaceID,
 					0,
 				)
+
 				return err
 			},
 		},
@@ -1630,6 +1733,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 					1,
 					"",
 				)
+
 				return err
 			},
 		},
@@ -1669,6 +1773,7 @@ func TestCPA_AdminMethodsManageOfferState(t *testing.T) {
 		localizations[0].Title != "Pool offer" {
 		t.Fatalf("list localizations: values=%+v err=%v", localizations, err)
 	}
+
 	rewards, err := env.Service.Admin.ListRewards(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1703,6 +1808,7 @@ func TestCPA_AdminMethodsManageOfferState(t *testing.T) {
 			CPAID:    poolOfferID,
 		},
 	)
+
 	if err != nil || assignment == nil ||
 		assignment.ID != issued.Assignment.ID {
 		t.Fatalf("get user assignment: assignment=%+v err=%v", assignment, err)
@@ -1745,6 +1851,7 @@ func TestCPA_AdminMethodsManageOfferState(t *testing.T) {
 			err,
 		)
 	}
+
 	deletedIssued, err := env.Service.Admin.DeleteIssuedCodes(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1784,6 +1891,7 @@ func TestCPA_AdminMethodsManageOfferState(t *testing.T) {
 	); err != nil {
 		t.Fatalf("refresh daily stats: %v", err)
 	}
+
 	dailyStats, err := env.Service.Admin.ListDailyStats(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1804,6 +1912,7 @@ func TestCPA_AdminMethodsManageOfferState(t *testing.T) {
 		deleted != 1 {
 		t.Fatalf("delete localization: rows=%d err=%v", deleted, err)
 	}
+
 	if deleted, err := env.Service.Admin.DeleteReward(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1816,6 +1925,7 @@ func TestCPA_AdminMethodsManageOfferState(t *testing.T) {
 
 	standaloneOfferID := "admin-methods-delete"
 	upsertSharedOffer(t, env, standaloneOfferID, true)
+
 	if deleted, err := env.Service.Admin.DeleteOffer(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1836,6 +1946,7 @@ func TestCPA_AdminCallbackMethodsManageCallbackEvents(t *testing.T) {
 		cpaTestIdentity("callback-admin-user-1"),
 		"callback-admin-offer",
 	)
+
 	events, err := env.Service.Admin.ListCallbackEvents(
 		env.Context,
 		admin.CallbackEventListParams{
@@ -1856,6 +1967,7 @@ func TestCPA_AdminCallbackMethodsManageCallbackEvents(t *testing.T) {
 	if err != nil || first.EventType != cpa.CallbackEventIssued {
 		t.Fatalf("get callback event: event=%+v err=%v", first, err)
 	}
+
 	if _, err := env.Service.Admin.GetCallbackEvent(
 		env.Context,
 		cpaOtherWorkspaceID,
@@ -1869,6 +1981,7 @@ func TestCPA_AdminCallbackMethodsManageCallbackEvents(t *testing.T) {
 			err,
 		)
 	}
+
 	if affected, err := env.Service.Admin.MarkCallbackEventOK(
 		env.Context,
 		cpaOtherWorkspaceID,
@@ -1881,6 +1994,7 @@ func TestCPA_AdminCallbackMethodsManageCallbackEvents(t *testing.T) {
 			err,
 		)
 	}
+
 	if affected, err := env.Service.Admin.RetryCallbackEventNow(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1889,6 +2003,7 @@ func TestCPA_AdminCallbackMethodsManageCallbackEvents(t *testing.T) {
 		affected != 1 {
 		t.Fatalf("retry callback event: rows=%d err=%v", affected, err)
 	}
+
 	if affected, err := env.Service.Admin.MarkCallbackEventOK(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1904,6 +2019,7 @@ func TestCPA_AdminCallbackMethodsManageCallbackEvents(t *testing.T) {
 		cpaTestIdentity("callback-admin-user-2"),
 		"callback-admin-offer",
 	)
+
 	events, err = env.Service.Admin.ListCallbackEvents(
 		env.Context,
 		admin.CallbackEventListParams{
@@ -1919,6 +2035,7 @@ func TestCPA_AdminCallbackMethodsManageCallbackEvents(t *testing.T) {
 			err,
 		)
 	}
+
 	if affected, err := env.Service.Admin.MarkCallbackEventReject(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1928,6 +2045,7 @@ func TestCPA_AdminCallbackMethodsManageCallbackEvents(t *testing.T) {
 		affected != 1 {
 		t.Fatalf("reject callback event: rows=%d err=%v", affected, err)
 	}
+
 	if _, err := env.Service.Admin.ResetExpiredCallbackProcessing(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -1950,17 +2068,22 @@ func TestCPA_AdminExportAndImportPreserveOffer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export offers: %v", err)
 	}
+
 	rawPackage, err := json.Marshal(pkg)
 	if err != nil {
 		t.Fatalf("marshal export package: %v", err)
 	}
+
 	var exportObject map[string]json.RawMessage
+
 	if err := json.Unmarshal(rawPackage, &exportObject); err != nil {
 		t.Fatalf("decode export package: %v", err)
 	}
+
 	if _, exists := exportObject["items"]; exists {
 		t.Fatal("CPA export must not duplicate reference items")
 	}
+
 	preview, err := env.Service.Admin.PreviewImport(
 		env.Context,
 		cpaImportWorkspaceID,
@@ -1969,6 +2092,7 @@ func TestCPA_AdminExportAndImportPreserveOffer(t *testing.T) {
 	if err != nil || preview.Counts.Offers != 1 || len(preview.Conflicts) != 0 {
 		t.Fatalf("preview import: preview=%+v err=%v", preview, err)
 	}
+
 	if _, err := env.Service.Admin.Import(
 		env.Context,
 		cpaImportWorkspaceID,
@@ -1979,6 +2103,7 @@ func TestCPA_AdminExportAndImportPreserveOffer(t *testing.T) {
 	); err != nil {
 		t.Fatalf("import offers: %v", err)
 	}
+
 	imported, err := env.Service.Admin.GetOffer(
 		env.Context,
 		cpaImportWorkspaceID,
@@ -1987,6 +2112,7 @@ func TestCPA_AdminExportAndImportPreserveOffer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read imported offer: %v", err)
 	}
+
 	if len(imported.Localizations) != 1 || len(imported.Rewards) != 1 ||
 		imported.Rewards[0].Scale != 2 {
 		t.Fatalf("import did not preserve nested data: %+v", imported)
@@ -2008,6 +2134,7 @@ func TestCPA_AdminImportUpdateReplacesNestedOfferSnapshot(t *testing.T) {
 	); err != nil {
 		t.Fatalf("seed imported offer: %v", err)
 	}
+
 	for locale, title := range map[string]string{"ru": "Старый", "en": "Old"} {
 		if err := env.Service.Admin.UpsertLocalization(
 			env.Context,
@@ -2022,6 +2149,7 @@ func TestCPA_AdminImportUpdateReplacesNestedOfferSnapshot(t *testing.T) {
 			t.Fatalf("seed localization %s: %v", locale, err)
 		}
 	}
+
 	for key, quantity := range map[string]int64{"stars": 10, "obsolete": 99} {
 		if err := env.Service.Admin.UpsertReward(
 			env.Context,
@@ -2079,12 +2207,14 @@ func TestCPA_AdminImportUpdateReplacesNestedOfferSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get replaced offer: %v", err)
 	}
+
 	if len(offer.Localizations) != 1 || offer.Localizations[0].Locale != "ru" {
 		t.Fatalf(
 			"stale localization remained after import: %+v",
 			offer.Localizations,
 		)
 	}
+
 	if len(offer.Rewards) != 1 || offer.Rewards[0].Key != "stars" ||
 		offer.Rewards[0].Quantity != 25 {
 		t.Fatalf("stale reward remained after import: %+v", offer.Rewards)
@@ -2105,6 +2235,7 @@ func TestCPA_AdminExportAndFailOnConflictInspectAllOffers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export all offers: %v", err)
 	}
+
 	if len(pkg.Offers) != 1001 {
 		t.Fatalf("exported offers = %d, want 1001", len(pkg.Offers))
 	}
@@ -2139,10 +2270,12 @@ func TestCPA_AdminImportFailOnConflictIsAtomicAgainstConcurrentOfferWrite(
 	t *testing.T,
 ) {
 	env := newCPATestEnvironment(t, testCPAOptions())
+
 	transaction, err := env.Database.BeginTx(env.Context, nil)
 	if err != nil {
 		t.Fatalf("begin competing offer transaction: %v", err)
 	}
+
 	defer func() { _ = transaction.Rollback() }()
 
 	if _, err := transaction.ExecContext(
@@ -2154,6 +2287,7 @@ func TestCPA_AdminImportFailOnConflictIsAtomicAgainstConcurrentOfferWrite(
 	}
 
 	result := make(chan error, 1)
+
 	go func() {
 		_, err := env.Service.Admin.Import(
 			env.Context,
@@ -2173,8 +2307,10 @@ func TestCPA_AdminImportFailOnConflictIsAtomicAgainstConcurrentOfferWrite(
 	}()
 
 	deadline := time.Now().Add(time.Second)
+
 	for {
 		var waiting bool
+
 		err := env.Database.QueryRowContext(env.Context, `
 SELECT EXISTS (
     SELECT 1
@@ -2186,12 +2322,15 @@ SELECT EXISTS (
 		if err != nil {
 			t.Fatalf("observe waiting import transaction: %v", err)
 		}
+
 		if waiting {
 			break
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatal("import did not wait for the workspace conflict lock")
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
 
@@ -2201,6 +2340,7 @@ INSERT INTO cpa_offer (
 ) VALUES ($1, $2, '{}', 'null', 'shared_code', $3, TRUE)`, cpaTestWorkspaceID, "concurrent-offer", "CONCURRENT"); err != nil {
 		t.Fatalf("create concurrent offer: %v", err)
 	}
+
 	if err := transaction.Commit(); err != nil {
 		t.Fatalf("commit concurrent offer: %v", err)
 	}
@@ -2227,6 +2367,7 @@ INSERT INTO cpa_offer (
 
 func TestCPA_AdminImportRejectsUnsupportedPackage(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
+
 	_, err := env.Service.Admin.Import(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -2267,6 +2408,7 @@ func TestCPA_AdminImportRejectsInvalidOfferBeforeWrite(t *testing.T) {
 			},
 		},
 	)
+
 	if serviceerrors.CodeOf(err) != serviceerrors.CodeInvalidFields {
 		t.Fatalf(
 			"invalid import error code = %q, want %q; err=%v",
@@ -2275,16 +2417,20 @@ func TestCPA_AdminImportRejectsInvalidOfferBeforeWrite(t *testing.T) {
 			err,
 		)
 	}
+
 	var validationErr *repository.ImportValidationError
+
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("import error must expose ImportValidationError: %v", err)
 	}
+
 	if validationErr.OfferIndex != 1 || validationErr.Field != "shared_code" {
 		t.Fatalf(
 			"invalid import context = %+v, want offer[1].shared_code",
 			validationErr,
 		)
 	}
+
 	if _, getErr := env.Service.Admin.GetOffer(
 		env.Context,
 		cpaImportWorkspaceID,
@@ -2379,6 +2525,7 @@ func TestCPA_AdminImportRejectsInvalidNestedDataBeforeWrite(t *testing.T) {
 					},
 				},
 			)
+
 			if serviceerrors.CodeOf(err) != serviceerrors.CodeInvalidFields {
 				t.Fatalf(
 					"invalid import error code = %q, want %q; err=%v",
@@ -2387,13 +2534,16 @@ func TestCPA_AdminImportRejectsInvalidNestedDataBeforeWrite(t *testing.T) {
 					err,
 				)
 			}
+
 			var validationErr *repository.ImportValidationError
+
 			if !errors.As(err, &validationErr) {
 				t.Fatalf(
 					"import error must expose ImportValidationError: %v",
 					err,
 				)
 			}
+
 			if validationErr.Field != test.wantField {
 				t.Fatalf(
 					"invalid import field = %q, want %q",
@@ -2401,6 +2551,7 @@ func TestCPA_AdminImportRejectsInvalidNestedDataBeforeWrite(t *testing.T) {
 					test.wantField,
 				)
 			}
+
 			if _, getErr := env.Service.Admin.GetOffer(
 				env.Context,
 				cpaImportWorkspaceID,
@@ -2417,6 +2568,7 @@ func TestCPA_AdminImportRejectsInvalidNestedDataBeforeWrite(t *testing.T) {
 func TestCPA_AdminListAssignmentEventsFiltersByEventType(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	upsertSharedOffer(t, env, "event-filter-offer", true)
+
 	identity := cpaTestIdentity("event-filter-user")
 
 	if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
@@ -2425,6 +2577,7 @@ func TestCPA_AdminListAssignmentEventsFiltersByEventType(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("issue code: %v", err)
 	}
+
 	if _, err := env.Service.Admin.Complete(env.Context, admin.CompleteParams{
 		Identity: identity,
 		CPAID:    "event-filter-offer",
@@ -2443,6 +2596,7 @@ func TestCPA_AdminListAssignmentEventsFiltersByEventType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list completed events: %v", err)
 	}
+
 	if len(events) != 1 ||
 		events[0].EventType != cpa.AssignmentEventTypeCompleted {
 		t.Fatalf("completed events = %+v, want one completed event", events)
@@ -2453,12 +2607,14 @@ func TestCPA_AdminImportBatchesPackageBeyondPostgreSQLParameterLimit(
 	t *testing.T,
 ) {
 	const offerCount = 5500
+
 	env := newCPATestEnvironment(t, testCPAOptions())
 	pkg := admin.ExportPackage{
 		Format:  repository.ExportFormat,
 		Service: "cpa",
 		Offers:  make([]admin.ExportOffer, 0, offerCount),
 	}
+
 	for index := 0; index < offerCount; index++ {
 		pkg.Offers = append(pkg.Offers, admin.ExportOffer{
 			ID:         fmt.Sprintf("large-offer-%05d", index),
@@ -2480,6 +2636,7 @@ func TestCPA_AdminImportBatchesPackageBeyondPostgreSQLParameterLimit(
 	if err != nil {
 		t.Fatalf("import %d offers: %v", offerCount, err)
 	}
+
 	if result.Imported.Offers != offerCount {
 		t.Fatalf(
 			"imported offers = %d, want %d",
@@ -2487,6 +2644,7 @@ func TestCPA_AdminImportBatchesPackageBeyondPostgreSQLParameterLimit(
 			offerCount,
 		)
 	}
+
 	exported, err := env.Service.Admin.Export(
 		env.Context,
 		cpaImportWorkspaceID,
@@ -2495,6 +2653,7 @@ func TestCPA_AdminImportBatchesPackageBeyondPostgreSQLParameterLimit(
 	if err != nil {
 		t.Fatalf("export imported offers: %v", err)
 	}
+
 	if len(exported.Offers) != offerCount {
 		t.Fatalf(
 			"exported offers = %d, want %d",
@@ -2506,16 +2665,19 @@ func TestCPA_AdminImportBatchesPackageBeyondPostgreSQLParameterLimit(
 
 func TestCPA_WriteSucceedsWhenCacheInvalidationFails(t *testing.T) {
 	cache := &failingCPAVersionCache{cpaTestCache: newCPATestCache()}
+
 	var (
 		mu         sync.Mutex
 		diagnostic error
 	)
+
 	env := newCPATestEnvironment(t, cpa.Options{
 		Cache:        cache,
 		CacheEnabled: true,
 		OnCacheInvalidationError: func(err error) {
 			mu.Lock()
 			defer mu.Unlock()
+
 			diagnostic = err
 		},
 	})
@@ -2538,13 +2700,16 @@ func TestCPA_WriteSucceedsWhenCacheInvalidationFails(t *testing.T) {
 	}
 
 	mu.Lock()
+
 	err := diagnostic
 	mu.Unlock()
+
 	if err == nil {
 		t.Fatal(
 			"cache invalidation failure must be reported through the diagnostic callback",
 		)
 	}
+
 	if _, err := env.Service.Admin.GetOffer(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -2557,6 +2722,7 @@ func TestCPA_WriteSucceedsWhenCacheInvalidationFails(t *testing.T) {
 func TestCPA_CallbackDeliversIssuedAssignment(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	upsertSharedOffer(t, env, "callback_offer", true)
+
 	if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
 		Identity: cpaTestIdentity("callback-user"),
 		CPAID:    "callback_offer",
@@ -2566,14 +2732,18 @@ func TestCPA_CallbackDeliversIssuedAssignment(t *testing.T) {
 
 	callbackCtx, cancel := context.WithTimeout(env.Context, 5*time.Second)
 	defer cancel()
+
 	err := env.Service.OnCallback(callbackCtx, func(value cpa.Context) error {
 		if value.Issued == nil || value.Issued.CPAID != "callback_offer" {
 			return errors.New("issued callback payload was not delivered")
 		}
+
 		if err := value.Successful(); err != nil {
 			return err
 		}
+
 		cancel()
+
 		return nil
 	},
 		cpa.WithCallbackWorkerID("cpa-test-worker"),
@@ -2600,11 +2770,13 @@ func TestCPA_RunBlocksUntilContextCanceled(t *testing.T) {
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+
 	go func() {
 		done <- service.Run(runCtx, params)
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
+
 	for !service.IsReady() {
 		select {
 		case err := <-done:
@@ -2612,10 +2784,12 @@ func TestCPA_RunBlocksUntilContextCanceled(t *testing.T) {
 			t.Fatalf("Run returned before readiness: %v", err)
 		default:
 		}
+
 		if time.Now().After(deadline) {
 			cancel()
 			t.Fatal("CPA service did not become ready")
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
 
@@ -2631,6 +2805,7 @@ func TestCPA_RunBlocksUntilContextCanceled(t *testing.T) {
 	}
 
 	cancel()
+
 	select {
 	case err := <-done:
 		if err != nil {
@@ -2646,6 +2821,7 @@ func TestCPA_IsReadyReflectsInitialization(t *testing.T) {
 	if service.Admin == nil || service.User == nil || service.IsReady() {
 		t.Fatal("new CPA public facades are invalid")
 	}
+
 	if _, err := service.User.ListActive(
 		context.Background(),
 		user.ListActiveParams{
@@ -2662,9 +2838,11 @@ func TestCPA_IsReadyReflectsInitialization(t *testing.T) {
 	) {
 		t.Fatalf("unready CPA user error = %v", err)
 	}
+
 	if cpa.New().IsReady() {
 		t.Fatal("service without a database must not be ready")
 	}
+
 	env := newCPATestEnvironment(t, testCPAOptions())
 	if !env.Service.IsReady() {
 		t.Fatal("service created from a database must be ready")
@@ -2676,6 +2854,7 @@ func newCPATestEnvironment(
 	options cpa.Options,
 ) cpaTestEnvironment {
 	tb.Helper()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	tb.Cleanup(cancel)
 
@@ -2683,6 +2862,7 @@ func newCPATestEnvironment(
 	if err != nil {
 		tb.Fatalf("open postgres admin connection: %v", err)
 	}
+
 	tb.Cleanup(func() { _ = adminDB.Close() })
 
 	database := fmt.Sprintf(
@@ -2696,6 +2876,7 @@ func newCPATestEnvironment(
 	); err != nil {
 		tb.Fatalf("create test database: %v", err)
 	}
+
 	tb.Cleanup(func() {
 		_, _ = adminDB.ExecContext(
 			context.Background(),
@@ -2712,15 +2893,20 @@ func newCPATestEnvironment(
 	if err != nil {
 		tb.Fatalf("open test database: %v", err)
 	}
+
 	client, err := sqlwrap.New(appDB)
 	if err != nil {
 		_ = appDB.Close()
+
 		tb.Fatalf("create bootstrap client: %v", err)
 	}
+
 	tb.Cleanup(func() { _ = client.Close() })
 
 	bootstrap := repository.New(client)
+
 	tb.Cleanup(func() { _ = bootstrap.Close() })
+
 	if err := bootstrap.Bootstrap(ctx); err != nil {
 		tb.Fatalf("bootstrap CPA schema: %v", err)
 	}
@@ -2729,7 +2915,9 @@ func newCPATestEnvironment(
 	if err != nil {
 		tb.Fatalf("create CPA service: %v", err)
 	}
+
 	tb.Cleanup(func() { _ = service.Close() })
+
 	return cpaTestEnvironment{
 		Context:  ctx,
 		Database: appDB,
@@ -2744,11 +2932,14 @@ func newCPAAdditionalNode(
 	options cpa.Options,
 ) *cpa.CPA {
 	tb.Helper()
+
 	service, err := cpa.NewWithDatabase(env.Context, env.Database, options)
 	if err != nil {
 		tb.Fatalf("create additional CPA node: %v", err)
 	}
+
 	tb.Cleanup(func() { _ = service.Close() })
+
 	return service
 }
 
@@ -2761,14 +2952,17 @@ func openCPATestPostgres(database string) (*sql.DB, error) {
 		cpaTestPGPassword,
 		database,
 	)
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Ping(); err != nil {
+
+	if err := db.PingContext(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+
 	return db, nil
 }
 
@@ -2792,6 +2986,7 @@ func upsertSharedOffer(
 	active bool,
 ) {
 	tb.Helper()
+
 	if err := env.Service.Admin.UpsertOffer(
 		env.Context,
 		admin.UpsertOfferParams{
@@ -2818,6 +3013,7 @@ func cpaTestExportOffer(id string) admin.ExportOffer {
 
 func upsertPoolOffer(tb testing.TB, env cpaTestEnvironment, id string) {
 	tb.Helper()
+
 	pool := repository.CodeSourcePool
 	if err := env.Service.Admin.UpsertOffer(
 		env.Context,
@@ -2836,6 +3032,7 @@ func upsertPoolOffer(tb testing.TB, env cpaTestEnvironment, id string) {
 
 func addPoolCode(tb testing.TB, env cpaTestEnvironment, cpaID, code string) {
 	tb.Helper()
+
 	added, err := env.Service.Admin.AddCodes(env.Context, admin.AddCodesParams{
 		WorkspaceID: cpaTestWorkspaceID,
 		CPAID:       cpaID,
@@ -2853,6 +3050,7 @@ func issueCode(
 	cpaID string,
 ) user.GetCodeResult {
 	tb.Helper()
+
 	result, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
 		Identity: identity,
 		CPAID:    cpaID,
@@ -2860,6 +3058,7 @@ func issueCode(
 	if err != nil {
 		tb.Fatalf("issue code: %v", err)
 	}
+
 	return result
 }
 
@@ -2871,6 +3070,7 @@ func assertAssignmentIsVisible(
 	assignmentID uint64,
 ) {
 	tb.Helper()
+
 	status, err := env.Service.User.GetStatus(env.Context, user.GetStatusParams{
 		Identity: identity,
 		CPAID:    cpaID,
@@ -2882,6 +3082,7 @@ func assertAssignmentIsVisible(
 			err,
 		)
 	}
+
 	offers, err := env.Service.User.ListActive(
 		env.Context,
 		user.ListActiveParams{
@@ -2892,12 +3093,14 @@ func assertAssignmentIsVisible(
 	if err != nil {
 		tb.Fatalf("list active offers: %v", err)
 	}
+
 	for _, offer := range offers {
 		if offer.ID == cpaID && offer.Assignment != nil &&
 			offer.Assignment.ID == assignmentID {
 			return
 		}
 	}
+
 	tb.Fatalf("assignment %d is missing from active offers", assignmentID)
 }
 
@@ -2907,6 +3110,7 @@ func upsertLocalization(
 	cpaID, locale, title string,
 ) {
 	tb.Helper()
+
 	if err := env.Service.Admin.UpsertLocalization(
 		env.Context,
 		admin.UpsertLocalizationParams{
@@ -2929,6 +3133,7 @@ func upsertReward(
 	scale uint16,
 ) {
 	tb.Helper()
+
 	if err := env.Service.Admin.UpsertReward(
 		env.Context,
 		admin.UpsertRewardParams{
@@ -2949,12 +3154,15 @@ func stringPointer(value string) *string {
 
 func payloadKind(tb testing.TB, payload json.RawMessage) string {
 	tb.Helper()
+
 	var value struct {
 		Kind string `json:"kind"`
 	}
+
 	if err := json.Unmarshal(payload, &value); err != nil {
 		tb.Fatalf("decode offer payload: %v", err)
 	}
+
 	return value.Kind
 }
 
@@ -2988,6 +3196,7 @@ func (c *failingCPAVersionCache) Set(
 	if strings.HasPrefix(key, "cache_version:") {
 		return errors.New("cache version backend is unavailable")
 	}
+
 	return c.cpaTestCache.Set(key, value, expiration)
 }
 
@@ -2998,14 +3207,18 @@ func newCPATestCache() *cpaTestCache {
 func (c *cpaTestCache) GetWithTTL(key string) ([]byte, time.Duration, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	entry, ok := c.entries[key]
 	if !ok {
 		return nil, 0, nil
 	}
+
 	if !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt) {
 		delete(c.entries, key)
+
 		return nil, 0, nil
 	}
+
 	return append([]byte(nil), entry.value...), time.Until(entry.expiresAt), nil
 }
 
@@ -3016,31 +3229,41 @@ func (c *cpaTestCache) Set(
 ) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	entry := cpaTestCacheEntry{value: append([]byte(nil), value...)}
 	if expiration > 0 {
 		entry.expiresAt = time.Now().Add(expiration)
 	}
+
 	c.entries[key] = entry
 	c.sets++
+
 	c.lastTTL = expiration
+
 	if !strings.HasPrefix(key, "cache_version:") {
 		c.dataSets++
+
 		c.dataLastTTL = expiration
 	}
+
 	return nil
 }
 
 func (c *cpaTestCache) Delete(key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	delete(c.entries, key)
+
 	return nil
 }
 
 func (c *cpaTestCache) Reset() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	clear(c.entries)
+
 	return nil
 }
 
@@ -3051,23 +3274,27 @@ func (c *cpaTestCache) Close() error {
 func (c *cpaTestCache) SetCalls() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return c.sets
 }
 
 func (c *cpaTestCache) LastTTL() time.Duration {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return c.lastTTL
 }
 
 func (c *cpaTestCache) DataSetCalls() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return c.dataSets
 }
 
 func (c *cpaTestCache) DataLastTTL() time.Duration {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return c.dataLastTTL
 }

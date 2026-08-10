@@ -6,5 +6,6 @@ func refIfNotEmpty(value string) *string {
 	if value == "" {
 		return nil
 	}
+
 	return utils.Ref(value)
 }

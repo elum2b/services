@@ -11,7 +11,6 @@ func (u *User) GetStatus(
 	ctx context.Context,
 	params GetStatusParams,
 ) (*AssignmentModel, error) {
-
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 
@@ -28,6 +27,6 @@ func (u *User) GetStatus(
 	}
 
 	result := mapAssignment(*value)
-	return &result, nil
 
+	return &result, nil
 }

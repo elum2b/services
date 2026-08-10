@@ -33,6 +33,7 @@ func (u *User) Next(
 	if err != nil {
 		return RecordResult{}, err
 	}
+
 	result := mapRecord(value)
 	hideFutureRewardSteps(&result)
 

@@ -17,6 +17,7 @@ func (a *Platega) ReconcilePending(
 	if a == nil || a.repository == nil {
 		return ReconcileResult{}, ErrNotInitialized
 	}
+
 	if params.ResolveCredentials == nil || params.CreatedTo.IsZero() ||
 		params.Limit <= 0 {
 		return ReconcileResult{}, repository.ErrAttemptFieldsInvalid
@@ -31,6 +32,7 @@ func (a *Platega) ReconcilePending(
 	if err != nil {
 		return ReconcileResult{}, err
 	}
+
 	result := ReconcileResult{Scanned: len(attempts)}
 	if len(attempts) == 0 {
 		return result, nil
@@ -47,27 +49,34 @@ func (a *Platega) ReconcilePending(
 	}
 
 	var resultErr error
+
 	for workspaceID, workspaceAttempts := range byWorkspace {
 		credentials, err := params.ResolveCredentials(ctx, workspaceID)
 		if err != nil {
 			resultErr = errors.Join(resultErr, err)
 			continue
 		}
+
 		from := workspaceAttempts[0].CreatedAt
 		to := workspaceAttempts[0].CreatedAt
+
 		for _, attempt := range workspaceAttempts[1:] {
 			if attempt.CreatedAt.Before(from) {
 				from = attempt.CreatedAt
 			}
+
 			if attempt.CreatedAt.After(to) {
 				to = attempt.CreatedAt
 			}
 		}
+
 		from = from.Add(-time.Minute)
 		to = to.Add(params.MissingAfter)
+
 		if params.MissingAfter <= 0 || to.After(params.CreatedTo) {
 			to = params.CreatedTo
 		}
+
 		records, err := NewClient(
 			credentials,
 		).ExportTransactions(ctx, exportTransactionsRequest{
@@ -84,23 +93,28 @@ func (a *Platega) ReconcilePending(
 		recordByID := make(map[string]exportedTransaction, len(records))
 		ambiguousPayload := make(map[string]struct{})
 		ambiguousID := make(map[string]struct{})
+
 		for _, record := range records {
 			if record.RecordID == "" {
 				continue
 			}
+
 			if previous, exists := recordByID[record.RecordID]; exists &&
 				previous.Payload != record.Payload {
 				ambiguousID[record.RecordID] = struct{}{}
 			}
+
 			recordByID[record.RecordID] = record
 			if record.Payload != "" {
 				if previous, exists := recordByPayload[record.Payload]; exists &&
 					previous.RecordID != record.RecordID {
 					ambiguousPayload[record.Payload] = struct{}{}
 				}
+
 				recordByPayload[record.Payload] = record
 			}
 		}
+
 		for _, attempt := range workspaceAttempts {
 			record, ok, ambiguous := reconciliationRecord(
 				attempt,
@@ -114,8 +128,10 @@ func (a *Platega) ReconcilePending(
 					resultErr,
 					repository.ErrPaymentMismatch,
 				)
+
 				continue
 			}
+
 			if !ok {
 				if attempt.ProviderPaymentID == nil &&
 					params.MissingAfter > 0 &&
@@ -130,17 +146,22 @@ func (a *Platega) ReconcilePending(
 						resultErr = errors.Join(resultErr, err)
 						continue
 					}
+
 					result.Released++
 				}
+
 				continue
 			}
+
 			if record.Payload != attempt.OrderPublicID {
 				resultErr = errors.Join(
 					resultErr,
 					repository.ErrPaymentMismatch,
 				)
+
 				continue
 			}
+
 			recordAmountMinor, err := rubMinorFromMajor(record.Amount)
 			if err != nil || recordAmountMinor != attempt.AmountMinor ||
 				record.CurrencyCode != attempt.AssetCode {
@@ -148,6 +169,7 @@ func (a *Platega) ReconcilePending(
 					resultErr,
 					repository.ErrPaymentMismatch,
 				)
+
 				continue
 			}
 
@@ -158,11 +180,13 @@ func (a *Platega) ReconcilePending(
 				Status:        record.Status,
 				PaymentMethod: PaymentMethodAny,
 			}
+
 			raw, err := json.Marshal(payload)
 			if err != nil {
 				resultErr = errors.Join(resultErr, err)
 				continue
 			}
+
 			transaction := transactionStatusResponse{
 				ID:     record.RecordID,
 				Status: record.Status,
@@ -172,6 +196,7 @@ func (a *Platega) ReconcilePending(
 				},
 				Payload: record.Payload,
 			}
+
 			webhookResult, err := a.handlePayload(
 				ctx,
 				credentials,
@@ -185,6 +210,7 @@ func (a *Platega) ReconcilePending(
 				resultErr = errors.Join(resultErr, err)
 				continue
 			}
+
 			result.Recovered++
 			if webhookResult.FulfilledID != nil || webhookResult.AlreadyDone {
 				result.Completed++
@@ -206,13 +232,17 @@ func reconciliationRecord(
 		if _, ambiguous := ambiguousID[*attempt.ProviderPaymentID]; ambiguous {
 			return exportedTransaction{}, false, true
 		}
+
 		record, ok := recordByID[*attempt.ProviderPaymentID]
+
 		return record, ok, false
 	}
 
 	if _, ambiguous := ambiguousPayload[attempt.OrderPublicID]; ambiguous {
 		return exportedTransaction{}, false, true
 	}
+
 	record, ok := recordByPayload[attempt.OrderPublicID]
+
 	return record, ok, false
 }

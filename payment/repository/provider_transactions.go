@@ -11,6 +11,7 @@ func (r *PaymentRepository) GetAsset(
 	code string,
 ) (paymentsqlc.PaymentAsset, error) {
 	key := paymentCacheKey("asset", code)
+
 	return queryPaymentCache(
 		ctx,
 		r,
@@ -41,6 +42,7 @@ func (r *PaymentRepository) GetAssetByChainContract(
 			return r.q.GetAssetByChainContract(ctx, params)
 		},
 	)
+
 	return mapAdminResult(row, err, mapAdminAsset)
 }
 
@@ -81,16 +83,21 @@ func (r *PaymentRepository) StoreProviderTransaction(
 	cursor paymentsqlc.UpsertProviderCursorParams,
 ) (uint64, error) {
 	var id uint64
+
 	err := r.WithTx(ctx, func(tx *PaymentRepository) error {
 		var err error
+
 		createdID, err := tx.CreateProviderTransaction(ctx, transaction)
 		if err != nil {
 			return err
 		}
-		id = uint64(createdID)
+
+		id = createdID
 		_, err = tx.UpsertProviderCursor(ctx, cursor)
+
 		return err
 	})
+
 	return id, err
 }
 
@@ -99,8 +106,8 @@ func (r *PaymentRepository) RecoverFailedProviderTransaction(
 	transaction paymentsqlc.RecoverProviderTransactionParams,
 	cursor paymentsqlc.UpsertProviderCursorParams,
 ) (bool, error) {
-
 	var recovered bool
+
 	err := r.WithTx(ctx, func(tx *PaymentRepository) error {
 		updated, err := tx.q.RecoverProviderTransaction(ctx, transaction)
 		if err != nil {
@@ -114,7 +121,6 @@ func (r *PaymentRepository) RecoverFailedProviderTransaction(
 	})
 
 	return recovered, err
-
 }
 
 func (r *PaymentRepository) AdminListProviderCursors(
@@ -155,7 +161,6 @@ func (r *PaymentRepository) AdminUpdateProviderTransactionStatus(
 func validProviderTransactionStatus(
 	status paymentsqlc.PaymentProviderTransactionStatus,
 ) bool {
-
 	switch status {
 	case paymentsqlc.PaymentProviderTransactionStatusNew,
 		paymentsqlc.PaymentProviderTransactionStatusMatched,
@@ -165,5 +170,4 @@ func validProviderTransactionStatus(
 	default:
 		return false
 	}
-
 }

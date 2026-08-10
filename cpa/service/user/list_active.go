@@ -15,7 +15,6 @@ func (u *User) ListActive(
 	ctx context.Context,
 	params ListActiveParams,
 ) ([]OfferModel, error) {
-
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 
@@ -45,6 +44,7 @@ func (u *User) ListActive(
 		}) {
 			continue
 		}
+
 		model := OfferModel{
 			ID:       offer.ID,
 			Payload:  offer.Payload,
@@ -57,13 +57,15 @@ func (u *User) ListActive(
 			model.Title = bundle.Localization.Title
 			model.Description = bundle.Localization.Description
 		}
+
 		if bundle.Assignment != nil {
 			mapped := mapAssignment(*bundle.Assignment)
+
 			model.Assignment = &mapped
 		}
+
 		result = append(result, model)
 	}
 
 	return result, nil
-
 }

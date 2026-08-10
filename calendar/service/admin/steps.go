@@ -21,12 +21,15 @@ func (a *Admin) CreateStep(
 ) (uint64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return 0, err
 	}
+
 	if params.CalendarID == "" || params.Position == 0 {
 		return 0, ErrStepCreateInvalid
 	}
+
 	if params.Position > math.MaxInt32 {
 		return 0, ErrCalendarNumberOutOfRange
 	}
@@ -45,12 +48,15 @@ func (a *Admin) UpdateStep(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return 0, err
 	}
+
 	if params.CalendarID == "" || params.ID == 0 || params.Position == 0 {
 		return 0, ErrStepUpdateInvalid
 	}
+
 	if params.ID > math.MaxInt64 || params.Position > math.MaxInt32 {
 		return 0, ErrCalendarNumberOutOfRange
 	}
@@ -71,12 +77,15 @@ func (a *Admin) DeleteStep(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return 0, err
 	}
+
 	if calendarID == "" || id == 0 {
 		return 0, ErrStepUpdateInvalid
 	}
+
 	if id > math.MaxInt64 {
 		return 0, ErrCalendarNumberOutOfRange
 	}
@@ -91,6 +100,7 @@ func (a *Admin) GetStep(
 ) (repository.Step, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.GetStep(mergedCtx, workspaceID, calendarID, id)
 }
 
@@ -100,5 +110,6 @@ func (a *Admin) ListSteps(
 ) ([]repository.Step, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.ListSteps(mergedCtx, workspaceID, calendarID)
 }

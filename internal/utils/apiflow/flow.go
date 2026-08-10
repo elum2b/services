@@ -46,6 +46,7 @@ func New(options Options) *Flow {
 	if rate <= 0 {
 		rate = DefaultRatePerSecond
 	}
+
 	return &Flow{
 		interval: time.Second / time.Duration(rate),
 		sets:     make(map[string]*atomic.Uint64),
@@ -58,13 +59,16 @@ func (f *Flow) Acquire(ctx context.Context, set TokenSet) (string, error) {
 	if len(tokens) == 0 {
 		return "", ErrNoTokens
 	}
+
 	if f == nil {
 		f = New(Options{})
 	}
+
 	token := f.selectToken(tokens, set.Strategy)
 	if err := f.wait(ctx, token); err != nil {
 		return "", err
 	}
+
 	return token, nil
 }
 
@@ -72,12 +76,14 @@ func (f *Flow) selectToken(tokens []string, strategy string) string {
 	if len(tokens) == 1 {
 		return tokens[0]
 	}
+
 	switch normalizeStrategy(strategy) {
 	case StrategyRandom:
 		return tokens[rand.IntN(len(tokens))]
 	default:
 		counter := f.counter(tokens)
 		index := counter.Add(1) - 1
+
 		return tokens[index%uint64(len(tokens))]
 	}
 }
@@ -85,11 +91,15 @@ func (f *Flow) selectToken(tokens []string, strategy string) string {
 func (f *Flow) wait(ctx context.Context, token string) error {
 	limiter := f.limiter(token)
 	delay := limiter.reserve(f.interval)
+
 	if delay <= 0 {
 		return nil
 	}
+
 	timer := time.NewTimer(delay)
+
 	defer timer.Stop()
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -100,37 +110,46 @@ func (f *Flow) wait(ctx context.Context, token string) error {
 
 func (f *Flow) counter(tokens []string) *atomic.Uint64 {
 	key := strings.Join(tokens, "\x00")
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	counter := f.sets[key]
 	if counter == nil {
 		counter = &atomic.Uint64{}
 		f.sets[key] = counter
 	}
+
 	return counter
 }
 
 func (f *Flow) limiter(token string) *tokenLimiter {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	limiter := f.limiters[token]
 	if limiter == nil {
 		limiter = &tokenLimiter{}
 		f.limiters[token] = limiter
 	}
+
 	return limiter
 }
 
 func (l *tokenLimiter) reserve(interval time.Duration) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
 	now := time.Now()
 	if l.next.IsZero() || !l.next.After(now) {
 		l.next = now.Add(interval)
 		return 0
 	}
+
 	delay := l.next.Sub(now)
+
 	l.next = l.next.Add(interval)
+
 	return delay
 }
 
@@ -142,6 +161,7 @@ func normalizeTokens(values []string) []string {
 			result = append(result, value)
 		}
 	}
+
 	return result
 }
 

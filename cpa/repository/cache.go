@@ -19,10 +19,13 @@ func cpaCacheKey(parts ...any) string {
 
 func cpaCacheVersionScope(workspaceID, scope string, values ...string) []any {
 	parts := make([]any, 0, 4+len(values))
+
 	parts = append(parts, "cpa", "cache", workspaceID, scope)
+
 	for _, value := range values {
 		parts = append(parts, value)
 	}
+
 	return parts
 }
 
@@ -42,18 +45,22 @@ func (r *Repository) invalidateCPACache(workspaceID string, cpaIDs ...string) {
 	if r == nil || r.db == nil || workspaceID == "" {
 		return
 	}
+
 	err := errors.Join(
 		r.db.BumpCacheVersion(cpaAdminListCacheVersionScope(workspaceID)...),
 		r.db.BumpCacheVersion(cpaUserListCacheVersionScope(workspaceID)...),
 	)
 	seen := make(map[string]struct{}, len(cpaIDs))
+
 	for _, cpaID := range cpaIDs {
 		if cpaID == "" {
 			continue
 		}
+
 		if _, exists := seen[cpaID]; exists {
 			continue
 		}
+
 		seen[cpaID] = struct{}{}
 		err = errors.Join(
 			err,
@@ -61,6 +68,7 @@ func (r *Repository) invalidateCPACache(workspaceID string, cpaIDs ...string) {
 				cpaOfferCacheVersionScope(workspaceID, cpaID)...),
 		)
 	}
+
 	r.reportCacheInvalidationError(err)
 }
 
@@ -68,8 +76,10 @@ func (r *Repository) reportCacheInvalidationError(err error) {
 	if err == nil || r == nil || r.onCacheInvalidationError == nil {
 		return
 	}
+
 	defer func() {
 		_ = recover()
 	}()
+
 	r.onCacheInvalidationError(err)
 }

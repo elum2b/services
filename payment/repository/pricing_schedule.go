@@ -57,16 +57,20 @@ func (r *PaymentRepository) ConfigureAssetRateAutoUpdate(
 	params.ReferenceAssetCode = strings.TrimSpace(params.ReferenceAssetCode)
 	params.Source = strings.ToLower(strings.TrimSpace(params.Source))
 	params.SourceChainID = strings.TrimSpace(params.SourceChainID)
+
 	if params.Enabled &&
 		(params.Source != AssetRateSourceDexScreener || params.SourceChainID == "") {
 		return ErrInvalidAutoUpdateConfig
 	}
 
 	sourceAddress := sql.NullString{}
+
 	if params.SourceTokenAddress != nil {
 		value := strings.TrimSpace(*params.SourceTokenAddress)
+
 		sourceAddress = sql.NullString{String: value, Valid: value != ""}
 	}
+
 	rows, err := r.q.ConfigureAssetRateAutoUpdate(
 		ctx,
 		paymentsqlc.ConfigureAssetRateAutoUpdateParams{
@@ -87,9 +91,11 @@ func (r *PaymentRepository) ConfigureAssetRateAutoUpdate(
 	if err != nil {
 		return err
 	}
+
 	if rows == 0 {
 		return ErrAssetRateScheduleNotFound
 	}
+
 	return nil
 }
 
@@ -102,18 +108,22 @@ func (r *PaymentRepository) ClaimDueAssetRateUpdates(
 	if limit <= 0 {
 		limit = 300
 	}
+
 	if lease <= 0 {
 		lease = time.Minute
 	}
+
 	rows, err := r.q.ListDueAssetRateUpdates(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
+
 	claimed := make([]DueAssetRateUpdate, 0, len(rows))
 	for _, row := range rows {
 		if !row.AutoUpdateSource.Valid || !row.SourceChainID.Valid {
 			continue
 		}
+
 		affected, err := r.q.ClaimAssetRateUpdate(
 			ctx,
 			paymentsqlc.ClaimAssetRateUpdateParams{
@@ -129,9 +139,11 @@ func (r *PaymentRepository) ClaimDueAssetRateUpdates(
 		if err != nil {
 			return nil, err
 		}
+
 		if affected == 0 {
 			continue
 		}
+
 		claimed = append(claimed, DueAssetRateUpdate{
 			AssetCode:          row.AssetCode,
 			ReferenceAssetCode: row.ReferenceAssetCode,
@@ -143,6 +155,7 @@ func (r *PaymentRepository) ClaimDueAssetRateUpdates(
 			AssetKind: string(row.AssetKind),
 		})
 	}
+
 	return claimed, nil
 }
 
@@ -159,6 +172,7 @@ func (r *PaymentRepository) CompleteAssetRateAutoUpdate(
 			LeaseOwner:         sql.NullString{String: workerID, Valid: true},
 		},
 	)
+
 	return err
 }
 
@@ -172,9 +186,11 @@ func (r *PaymentRepository) FailAssetRateAutoUpdate(
 	if updateErr != nil {
 		message = serviceerrors.PublicMessage(updateErr)
 	}
+
 	if len(message) > 4000 {
 		message = message[:4000]
 	}
+
 	_, err := r.q.FailAssetRateUpdate(
 		ctx,
 		paymentsqlc.FailAssetRateUpdateParams{
@@ -184,5 +200,6 @@ func (r *PaymentRepository) FailAssetRateAutoUpdate(
 			LeaseOwner:         sql.NullString{String: workerID, Valid: true},
 		},
 	)
+
 	return err
 }

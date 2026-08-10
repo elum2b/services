@@ -41,5 +41,6 @@ func (a *Product) List(
 	for _, item := range products {
 		result = append(result, *mapProduct(item))
 	}
+
 	return result, nil
 }

@@ -51,6 +51,7 @@ func NewWithDatabase(
 			err,
 		)
 	}
+
 	return newReference(ctx, client, false, options), nil
 }
 
@@ -58,27 +59,38 @@ func (r *Reference) Run(ctx context.Context, params DatabaseParams) error {
 	if r == nil {
 		return ErrServiceNil
 	}
+
 	r.lifecycleMu.Lock()
+
 	if r.running {
 		r.lifecycleMu.Unlock()
+
 		return ErrServiceRunning
 	}
+
 	r.running = true
 	r.lifecycleMu.Unlock()
 
 	running, err := open(ctx, params)
 	if err != nil {
 		r.lifecycleMu.Lock()
+
 		r.running = false
 		r.lifecycleMu.Unlock()
+
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			return nil
 		}
+
 		return wrapLifecycleError(err)
 	}
+
 	r.adopt(running)
+
 	defer r.Close()
+
 	<-r.rootCtx.Done()
+
 	return nil
 }
 
@@ -86,9 +98,11 @@ func open(ctx context.Context, params DatabaseParams) (*Reference, error) {
 	if params.User == "" {
 		return nil, ErrDatabaseConfigRequired
 	}
+
 	if params.Database == "" {
 		return nil, ErrDatabaseConfigRequired
 	}
+
 	db, err := openPostgres(ctx, params)
 	if err != nil {
 		return nil, serviceerrors.Wrap(
@@ -97,15 +111,18 @@ func open(ctx context.Context, params DatabaseParams) (*Reference, error) {
 			err,
 		)
 	}
+
 	client, err := sqlwrap.New(db, toSQLWrapOptions(params.Options))
 	if err != nil {
 		_ = db.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"reference sql client initialization failed",
 			err,
 		)
 	}
+
 	bootstrap := repository.NewWithOptions(client, repository.Options{
 		QueryTimeout:             params.Options.QueryTimeout,
 		CacheL1Delay:             params.Options.CacheL1Delay,
@@ -115,20 +132,24 @@ func open(ctx context.Context, params DatabaseParams) (*Reference, error) {
 	if err := bootstrap.Bootstrap(contextutil.Normalize(ctx)); err != nil {
 		_ = bootstrap.Close()
 		_ = client.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"reference bootstrap failed",
 			err,
 		)
 	}
+
 	if err := bootstrap.Close(); err != nil {
 		_ = client.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"reference bootstrap shutdown failed",
 			err,
 		)
 	}
+
 	return newReference(ctx, client, true, params.Options), nil
 }
 
@@ -137,10 +158,12 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 	if host == "" {
 		host = "localhost"
 	}
+
 	port := params.Port
 	if port == 0 {
 		port = 5432
 	}
+
 	dsn, err := sqlwrap.PostgresDSN(sqlwrap.PostgresParams{
 		User:        params.User,
 		Password:    params.Password,
@@ -153,20 +176,24 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
+
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+
 	return db, nil
 }
 
 func (r *Reference) adopt(running *Reference) {
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
+
 	r.Admin, r.User = running.Admin, running.User
 	r.client, r.ownsClient = running.client, running.ownsClient
 	r.rootCtx, r.rootCancel = running.rootCtx, running.rootCancel
@@ -185,6 +212,7 @@ func newReference(
 		CacheL2Delay:             options.CacheL2Delay,
 		OnCacheInvalidationError: options.OnCacheInvalidationError,
 	}
+
 	return &Reference{
 		Admin: admin.NewWithRepositoryOptions(
 			rootCtx,
@@ -207,19 +235,25 @@ func (r *Reference) Close() error {
 	if r == nil {
 		return nil
 	}
+
 	if r.rootCancel != nil {
 		r.rootCancel()
 	}
+
 	var err error
+
 	if r.Admin != nil {
 		err = errors.Join(err, r.Admin.Close())
 	}
+
 	if r.User != nil {
 		err = errors.Join(err, r.User.Close())
 	}
+
 	if r.ownsClient && r.client != nil {
 		err = errors.Join(err, r.client.Close())
 	}
+
 	return err
 }
 
@@ -228,8 +262,10 @@ func (r *Reference) IsReady() bool {
 	if r == nil {
 		return false
 	}
+
 	r.lifecycleMu.Lock()
 	defer r.lifecycleMu.Unlock()
+
 	return r.rootCtx != nil && r.rootCtx.Err() == nil &&
 		!r.client.IsUnavailable() &&
 		r.Admin != nil &&

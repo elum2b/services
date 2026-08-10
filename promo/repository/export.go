@@ -20,9 +20,13 @@ func (r *Repository) Export(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	var promoRows []promosqlc.PromoOffer
-	var localizationRows []promosqlc.PromoLocalization
-	var rewardRows []promosqlc.PromoReward
+
+	var (
+		promoRows        []promosqlc.PromoOffer
+		localizationRows []promosqlc.PromoLocalization
+		rewardRows       []promosqlc.PromoReward
+	)
+
 	if err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if _, err := txRepo.executor.ExecContext(
 			ctx,
@@ -32,6 +36,7 @@ func (r *Repository) Export(
 		}
 
 		var err error
+
 		promoRows, err = txRepo.q.ListExportPromos(ctx, workspaceID)
 		if err != nil {
 			return err
@@ -46,10 +51,12 @@ func (r *Repository) Export(
 		}
 
 		rewardRows, err = txRepo.q.ListExportRewards(ctx, workspaceID)
+
 		return err
 	}); err != nil {
 		return ExportPackage{}, err
 	}
+
 	out := ExportPackage{
 		Format:    ExportFormat,
 		Service:   "promo",
@@ -57,6 +64,7 @@ func (r *Repository) Export(
 		Promos:    make([]ExportPromo, 0, len(promoRows)),
 	}
 	promoIndexByID := make(map[int64]int, len(promoRows))
+
 	for _, row := range promoRows {
 		promo := mapPromo(row)
 		item := ExportPromo{
@@ -70,6 +78,7 @@ func (r *Repository) Export(
 			Localization:   make(map[string]ExportText),
 			Rewards:        make([]ExportReward, 0),
 		}
+
 		promoIndexByID[row.ID] = len(out.Promos)
 		out.Promos = append(out.Promos, item)
 	}
@@ -79,6 +88,7 @@ func (r *Repository) Export(
 		if !ok {
 			continue
 		}
+
 		out.Promos[index].Localization[localization.Locale] = ExportText{
 			Title:       localization.Title,
 			Description: localization.Description,
@@ -90,6 +100,7 @@ func (r *Repository) Export(
 		if !ok {
 			continue
 		}
+
 		out.Promos[index].Rewards = append(
 			out.Promos[index].Rewards,
 			ExportReward{
@@ -106,6 +117,7 @@ func (r *Repository) Export(
 		if len(out.Promos[index].Localization) == 0 {
 			out.Promos[index].Localization = nil
 		}
+
 		if len(out.Promos[index].Rewards) == 0 {
 			out.Promos[index].Rewards = nil
 		}
@@ -118,5 +130,6 @@ func nullableJSON(value []byte) []byte {
 	if len(value) == 0 || string(value) == "null" {
 		return nil
 	}
+
 	return value
 }

@@ -42,6 +42,7 @@ func (u *User) Apply(
 	if err != nil {
 		return ApplyResult{}, err
 	}
+
 	model := ApplyResult{Status: result.Status, Promo: mapPromo(result)}
 	if result.Redemption != nil {
 		model.Redemption = &RedemptionModel{
@@ -49,6 +50,7 @@ func (u *User) Apply(
 			RedeemedAt: result.Redemption.RedeemedAt,
 		}
 	}
+
 	return model, nil
 }
 
@@ -68,6 +70,7 @@ func mapPromo(result repository.ApplyResult) PromoModel {
 		model.Title = result.Localization.Title
 		model.Description = result.Localization.Description
 	}
+
 	for _, reward := range result.Rewards {
 		model.Rewards = append(model.Rewards, RewardModel{
 			Key:      reward.Key,
@@ -77,5 +80,6 @@ func mapPromo(result repository.ApplyResult) PromoModel {
 			Unit:     reward.Unit,
 		})
 	}
+
 	return model
 }

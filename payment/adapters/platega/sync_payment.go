@@ -10,13 +10,13 @@ func (a *Platega) SyncPayment(
 	ctx context.Context,
 	params SyncPaymentParams,
 ) (*WebhookResult, error) {
-
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
 	}
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	transaction, err := NewClient(
@@ -48,5 +48,4 @@ func (a *Platega) SyncPayment(
 		false,
 		&transaction,
 	)
-
 }

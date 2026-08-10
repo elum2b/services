@@ -140,24 +140,32 @@ func (a *Payment) OnCallback(
 	if handler == nil {
 		return ErrCallbackHandlerNil
 	}
+
 	if a == nil {
 		return ErrServiceNil
 	}
+
 	a.lifecycleMu.Lock()
+
 	if a.running {
 		a.lifecycleMu.Unlock()
+
 		return ErrCallbacksRegistrationClosed
 	}
+
 	if a.callbacks != nil && !a.client.IsUnavailable() {
 		a.lifecycleMu.Unlock()
+
 		return a.runCallback(ctx, handler, opts...)
 	}
+
 	a.callbacksToRun = append(a.callbacksToRun, callbackRegistration{
 		ctx:     ctx,
 		handler: handler,
 		options: append([]CallbackOption(nil), opts...),
 	})
 	a.lifecycleMu.Unlock()
+
 	return nil
 }
 
@@ -169,10 +177,13 @@ func (a *Payment) runCallback(
 	if a == nil || a.callbacks == nil {
 		return ErrCallbacksNotConfigured
 	}
+
 	runCtx, cancel := a.bindContext(ctx)
+
 	defer cancel()
 
 	opts = append(opts, callbackutil.WithSourceService("payment"))
+
 	return a.callbacks.On(runCtx, func(callbackCtx callbackutil.Context) error {
 		paymentCtx, err := newCallbackContext(callbackCtx)
 		if err != nil {
@@ -182,6 +193,7 @@ func (a *Payment) runCallback(
 				err,
 			)
 		}
+
 		return handler(paymentCtx)
 	}, opts...)
 }
@@ -191,6 +203,7 @@ func newCallbackContext(callbackCtx callbackutil.Context) (Context, error) {
 	switch callbackCtx.EventType {
 	case CallbackEventPaymentOrderFulfilled:
 		var payload PaymentFulfilledCallbackPayload
+
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
 			return Context{}, serviceerrors.Wrap(
 				serviceerrors.CodeInternalError,
@@ -198,6 +211,7 @@ func newCallbackContext(callbackCtx callbackutil.Context) (Context, error) {
 				err,
 			)
 		}
+
 		ctx.Payload = &services.RewardPayload{
 			Identity: services.Identity{
 				WorkspaceID:    payload.WorkspaceID,
@@ -210,6 +224,7 @@ func newCallbackContext(callbackCtx callbackutil.Context) (Context, error) {
 		ctx.PaymentFulfilled = &payload
 	case CallbackEventPaymentOrderRefunded:
 		var payload PaymentRefundedCallbackPayload
+
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
 			return Context{}, serviceerrors.Wrap(
 				serviceerrors.CodeInternalError,
@@ -217,6 +232,7 @@ func newCallbackContext(callbackCtx callbackutil.Context) (Context, error) {
 				err,
 			)
 		}
+
 		ctx.Payload = &services.RewardPayload{
 			Identity: services.Identity{
 				WorkspaceID:    payload.WorkspaceID,
@@ -229,6 +245,7 @@ func newCallbackContext(callbackCtx callbackutil.Context) (Context, error) {
 		ctx.PaymentRefunded = &payload
 	case CallbackEventPaymentOrderChargebacked:
 		var payload PaymentChargebackedCallbackPayload
+
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
 			return Context{}, serviceerrors.Wrap(
 				serviceerrors.CodeInternalError,
@@ -236,6 +253,7 @@ func newCallbackContext(callbackCtx callbackutil.Context) (Context, error) {
 				err,
 			)
 		}
+
 		ctx.Payload = &services.RewardPayload{
 			Identity: services.Identity{
 				WorkspaceID:    payload.WorkspaceID,
@@ -248,6 +266,7 @@ func newCallbackContext(callbackCtx callbackutil.Context) (Context, error) {
 		ctx.PaymentChargebacked = &payload
 	case CallbackEventPaymentSubscriptionRenewed:
 		var payload PaymentSubscriptionRenewedCallbackPayload
+
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
 			return Context{}, serviceerrors.Wrap(
 				serviceerrors.CodeInternalError,
@@ -255,6 +274,7 @@ func newCallbackContext(callbackCtx callbackutil.Context) (Context, error) {
 				err,
 			)
 		}
+
 		ctx.Payload = &services.RewardPayload{
 			Identity: services.Identity{
 				WorkspaceID:    payload.WorkspaceID,
@@ -266,5 +286,6 @@ func newCallbackContext(callbackCtx callbackutil.Context) (Context, error) {
 		}
 		ctx.PaymentSubscriptionRenewed = &payload
 	}
+
 	return ctx, nil
 }

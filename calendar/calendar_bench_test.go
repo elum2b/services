@@ -37,9 +37,12 @@ func BenchmarkCalendarAdminCalendarMethods(b *testing.B) {
 	})
 	b.Run("UpdateCalendar", func(b *testing.B) {
 		params := base
+
 		params.ID = baseID
+
 		for i := 0; i < b.N; i++ {
 			params.HideFutureRewards = i%2 == 0
+
 			_, err := service.Admin.UpdateCalendar(ctx, params)
 			benchmarkError(b, err)
 		}
@@ -78,6 +81,7 @@ func BenchmarkCalendarAdminCalendarMethods(b *testing.B) {
 	b.Run("DeleteCalendar", func(b *testing.B) {
 		for range b.N {
 			b.StopTimer()
+
 			id := calendarAdminBenchmarkID.Add(1)
 			calendarID := createCalendar(
 				b,
@@ -88,6 +92,7 @@ func BenchmarkCalendarAdminCalendarMethods(b *testing.B) {
 				),
 			)
 			b.StartTimer()
+
 			_, err := service.Admin.DeleteCalendar(
 				ctx,
 				testsupport.WorkspaceID("bench-delete"),
@@ -115,6 +120,7 @@ func BenchmarkCalendarAdminLocalizationMethods(b *testing.B) {
 		Title:       "Title",
 		Description: "Description",
 	}
+
 	if err := service.Admin.UpsertLocalization(ctx, params); err != nil {
 		b.Fatal(err)
 	}
@@ -152,6 +158,7 @@ func BenchmarkCalendarAdminLocalizationMethods(b *testing.B) {
 			b.StopTimer()
 			benchmarkError(b, service.Admin.UpsertLocalization(ctx, params))
 			b.StartTimer()
+
 			_, err := service.Admin.DeleteLocalization(
 				ctx,
 				testsupport.WorkspaceID("bench-loc"),
@@ -209,6 +216,7 @@ func BenchmarkCalendarServiceMethods(b *testing.B) {
 		"coin",
 		1,
 	)
+
 	idempotent := user.Identity{
 		WorkspaceID: testsupport.WorkspaceID(
 			"bench",
@@ -330,6 +338,7 @@ func BenchmarkCalendarImportExport(b *testing.B) {
 		"coin",
 		1,
 	)
+
 	if err := service.Admin.UpsertLocalization(
 		ctx,
 		admin.SaveLocalizationParams{
@@ -343,6 +352,7 @@ func BenchmarkCalendarImportExport(b *testing.B) {
 	); err != nil {
 		b.Fatal(err)
 	}
+
 	pkg, err := service.Admin.Export(
 		ctx,
 		testsupport.WorkspaceID("bench-import"),
@@ -377,6 +387,7 @@ func BenchmarkCalendarImportExport(b *testing.B) {
 
 func benchmarkError(b *testing.B, err error) {
 	b.Helper()
+
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -398,6 +409,7 @@ func BenchmarkCalendarAdminCallbackMethods(b *testing.B) {
 		"coin",
 		1,
 	)
+
 	baseEventID := createBenchmarkCallbackEvent(
 		b,
 		service,
@@ -432,6 +444,7 @@ func BenchmarkCalendarAdminCallbackMethods(b *testing.B) {
 	b.Run("RetryCallbackEventNow", func(b *testing.B) {
 		for range b.N {
 			b.StopTimer()
+
 			eventID := createBenchmarkCallbackEvent(
 				b,
 				service,
@@ -440,6 +453,7 @@ func BenchmarkCalendarAdminCallbackMethods(b *testing.B) {
 				start,
 			)
 			b.StartTimer()
+
 			_, err := service.Admin.RetryCallbackEventNow(
 				ctx,
 				testsupport.WorkspaceID("bench-callback"),
@@ -451,6 +465,7 @@ func BenchmarkCalendarAdminCallbackMethods(b *testing.B) {
 	b.Run("MarkCallbackEventOK", func(b *testing.B) {
 		for range b.N {
 			b.StopTimer()
+
 			eventID := createBenchmarkCallbackEvent(
 				b,
 				service,
@@ -459,6 +474,7 @@ func BenchmarkCalendarAdminCallbackMethods(b *testing.B) {
 				start,
 			)
 			b.StartTimer()
+
 			_, err := service.Admin.MarkCallbackEventOK(
 				ctx,
 				testsupport.WorkspaceID("bench-callback"),
@@ -470,6 +486,7 @@ func BenchmarkCalendarAdminCallbackMethods(b *testing.B) {
 	b.Run("MarkCallbackEventReject", func(b *testing.B) {
 		for range b.N {
 			b.StopTimer()
+
 			eventID := createBenchmarkCallbackEvent(
 				b,
 				service,
@@ -478,6 +495,7 @@ func BenchmarkCalendarAdminCallbackMethods(b *testing.B) {
 				start,
 			)
 			b.StartTimer()
+
 			_, err := service.Admin.MarkCallbackEventReject(
 				ctx,
 				testsupport.WorkspaceID("bench-callback"),
@@ -515,6 +533,7 @@ func BenchmarkCalendarOnCallback(b *testing.B) {
 	)
 
 	b.StopTimer()
+
 	for range b.N {
 		createBenchmarkCallbackEvent(
 			b,
@@ -524,18 +543,24 @@ func BenchmarkCalendarOnCallback(b *testing.B) {
 			start,
 		)
 	}
+
 	runCtx, cancel := context.WithCancel(context.Background())
+
 	var processed atomic.Int64
+
 	b.ResetTimer()
 	b.ReportAllocs()
 	b.StartTimer()
+
 	err := service.OnCallback(runCtx, func(callbackCtx Context) error {
 		if err := callbackCtx.Successful(); err != nil {
 			return err
 		}
+
 		if processed.Add(1) == int64(b.N) {
 			cancel()
 		}
+
 		return nil
 	}, WithCallbackBatchSize(100), WithCallbackIdleDelay(time.Millisecond))
 	if !errors.Is(err, context.Canceled) {
@@ -551,8 +576,11 @@ func createBenchmarkCallbackEvent(
 	now time.Time,
 ) uint64 {
 	b.Helper()
+
 	workspaceID = testsupport.WorkspaceID(workspaceID)
+
 	id := calendarBenchmarkUserID.Add(1)
+
 	_, err := service.User.Record(context.Background(), user.RecordParams{
 		Identity: user.Identity{
 			WorkspaceID: workspaceID, AppID: 1, PlatformID: 1,
@@ -565,6 +593,7 @@ func createBenchmarkCallbackEvent(
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	events, err := service.Admin.ListCallbackEvents(
 		context.Background(), admin.CallbackEventListParams{
 			WorkspaceID: workspaceID,
@@ -574,9 +603,11 @@ func createBenchmarkCallbackEvent(
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	if len(events) == 0 {
 		b.Fatal("callback event was not created")
 	}
+
 	return events[0].ID
 }
 
@@ -588,6 +619,7 @@ func BenchmarkCalendarAdminStepMethods(b *testing.B) {
 		service,
 		benchmarkCalendarParams("bench-step", "steps"),
 	)
+
 	baseStep, err := service.Admin.CreateStep(ctx, admin.SaveStepParams{
 		WorkspaceID: testsupport.WorkspaceID(
 			"bench-step",
@@ -629,6 +661,7 @@ func BenchmarkCalendarAdminStepMethods(b *testing.B) {
 	b.Run("DeleteStep", func(b *testing.B) {
 		for range b.N {
 			b.StopTimer()
+
 			id := calendarAdminBenchmarkID.Add(1)
 			stepID, err := service.Admin.CreateStep(ctx, admin.SaveStepParams{
 				WorkspaceID: testsupport.WorkspaceID(
@@ -639,6 +672,7 @@ func BenchmarkCalendarAdminStepMethods(b *testing.B) {
 			})
 			benchmarkError(b, err)
 			b.StartTimer()
+
 			_, err = service.Admin.DeleteStep(
 				ctx,
 				testsupport.WorkspaceID("bench-step"),
@@ -658,6 +692,7 @@ func BenchmarkCalendarAdminRewardMethods(b *testing.B) {
 		service,
 		benchmarkCalendarParams("bench-reward", "rewards"),
 	)
+
 	stepID, err := service.Admin.CreateStep(ctx, admin.SaveStepParams{
 		WorkspaceID: testsupport.WorkspaceID(
 			"bench-reward",
@@ -668,6 +703,7 @@ func BenchmarkCalendarAdminRewardMethods(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	baseReward, err := service.Admin.CreateReward(ctx, admin.SaveRewardParams{
 		WorkspaceID: testsupport.WorkspaceID(
 			"bench-reward",
@@ -730,6 +766,7 @@ func BenchmarkCalendarAdminRewardMethods(b *testing.B) {
 	b.Run("DeleteReward", func(b *testing.B) {
 		for range b.N {
 			b.StopTimer()
+
 			id := calendarAdminBenchmarkID.Add(1)
 			rewardID, err := service.Admin.CreateReward(
 				ctx,
@@ -749,6 +786,7 @@ func BenchmarkCalendarAdminRewardMethods(b *testing.B) {
 			)
 			benchmarkError(b, err)
 			b.StartTimer()
+
 			_, err = service.Admin.DeleteReward(
 				ctx,
 				testsupport.WorkspaceID("bench-reward"),
@@ -762,38 +800,47 @@ func BenchmarkCalendarAdminRewardMethods(b *testing.B) {
 
 func BenchmarkCalendarLifecycle(b *testing.B) {
 	ctx := context.Background()
+
 	adminDB, err := openCalendarPostgres("")
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	terminateCalendarConnections(ctx, b, adminDB, "calendar_bench_lifecycle")
+
 	if _, err := adminDB.ExecContext(
 		ctx,
 		"DROP DATABASE IF EXISTS calendar_bench_lifecycle",
 	); err != nil {
 		b.Fatal(err)
 	}
+
 	if _, err := adminDB.ExecContext(
 		ctx,
 		"CREATE DATABASE calendar_bench_lifecycle",
 	); err != nil {
 		b.Fatal(err)
 	}
+
 	_ = adminDB.Close()
 
 	db, err := openCalendarPostgres("calendar_bench_lifecycle")
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	client, err := sqlwrap.New(db)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	repo := repository.New(client)
 	if err := repo.Bootstrap(ctx); err != nil {
 		b.Fatal(err)
 	}
+
 	_ = repo.Close()
+
 	b.Cleanup(func() { _ = client.Close() })
 
 	b.ReportAllocs()
@@ -811,6 +858,7 @@ func BenchmarkCalendarLifecycle(b *testing.B) {
 			Host:     calendarTestPGHost,
 			Port:     calendarTestPGPort,
 		}
+
 		for range b.N {
 			runCtx, cancel := context.WithCancel(ctx)
 			cancel()
@@ -837,6 +885,7 @@ func BenchmarkCalendarAdminStatsMethods(b *testing.B) {
 		"coin",
 		1,
 	)
+
 	identity := user.Identity{
 		WorkspaceID: testsupport.WorkspaceID(
 			"bench-stats",
@@ -846,6 +895,7 @@ func BenchmarkCalendarAdminStatsMethods(b *testing.B) {
 		PlatformUserID: "user",
 	}
 	record(b, service, identity, calendarID, "stats-op", start)
+
 	if err := service.Admin.RefreshDailyStats(
 		ctx,
 		testsupport.WorkspaceID("bench-stats"),

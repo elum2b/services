@@ -14,8 +14,11 @@ func (a *Admin) ListProductGroups(
 ) ([]ProductGroupModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	limit, offset := normalizePage(params.Page)
+
 	return a.repository.AdminListProductGroups(
 		ctx,
 		paymentsqlc.AdminListProductGroupsParams{
@@ -33,7 +36,9 @@ func (a *Admin) GetProductGroup(
 ) (ProductGroupModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.AdminGetProductGroup(
 		ctx,
 		paymentsqlc.AdminGetProductGroupParams{
@@ -49,7 +54,9 @@ func (a *Admin) UpsertProductGroup(
 ) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.UpsertProductGroup(
 		ctx,
 		repository.ProductGroupUpsertParams{
@@ -70,7 +77,9 @@ func (a *Admin) DeleteProductGroup(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.DeleteProductGroup(ctx, workspaceID, code)
 }
 
@@ -80,8 +89,11 @@ func (a *Admin) ListLocalizations(
 ) ([]LocalizationModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	limit, offset := normalizePage(params.Page)
+
 	return a.repository.AdminListLocalizations(
 		ctx,
 		paymentsqlc.AdminListLocalizationsParams{
@@ -102,7 +114,9 @@ func (a *Admin) GetLocalization(
 ) (LocalizationModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.AdminGetLocalization(
 		ctx,
 		paymentsqlc.AdminGetLocalizationParams{
@@ -119,7 +133,9 @@ func (a *Admin) UpsertLocalization(
 ) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.UpsertLocalization(
 		ctx,
 		repository.LocalizationUpsertParams{
@@ -139,7 +155,9 @@ func (a *Admin) DeleteLocalization(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.DeleteLocalization(ctx, workspaceID, locale, key)
 }
 
@@ -149,8 +167,11 @@ func (a *Admin) ListProducts(
 ) ([]ProductModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	limit, offset := normalizePage(params.Page)
+
 	return a.repository.AdminListProducts(
 		ctx,
 		paymentsqlc.AdminListProductsParams{
@@ -177,7 +198,9 @@ func (a *Admin) GetProduct(
 ) (ProductModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.AdminGetProduct(
 		ctx,
 		paymentsqlc.AdminGetProductParams{WorkspaceID: workspaceID, ID: id},
@@ -190,7 +213,9 @@ func (a *Admin) UpsertProduct(
 ) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.UpsertProduct(ctx, repository.ProductUpsertParams{
 		WorkspaceID:          params.WorkspaceID,
 		ID:                   params.ID,
@@ -225,7 +250,9 @@ func (a *Admin) DeleteProduct(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.DeleteProduct(ctx, workspaceID, id)
 }
 
@@ -235,8 +262,11 @@ func (a *Admin) ListProductItems(
 ) ([]ProductItemModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	limit, offset := normalizePage(params.Page)
+
 	return a.repository.AdminListProductItems(
 		ctx,
 		paymentsqlc.AdminListProductItemsParams{
@@ -257,10 +287,13 @@ func (a *Admin) UpsertProductItem(
 ) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	if params.Quantity <= 0 {
 		return repository.ErrInvalidItemQuantity
 	}
+
 	return a.repository.UpsertProductItem(
 		ctx,
 		repository.ProductItemUpsertParams{
@@ -269,7 +302,7 @@ func (a *Admin) UpsertProductItem(
 			ItemID:       params.ItemID,
 			RewardType:   params.RewardType,
 			Quantity:     params.Quantity,
-			Scale:        uint16(params.Scale),
+			Scale:        params.Scale,
 			DurationUnit: params.DurationUnit,
 		},
 	)
@@ -283,7 +316,9 @@ func (a *Admin) DeleteProductItem(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.DeleteProductItem(ctx, workspaceID, productID, itemID)
 }
 
@@ -293,8 +328,11 @@ func (a *Admin) ListPrices(
 ) ([]PriceModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	limit, offset := normalizePage(params.Page)
+
 	return a.repository.AdminListPrices(ctx, paymentsqlc.AdminListPricesParams{
 		WorkspaceID: params.WorkspaceID,
 		Column2:     params.ProductID,
@@ -313,7 +351,9 @@ func (a *Admin) GetPrice(
 ) (PriceModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.AdminGetPrice(
 		ctx,
 		paymentsqlc.AdminGetPriceParams{
@@ -329,7 +369,9 @@ func (a *Admin) CreatePrice(
 ) (uint64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.CreateProductPrice(
 		ctx,
 		repository.ProductPriceCreateParams{
@@ -351,7 +393,9 @@ func (a *Admin) UpdatePrice(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.UpdateProductPrice(
 		ctx,
 		repository.ProductPriceUpdateParams{
@@ -374,7 +418,9 @@ func (a *Admin) DeletePrice(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.repository.DeleteProductPrice(ctx, workspaceID, id)
 }
 
@@ -384,7 +430,9 @@ func (a *Admin) ListProductLimitCounters(
 ) ([]ProductLimitCounterModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	if err := validateOptionalIdentityFilter(
 		params.WorkspaceID,
 		params.AppID,
@@ -393,7 +441,9 @@ func (a *Admin) ListProductLimitCounters(
 	); err != nil {
 		return nil, err
 	}
+
 	limit, offset := normalizePage(params.Page)
+
 	return a.repository.AdminListProductLimitCounters(
 		ctx,
 		paymentsqlc.AdminListProductLimitCountersParams{
@@ -418,8 +468,11 @@ func (a *Admin) DeleteProductLimitCounter(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
-	if params.CounterScope == "user" {
+
+	switch params.CounterScope {
+	case "user":
 		if err := validateOptionalIdentityFilter(
 			params.WorkspaceID,
 			params.AppID,
@@ -428,7 +481,7 @@ func (a *Admin) DeleteProductLimitCounter(
 		); err != nil {
 			return 0, err
 		}
-	} else if params.CounterScope == "global" {
+	case "global":
 		if err := validateOptionalIdentityFilter(
 			params.WorkspaceID,
 			0,
@@ -437,13 +490,15 @@ func (a *Admin) DeleteProductLimitCounter(
 		); err != nil {
 			return 0, err
 		}
+
 		if params.AppID != 0 || params.PlatformID != 0 ||
 			params.PlatformUserID != "" {
 			return 0, repository.ErrPaymentReportInvalid
 		}
-	} else {
+	default:
 		return 0, repository.ErrPaymentReportInvalid
 	}
+
 	return a.repository.AdminDeleteProductLimitCounter(
 		ctx,
 		paymentsqlc.AdminDeleteProductLimitCounterParams{

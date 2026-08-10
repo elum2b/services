@@ -55,7 +55,9 @@ func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 	if timeout <= 0 {
 		timeout = time.Second
 	}
+
 	executor := db.WithQueryTimeout(timeout)
+
 	return &Repository{
 		db:                       db,
 		q:                        refsqlc.New(executor),
@@ -73,12 +75,15 @@ func NewPreparedWithOptions(
 	options Options,
 ) (*Repository, error) {
 	repository := NewWithOptions(db, options)
+
 	q, err := refsqlc.Prepare(ctx, db.WithQueryTimeout(repository.timeout))
 	if err != nil {
 		return nil, err
 	}
+
 	repository.q = q
 	repository.executor = db.WithQueryTimeout(repository.timeout)
+
 	return repository, nil
 }
 
@@ -86,6 +91,7 @@ func (r *Repository) Close() error {
 	if r == nil || r.q == nil {
 		return nil
 	}
+
 	return r.q.Close()
 }
 
@@ -107,9 +113,11 @@ func (r *Repository) WithTx(
 				cacheL2:                  r.cacheL2,
 				onCacheInvalidationError: r.onCacheInvalidationError,
 			}
+
 			return struct{}{}, fn(txRepo)
 		},
 	)
+
 	return err
 }
 
@@ -118,6 +126,7 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("reference schema SQL parse failed: %w", err)
 	}
+
 	for _, statement := range statements {
 		if err := sqlwrap.Exec(
 			ctx,
@@ -135,10 +144,12 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 			)
 		}
 	}
+
 	statements, err = sqlwrap.SplitStatements(refsqlc.TriggerSQL)
 	if err != nil {
 		return fmt.Errorf("reference trigger SQL parse failed: %w", err)
 	}
+
 	for _, statement := range statements {
 		if err := sqlwrap.Exec(
 			ctx,
@@ -156,6 +167,7 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 			)
 		}
 	}
+
 	return nil
 }
 
@@ -167,5 +179,6 @@ func mapNoRows(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrItemNotFound
 	}
+
 	return err
 }

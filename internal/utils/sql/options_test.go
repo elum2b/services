@@ -35,9 +35,11 @@ func TestDefaultOptions_Merge(t *testing.T) {
 	if !opt.CacheEnabled {
 		t.Fatal("expected cache enabled")
 	}
+
 	if opt.Cache != cache {
 		t.Fatal("expected cache object merged")
 	}
+
 	if opt.CacheSize != 7 || opt.CacheTTLCheck != 2*time.Minute {
 		t.Fatalf(
 			"unexpected cache opts: size=%d ttl=%s",
@@ -45,12 +47,15 @@ func TestDefaultOptions_Merge(t *testing.T) {
 			opt.CacheTTLCheck,
 		)
 	}
+
 	if opt.MaxConnections != 9 {
 		t.Fatalf("unexpected max connections: %d", opt.MaxConnections)
 	}
+
 	if opt.Codec != codec {
 		t.Fatal("expected codec merged")
 	}
+
 	if opt.Mutex != mutex {
 		t.Fatal("expected mutex merged")
 	}

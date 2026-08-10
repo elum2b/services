@@ -63,6 +63,7 @@ func (r *Repository) CreateCalendar(
 	}
 
 	r.invalidateCalendarCache(params.WorkspaceID)
+
 	return nil
 }
 
@@ -71,6 +72,7 @@ func (r *Repository) UpdateCalendar(
 	params SaveCalendarParams,
 ) (int64, error) {
 	var rows int64
+
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(
 			ctx,
@@ -80,6 +82,7 @@ func (r *Repository) UpdateCalendar(
 		}
 
 		var err error
+
 		rows, err = txRepo.q.AdminUpdateCalendar(
 			ctx,
 			calendarsqlc.AdminUpdateCalendarParams{
@@ -99,12 +102,16 @@ func (r *Repository) UpdateCalendar(
 				ID:                  params.ID,
 			},
 		)
+
 		return err
 	})
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	r.invalidateCalendarCache(params.WorkspaceID)
+
 	return rows, nil
 }
 
@@ -117,6 +124,7 @@ func (r *Repository) GetCalendarDefinition(
 	}
 
 	key := calendarCacheKey(calendarCacheAdminCalendar, workspaceID, id)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:          key,
 		Timeout:      r.timeout,
@@ -137,6 +145,7 @@ func (r *Repository) GetCalendarDefinition(
 		if err != nil {
 			return Calendar{}, err
 		}
+
 		return mapDefinition(row), nil
 	})
 }
@@ -151,7 +160,9 @@ func (r *Repository) ListCalendars(
 	}
 
 	limit, offset = normalizePage(limit, offset)
+
 	key := calendarCacheKey(calendarCacheAdminList, workspaceID, limit, offset)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:          key,
 		Timeout:      r.timeout,
@@ -173,10 +184,12 @@ func (r *Repository) ListCalendars(
 		if err != nil {
 			return nil, err
 		}
+
 		result := make([]Calendar, 0, len(rows))
 		for _, row := range rows {
 			result = append(result, mapDefinition(row))
 		}
+
 		return result, nil
 	})
 }
@@ -187,12 +200,14 @@ func (r *Repository) SetCalendarActive(
 	active bool,
 ) (int64, error) {
 	var rows int64
+
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
 
 		var err error
+
 		rows, err = txRepo.q.AdminSetCalendarActive(
 			ctx,
 			calendarsqlc.AdminSetCalendarActiveParams{
@@ -201,12 +216,16 @@ func (r *Repository) SetCalendarActive(
 				ID:          id,
 			},
 		)
+
 		return err
 	})
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	r.invalidateCalendarCache(workspaceID)
+
 	return rows, nil
 }
 
@@ -215,12 +234,14 @@ func (r *Repository) DeleteCalendar(
 	workspaceID, id string,
 ) (int64, error) {
 	var rows int64
+
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
 
 		var err error
+
 		rows, err = txRepo.q.AdminSoftDeleteCalendar(
 			ctx,
 			calendarsqlc.AdminSoftDeleteCalendarParams{
@@ -228,12 +249,16 @@ func (r *Repository) DeleteCalendar(
 				ID:          id,
 			},
 		)
+
 		return err
 	})
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	r.invalidateCalendarCache(workspaceID)
+
 	return rows, nil
 }
 
@@ -262,6 +287,7 @@ func (r *Repository) UpsertLocalization(
 	}
 
 	r.invalidateCalendarCache(value.WorkspaceID)
+
 	return nil
 }
 
@@ -275,6 +301,7 @@ func (r *Repository) GetLocalization(
 		calendarID,
 		locale,
 	)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:          key,
 		Timeout:      r.timeout,
@@ -296,6 +323,7 @@ func (r *Repository) GetLocalization(
 		if err != nil {
 			return Localization{}, err
 		}
+
 		return Localization{
 			WorkspaceID: row.WorkspaceID,
 			CalendarID:  row.CalendarID,
@@ -319,6 +347,7 @@ func (r *Repository) ListLocalizations(
 		workspaceID,
 		calendarID,
 	)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:          key,
 		Timeout:      r.timeout,
@@ -339,6 +368,7 @@ func (r *Repository) ListLocalizations(
 		if err != nil {
 			return nil, err
 		}
+
 		result := make([]Localization, 0, len(rows))
 		for _, row := range rows {
 			result = append(result, Localization{
@@ -349,6 +379,7 @@ func (r *Repository) ListLocalizations(
 				Description: row.Description,
 			})
 		}
+
 		return result, nil
 	})
 }
@@ -358,11 +389,13 @@ func (r *Repository) DeleteLocalization(
 	workspaceID, calendarID, locale string,
 ) (int64, error) {
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminDeleteLocalization(
 				ctx,
 				calendarsqlc.AdminDeleteLocalizationParams{
@@ -371,14 +404,17 @@ func (r *Repository) DeleteLocalization(
 					Locale:      locale,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
 
 	r.invalidateCalendarCache(workspaceID)
+
 	return rows, nil
 }
 
@@ -388,11 +424,13 @@ func (r *Repository) CreateStep(
 	position uint32,
 ) (uint64, error) {
 	var id int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			id, err = txRepo.q.AdminCreateStep(
 				ctx,
 				calendarsqlc.AdminCreateStepParams{
@@ -401,6 +439,7 @@ func (r *Repository) CreateStep(
 					Position:    int32(position),
 				},
 			)
+
 			return err
 		},
 	)
@@ -409,6 +448,7 @@ func (r *Repository) CreateStep(
 	}
 
 	r.invalidateCalendarCache(workspaceID)
+
 	return uint64(id), nil
 }
 
@@ -419,11 +459,13 @@ func (r *Repository) UpdateStep(
 	position uint32,
 ) (int64, error) {
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminUpdateStep(
 				ctx,
 				calendarsqlc.AdminUpdateStepParams{
@@ -433,14 +475,17 @@ func (r *Repository) UpdateStep(
 					ID:          int64(id),
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
 
 	r.invalidateCalendarCache(workspaceID)
+
 	return rows, nil
 }
 
@@ -450,11 +495,13 @@ func (r *Repository) DeleteStep(
 	id uint64,
 ) (int64, error) {
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminDeleteStep(
 				ctx,
 				calendarsqlc.AdminDeleteStepParams{
@@ -463,14 +510,17 @@ func (r *Repository) DeleteStep(
 					ID:          int64(id),
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
 
 	r.invalidateCalendarCache(workspaceID)
+
 	return rows, nil
 }
 
@@ -490,6 +540,7 @@ func (r *Repository) GetStep(
 	if err != nil {
 		return Step{}, err
 	}
+
 	return Step{ID: uint64(row.ID), Position: uint32(row.Position)}, nil
 }
 
@@ -507,6 +558,7 @@ func (r *Repository) ListSteps(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]Step, 0, len(rows))
 	for _, row := range rows {
 		result = append(
@@ -514,6 +566,7 @@ func (r *Repository) ListSteps(
 			Step{ID: uint64(row.ID), Position: uint32(row.Position)},
 		)
 	}
+
 	return result, nil
 }
 
@@ -525,11 +578,13 @@ func (r *Repository) UpsertReward(
 	position uint32,
 ) (uint64, error) {
 	var id int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			id, err = txRepo.q.AdminUpsertReward(
 				ctx,
 				calendarsqlc.AdminUpsertRewardParams{
@@ -544,6 +599,7 @@ func (r *Repository) UpsertReward(
 					Position:     int32(position),
 				},
 			)
+
 			return err
 		},
 	)
@@ -552,6 +608,7 @@ func (r *Repository) UpsertReward(
 	}
 
 	r.invalidateCalendarCache(workspaceID)
+
 	return uint64(id), nil
 }
 
@@ -563,11 +620,13 @@ func (r *Repository) UpdateReward(
 	position uint32,
 ) (int64, error) {
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminUpdateReward(
 				ctx,
 				calendarsqlc.AdminUpdateRewardParams{
@@ -583,14 +642,17 @@ func (r *Repository) UpdateReward(
 					ID:           int64(id),
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
 
 	r.invalidateCalendarCache(workspaceID)
+
 	return rows, nil
 }
 
@@ -609,6 +671,7 @@ func (r *Repository) GetReward(
 		calendarID,
 		id,
 	)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:          key,
 		Timeout:      r.timeout,
@@ -627,6 +690,7 @@ func (r *Repository) GetReward(
 		if err != nil {
 			return Reward{}, err
 		}
+
 		return Reward{
 			Key:      row.ItemKey,
 			Type:     row.RewardType,
@@ -651,6 +715,7 @@ func (r *Repository) ListRewards(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]Reward, 0, len(rows))
 	for _, row := range rows {
 		result = append(
@@ -664,6 +729,7 @@ func (r *Repository) ListRewards(
 			},
 		)
 	}
+
 	return result, nil
 }
 
@@ -673,11 +739,13 @@ func (r *Repository) DeleteReward(
 	id uint64,
 ) (int64, error) {
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminDeleteReward(
 				ctx,
 				calendarsqlc.AdminDeleteRewardParams{
@@ -686,14 +754,17 @@ func (r *Repository) DeleteReward(
 					ID:          int64(id),
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
 
 	r.invalidateCalendarCache(workspaceID)
+
 	return rows, nil
 }
 

@@ -32,10 +32,13 @@ func BenchmarkTasksExampleDumpImport(b *testing.B) {
 	service := newTasksTestService(b)
 	ctx := context.Background()
 	raw := readDailyExampleDump(b)
+
 	var req admin.ImportRequest
+
 	if err := json.Unmarshal(raw, &req); err != nil {
 		b.Fatalf("unmarshal daily example request: %v", err)
 	}
+
 	preview, err := service.Admin.PreviewImport(
 		ctx,
 		testsupport.WorkspaceID("daily-import-preview"),
@@ -44,19 +47,23 @@ func BenchmarkTasksExampleDumpImport(b *testing.B) {
 	if err != nil {
 		b.Fatalf("preview daily example: %v", err)
 	}
+
 	secrets := exportImportSecretMap(
 		preview.RequiredSecrets,
 		"benchmark-secret",
 	)
+
 	b.SetBytes(int64(len(raw)))
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		var current admin.ImportRequest
+
 		if err := json.Unmarshal(raw, &current); err != nil {
 			b.Fatalf("unmarshal daily example: %v", err)
 		}
+
 		result, err := service.Admin.Import(
 			ctx,
 			benchmarkWorkspace("daily-import", i),
@@ -69,6 +76,7 @@ func BenchmarkTasksExampleDumpImport(b *testing.B) {
 		if err != nil {
 			b.Fatalf("import daily example: %v", err)
 		}
+
 		benchmarkTasksExampleImportResult = result
 	}
 }
@@ -77,10 +85,13 @@ func BenchmarkTasksExampleDumpExport(b *testing.B) {
 	service := newTasksTestService(b)
 	ctx := context.Background()
 	raw := readDailyExampleDump(b)
+
 	var req admin.ImportRequest
+
 	if err := json.Unmarshal(raw, &req); err != nil {
 		b.Fatalf("unmarshal daily example request: %v", err)
 	}
+
 	preview, err := service.Admin.PreviewImport(
 		ctx,
 		testsupport.WorkspaceID("daily-export-preview"),
@@ -89,6 +100,7 @@ func BenchmarkTasksExampleDumpExport(b *testing.B) {
 	if err != nil {
 		b.Fatalf("preview daily example: %v", err)
 	}
+
 	workspaceID := testsupport.WorkspaceID("daily-export-benchmark")
 	if _, err := service.Admin.Import(ctx, workspaceID, admin.ImportRequest{
 		Package:          req.Package,
@@ -100,6 +112,7 @@ func BenchmarkTasksExampleDumpExport(b *testing.B) {
 	}); err != nil {
 		b.Fatalf("seed daily example: %v", err)
 	}
+
 	b.SetBytes(int64(len(raw)))
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -115,10 +128,12 @@ func BenchmarkTasksExampleDumpExport(b *testing.B) {
 		if err != nil {
 			b.Fatalf("export daily example: %v", err)
 		}
+
 		out, err := json.Marshal(exported)
 		if err != nil {
 			b.Fatalf("marshal daily example export: %v", err)
 		}
+
 		benchmarkTasksExampleExportRaw = out
 	}
 }
@@ -155,6 +170,7 @@ func BenchmarkTasksServiceMethods(b *testing.B) {
 	}); err != nil {
 		b.Fatal(err)
 	}
+
 	manualList, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{Identity: user.Identity{
@@ -169,6 +185,7 @@ func BenchmarkTasksServiceMethods(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	manualFirstID := findTask(b, manualList, "earn_1").ID
 
 	b.ReportAllocs()
@@ -238,7 +255,9 @@ func BenchmarkTasksServiceMethods(b *testing.B) {
 				PlatformID:     1,
 				PlatformUserID: "claim-" + strconv.FormatUint(id, 10),
 			}
+
 			b.StopTimer()
+
 			_, err := service.Internal.Record(ctx, internalapi.RecordParams{
 				Identity: internalapi.Identity(
 					identity,
@@ -251,6 +270,7 @@ func BenchmarkTasksServiceMethods(b *testing.B) {
 			})
 			benchError(b, err)
 			b.StartTimer()
+
 			_, err = service.User.Claim(ctx, user.ClaimParams{
 				Identity: identity, TaskRef: fmt.Sprintf("%d", manualFirstID),
 				OperationID: "claim-op-" + strconv.FormatUint(id, 10), Now: now,
@@ -276,6 +296,7 @@ func BenchmarkTasksServiceMethods(b *testing.B) {
 			Now:              now,
 		})
 		benchError(b, err)
+
 		_, err = service.User.Claim(ctx, user.ClaimParams{
 			Identity:    identity,
 			TaskRef:     fmt.Sprintf("%d", manualFirstID),
@@ -284,6 +305,7 @@ func BenchmarkTasksServiceMethods(b *testing.B) {
 		})
 		benchError(b, err)
 		b.ResetTimer()
+
 		for range b.N {
 			_, err := service.User.Claim(ctx, user.ClaimParams{
 				Identity:    identity,
@@ -392,7 +414,9 @@ func BenchmarkTasksIntegration(b *testing.B) {
 				PlatformID:     1,
 				PlatformUserID: "claim-" + strconv.FormatUint(id, 10),
 			}
+
 			b.StopTimer()
+
 			_, err := service.Integration.CheckExternal(
 				ctx,
 				integration.CheckExternalParams{
@@ -405,6 +429,7 @@ func BenchmarkTasksIntegration(b *testing.B) {
 			)
 			benchError(b, err)
 			b.StartTimer()
+
 			_, err = service.User.Claim(ctx, user.ClaimParams{
 				Identity: user.Identity(identity),
 				TaskRef:  taskRef,
@@ -506,7 +531,9 @@ func BenchmarkTasksLargeWorkspace(b *testing.B) {
 				PlatformID:     1,
 				PlatformUserID: "claim-large-" + strconv.FormatUint(id, 10),
 			}
+
 			b.StopTimer()
+
 			_, err := service.Internal.Record(ctx, internalapi.RecordParams{
 				Identity: internalapi.Identity(
 					identity,
@@ -522,6 +549,7 @@ func BenchmarkTasksLargeWorkspace(b *testing.B) {
 			})
 			benchError(b, err)
 			b.StartTimer()
+
 			_, err = service.User.Claim(ctx, user.ClaimParams{
 				Identity: identity,
 				TaskRef:  fmt.Sprintf("%d", seed.claimTaskID),
@@ -538,6 +566,7 @@ func BenchmarkTasksLargeWorkspace(b *testing.B) {
 
 func benchError(b *testing.B, err error) {
 	b.Helper()
+
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -557,6 +586,7 @@ func seedLargeTasksBenchmark(
 	workspaceID string,
 ) largeTasksSeed {
 	b.Helper()
+
 	ctx := context.Background()
 	if err := tasksService.Admin.UpsertGroup(
 		ctx,
@@ -591,10 +621,15 @@ func seedLargeTasksBenchmark(
 		"claim_daily",
 	}
 	seed := largeTasksSeed{sequences: 100}
-	const standaloneTasks = 1000
-	const sequenceLength = 10
+
+	const (
+		standaloneTasks = 1000
+		sequenceLength  = 10
+	)
+
 	for i := 0; i < standaloneTasks; i++ {
 		action := actions[i%len(actions)]
+
 		id, err := tasksService.Admin.SaveTask(ctx, admin.SaveTaskParams{
 			WorkspaceID: workspaceID,
 			Key:         fmt.Sprintf("standalone_%04d", i),
@@ -612,12 +647,14 @@ func seedLargeTasksBenchmark(
 		if err != nil {
 			b.Fatalf("large standalone %d: %v", i, err)
 		}
+
 		if action == "target_action" {
 			seed.targetStandalone++
 			if seed.claimTaskID == 0 {
 				seed.claimTaskID = id
 			}
 		}
+
 		if err := tasksService.Admin.UpsertTaskLocalization(
 			ctx,
 			workspaceID,
@@ -628,6 +665,7 @@ func seedLargeTasksBenchmark(
 		); err != nil {
 			b.Fatalf("large standalone localization %d: %v", i, err)
 		}
+
 		if err := tasksService.Admin.UpsertReward(
 			ctx,
 			workspaceID,
@@ -638,6 +676,7 @@ func seedLargeTasksBenchmark(
 			b.Fatalf("large standalone reward %d: %v", i, err)
 		}
 	}
+
 	for seq := 0; seq < seed.sequences; seq++ {
 		sequenceKey := fmt.Sprintf("seq_%03d", seq)
 		if err := tasksService.Admin.UpsertSequence(
@@ -649,13 +688,16 @@ func seedLargeTasksBenchmark(
 		); err != nil {
 			b.Fatalf("large sequence %d: %v", seq, err)
 		}
+
 		for pos := 1; pos <= sequenceLength; pos++ {
 			sequencePosition := uint32(pos)
 			action := actions[(seq+pos)%len(actions)]
+
 			if pos == 1 && seq%4 == 0 {
 				action = "target_action"
 				seed.targetSequenceHeads++
 			}
+
 			id, err := tasksService.Admin.SaveTask(ctx, admin.SaveTaskParams{
 				WorkspaceID:      workspaceID,
 				Key:              fmt.Sprintf("sequence_%03d_%02d", seq, pos),
@@ -677,6 +719,7 @@ func seedLargeTasksBenchmark(
 			if err != nil {
 				b.Fatalf("large sequence %d task %d: %v", seq, pos, err)
 			}
+
 			if err := tasksService.Admin.UpsertTaskLocalization(
 				ctx,
 				workspaceID,
@@ -687,6 +730,7 @@ func seedLargeTasksBenchmark(
 			); err != nil {
 				b.Fatalf("large sequence localization %d.%d: %v", seq, pos, err)
 			}
+
 			if err := tasksService.Admin.UpsertReward(
 				ctx,
 				workspaceID,
@@ -698,18 +742,22 @@ func seedLargeTasksBenchmark(
 			}
 		}
 	}
+
 	seed.totalTasks = standaloneTasks + seed.sequences*sequenceLength
+
 	return seed
 }
 
 func readDailyExampleDump(tb testing.TB) []byte {
 	tb.Helper()
+
 	raw, err := os.ReadFile(
 		filepath.Join("examples", "daily_tasks_import.json"),
 	)
 	if err != nil {
 		tb.Fatalf("read daily example: %v", err)
 	}
+
 	return raw
 }
 
@@ -781,6 +829,7 @@ func BenchmarkTasksComplex(b *testing.B) {
 		})
 		benchError(b, err)
 		b.ResetTimer()
+
 		for range b.N {
 			_, err := service.User.ListActive(
 				ctx,
@@ -842,7 +891,9 @@ func BenchmarkTasksComplex(b *testing.B) {
 				WorkspaceID: workspaceID, AppID: 1, PlatformID: 1,
 				PlatformUserID: "ready-" + strconv.FormatUint(id, 10),
 			}
+
 			b.StopTimer()
+
 			_, err := service.Internal.Record(ctx, internalapi.RecordParams{
 				Identity:         identity,
 				ActionKey:        "message.send",
@@ -853,6 +904,7 @@ func BenchmarkTasksComplex(b *testing.B) {
 			})
 			benchError(b, err)
 			b.StartTimer()
+
 			_, err = service.Internal.Record(ctx, internalapi.RecordParams{
 				Identity:         identity,
 				ActionKey:        "ads.watch",
@@ -867,13 +919,16 @@ func BenchmarkTasksComplex(b *testing.B) {
 
 	b.Run("User.Claim/condition_reward", func(b *testing.B) {
 		conditionRef := fmt.Sprintf("%d", ids.conditionIDs[0])
+
 		for range b.N {
 			id := tasksBenchmarkUserID.Add(1)
 			identity := user.Identity{
 				WorkspaceID: workspaceID, AppID: 1, PlatformID: 1,
 				PlatformUserID: "condition-claim-" + strconv.FormatUint(id, 10),
 			}
+
 			b.StopTimer()
+
 			_, err := service.Internal.Record(ctx, internalapi.RecordParams{
 				Identity: internalapi.Identity(
 					identity,
@@ -889,6 +944,7 @@ func BenchmarkTasksComplex(b *testing.B) {
 			})
 			benchError(b, err)
 			b.StartTimer()
+
 			_, err = service.User.Claim(ctx, user.ClaimParams{
 				Identity: identity,
 				TaskRef:  conditionRef,
@@ -904,13 +960,16 @@ func BenchmarkTasksComplex(b *testing.B) {
 
 	b.Run("User.Claim/complex_reward", func(b *testing.B) {
 		parentRef := fmt.Sprintf("%d", ids.parentID)
+
 		for range b.N {
 			id := tasksBenchmarkUserID.Add(1)
 			identity := user.Identity{
 				WorkspaceID: workspaceID, AppID: 1, PlatformID: 1,
 				PlatformUserID: "claim-" + strconv.FormatUint(id, 10),
 			}
+
 			b.StopTimer()
+
 			_, err := service.Internal.Record(ctx, internalapi.RecordParams{
 				Identity: internalapi.Identity(
 					identity,
@@ -922,6 +981,7 @@ func BenchmarkTasksComplex(b *testing.B) {
 				Now:              now,
 			})
 			benchError(b, err)
+
 			_, err = service.Internal.Record(ctx, internalapi.RecordParams{
 				Identity: internalapi.Identity(
 					identity,
@@ -934,6 +994,7 @@ func BenchmarkTasksComplex(b *testing.B) {
 			})
 			benchError(b, err)
 			b.StartTimer()
+
 			_, err = service.User.Claim(ctx, user.ClaimParams{
 				Identity: identity,
 				TaskRef:  parentRef,
@@ -950,10 +1011,12 @@ func BenchmarkTasksComplex(b *testing.B) {
 
 func BenchmarkTasksLifecycle(b *testing.B) {
 	ctx := context.Background()
+
 	adminDB, err := openTasksPostgres("postgres")
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	if err := recreateTasksDatabase(
 		ctx,
 		adminDB,
@@ -961,21 +1024,26 @@ func BenchmarkTasksLifecycle(b *testing.B) {
 	); err != nil {
 		b.Fatal(err)
 	}
+
 	_ = adminDB.Close()
 
 	db, err := openTasksPostgres("tasks_bench_lifecycle")
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	client, err := sqlwrap.New(db)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	repo := repository.New(client)
 	if err := repo.Bootstrap(ctx); err != nil {
 		b.Fatal(err)
 	}
+
 	_ = repo.Close()
+
 	b.Cleanup(func() { _ = client.Close() })
 
 	b.ReportAllocs()
@@ -993,6 +1061,7 @@ func BenchmarkTasksLifecycle(b *testing.B) {
 			Host:     "127.0.0.1",
 			Port:     pgPort,
 		}
+
 		for range b.N {
 			runCtx, cancel := context.WithCancel(ctx)
 			cancel()

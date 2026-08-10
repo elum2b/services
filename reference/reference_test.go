@@ -22,13 +22,16 @@ import (
 
 func TestIsReady(t *testing.T) {
 	var nilService *Reference
+
 	if nilService.IsReady() {
 		t.Fatal("nil reference must not be ready")
 	}
+
 	service := New()
 	if service.IsReady() {
 		t.Fatal("uninitialized reference must not be ready")
 	}
+
 	if _, err := service.User.Get(context.Background(), user.GetParams{
 		WorkspaceID: "00000000-0000-0000-0000-000000000001",
 		Key:         "item",
@@ -36,12 +39,17 @@ func TestIsReady(t *testing.T) {
 	}); !errors.Is(err, sqlwrap.ErrServiceNotReady) {
 		t.Fatalf("unready reference user error = %v", err)
 	}
+
 	ctx, cancel := context.WithCancel(context.Background())
+
 	service.rootCtx, service.client, service.Admin, service.User = ctx, &sqlwrap.Client{}, &admin.Admin{}, &user.User{}
+
 	if !service.IsReady() {
 		t.Fatal("initialized reference must be ready")
 	}
+
 	cancel()
+
 	if service.IsReady() {
 		t.Fatal("closed reference must not be ready")
 	}
@@ -49,6 +57,7 @@ func TestIsReady(t *testing.T) {
 
 func TestReferenceRunBlocksUntilContextCanceled(t *testing.T) {
 	newReferenceTestService(t)
+
 	params := DatabaseParams{
 		User:     referenceTestPGUser,
 		Password: referenceTestPGPassword,
@@ -59,11 +68,13 @@ func TestReferenceRunBlocksUntilContextCanceled(t *testing.T) {
 	service := New()
 	runCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+
 	go func() {
 		done <- service.Run(runCtx, params)
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
+
 	for !service.IsReady() {
 		select {
 		case err := <-done:
@@ -71,10 +82,12 @@ func TestReferenceRunBlocksUntilContextCanceled(t *testing.T) {
 			t.Fatalf("Run returned before readiness: %v", err)
 		default:
 		}
+
 		if time.Now().After(deadline) {
 			cancel()
 			t.Fatal("reference service did not become ready")
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
 
@@ -90,6 +103,7 @@ func TestReferenceRunBlocksUntilContextCanceled(t *testing.T) {
 	}
 
 	cancel()
+
 	select {
 	case err := <-done:
 		if err != nil {
@@ -110,11 +124,14 @@ func TestReferenceCacheVersionInvalidatesOtherNode(t *testing.T) {
 		CacheL2Delay: time.Minute,
 	}
 	nodeA := newReferenceTestServiceWithOptions(t, referenceTestDB, options)
+
 	db, err := openReferencePostgres(referenceTestDB)
 	if err != nil {
 		t.Fatalf("open second reference node database: %v", err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
+
 	nodeB, err := NewWithDatabase(
 		context.Background(),
 		db,
@@ -123,6 +140,7 @@ func TestReferenceCacheVersionInvalidatesOtherNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create second reference node: %v", err)
 	}
+
 	t.Cleanup(func() { _ = nodeB.Close() })
 
 	if err := nodeA.Admin.CreateItem(context.Background(), admin.SaveItemParams{
@@ -134,6 +152,7 @@ func TestReferenceCacheVersionInvalidatesOtherNode(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create cached reference item: %v", err)
 	}
+
 	if err := nodeA.Admin.UpsertLocalization(
 		context.Background(),
 		admin.SaveLocalizationParams{
@@ -159,6 +178,7 @@ func TestReferenceCacheVersionInvalidatesOtherNode(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update cached reference item: %v", err)
 	}
+
 	if err := nodeA.Admin.UpsertLocalization(
 		context.Background(),
 		admin.SaveLocalizationParams{
@@ -201,6 +221,7 @@ func TestReferenceResolveCachePreservesRequestedOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first resolve: %v", err)
 	}
+
 	second, err := service.User.Resolve(ctx, user.ResolveParams{
 		WorkspaceID: workspaceID,
 		Keys:        []string{"beta", "alpha"},
@@ -213,6 +234,7 @@ func TestReferenceResolveCachePreservesRequestedOrder(t *testing.T) {
 		first.Items[1].Key != "beta" {
 		t.Fatalf("first order: %+v", first.Items)
 	}
+
 	if len(second.Items) != 2 || second.Items[0].Key != "beta" ||
 		second.Items[1].Key != "alpha" {
 		t.Fatalf("cached second order: %+v", second.Items)
@@ -221,8 +243,11 @@ func TestReferenceResolveCachePreservesRequestedOrder(t *testing.T) {
 
 func TestReferenceImportBatchesLargePackage(t *testing.T) {
 	service := newReferenceTestService(t)
+
 	const itemCount = 12001
+
 	items := make([]repository.ExportItem, 0, itemCount)
+
 	for index := 0; index < itemCount; index++ {
 		items = append(items, repository.ExportItem{
 			Key:      fmt.Sprintf("large.item.%05d", index),
@@ -247,6 +272,7 @@ func TestReferenceImportBatchesLargePackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("import large reference package: %v", err)
 	}
+
 	if result.Imported.Items != itemCount {
 		t.Fatalf(
 			"imported items = %d, want %d",
@@ -258,11 +284,14 @@ func TestReferenceImportBatchesLargePackage(t *testing.T) {
 
 func TestReferenceImportSerializesWithAdminWrite(t *testing.T) {
 	service := newReferenceTestService(t)
+
 	db, err := openReferencePostgres(referenceTestDB)
 	if err != nil {
 		t.Fatalf("open reference lock database: %v", err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
+
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("concurrent-workspace")
 
@@ -270,7 +299,9 @@ func TestReferenceImportSerializesWithAdminWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin reference lock transaction: %v", err)
 	}
+
 	t.Cleanup(func() { _ = transaction.Rollback() })
+
 	if _, err := transaction.ExecContext(
 		ctx,
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
@@ -280,6 +311,7 @@ func TestReferenceImportSerializesWithAdminWrite(t *testing.T) {
 	}
 
 	importResult := make(chan error, 1)
+
 	go func() {
 		_, err := service.Admin.Import(ctx, workspaceID, admin.ImportRequest{
 			Package: admin.ExportPackage{
@@ -298,6 +330,7 @@ func TestReferenceImportSerializesWithAdminWrite(t *testing.T) {
 		})
 		importResult <- err
 	}()
+
 	waitForReferenceWorkspaceLock(t, db, 1)
 
 	adminResult := make(chan error, 1)
@@ -310,14 +343,17 @@ func TestReferenceImportSerializesWithAdminWrite(t *testing.T) {
 			IsActive:    true,
 		})
 	}()
+
 	waitForReferenceWorkspaceLock(t, db, 2)
 
 	if err := transaction.Commit(); err != nil {
 		t.Fatalf("release reference workspace lock: %v", err)
 	}
+
 	if err := <-importResult; err != nil {
 		t.Fatalf("concurrent reference import: %v", err)
 	}
+
 	if err := <-adminResult; err != nil {
 		t.Fatalf("concurrent reference admin write: %v", err)
 	}
@@ -335,9 +371,12 @@ func waitForReferenceWorkspaceLock(t *testing.T, db interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, minimum int) {
 	t.Helper()
+
 	deadline := time.Now().Add(3 * time.Second)
+
 	for {
 		var waiting int
+
 		if err := db.QueryRowContext(context.Background(), `
 SELECT COUNT(*)
 FROM pg_stat_activity
@@ -346,9 +385,11 @@ WHERE datname = current_database()
   AND query LIKE '%pg_advisory_xact_lock%'`).Scan(&waiting); err != nil {
 			t.Fatalf("inspect reference lock waiters: %v", err)
 		}
+
 		if waiting >= minimum {
 			return
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatalf(
 				"reference lock waiters = %d, want at least %d",
@@ -356,6 +397,7 @@ WHERE datname = current_database()
 				minimum,
 			)
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
 }
@@ -367,12 +409,14 @@ func warmReferenceReads(
 	version int,
 ) {
 	t.Helper()
+
 	ctx := context.Background()
 	item, err := service.User.Get(ctx, user.GetParams{
 		WorkspaceID: workspaceID,
 		Key:         "stars",
 		Locale:      "ru",
 	})
+
 	if err != nil || item.Localization == nil ||
 		item.Localization.Title != title ||
 		referencePayloadVersion(item.Payload) != version {
@@ -382,6 +426,7 @@ func warmReferenceReads(
 			err,
 		)
 	}
+
 	resolved, err := service.User.Resolve(ctx, user.ResolveParams{
 		WorkspaceID: workspaceID,
 		Keys:        []string{"stars"},
@@ -397,6 +442,7 @@ func warmReferenceReads(
 			err,
 		)
 	}
+
 	adminItem, err := service.Admin.GetItem(ctx, workspaceID, "stars")
 	if err != nil || adminItem.Localizations[0].Title != title ||
 		referencePayloadVersion(adminItem.Payload) != version {
@@ -412,9 +458,11 @@ func referencePayloadVersion(payload json.RawMessage) int {
 	var value struct {
 		Version int `json:"version"`
 	}
+
 	if json.Unmarshal(payload, &value) != nil {
 		return 0
 	}
+
 	return value.Version
 }
 
@@ -439,12 +487,15 @@ func (c *referenceSharedCache) GetWithTTL(
 ) ([]byte, time.Duration, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	entry, exists := c.entries[key]
 	if !exists ||
 		(!entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt)) {
 		delete(c.entries, key)
+
 		return nil, 0, nil
 	}
+
 	return append([]byte(nil), entry.value...), time.Until(entry.expiresAt), nil
 }
 
@@ -455,25 +506,32 @@ func (c *referenceSharedCache) Set(
 ) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	entry := referenceSharedCacheEntry{value: append([]byte(nil), value...)}
 	if expiration > 0 {
 		entry.expiresAt = time.Now().Add(expiration)
 	}
+
 	c.entries[key] = entry
+
 	return nil
 }
 
 func (c *referenceSharedCache) Delete(key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	delete(c.entries, key)
+
 	return nil
 }
 
 func (c *referenceSharedCache) Reset() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	clear(c.entries)
+
 	return nil
 }
 
@@ -506,6 +564,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create quantity item: %v", err)
 	}
+
 	if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
 		WorkspaceID: workspaceA,
 		Key:         "premium",
@@ -515,6 +574,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create duration item: %v", err)
 	}
+
 	for _, localization := range []admin.SaveLocalizationParams{
 		{WorkspaceID: workspaceA, ItemKey: "coin", Locale: "ru", Title: "Монеты", Description: "Игровая валюта"},
 		{WorkspaceID: workspaceA, ItemKey: "coin", Locale: "en", Title: "Coins", Description: "Game currency"},
@@ -527,6 +587,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 			t.Fatalf("upsert localization: %v", err)
 		}
 	}
+
 	localization, err := service.Admin.GetLocalization(
 		ctx,
 		workspaceA,
@@ -536,6 +597,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	if err != nil || localization.Title != "Монеты" {
 		t.Fatalf("get localization: value=%+v err=%v", localization, err)
 	}
+
 	localizations, err := service.Admin.ListLocalizations(
 		ctx,
 		workspaceA,
@@ -544,6 +606,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	if err != nil || len(localizations) != 2 {
 		t.Fatalf("list localizations: values=%+v err=%v", localizations, err)
 	}
+
 	items, err := service.Admin.ListItems(ctx, admin.ItemListParams{
 		WorkspaceID:    workspaceA,
 		Type:           repository.ItemTypeQuantity,
@@ -553,6 +616,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	if err != nil || len(items) != 1 || items[0].Key != "coin" {
 		t.Fatalf("list quantity items: values=%+v err=%v", items, err)
 	}
+
 	if _, err := service.Admin.ListItems(ctx, admin.ItemListParams{
 		WorkspaceID: workspaceA,
 		Type:        "unknown",
@@ -566,6 +630,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get coin: %v", err)
 	}
+
 	if coin.Key != "coin" || coin.Type != repository.ItemTypeQuantity ||
 		coin.Localization == nil || coin.Localization.Title != "Монеты" {
 		t.Fatalf("unexpected coin: %#v", coin)
@@ -579,6 +644,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
+
 	if len(resolved.Items) != 2 || resolved.Items[0].Key != "premium" ||
 		resolved.Items[1].Key != "coin" || len(resolved.MissingKeys) != 1 ||
 		resolved.MissingKeys[0] != "missing" {
@@ -595,6 +661,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("update item: %v", err)
 	}
+
 	updated, err := service.User.Get(ctx, user.GetParams{
 		WorkspaceID: workspaceA, Key: "coin", Locale: "ru",
 	})
@@ -606,6 +673,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	if err != nil || len(adminItem.Localizations) != 2 {
 		t.Fatalf("admin item: %#v err=%v", adminItem, err)
 	}
+
 	if changed, err := service.Admin.DeleteLocalization(
 		ctx,
 		workspaceA,
@@ -615,6 +683,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 		changed != 1 {
 		t.Fatalf("delete localization: changed=%d err=%v", changed, err)
 	}
+
 	localizations, err = service.Admin.ListLocalizations(
 		ctx,
 		workspaceA,
@@ -628,10 +697,12 @@ func TestReferenceFullLifecycle(t *testing.T) {
 			err,
 		)
 	}
+
 	stats, err := service.Admin.GetStats(ctx, workspaceA)
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
+
 	if stats.ItemsTotal != 2 || stats.ActiveItems != 2 ||
 		stats.QuantityItems != 1 || stats.DurationItems != 1 {
 		t.Fatalf("unexpected stats: %#v", stats)
@@ -643,6 +714,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create isolated item: %v", err)
 	}
+
 	isolated, err := service.User.Get(ctx, user.GetParams{
 		WorkspaceID: workspaceB, Key: "coin", Locale: "ru",
 	})
@@ -657,11 +729,13 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	); err != nil {
 		t.Fatalf("soft delete: %v", err)
 	}
+
 	if _, err := service.User.Get(ctx, user.GetParams{
 		WorkspaceID: workspaceA, Key: "coin", Locale: "ru",
 	}); !errors.Is(err, repository.ErrItemNotFound) {
 		t.Fatalf("deleted item must be hidden, err=%v", err)
 	}
+
 	if _, err := service.Admin.RestoreItem(
 		ctx,
 		workspaceA,
@@ -670,6 +744,7 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
+
 	if _, err := service.User.Get(ctx, user.GetParams{
 		WorkspaceID: workspaceA, Key: "coin", Locale: "ru",
 	}); err != nil {
@@ -682,6 +757,7 @@ func TestReferenceImportExportCycle(t *testing.T) {
 	ctx := context.Background()
 	exportWorkspaceID := testsupport.WorkspaceID("workspace-export")
 	importWorkspaceID := testsupport.WorkspaceID("workspace-import")
+
 	if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
 		WorkspaceID: exportWorkspaceID,
 		Key:         "coin",
@@ -693,6 +769,7 @@ func TestReferenceImportExportCycle(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create item: %v", err)
 	}
+
 	if err := service.Admin.UpsertLocalization(
 		ctx,
 		admin.SaveLocalizationParams{
@@ -702,6 +779,7 @@ func TestReferenceImportExportCycle(t *testing.T) {
 	); err != nil {
 		t.Fatalf("upsert localization: %v", err)
 	}
+
 	pkg, err := service.Admin.Export(
 		ctx,
 		exportWorkspaceID,
@@ -710,14 +788,17 @@ func TestReferenceImportExportCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
+
 	preview, err := service.Admin.PreviewImport(ctx, importWorkspaceID, pkg)
 	if err != nil {
 		t.Fatalf("preview import: %v", err)
 	}
+
 	if preview.Counts.Items != 1 || preview.Counts.Localizations != 1 ||
 		len(preview.Conflicts) != 0 {
 		t.Fatalf("unexpected preview: %+v", preview)
 	}
+
 	result, err := service.Admin.Import(
 		ctx,
 		importWorkspaceID,
@@ -728,9 +809,11 @@ func TestReferenceImportExportCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
+
 	if result.Imported.Items != 1 || result.Imported.Localizations != 1 {
 		t.Fatalf("unexpected import result: %+v", result)
 	}
+
 	imported, err := service.Admin.Export(
 		ctx,
 		importWorkspaceID,
@@ -739,6 +822,7 @@ func TestReferenceImportExportCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export imported: %v", err)
 	}
+
 	if len(imported.Items) != 1 || imported.Items[0].Key != "coin" ||
 		imported.Items[0].Localization["ru"].Title != "Монеты" ||
 		!strings.Contains(string(imported.Items[0].Payload), "coin.png") {
@@ -756,6 +840,7 @@ func TestReferenceImportExportCycle(t *testing.T) {
 	); err != nil {
 		t.Fatalf("replace imported item: %v", err)
 	}
+
 	replaced, err := service.Admin.Export(
 		ctx,
 		importWorkspaceID,
@@ -764,6 +849,7 @@ func TestReferenceImportExportCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export replaced item: %v", err)
 	}
+
 	if len(replaced.Items) != 1 || len(replaced.Items[0].Localization) != 0 {
 		t.Fatalf(
 			"update_existing kept removed localizations: %+v",
@@ -776,6 +862,7 @@ func TestReferenceImmutableKeyAndDangerousTypeChange(t *testing.T) {
 	service := newReferenceTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("workspace")
+
 	if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
 		WorkspaceID: workspaceID,
 		Key:         "fixed-key",
@@ -785,6 +872,7 @@ func TestReferenceImmutableKeyAndDangerousTypeChange(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := service.Admin.UpsertLocalization(
 		ctx,
 		admin.SaveLocalizationParams{
@@ -812,11 +900,15 @@ func TestReferenceImmutableKeyAndDangerousTypeChange(t *testing.T) {
 	) {
 		t.Fatalf("unconfirmed change: %v", err)
 	}
+
 	params.Confirmation = admin.DangerousTypeConfirmation
+
 	rows, err := service.Admin.DangerousChangeType(ctx, params)
+
 	if err != nil || rows != 1 {
 		t.Fatalf("dangerous type change: rows=%d err=%v", rows, err)
 	}
+
 	item, err := service.User.Get(ctx, user.GetParams{
 		WorkspaceID: workspaceID, Key: "fixed-key", Locale: "en",
 	})
@@ -827,6 +919,7 @@ func TestReferenceImmutableKeyAndDangerousTypeChange(t *testing.T) {
 
 	params.CurrentType = repository.ItemTypeQuantity
 	rows, err = service.Admin.DangerousChangeType(ctx, params)
+
 	if err != nil || rows != 0 {
 		t.Fatalf(
 			"stale expected type must not update: rows=%d err=%v",
@@ -834,7 +927,6 @@ func TestReferenceImmutableKeyAndDangerousTypeChange(t *testing.T) {
 			err,
 		)
 	}
-
 }
 
 func TestReferenceValidationAndContext(t *testing.T) {
@@ -867,11 +959,13 @@ func TestReferenceValidationAndContext(t *testing.T) {
 			Payload:     json.RawMessage(`{`),
 		},
 	}
+
 	for _, params := range cases {
 		if err := service.Admin.CreateItem(ctx, params); err == nil {
 			t.Fatalf("expected validation error for %#v", params)
 		}
 	}
+
 	if _, err := service.User.Resolve(
 		ctx,
 		user.ResolveParams{WorkspaceID: workspaceID},
@@ -881,10 +975,12 @@ func TestReferenceValidationAndContext(t *testing.T) {
 	) {
 		t.Fatalf("empty resolve: %v", err)
 	}
+
 	tooMany := make([]string, 1001)
 	for index := range tooMany {
 		tooMany[index] = fmt.Sprintf("item.%d", index)
 	}
+
 	if _, err := service.User.Resolve(ctx, user.ResolveParams{
 		WorkspaceID: workspaceID, Keys: tooMany,
 	}); !errors.Is(err, user.ErrTooManyKeys) {
@@ -893,6 +989,7 @@ func TestReferenceValidationAndContext(t *testing.T) {
 
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
+
 	if _, err := service.User.List(
 		canceled,
 		user.ListParams{
@@ -910,25 +1007,32 @@ func TestReferenceValidationAndContext(t *testing.T) {
 
 func TestReferenceOpenBootstrapsSchema(t *testing.T) {
 	const database = "reference_open_test"
+
 	ctx := context.Background()
+
 	adminDB, err := openReferencePostgres("")
 	if err != nil {
 		t.Fatalf("open admin postgres: %v", err)
 	}
+
 	terminateReferenceConnections(ctx, t, adminDB, database)
+
 	if _, err := adminDB.ExecContext(
 		ctx,
 		fmt.Sprintf("DROP DATABASE IF EXISTS %s", database),
 	); err != nil {
 		t.Fatalf("drop database: %v", err)
 	}
+
 	if _, err := adminDB.ExecContext(
 		ctx,
 		fmt.Sprintf("CREATE DATABASE %s", database),
 	); err != nil {
 		t.Fatalf("create database: %v", err)
 	}
+
 	_ = adminDB.Close()
+
 	t.Cleanup(func() {
 		adminDB, err := openReferencePostgres("")
 		if err == nil {
@@ -938,6 +1042,7 @@ func TestReferenceOpenBootstrapsSchema(t *testing.T) {
 				adminDB,
 				database,
 			)
+
 			_, _ = adminDB.ExecContext(
 				context.Background(),
 				fmt.Sprintf("DROP DATABASE IF EXISTS %s", database),
@@ -951,15 +1056,19 @@ func TestReferenceOpenBootstrapsSchema(t *testing.T) {
 		t.Fatalf("open reference database: %v", err)
 	}
 	defer db.Close()
+
 	client, err := sqlwrap.New(db)
 	if err != nil {
 		t.Fatalf("create reference sql client: %v", err)
 	}
+
 	repo := repository.New(client)
 	if err := repo.Bootstrap(ctx); err != nil {
 		t.Fatalf("bootstrap reference: %v", err)
 	}
+
 	defer repo.Close()
+
 	service, err := NewWithDatabase(
 		ctx,
 		db,
@@ -969,6 +1078,7 @@ func TestReferenceOpenBootstrapsSchema(t *testing.T) {
 		t.Fatalf("create reference: %v", err)
 	}
 	defer service.Close()
+
 	if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
 		WorkspaceID: testsupport.WorkspaceID(
 			"workspace",
@@ -992,49 +1102,60 @@ func newReferenceTestServiceWithOptions(
 	options Options,
 ) *Reference {
 	t.Helper()
+
 	ctx := context.Background()
+
 	adminDB, err := openReferencePostgres("")
 	if err != nil {
 		t.Fatalf("open admin postgres: %v", err)
 	}
+
 	terminateReferenceConnections(ctx, t, adminDB, database)
+
 	if _, err := adminDB.ExecContext(
 		ctx,
 		fmt.Sprintf("DROP DATABASE IF EXISTS %s", database),
 	); err != nil {
 		t.Fatalf("drop database: %v", err)
 	}
+
 	if _, err := adminDB.ExecContext(
 		ctx,
 		fmt.Sprintf("CREATE DATABASE %s", database),
 	); err != nil {
 		t.Fatalf("create database: %v", err)
 	}
+
 	_ = adminDB.Close()
 
 	db, err := openReferencePostgres(database)
 	if err != nil {
 		t.Fatalf("open app postgres: %v", err)
 	}
+
 	client, err := sqlwrap.New(db, sqlwrap.Options{
 		CacheEnabled: true, CacheSize: 10000, CacheTTLCheck: time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("create sql client: %v", err)
 	}
+
 	repo := repository.New(client)
 	if err := repo.Bootstrap(ctx); err != nil {
 		t.Fatalf("bootstrap reference: %v", err)
 	}
+
 	service, err := NewWithDatabase(ctx, db, referenceTestOptions(options))
 	if err != nil {
 		t.Fatalf("create reference service: %v", err)
 	}
+
 	t.Cleanup(func() {
 		_ = service.Close()
 		_ = repo.Close()
 		_ = client.Close()
 	})
+
 	return service
 }
 
@@ -1043,12 +1164,15 @@ func referenceTestOptions(options Options) Options {
 	if options.CacheSize == 0 {
 		options.CacheSize = 10000
 	}
+
 	if options.CacheTTLCheck == 0 {
 		options.CacheTTLCheck = time.Minute
 	}
+
 	if options.CacheL1Delay == 0 {
 		options.CacheL1Delay = time.Minute
 	}
+
 	return options
 }
 
@@ -1059,6 +1183,7 @@ func terminateReferenceConnections(
 	database string,
 ) {
 	t.Helper()
+
 	_, err := db.ExecContext(ctx, `
 SELECT pg_terminate_backend(pid)
 FROM pg_stat_activity
@@ -1072,6 +1197,7 @@ func openReferencePostgres(database string) (*sql.DB, error) {
 	if database == "" {
 		database = "postgres"
 	}
+
 	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 		referenceTestPGHost,
@@ -1080,13 +1206,16 @@ func openReferencePostgres(database string) (*sql.DB, error) {
 		referenceTestPGPassword,
 		database,
 	)
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Ping(); err != nil {
+
+	if err := db.PingContext(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+
 	return db, nil
 }

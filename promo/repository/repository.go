@@ -51,6 +51,7 @@ func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 	timeout := queryTimeout(options.QueryTimeout)
 	executor := db.WithQueryTimeout(timeout)
 	q := promosqlc.New(executor)
+
 	return &Repository{
 		db: db,
 		q:  q,
@@ -82,13 +83,17 @@ func (r *Repository) Close() error {
 	if r == nil {
 		return nil
 	}
+
 	var err error
+
 	if r.q != nil {
 		err = errors.Join(err, r.q.Close())
 	}
+
 	if r.callbacks != nil {
 		err = errors.Join(err, r.callbacks.Close())
 	}
+
 	return err
 }
 
@@ -109,8 +114,10 @@ func (r *Repository) WithTx(
 			cacheL2:                  r.cacheL2,
 			onCacheInvalidationError: r.onCacheInvalidationError,
 		}
+
 		return struct{}{}, fn(txRepo)
 	})
+
 	return err
 }
 
@@ -118,6 +125,7 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 	if err := r.applySQL(ctx, promosqlc.SchemaSQL, "schema"); err != nil {
 		return err
 	}
+
 	if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{
 		Timeout: bootstrapQueryTimeout,
 	}, func(ctx context.Context) error {
@@ -129,9 +137,11 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 	}); err != nil {
 		return err
 	}
+
 	if err := r.applySQL(ctx, promosqlc.TriggerSQL, "trigger"); err != nil {
 		return err
 	}
+
 	return r.applySQL(ctx, promosqlc.EventSQL, "event")
 }
 
@@ -151,6 +161,7 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 			if isCreateTypeAlreadyExists(statement, err) {
 				continue
 			}
+
 			return fmt.Errorf(
 				"promo %s SQL statement failed: %w\n%s",
 				source,
@@ -159,11 +170,13 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 			)
 		}
 	}
+
 	return nil
 }
 
 func isCreateTypeAlreadyExists(statement string, err error) bool {
 	var pgErr *pgconn.PgError
+
 	return strings.HasPrefix(
 		strings.ToUpper(strings.TrimSpace(statement)),
 		"CREATE TYPE ",
@@ -176,6 +189,7 @@ func queryTimeout(value time.Duration) time.Duration {
 	if value <= 0 {
 		return time.Second
 	}
+
 	return value
 }
 
@@ -189,11 +203,14 @@ func normalizePage(limit, offset int32) (int32, int32) {
 	if limit <= 0 {
 		limit = 100
 	}
+
 	if limit > 1000 {
 		limit = 1000
 	}
+
 	if offset < 0 {
 		offset = 0
 	}
+
 	return limit, offset
 }

@@ -23,15 +23,19 @@ func (a *Payment) startPlategaReconciliationWorker() {
 		a.plategaCredentials == nil {
 		return
 	}
+
 	if a.plategaReconcileInterval <= 0 {
 		a.plategaReconcileInterval = defaultPlategaReconcileInterval
 	}
+
 	if a.plategaReconcileMinAge <= 0 {
 		a.plategaReconcileMinAge = defaultPlategaReconcileMinAge
 	}
+
 	if a.plategaReconcileMissingAfter <= 0 {
 		a.plategaReconcileMissingAfter = defaultPlategaReconcileMissingAfter
 	}
+
 	if a.plategaReconcileBatch <= 0 {
 		a.plategaReconcileBatch = defaultPlategaReconcileBatch
 	}
@@ -60,6 +64,7 @@ func (a *Payment) plategaReconciliationLoop() {
 				!errors.Is(err, context.DeadlineExceeded) {
 				log.Printf("payment platega reconciliation: %v", err)
 			}
+
 			timer.Reset(a.plategaReconcileInterval)
 		}
 	}

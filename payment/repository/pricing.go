@@ -94,19 +94,23 @@ func (r *PaymentRepository) resolveProductPriceAmounts(
 	if mode == "" {
 		mode = PricingModeFixed
 	}
+
 	if mode == PricingModeFixed {
 		if input.ListAmountMinor > math.MaxInt64 ||
 			input.DiscountAmountMinor > input.ListAmountMinor {
 			return resolvedProductPrice{}, ErrInvalidPrice
 		}
+
 		return resolvedProductPrice{
 			list:     input.ListAmountMinor,
 			discount: input.DiscountAmountMinor,
 		}, nil
 	}
+
 	if mode != PricingModeDynamic {
 		return resolvedProductPrice{}, ErrInvalidPricingMode
 	}
+
 	if input.ReferenceAssetCode == nil ||
 		input.ReferenceListAmountMinor == nil ||
 		input.ReferenceDiscountAmountMinor == nil ||
@@ -116,6 +120,7 @@ func (r *PaymentRepository) resolveProductPriceAmounts(
 
 	referenceAsset := strings.TrimSpace(*input.ReferenceAssetCode)
 	coefficient := strings.TrimSpace(*input.Coefficient)
+
 	if referenceAsset == "" || referenceAsset == input.AssetCode ||
 		*input.ReferenceDiscountAmountMinor > *input.ReferenceListAmountMinor ||
 		*input.ReferenceListAmountMinor > math.MaxInt64 ||
@@ -133,6 +138,7 @@ func (r *PaymentRepository) resolveProductPriceAmounts(
 	if errors.Is(err, sql.ErrNoRows) {
 		return resolvedProductPrice{}, ErrAssetRateNotFound
 	}
+
 	if err != nil {
 		return resolvedProductPrice{}, err
 	}
@@ -146,6 +152,7 @@ func (r *PaymentRepository) resolveProductPriceAmounts(
 	if err != nil {
 		return resolvedProductPrice{}, err
 	}
+
 	discount, err := convertReferenceAmount(
 		*input.ReferenceDiscountAmountMinor,
 		uint16(rate.TargetScale),
@@ -155,9 +162,11 @@ func (r *PaymentRepository) resolveProductPriceAmounts(
 	if err != nil {
 		return resolvedProductPrice{}, err
 	}
+
 	if discount > list {
 		return resolvedProductPrice{}, ErrInvalidPrice
 	}
+
 	if list > math.MaxInt64 {
 		return resolvedProductPrice{}, ErrInvalidPrice
 	}
@@ -258,17 +267,21 @@ func (r *PaymentRepository) UpdateAssetRate(
 	params.AssetCode = strings.TrimSpace(params.AssetCode)
 	params.ReferenceAssetCode = strings.TrimSpace(params.ReferenceAssetCode)
 	params.Source = strings.TrimSpace(params.Source)
+
 	if params.AssetCode == "" || params.ReferenceAssetCode == "" ||
 		params.AssetCode == params.ReferenceAssetCode || params.Source == "" ||
 		params.ReferencePerAssetMinor == 0 || params.ReferencePerAssetMinor > math.MaxInt64 {
 		return AssetRateUpdateResult{}, ErrInvalidAssetRate
 	}
+
 	if params.ObservedAt.IsZero() {
 		params.ObservedAt = time.Now().UTC()
 	}
 
 	var result AssetRateUpdateResult
+
 	affectedWorkspaces := make(map[string]struct{})
+
 	err := r.inTransaction(ctx, func(tx *PaymentRepository) error {
 		if err := tx.q.UpsertAssetRate(ctx, paymentsqlc.UpsertAssetRateParams{
 			AssetCode:              params.AssetCode,
@@ -290,6 +303,7 @@ func (r *PaymentRepository) UpdateAssetRate(
 		if err != nil {
 			return err
 		}
+
 		prices, err := tx.q.ListDynamicPricesForRate(
 			ctx,
 			paymentsqlc.ListDynamicPricesForRateParams{
@@ -313,6 +327,7 @@ func (r *PaymentRepository) UpdateAssetRate(
 				price.ReferenceDiscountAmountMinor.Int64 < 0 {
 				return ErrInvalidPrice
 			}
+
 			list, err := convertReferenceAmount(
 				uint64(price.ReferenceListAmountMinor.Int64),
 				uint16(rate.TargetScale),
@@ -322,6 +337,7 @@ func (r *PaymentRepository) UpdateAssetRate(
 			if err != nil {
 				return err
 			}
+
 			discount, err := convertReferenceAmount(
 				uint64(price.ReferenceDiscountAmountMinor.Int64),
 				uint16(rate.TargetScale),
@@ -331,6 +347,7 @@ func (r *PaymentRepository) UpdateAssetRate(
 			if err != nil {
 				return err
 			}
+
 			rows, err := tx.q.UpdateDynamicPriceAmounts(
 				ctx,
 				paymentsqlc.UpdateDynamicPriceAmountsParams{
@@ -343,7 +360,9 @@ func (r *PaymentRepository) UpdateAssetRate(
 			if err != nil {
 				return err
 			}
+
 			result.UpdatedPrices += uint64(rows)
+
 			products[price.WorkspaceID+"\x00"+price.ProductID] = struct{}{}
 			affectedWorkspaces[price.WorkspaceID] = struct{}{}
 		}
@@ -355,6 +374,7 @@ func (r *PaymentRepository) UpdateAssetRate(
 			); err != nil {
 				return err
 			}
+
 			if err := tx.q.RebuildWorkspaceProductCache(
 				ctx,
 				paymentsqlc.RebuildWorkspaceProductCacheParams{
@@ -365,18 +385,22 @@ func (r *PaymentRepository) UpdateAssetRate(
 				return err
 			}
 		}
+
 		result.AffectedProducts = uint64(len(products))
 		result.AffectedWorkspaces = uint64(len(affectedWorkspaces))
+
 		return nil
 	})
 	if err != nil {
 		return AssetRateUpdateResult{}, err
 	}
+
 	for workspaceID := range affectedWorkspaces {
 		if err := r.invalidateWorkspaceCache(workspaceID); err != nil {
 			return AssetRateUpdateResult{}, err
 		}
 	}
+
 	return result, nil
 }
 
@@ -389,6 +413,7 @@ func convertReferenceAmount(
 	if referencePerAssetMinor == 0 {
 		return 0, ErrInvalidAssetRate
 	}
+
 	factor, err := positiveRat(coefficient)
 	if err != nil {
 		return 0, ErrInvalidPrice
@@ -408,9 +433,11 @@ func convertReferenceAmount(
 	if remainder.Sign() > 0 {
 		quotient.Add(quotient, big.NewInt(1))
 	}
+
 	if quotient.Sign() < 0 || !quotient.IsUint64() {
 		return 0, ErrInvalidPrice
 	}
+
 	return quotient.Uint64(), nil
 }
 
@@ -419,6 +446,7 @@ func positiveRat(value string) (*big.Rat, error) {
 	if !ok || rat.Sign() <= 0 {
 		return nil, ErrInvalidAssetRate
 	}
+
 	return rat, nil
 }
 

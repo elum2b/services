@@ -17,7 +17,6 @@ func (a *TON) ProcessTransfer(
 	ctx context.Context,
 	transfer IncomingTransfer,
 ) (*ProcessResult, error) {
-
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 
@@ -30,6 +29,7 @@ func (a *TON) ProcessTransfer(
 	}
 
 	transfer.Network = network
+
 	transfer.WalletAddress, err = NormalizeWalletAddress(
 		transfer.WalletAddress,
 		network,
@@ -39,6 +39,7 @@ func (a *TON) ProcessTransfer(
 	}
 
 	var failedTransaction *repository.AdminProviderTransactionModel
+
 	if transfer.TxHash != "" {
 		existing, err := a.repository.GetProviderTransactionByExternalID(
 			ctx,
@@ -75,6 +76,7 @@ func (a *TON) ProcessTransfer(
 				}, nil
 			}
 		}
+
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -100,6 +102,7 @@ func (a *TON) ProcessTransfer(
 			serviceerrors.PublicMessage(err),
 		)
 	}
+
 	if attempt.AssetCode != transfer.AssetCode ||
 		attempt.AmountMinor != transfer.AmountMinor {
 		if failedTransaction != nil {
@@ -115,6 +118,7 @@ func (a *TON) ProcessTransfer(
 			repository.ErrPaymentMismatch.Error(),
 		)
 	}
+
 	if failedTransaction != nil &&
 		((failedTransaction.OrderID.Valid && failedTransaction.OrderID.Int64 != int64(attempt.OrderID)) ||
 			(failedTransaction.AttemptID.Valid && failedTransaction.AttemptID.Int64 != int64(attempt.ID))) {
@@ -138,6 +142,7 @@ func (a *TON) ProcessTransfer(
 		// and permanently suppressing a paid order after a transient local error.
 		return nil, err
 	}
+
 	if failedTransaction != nil {
 		recovered, err := a.repository.RecoverFailedProviderTransaction(
 			ctx,
@@ -172,7 +177,9 @@ func (a *TON) ProcessTransfer(
 	if err != nil {
 		return nil, err
 	}
+
 	result.AlreadyDone = completed.AlreadyDone
+
 	return result, nil
 }
 
@@ -184,17 +191,18 @@ func (a *TON) storeTransfer(
 	status paymentsqlc.PaymentProviderTransactionStatus,
 	message string,
 ) (*ProcessResult, error) {
-
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 
 	ctx = mergedCtx
+
 	cursor := providerCursorParams(transfer)
 
 	occurredAt := transfer.OccurredAt
 	if occurredAt.IsZero() {
 		occurredAt = time.Now()
 	}
+
 	id, err := a.repository.StoreProviderTransaction(
 		ctx,
 		paymentsqlc.CreateProviderTransactionParams{
@@ -232,15 +240,18 @@ func (a *TON) storeTransfer(
 		if existingErr != nil {
 			return nil, existingErr
 		}
+
 		if !providerTransactionMatchesTransfer(existing, transfer) {
 			return nil, repository.ErrPaymentMismatch
 		}
+
 		if _, cursorErr := a.repository.UpsertProviderCursor(
 			ctx,
 			cursor,
 		); cursorErr != nil {
 			return nil, cursorErr
 		}
+
 		return &ProcessResult{
 			OrderID:     uint64FromRepositoryNull(existing.OrderID),
 			AttemptID:   uint64FromRepositoryNull(existing.AttemptID),
@@ -251,6 +262,7 @@ func (a *TON) storeTransfer(
 			),
 		}, nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -267,20 +279,17 @@ func (a *TON) advanceTransferCursor(
 	ctx context.Context,
 	transfer IncomingTransfer,
 ) error {
-
 	_, err := a.repository.UpsertProviderCursor(
 		ctx,
 		providerCursorParams(transfer),
 	)
 
 	return err
-
 }
 
 func providerCursorParams(
 	transfer IncomingTransfer,
 ) paymentsqlc.UpsertProviderCursorParams {
-
 	return paymentsqlc.UpsertProviderCursorParams{
 		WorkspaceID:    transfer.WorkspaceID,
 		ProviderCode:   ProviderCode,
@@ -289,14 +298,12 @@ func providerCursorParams(
 		CursorValue:    strconv.FormatUint(transfer.LogicalTime, 10),
 		CursorSequence: int64(transfer.LogicalTime),
 	}
-
 }
 
 func providerTransactionMatchesTransfer(
 	existing repository.AdminProviderTransactionModel,
 	transfer IncomingTransfer,
 ) bool {
-
 	return existing.WorkspaceID == transfer.WorkspaceID &&
 		existing.ProviderCode == ProviderCode &&
 		existing.Network == transfer.Network &&
@@ -310,12 +317,12 @@ func providerTransactionMatchesTransfer(
 		existing.PaymentReference == transfer.Comment &&
 		existing.SenderReference.Valid == (transfer.JettonSender != "") &&
 		existing.SenderReference.String == transfer.JettonSender
-
 }
 
 func uint64FromRepositoryNull(value repository.NullableInt64) uint64 {
 	if !value.Valid || value.Int64 <= 0 {
 		return 0
 	}
+
 	return uint64(value.Int64)
 }

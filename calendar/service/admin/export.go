@@ -10,7 +10,10 @@ func (a *Admin) Export(
 	if a == nil || a.repository == nil {
 		return ExportPackage{}, ErrRepositoryNotConfigured
 	}
+
 	mergedCtx, cancel := a.withContext(ctx)
+
 	defer cancel()
+
 	return a.repository.Export(mergedCtx, workspaceID, req)
 }

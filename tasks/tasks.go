@@ -56,8 +56,11 @@ func NewWithDatabase(
 			err,
 		)
 	}
+
 	service := newTasks(ctx, client, false, options)
+
 	_ = service.SyncPartners(ctx)
+
 	return service, nil
 }
 
@@ -65,36 +68,46 @@ func (t *Tasks) Run(ctx context.Context, params DatabaseParams) error {
 	if t == nil {
 		return ErrServiceNil
 	}
+
 	t.lifecycleMu.Lock()
+
 	if t.running {
 		t.lifecycleMu.Unlock()
+
 		return ErrServiceRunning
 	}
+
 	t.running = true
 	t.options = params.Options
+
 	registrations := append([]callbackRegistration(nil), t.callbacksToRun...)
 	t.lifecycleMu.Unlock()
 
 	running, err := open(ctx, params)
 	if err != nil {
 		t.lifecycleMu.Lock()
+
 		t.running = false
 		t.lifecycleMu.Unlock()
+
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			return nil
 		}
+
 		return wrapLifecycleError(err)
 	}
+
 	t.adopt(running)
+
 	defer t.Close()
 
 	errCh := make(chan error, len(registrations))
 	for _, registration := range registrations {
-		registration := registration
 		t.goroutines.Go("tasks.callback", func() {
 			errCh <- t.runCallback(registration.ctx, registration.handler, registration.options...)
 		})
 	}
+
 	select {
 	case <-t.rootCtx.Done():
 		return nil
@@ -102,6 +115,7 @@ func (t *Tasks) Run(ctx context.Context, params DatabaseParams) error {
 		if errors.Is(err, context.Canceled) && t.rootCtx.Err() != nil {
 			return nil
 		}
+
 		return wrapLifecycleError(err)
 	}
 }
@@ -110,6 +124,7 @@ func open(ctx context.Context, params DatabaseParams) (*Tasks, error) {
 	if params.User == "" || params.Database == "" {
 		return nil, ErrDatabaseConfigRequired
 	}
+
 	db, err := openPostgres(ctx, params)
 	if err != nil {
 		return nil, serviceerrors.Wrap(
@@ -118,15 +133,18 @@ func open(ctx context.Context, params DatabaseParams) (*Tasks, error) {
 			err,
 		)
 	}
+
 	client, err := sqlwrap.New(db, toSQLWrapOptions(params.Options))
 	if err != nil {
 		_ = db.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"tasks sql client initialization failed",
 			err,
 		)
 	}
+
 	bootstrap := repository.NewWithOptions(
 		client,
 		repositoryOptions(params.Options),
@@ -134,22 +152,28 @@ func open(ctx context.Context, params DatabaseParams) (*Tasks, error) {
 	if err := bootstrap.Bootstrap(ctx); err != nil {
 		_ = bootstrap.Close()
 		_ = client.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"tasks bootstrap failed",
 			err,
 		)
 	}
+
 	if err := bootstrap.Close(); err != nil {
 		_ = client.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"tasks bootstrap shutdown failed",
 			err,
 		)
 	}
+
 	service := newTasks(ctx, client, true, params.Options)
+
 	_ = service.SyncPartners(ctx)
+
 	return service, nil
 }
 
@@ -158,10 +182,12 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 	if host == "" {
 		host = "localhost"
 	}
+
 	port := params.Port
 	if port == 0 {
 		port = 5432
 	}
+
 	dsn, err := sqlwrap.PostgresDSN(sqlwrap.PostgresParams{
 		User:        params.User,
 		Password:    params.Password,
@@ -174,21 +200,26 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
+
 	db.SetMaxOpenConns(params.Options.MaxConnections)
+
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+
 	return db, nil
 }
 
 func (t *Tasks) adopt(running *Tasks) {
 	t.lifecycleMu.Lock()
 	defer t.lifecycleMu.Unlock()
+
 	t.Admin, t.Internal, t.Integration, t.User = running.Admin, running.Internal, running.Integration, running.User
 	t.callbacks, t.runtime, t.client, t.ownsClient = running.callbacks, running.runtime, running.client, running.ownsClient
 	t.rootCtx, t.rootCancel = running.rootCtx, running.rootCancel
@@ -206,9 +237,11 @@ func newTasks(
 	repositoryOptions := repositoryOptions(options)
 	goroutines := goroutinemanager.New()
 	runtimeOptions := options.Runtime
+
 	if runtimeOptions.ScriptLoader == nil {
 		runtimeOptions.ScriptLoader = partnerScriptLoader(db, repositoryOptions)
 	}
+
 	runtimeManager := taskruntime.New(rootCtx, runtimeOptions)
 
 	return &Tasks{
@@ -251,10 +284,12 @@ func partnerScriptLoader(
 	return func(ctx context.Context, provider string) (taskruntime.Script, bool, error) {
 		repo := repository.NewWithOptions(db, options)
 		defer func() { _ = repo.Close() }()
+
 		script, found, err := repo.GetEnabledPartnerScript(ctx, provider)
 		if err != nil || !found {
 			return taskruntime.Script{}, found, err
 		}
+
 		return taskruntime.Script{
 			Provider: script.Provider,
 			Source:   script.Source,
@@ -268,7 +303,9 @@ func integrationOptions(
 	repositoryOptions repository.Options,
 ) integration.Options {
 	result := options.Integration
+
 	result.RepositoryOptions = repositoryOptions
+
 	return result
 }
 
@@ -286,34 +323,45 @@ func (t *Tasks) Close() error {
 	if t == nil {
 		return nil
 	}
+
 	if t.rootCancel != nil {
 		t.rootCancel()
 	}
+
 	if t.goroutines != nil {
 		t.goroutines.Close()
 	}
+
 	var err error
+
 	if t.Admin != nil {
 		err = errors.Join(err, t.Admin.Close())
 	}
+
 	if t.Internal != nil {
 		err = errors.Join(err, t.Internal.Close())
 	}
+
 	if t.Integration != nil {
 		err = errors.Join(err, t.Integration.Close())
 	}
+
 	if t.User != nil {
 		err = errors.Join(err, t.User.Close())
 	}
+
 	if t.runtime != nil {
 		err = errors.Join(err, t.runtime.Close())
 	}
+
 	if t.callbacks != nil {
 		err = errors.Join(err, t.callbacks.Close())
 	}
+
 	if t.ownsClient && t.client != nil {
 		err = errors.Join(err, t.client.Close())
 	}
+
 	return err
 }
 
@@ -321,17 +369,24 @@ func (t *Tasks) SyncPartners(ctx context.Context) error {
 	if t == nil || t.client == nil {
 		return nil
 	}
+
 	mergedCtx, cancel := t.bindContext(ctx)
+
 	defer cancel()
+
 	repo := repository.NewWithOptions(t.client, repositoryOptions(t.options))
+
 	defer func() { _ = repo.Close() }()
+
 	providers, err := repo.WarmPartnerConfigCache(mergedCtx)
 	if err != nil {
 		return err
 	}
+
 	if t.runtime == nil {
 		return nil
 	}
+
 	return t.runtime.WarmProviders(mergedCtx, providers)
 }
 
@@ -340,8 +395,10 @@ func (t *Tasks) IsReady() bool {
 	if t == nil {
 		return false
 	}
+
 	t.lifecycleMu.Lock()
 	defer t.lifecycleMu.Unlock()
+
 	return t.rootCtx != nil && t.rootCtx.Err() == nil &&
 		!t.client.IsUnavailable() &&
 		t.Admin != nil &&
@@ -356,5 +413,6 @@ func (t *Tasks) bindContext(
 	if t == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}
+
 	return contextutil.Merge(t.rootCtx, ctx)
 }

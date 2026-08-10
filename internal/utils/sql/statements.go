@@ -46,6 +46,7 @@ func SplitStatements(raw string) ([]string, error) {
 				if delimiter, ok := dollarQuoteDelimiter(raw[index:]); ok {
 					state = stateDollarQuote
 					dollarQuote = delimiter
+
 					index += len(delimiter) - 1
 				}
 			case ';':
@@ -54,25 +55,30 @@ func SplitStatements(raw string) ([]string, error) {
 				); statement != "" {
 					result = append(result, statement)
 				}
+
 				start = index + 1
 			}
 		case stateSingleQuote:
 			if raw[index] != '\'' {
 				continue
 			}
+
 			if index+1 < len(raw) && raw[index+1] == '\'' {
 				index++
 				continue
 			}
+
 			state = statePlain
 		case stateDoubleQuote:
 			if raw[index] != '"' {
 				continue
 			}
+
 			if index+1 < len(raw) && raw[index+1] == '"' {
 				index++
 				continue
 			}
+
 			state = statePlain
 		case stateLineComment:
 			if raw[index] == '\n' {
@@ -82,13 +88,17 @@ func SplitStatements(raw string) ([]string, error) {
 			if index+1 >= len(raw) {
 				continue
 			}
+
 			switch raw[index : index+2] {
 			case "/*":
 				blockDepth++
+
 				index++
 			case "*/":
 				blockDepth--
+
 				index++
+
 				if blockDepth == 0 {
 					state = statePlain
 				}
@@ -96,6 +106,7 @@ func SplitStatements(raw string) ([]string, error) {
 		case stateDollarQuote:
 			if strings.HasPrefix(raw[index:], dollarQuote) {
 				index += len(dollarQuote) - 1
+
 				state = statePlain
 			}
 		}
@@ -115,6 +126,7 @@ func SplitStatements(raw string) ([]string, error) {
 	if statement := strings.TrimSpace(raw[start:]); statement != "" {
 		result = append(result, statement)
 	}
+
 	return result, nil
 }
 
@@ -122,20 +134,25 @@ func dollarQuoteDelimiter(value string) (string, bool) {
 	if len(value) < 2 || value[0] != '$' {
 		return "", false
 	}
+
 	if value[1] == '$' {
 		return "$$", true
 	}
+
 	if !isDollarQuoteIdentifierStart(value[1]) {
 		return "", false
 	}
+
 	for index := 2; index < len(value); index++ {
 		if value[index] == '$' {
 			return value[:index+1], true
 		}
+
 		if !isDollarQuoteIdentifierPart(value[index]) {
 			return "", false
 		}
 	}
+
 	return "", false
 }
 

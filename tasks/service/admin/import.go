@@ -10,8 +10,11 @@ func (a *Admin) PreviewImport(
 	if a == nil || a.repository == nil {
 		return ImportPreview{}, ErrRepositoryNotConfigured
 	}
+
 	mergedCtx, cancel := a.withContext(ctx)
+
 	defer cancel()
+
 	return a.repository.PreviewImport(mergedCtx, workspaceID, pkg)
 }
 
@@ -23,7 +26,10 @@ func (a *Admin) Import(
 	if a == nil || a.repository == nil {
 		return ImportResult{}, ErrRepositoryNotConfigured
 	}
+
 	mergedCtx, cancel := a.withContext(ctx)
+
 	defer cancel()
+
 	return a.repository.Import(mergedCtx, workspaceID, req)
 }

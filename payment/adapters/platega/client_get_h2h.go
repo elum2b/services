@@ -15,6 +15,7 @@ func (c *Client) GetH2H(
 	}
 
 	var result H2HResponse
+
 	resp, err := c.rest.R().
 		SetContext(ctx).
 		SetResult(&result).
@@ -22,6 +23,7 @@ func (c *Client) GetH2H(
 	if err != nil {
 		return H2HResponse{}, err
 	}
+
 	if resp.StatusCode() < http.StatusOK ||
 		resp.StatusCode() >= http.StatusMultipleChoices {
 		return H2HResponse{}, wrapAPIError(
@@ -30,5 +32,6 @@ func (c *Client) GetH2H(
 			resp.String(),
 		)
 	}
+
 	return result, nil
 }

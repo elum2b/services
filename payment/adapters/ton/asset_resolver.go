@@ -26,11 +26,14 @@ func (a *TON) ResolveJettonAsset(
 ) (JettonAsset, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	network, err := validateNetwork(network)
 	if err != nil {
 		return JettonAsset{}, err
 	}
+
 	masterAddress = strings.TrimSpace(masterAddress)
 	if masterAddress == "" {
 		return JettonAsset{}, ErrJettonMasterAddressRequired
@@ -57,6 +60,7 @@ func (a *TON) ResolveJettonAsset(
 		if err == nil {
 			return jettonAssetFromRow(asset), nil
 		}
+
 		if !errors.Is(err, sql.ErrNoRows) {
 			return JettonAsset{}, err
 		}
@@ -70,7 +74,9 @@ func (a *TON) ResolveJettonAsset(
 		if listErr != nil {
 			return JettonAsset{}, listErr
 		}
+
 		masterRaw := master.StringRaw()
+
 		for _, asset := range assets {
 			if asset.AssetKind != string(
 				paymentsqlc.PaymentAssetAssetKindCryptoJetton,
@@ -82,6 +88,7 @@ func (a *TON) ResolveJettonAsset(
 				!asset.ContractAddress.Valid {
 				continue
 			}
+
 			contract, parseErr := parseTONAddress(asset.ContractAddress.String)
 			if parseErr == nil && contract.StringRaw() == masterRaw {
 				return jettonAssetFromRow(asset), nil
@@ -104,6 +111,7 @@ func parseTONAddress(value string) (*address.Address, error) {
 	if parsed, err := address.ParseAddr(value); err == nil {
 		return parsed, nil
 	}
+
 	return address.ParseRawAddr(value)
 }
 
@@ -112,10 +120,12 @@ func appendUnique(values []string, candidates ...string) []string {
 		if candidate == "" {
 			continue
 		}
+
 		found := slices.Contains(values, candidate)
 		if !found {
 			values = append(values, candidate)
 		}
 	}
+
 	return values
 }

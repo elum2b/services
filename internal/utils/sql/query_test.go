@@ -19,6 +19,7 @@ func (m *memCache) GetWithTTL(key string) ([]byte, time.Duration, error) {
 	if !ok {
 		return nil, 0, errors.New("miss")
 	}
+
 	return v, 0, nil
 }
 
@@ -26,14 +27,18 @@ func (m *memCache) Set(key string, val []byte, _ time.Duration) error {
 	if m.data == nil {
 		m.data = make(map[string][]byte)
 	}
+
 	cp := make([]byte, len(val))
 	copy(cp, val)
+
 	m.data[key] = cp
+
 	return nil
 }
 
 func (m *memCache) Delete(key string) error {
 	delete(m.data, key)
+
 	return nil
 }
 
@@ -62,16 +67,20 @@ func (m *expiringMemCache) GetWithTTL(
 	if !ok {
 		return nil, 0, errors.New("miss")
 	}
+
 	if !it.expires.IsZero() && time.Now().After(it.expires) {
 		delete(m.data, key)
+
 		return nil, 0, errors.New("miss")
 	}
 
 	cp := make([]byte, len(it.payload))
 	copy(cp, it.payload)
+
 	if it.expires.IsZero() {
 		return cp, 0, nil
 	}
+
 	return cp, time.Until(it.expires), nil
 }
 
@@ -83,18 +92,23 @@ func (m *expiringMemCache) Set(
 	if m.data == nil {
 		m.data = make(map[string]expiringCacheItem)
 	}
+
 	cp := make([]byte, len(val))
 	copy(cp, val)
+
 	item := expiringCacheItem{payload: cp}
 	if exp > 0 {
 		item.expires = time.Now().Add(exp)
 	}
+
 	m.data[key] = item
+
 	return nil
 }
 
 func (m *expiringMemCache) Delete(key string) error {
 	delete(m.data, key)
+
 	return nil
 }
 
@@ -124,11 +138,13 @@ type spyMutex struct {
 
 func (s *spyMutex) Lock(key string) error {
 	s.lockCalls.Add(1)
+
 	return s.base.Lock(key)
 }
 
 func (s *spyMutex) Unlock(key string) error {
 	s.unlockCalls.Add(1)
+
 	return s.base.Unlock(key)
 }
 
@@ -136,6 +152,7 @@ func (f failCodec) Marshal(v any) ([]byte, error) {
 	if f.marshalErr {
 		return nil, errors.New("marshal fail")
 	}
+
 	return MsgpackCodec{}.Marshal(v)
 }
 
@@ -143,6 +160,7 @@ func (f failCodec) Unmarshal(data []byte, v any) error {
 	if f.unmarshalErr {
 		return errors.New("unmarshal fail")
 	}
+
 	return MsgpackCodec{}.Unmarshal(data, v)
 }
 
@@ -157,7 +175,9 @@ func TestQuery_Errors(t *testing.T) {
 		inMemory: newL1Cache(10, time.Minute),
 		codec:    MsgpackCodec{},
 	}
+
 	_, err = Query[testModel](context.Background(), c, Params{}, nil)
+
 	if err == nil || err.Error() != "sqlcwrap: loader is nil" {
 		t.Fatalf("expected loader nil error, got %v", err)
 	}
@@ -182,9 +202,11 @@ func TestQuery_L1Hit(t *testing.T) {
 	if _, err := Query(context.Background(), c, params, loader); err != nil {
 		t.Fatalf("unexpected first call error: %v", err)
 	}
+
 	if _, err := Query(context.Background(), c, params, loader); err != nil {
 		t.Fatalf("unexpected second call error: %v", err)
 	}
+
 	if calls != 1 {
 		t.Fatalf("expected loader call count 1, got %d", calls)
 	}
@@ -216,20 +238,25 @@ func TestQuery_KeyPartsAndL2HitWarmsL1(t *testing.T) {
 	if _, err := Query(context.Background(), c, params, loader); err != nil {
 		t.Fatalf("unexpected first call error: %v", err)
 	}
+
 	if calls != 1 {
 		t.Fatalf("expected loader call count 1, got %d", calls)
 	}
+
 	if _, ok := c.inMemory.Get(key); !ok {
 		t.Fatal("expected L1 warm")
 	}
 
 	c.inMemory.Reset()
+
 	if _, err := Query(context.Background(), c, params, loader); err != nil {
 		t.Fatalf("unexpected second call error: %v", err)
 	}
+
 	if calls != 1 {
 		t.Fatalf("expected no second loader call, got %d", calls)
 	}
+
 	if _, ok := c.inMemory.Get(key); !ok {
 		t.Fatal("expected L1 warm after L2 hit")
 	}
@@ -246,6 +273,7 @@ func TestQuery_L2DecodeFailFallsBackToLoader(t *testing.T) {
 	}
 
 	calls := 0
+
 	_, err := Query(
 		context.Background(),
 		c,
@@ -258,6 +286,7 @@ func TestQuery_L2DecodeFailFallsBackToLoader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if calls != 1 {
 		t.Fatalf("expected loader call count 1, got %d", calls)
 	}
@@ -284,6 +313,7 @@ func TestQuery_L2EncodeFailIsBestEffort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if _, ok := cache.data["k"]; ok {
 		t.Fatal("did not expect L2 set when marshal fails")
 	}
@@ -303,6 +333,7 @@ func TestQuery_TimeoutRespectsParent(t *testing.T) {
 		Params{Timeout: 15 * time.Millisecond},
 		func(ctx context.Context) (testModel, error) {
 			<-ctx.Done()
+
 			return testModel{}, ctx.Err()
 		},
 	)
@@ -312,6 +343,7 @@ func TestQuery_TimeoutRespectsParent(t *testing.T) {
 
 	parent, cancel := context.WithCancel(context.Background())
 	cancel()
+
 	_, err = Query(
 		parent,
 		c,
@@ -335,6 +367,7 @@ func TestTransaction(t *testing.T) {
 	}
 
 	var gotTx bool
+
 	_, err := Transaction(
 		context.Background(),
 		c,
@@ -347,12 +380,15 @@ func TestTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if !gotTx {
 		t.Fatal("expected tx to be provided when TxEnable=true")
 	}
+
 	if stats.commitCount.Load() != 1 {
 		t.Fatalf("expected commit=1, got %d", stats.commitCount.Load())
 	}
+
 	if stats.rollbackCount.Load() != 0 {
 		t.Fatalf("expected rollback=0, got %d", stats.rollbackCount.Load())
 	}
@@ -377,6 +413,7 @@ func TestTransactionRollbackOnError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
+
 	if stats.rollbackCount.Load() != 1 {
 		t.Fatalf("expected rollback=1, got %d", stats.rollbackCount.Load())
 	}
@@ -394,6 +431,7 @@ func TestTransactionRollbackOnPanic(t *testing.T) {
 		if p := recover(); p == nil {
 			t.Fatal("expected panic to propagate")
 		}
+
 		if stats.rollbackCount.Load() != 1 {
 			t.Fatalf("expected rollback=1, got %d", stats.rollbackCount.Load())
 		}
@@ -461,9 +499,11 @@ func TestQuery_StampedeProtection_NodeCacheOnly(t *testing.T) {
 	}
 
 	var calls atomic.Int32
+
 	loader := func(ctx context.Context) (testModel, error) {
 		calls.Add(1)
 		time.Sleep(40 * time.Millisecond)
+
 		return testModel{ID: 77}, ctx.Err()
 	}
 
@@ -473,18 +513,25 @@ func TestQuery_StampedeProtection_NodeCacheOnly(t *testing.T) {
 	}
 
 	start := make(chan struct{})
+
 	var wg sync.WaitGroup
+
 	wg.Add(2)
 
 	var err1, err2 error
+
 	go func() {
 		defer wg.Done()
+
 		<-start
+
 		_, err1 = Query(context.Background(), c, params, loader)
 	}()
 	go func() {
 		defer wg.Done()
+
 		<-start
+
 		_, err2 = Query(context.Background(), c, params, loader)
 	}()
 
@@ -494,6 +541,7 @@ func TestQuery_StampedeProtection_NodeCacheOnly(t *testing.T) {
 	if err1 != nil || err2 != nil {
 		t.Fatalf("unexpected errors: err1=%v err2=%v", err1, err2)
 	}
+
 	if calls.Load() != 1 {
 		t.Fatalf("expected exactly 1 loader call, got %d", calls.Load())
 	}
@@ -518,9 +566,11 @@ func TestQuery_UsesProvidedMutex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if spy.lockCalls.Load() != 1 {
 		t.Fatalf("expected lock calls=1, got %d", spy.lockCalls.Load())
 	}
+
 	if spy.unlockCalls.Load() != 1 {
 		t.Fatalf("expected unlock calls=1, got %d", spy.unlockCalls.Load())
 	}
@@ -555,8 +605,10 @@ func TestQuery_L1TTLIsCappedByL2TTL(t *testing.T) {
 	}
 
 	c.inMemory.mu.RLock()
+
 	e, ok := c.inMemory.items["ttl-cap"]
 	c.inMemory.mu.RUnlock()
+
 	if !ok {
 		t.Fatal("expected key in L1 cache")
 	}
@@ -565,6 +617,7 @@ func TestQuery_L1TTLIsCappedByL2TTL(t *testing.T) {
 	if remaining > 5*time.Minute+time.Second {
 		t.Fatalf("expected L1 TTL <= L2 TTL, got remaining %s", remaining)
 	}
+
 	if remaining < 4*time.Minute {
 		t.Fatalf("unexpectedly small remaining ttl: %s", remaining)
 	}
@@ -578,6 +631,7 @@ func TestParams_DeprecatedDelaysFallback(t *testing.T) {
 	if got := p.l1Delay(); got != 3*time.Second {
 		t.Fatalf("expected deprecated NodeCacheDelay fallback, got %s", got)
 	}
+
 	if got := p.l2Delay(); got != 4*time.Second {
 		t.Fatalf("expected deprecated CacheDelay fallback, got %s", got)
 	}
@@ -608,6 +662,7 @@ func TestQuery_L1UsesRemainingL2TTLOnL2Hit(t *testing.T) {
 	if _, err := Query(context.Background(), c, params, loader); err != nil {
 		t.Fatalf("unexpected first query error: %v", err)
 	}
+
 	c.inMemory.Reset()
 
 	time.Sleep(70 * time.Millisecond)
@@ -615,13 +670,16 @@ func TestQuery_L1UsesRemainingL2TTLOnL2Hit(t *testing.T) {
 	if _, err := Query(context.Background(), c, params, loader); err != nil {
 		t.Fatalf("unexpected second query error: %v", err)
 	}
+
 	if loaderCalls != 1 {
 		t.Fatalf("expected loader to be called once, got %d", loaderCalls)
 	}
 
 	c.inMemory.mu.RLock()
+
 	e, ok := c.inMemory.items["remaining-ttl"]
 	c.inMemory.mu.RUnlock()
+
 	if !ok {
 		t.Fatal("expected key in L1 cache after L2 hit")
 	}
@@ -630,6 +688,7 @@ func TestQuery_L1UsesRemainingL2TTLOnL2Hit(t *testing.T) {
 	if remaining > 70*time.Millisecond {
 		t.Fatalf("expected L1 TTL to use remaining L2 TTL, got %s", remaining)
 	}
+
 	if remaining <= 0 {
 		t.Fatalf("expected positive remaining ttl, got %s", remaining)
 	}
@@ -650,6 +709,7 @@ func TestQuery_L1UsesTTLFromL2Provider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal failed: %v", err)
 	}
+
 	_ = cache.Set("ttl-from-provider", data, 90*time.Millisecond)
 
 	calls := 0
@@ -658,6 +718,7 @@ func TestQuery_L1UsesTTLFromL2Provider(t *testing.T) {
 		CacheL1Delay: 5 * time.Second,
 		CacheL2Delay: 5 * time.Second,
 	}
+
 	got, err := Query(
 		context.Background(),
 		c,
@@ -670,19 +731,24 @@ func TestQuery_L1UsesTTLFromL2Provider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected query error: %v", err)
 	}
+
 	if got.ID != 99 {
 		t.Fatalf("expected value from L2, got %+v", got)
 	}
+
 	if calls != 0 {
 		t.Fatalf("expected loader not called, got %d", calls)
 	}
 
 	c.inMemory.mu.RLock()
+
 	e, ok := c.inMemory.items["ttl-from-provider"]
 	c.inMemory.mu.RUnlock()
+
 	if !ok {
 		t.Fatal("expected key in L1")
 	}
+
 	remaining := time.Until(e.expires)
 	if remaining > 150*time.Millisecond {
 		t.Fatalf("expected L1 ttl based on provider ttl, got %s", remaining)

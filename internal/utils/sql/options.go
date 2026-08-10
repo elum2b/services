@@ -49,12 +49,15 @@ func defaultOptions(opts ...Options) Options {
 		if userOpts.MaxConnections > 0 {
 			options.MaxConnections = userOpts.MaxConnections
 		}
+
 		if userOpts.CacheSize > 0 {
 			options.CacheSize = userOpts.CacheSize
 		}
+
 		if userOpts.CacheTTLCheck > 0 {
 			options.CacheTTLCheck = userOpts.CacheTTLCheck
 		}
+
 		if userOpts.QueryTimeout > 0 {
 			options.QueryTimeout = userOpts.QueryTimeout
 		}

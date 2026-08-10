@@ -44,6 +44,7 @@ func statUint64(value int64) uint64 {
 	if value < 0 {
 		return 0
 	}
+
 	return uint64(value)
 }
 
@@ -64,6 +65,7 @@ func (r *PaymentRepository) ListPaymentDailyStats(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]PaymentDailyStats, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, PaymentDailyStats{
@@ -84,6 +86,7 @@ func (r *PaymentRepository) ListPaymentDailyStats(
 			RefundAmountMinor: statUint64(row.RefundAmountMinor),
 		})
 	}
+
 	return result, nil
 }
 
@@ -108,10 +111,12 @@ func (r *PaymentRepository) ListPaymentDailyOverview(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]PaymentDailyOverview, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, mapStoredDailyOverview(row))
 	}
+
 	return result, nil
 }
 
@@ -123,6 +128,7 @@ func (r *PaymentRepository) RefreshPaymentDailyStats(
 	if _, err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if from.IsZero() || until.IsZero() || from.After(until) {
 		return ErrInvalidDateRange
 	}
@@ -137,6 +143,7 @@ func (r *PaymentRepository) RefreshPaymentDailyStats(
 	); err != nil {
 		return err
 	}
+
 	return r.q.RefreshPaymentDailyOverview(
 		ctx,
 		sqlc.RefreshPaymentDailyOverviewParams{

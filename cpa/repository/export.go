@@ -15,18 +15,24 @@ func (r *Repository) Export(
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return ExportPackage{}, err
 	}
+
 	now := req.Now
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	var bundles []OfferBundle
+
 	if err := r.WithReadOnlySnapshot(ctx, func(txRepo *Repository) error {
 		var err error
+
 		bundles, err = txRepo.ListAllOfferBundles(ctx, workspaceID)
+
 		return err
 	}); err != nil {
 		return ExportPackage{}, err
 	}
+
 	out := ExportPackage{
 		Format:    ExportFormat,
 		Service:   "cpa",
@@ -58,6 +64,7 @@ func (r *Repository) Export(
 				Description: localization.Description,
 			}
 		}
+
 		for _, reward := range bundle.Rewards {
 			offer.Rewards = append(offer.Rewards, ExportReward{
 				Key:      reward.Key,
@@ -67,8 +74,10 @@ func (r *Repository) Export(
 				Unit:     reward.Unit,
 			})
 		}
+
 		out.Offers = append(out.Offers, offer)
 	}
+
 	return out, nil
 }
 
@@ -76,5 +85,6 @@ func nullableJSON(value []byte) []byte {
 	if len(value) == 0 || string(value) == "null" {
 		return nil
 	}
+
 	return value
 }

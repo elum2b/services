@@ -14,6 +14,7 @@ func (c *Client) EditUserStarSubscription(
 	}
 
 	var result botAPIResponse[bool]
+
 	resp, err := c.rest.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
@@ -23,6 +24,7 @@ func (c *Client) EditUserStarSubscription(
 	if err != nil {
 		return err
 	}
+
 	if resp.StatusCode() < http.StatusOK ||
 		resp.StatusCode() >= http.StatusMultipleChoices ||
 		!result.OK ||
@@ -35,5 +37,6 @@ func (c *Client) EditUserStarSubscription(
 			resp.String(),
 		)
 	}
+
 	return nil
 }

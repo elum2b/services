@@ -17,10 +17,12 @@ $body$ LANGUAGE plpgsql;
 /* a ; block /* nested ; */ comment */
 INSERT INTO example (value) VALUES ('it''s; fine');
 `
+
 	got, err := SplitStatements(input)
 	if err != nil {
 		t.Fatalf("SplitStatements() error: %v", err)
 	}
+
 	want := []string{
 		"CREATE TABLE example (value TEXT DEFAULT ';')",
 		"-- a ; in a line comment\nCREATE FUNCTION notify() RETURNS void AS $body$\nBEGIN\n    PERFORM ';';\nEND;\n$body$ LANGUAGE plpgsql",

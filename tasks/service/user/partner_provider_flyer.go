@@ -54,30 +54,39 @@ func (p FlyerProvider) ListPartnerTasks(
 		"limit":         partnerLimit(params.Limit, 5),
 	}
 	addPartnerIdentity(body, params.Identity)
+
 	var response flyerTasksResponse
+
 	path := "/get_tasks"
+
 	if params.Config.Platform == "max" {
 		path = "/max/get_tasks"
 		body["user_locale"] = params.Locale
+
 		if chatID := partnerString(params.Variables, "chat_id"); chatID != "" {
 			body["chat_id"] = partnerInt64String(chatID)
 		}
 	}
+
 	if err := p.client().postJSON(ctx, path, nil, body, &response); err != nil {
 		return nil, err
 	}
+
 	tasks := response.Tasks
 	if len(tasks) == 0 {
 		tasks = response.Result
 	}
+
 	if len(tasks) == 0 {
 		tasks = response.Data
 	}
+
 	result := make([]PartnerExternalTask, 0, len(tasks))
 	for _, task := range tasks {
 		if task.Signature == "" {
 			continue
 		}
+
 		link := firstNonEmpty(task.Link, task.URL)
 		externalType := firstNonEmpty(task.TaskType, task.Type, "task")
 		title := firstNonEmpty(task.Title, task.Name)
@@ -94,11 +103,13 @@ func (p FlyerProvider) ListPartnerTasks(
 		privatePayload := partnerMarshal(
 			map[string]any{"signature": task.Signature},
 		)
+
 		result = append(result, PartnerExternalTask{
 			ExternalID: task.Signature, ExternalType: externalType,
 			PublicPayload: publicPayload, PrivatePayload: privatePayload,
 		})
 	}
+
 	return result, nil
 }
 
@@ -109,6 +120,7 @@ func (p FlyerProvider) CheckPartnerTask(
 	var private struct {
 		Signature string `json:"signature"`
 	}
+
 	if err := json.Unmarshal(
 		params.Issue.PrivatePayload,
 		&private,
@@ -118,20 +130,26 @@ func (p FlyerProvider) CheckPartnerTask(
 			err,
 		)
 	}
+
 	body := map[string]any{
 		"key":       partnerSecret(params.Config.Secret),
 		"signature": private.Signature,
 	}
 	addPartnerIdentity(body, params.Identity)
+
 	path := "/check_task"
 	if params.Config.Platform == "max" {
 		path = "/max/check_task"
 	}
+
 	var response flyerCheckResponse
+
 	if err := p.client().postJSON(ctx, path, nil, body, &response); err != nil {
 		return PartnerCheckResult{}, err
 	}
+
 	completed := false
+
 	switch {
 	case response.Completed != nil:
 		completed = *response.Completed
@@ -140,13 +158,16 @@ func (p FlyerProvider) CheckPartnerTask(
 	case response.Status == "completed" || response.Status == "ok" || response.Status == "done":
 		completed = true
 	}
+
 	status := firstNonEmpty(response.Status, boolStatus(completed))
 	if response.Error != "" {
 		status = response.Error
 	}
+
 	payload := partnerMarshal(map[string]any{
 		"provider": "flyer", "status": status, "completed": completed,
 	})
+
 	return PartnerCheckResult{
 		Completed: completed,
 		Status:    status,
@@ -159,6 +180,7 @@ func (p FlyerProvider) client() partnerHTTPClient {
 	if baseURL == "" {
 		baseURL = defaultFlyerBaseURL
 	}
+
 	return partnerHTTPClient{
 		client:  p.Client,
 		timeout: p.Timeout,
@@ -179,6 +201,7 @@ func boolStatus(value bool) string {
 	if value {
 		return "completed"
 	}
+
 	return "not_completed"
 }
 

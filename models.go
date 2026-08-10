@@ -37,6 +37,7 @@ func ValidateWorkspaceID(value string) error {
 	if trimmed == "" {
 		return ErrIdentityWorkspaceRequired
 	}
+
 	if trimmed != value {
 		return ErrIdentityWorkspaceInvalid
 	}
@@ -66,15 +67,19 @@ func (i Identity) Validate() error {
 	if err := ValidateWorkspaceID(i.WorkspaceID); err != nil {
 		return err
 	}
+
 	if i.AppID <= 0 {
 		return ErrIdentityAppIDInvalid
 	}
+
 	if i.PlatformID <= 0 {
 		return ErrIdentityPlatformIDInvalid
 	}
+
 	if strings.TrimSpace(i.PlatformUserID) == "" {
 		return ErrIdentityPlatformUserIDRequired
 	}
+
 	return nil
 }
 

@@ -15,14 +15,17 @@ func (r *Repository) MarkIntegrationTaskReady(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	task := params.Task
 	result := MarkIntegrationTaskReadyResult{
 		Status: RecordStatusNoTasks,
 		Task:   task,
 	}
+
 	if !taskVisibleAt(task, now) {
 		return result, nil
 	}
+
 	for attempt := 0; attempt < 3; attempt++ {
 		err := r.WithTx(ctx, func(txRepo *Repository) error {
 			if err := txRepo.lockTaskUser(ctx, params.Identity); err != nil {
@@ -37,10 +40,12 @@ func (r *Repository) MarkIntegrationTaskReady(
 			if err != nil {
 				return err
 			}
+
 			if !allowed {
 				result.Status = RecordStatusNoTasks
 				return nil
 			}
+
 			progress, exists, err := txRepo.integrationTaskProgressForUpdate(
 				ctx,
 				params.Identity,
@@ -50,27 +55,33 @@ func (r *Repository) MarkIntegrationTaskReady(
 			if err != nil {
 				return err
 			}
+
 			if progress.Status == StatusClaimed ||
 				progress.Status == StatusReady {
 				task.Progress = &progress
 				result.Task = task
 				result.Status = RecordStatusDuplicate
+
 				return nil
 			}
+
 			if task.StartMode == StartModeRequired && !exists {
 				result.Status = ClaimStatusNotStarted
 				return nil
 			}
+
 			if params.ExternalEventKey != "" {
 				inserted, err := txRepo.insertProgressEvent(ctx, params)
 				if err != nil {
 					return err
 				}
+
 				if !inserted {
 					result.Status = RecordStatusDuplicate
 					return nil
 				}
 			}
+
 			periodStart, periodEnd := periodFor(task, now)
 			if !exists {
 				task.Rewards, err = txRepo.rewards(
@@ -87,6 +98,7 @@ func (r *Repository) MarkIntegrationTaskReady(
 				progress.Progress = task.TargetCount
 				progress.Status = StatusReady
 				progress.ReadyAt = &now
+
 				if err := txRepo.saveProgress(ctx, progress); err != nil {
 					return err
 				}
@@ -101,6 +113,7 @@ func (r *Repository) MarkIntegrationTaskReady(
 			}}); err != nil {
 				return err
 			}
+
 			progress.Progress = task.TargetCount
 			progress.Status = StatusReady
 			progress.ReadyAt = &now
@@ -109,6 +122,7 @@ func (r *Repository) MarkIntegrationTaskReady(
 			task.Progress = &progress
 			result.Task = task
 			result.Status = RecordStatusRecorded
+
 			if err := txRepo.refreshComplexParentsForChangedTasks(
 				ctx,
 				params.Identity,
@@ -117,13 +131,16 @@ func (r *Repository) MarkIntegrationTaskReady(
 			); err != nil {
 				return err
 			}
+
 			return nil
 		})
 		if isRetryableTxError(err) && attempt < 2 {
 			continue
 		}
+
 		return result, err
 	}
+
 	return result, nil
 }
 
@@ -135,6 +152,7 @@ func (r *Repository) integrationTaskSequenceReady(
 	if task.SequenceKey == nil {
 		return true, nil
 	}
+
 	row, err := r.q.GetSequenceState(ctx, tasksqlc.GetSequenceStateParams{
 		WorkspaceID:    identity.WorkspaceID,
 		SequenceKey:    *task.SequenceKey,
@@ -147,9 +165,11 @@ func (r *Repository) integrationTaskSequenceReady(
 			return task.SequencePosition != nil &&
 				*task.SequencePosition == 1, nil
 		}
+
 		return false, err
 	}
-	return string(row.Status) == "active" && row.CurrentTaskID.Valid &&
+
+	return row.Status == "active" && row.CurrentTaskID.Valid &&
 		uint64(row.CurrentTaskID.Int64) == task.ID, nil
 }
 
@@ -176,8 +196,10 @@ func (r *Repository) integrationTaskProgressForUpdate(
 		if isNoRows(err) {
 			return Progress{}, false, nil
 		}
+
 		return Progress{}, false, err
 	}
+
 	return progress, true, nil
 }
 
@@ -189,6 +211,7 @@ func (r *Repository) insertProgressEvent(
 	if len(eventPayload) == 0 {
 		eventPayload = []byte("{}")
 	}
+
 	affected, err := repositoryValue[int64](
 		ctx,
 		r,
@@ -212,5 +235,6 @@ func (r *Repository) insertProgressEvent(
 	if err != nil {
 		return false, err
 	}
+
 	return affected == 1, nil
 }

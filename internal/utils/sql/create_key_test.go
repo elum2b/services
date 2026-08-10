@@ -10,6 +10,7 @@ func TestCreateKey_StableAndDifferent(t *testing.T) {
 	if a != b {
 		t.Fatalf("expected stable key, got %q and %q", a, b)
 	}
+
 	if a == c {
 		t.Fatalf("expected different key for different parts, got %q", a)
 	}

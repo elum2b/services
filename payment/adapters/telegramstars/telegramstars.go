@@ -46,6 +46,7 @@ func NewWithOptions(
 	if err != nil {
 		repo = repository.NewPaymentRepositoryWithOptions(db, options)
 	}
+
 	return &TelegramStars{repository: repo, rootCtx: contextutil.Normalize(ctx)}
 }
 
@@ -53,6 +54,7 @@ func (a *TelegramStars) Close() error {
 	if a == nil || a.repository == nil {
 		return nil
 	}
+
 	return a.repository.Close()
 }
 
@@ -77,6 +79,7 @@ func NewClient(credentials Credentials) *Client {
 	if credentials.HTTPClient != nil {
 		restClient = resty.NewWithClient(credentials.HTTPClient)
 	}
+
 	restClient.SetBaseURL(apiBaseURL)
 	restClient.SetHeader("Accept", "application/json")
 
@@ -90,6 +93,7 @@ func (c *Client) requireCredentials() error {
 	if c == nil || c.botToken == "" {
 		return ErrBotTokenRequired
 	}
+
 	return nil
 }
 

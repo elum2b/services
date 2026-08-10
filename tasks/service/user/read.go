@@ -28,6 +28,7 @@ func (u *User) ListActive(
 	if err != nil {
 		return nil, err
 	}
+
 	return groupTasks(tasks), nil
 }
 
@@ -45,14 +46,18 @@ func (u *User) StartTask(
 			IssueRef: params.TaskRef,
 			Now:      params.Now,
 		})
+
 		return StartTaskResult{
 			Status:  result.Status,
 			Started: result.Started,
 			Task:    result.Task,
 		}, err
 	}
+
 	mergedCtx, cancel := u.withContext(ctx)
+
 	defer cancel()
+
 	result, err := u.repository.StartTask(mergedCtx, repository.StartTaskParams{
 		Identity: repositoryIdentity(
 			params.Identity,
@@ -63,14 +68,17 @@ func (u *User) StartTask(
 	if err != nil {
 		return StartTaskResult{}, err
 	}
+
 	output := StartTaskResult{
 		Status:  result.Status,
 		Started: result.Status == repository.StartStatusStarted,
 	}
 	if result.Task != nil {
 		task := mapTask(*result.Task)
+
 		output.Task = &task
 	}
+
 	return output, nil
 }
 
@@ -96,17 +104,22 @@ func (u *User) Claim(
 		if err != nil {
 			return ClaimResult{}, err
 		}
+
 		output := ClaimResult{Status: result.Status}
 		if result.Issue.ID != 0 {
 			now := params.Now
 			if now.IsZero() {
 				now = time.Now().UTC()
 			}
+
 			task := partnerIssueTask(result.Issue, result.Rewards, now)
+
 			output.Task = &task
 		}
+
 		return output, nil
 	}
+
 	result, err := u.repository.Claim(mergedCtx, repository.ClaimParams{
 		Identity:    repositoryIdentity(params.Identity),
 		TaskRef:     params.TaskRef,
@@ -116,11 +129,14 @@ func (u *User) Claim(
 	if err != nil {
 		return ClaimResult{}, err
 	}
+
 	output := ClaimResult{Status: result.Status}
 	if result.Task != nil {
 		task := mapTask(*result.Task)
+
 		output.Task = &task
 	}
+
 	return output, nil
 }
 
@@ -140,6 +156,7 @@ func repositoryIdentity(identity Identity) repository.Identity {
 func groupTasks(tasks []repository.ActiveTask) []TaskGroupModel {
 	groups := make([]TaskGroupModel, 0)
 	indexByKey := make(map[string]int, len(tasks))
+
 	for _, task := range tasks {
 		index, ok := indexByKey[task.GroupKey]
 		if !ok {
@@ -147,6 +164,7 @@ func groupTasks(tasks []repository.ActiveTask) []TaskGroupModel {
 			if title == "" {
 				title = task.GroupKey
 			}
+
 			groups = append(groups, TaskGroupModel{
 				Key:         task.GroupKey,
 				Title:       title,
@@ -156,8 +174,10 @@ func groupTasks(tasks []repository.ActiveTask) []TaskGroupModel {
 			index = len(groups) - 1
 			indexByKey[task.GroupKey] = index
 		}
+
 		groups[index].Tasks = append(groups[index].Tasks, task)
 	}
+
 	return groups
 }
 
@@ -180,6 +200,7 @@ func mapTask(task repository.Task) TaskModel {
 		result.Title = task.Localization.Title
 		result.Description = task.Localization.Description
 	}
+
 	if task.Progress != nil {
 		result.Progress = &repository.ActiveProgress{
 			Progress:      task.Progress.Progress,
@@ -190,5 +211,6 @@ func mapTask(task repository.Task) TaskModel {
 			ClaimedAt:     task.Progress.ClaimedAt,
 		}
 	}
+
 	return result
 }

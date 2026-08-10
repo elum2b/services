@@ -13,10 +13,10 @@ func (r *PaymentRepository) GetPaymentReport(
 	ctx context.Context,
 	params PaymentReportParams,
 ) ([]PaymentReportModel, PaymentReportStatsModel, error) {
-
 	if _, err := requireWorkspaceID(params.WorkspaceID); err != nil {
 		return nil, PaymentReportStatsModel{}, err
 	}
+
 	if params.MinAmountMinor > math.MaxInt64 ||
 		params.MaxAmountMinor > math.MaxInt64 ||
 		(params.MaxAmountMinor > 0 && params.MinAmountMinor > params.MaxAmountMinor) {
@@ -33,6 +33,7 @@ func (r *PaymentRepository) GetPaymentReport(
 	if err != nil {
 		return nil, PaymentReportStatsModel{}, err
 	}
+
 	defer func() {
 		_ = tx.Rollback()
 	}()
@@ -174,9 +175,11 @@ func mapPaymentReportStats(
 		refundAmount := uint64(row.RefundAmountMinor)
 		grossAmount := uint64(row.GrossAmountMinor)
 		netAmount := uint64(0)
+
 		if grossAmount > refundAmount {
 			netAmount = grossAmount - refundAmount
 		}
+
 		result.Assets = append(result.Assets, PaymentReportAssetStatsModel{
 			AssetCode:         row.AssetCode,
 			OrderCount:        uint64(row.OrderCount),

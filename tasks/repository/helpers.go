@@ -40,7 +40,9 @@ func ptrUint32(value sql.NullInt32) *uint32 {
 	if !value.Valid {
 		return nil
 	}
+
 	result := uint32(value.Int32)
+
 	return &result
 }
 
@@ -49,6 +51,7 @@ func int64sFromUint64s(values []uint64) []int64 {
 	for _, value := range values {
 		out = append(out, int64(value))
 	}
+
 	return out
 }
 
@@ -57,6 +60,7 @@ func uint64sFromInt64s(values []int64) []uint64 {
 	for _, value := range values {
 		out = append(out, uint64(value))
 	}
+
 	return out
 }
 
@@ -68,6 +72,7 @@ func taskRef(value string) (id uint64, key string) {
 	if parsed, err := strconv.ParseUint(value, 10, 64); err == nil {
 		return parsed, ""
 	}
+
 	return 0, value
 }
 
@@ -75,41 +80,50 @@ func periodFor(task Task, now time.Time) (time.Time, time.Time) {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	now = now.UTC()
+
 	if task.ResetUnit == ResetNever {
 		return periodAnchor, periodForeverEnd
 	}
+
 	count := task.ResetEvery
 	if count == 0 {
 		count = 1
 	}
-	start := periodAnchor
+
+	var start time.Time
+
 	switch task.ResetUnit {
 	case ResetSecond:
 		step := time.Duration(count) * time.Second
-		start = periodAnchor.Add(
-			time.Duration(now.Sub(periodAnchor)/step) * step,
-		)
+
+		start = periodAnchor.Add(now.Sub(periodAnchor) / step * step)
+
 		return start, start.Add(step)
 	case ResetMinute:
 		step := time.Duration(count) * time.Minute
-		start = periodAnchor.Add(
-			time.Duration(now.Sub(periodAnchor)/step) * step,
-		)
+
+		start = periodAnchor.Add(now.Sub(periodAnchor) / step * step)
+
 		return start, start.Add(step)
 	case ResetHour:
 		step := time.Duration(count) * time.Hour
-		start = periodAnchor.Add(
-			time.Duration(now.Sub(periodAnchor)/step) * step,
-		)
+
+		start = periodAnchor.Add(now.Sub(periodAnchor) / step * step)
+
 		return start, start.Add(step)
 	case ResetDay:
 		days := int(now.Sub(periodAnchor).Hours() / 24)
+
 		start = periodAnchor.AddDate(0, 0, (days/int(count))*int(count))
+
 		return start, start.AddDate(0, 0, int(count))
 	case ResetYear:
 		years := now.Year() - periodAnchor.Year()
+
 		start = periodAnchor.AddDate((years/int(count))*int(count), 0, 0)
+
 		return start, start.AddDate(int(count), 0, 0)
 	default:
 		return periodAnchor, periodForeverEnd
@@ -130,13 +144,13 @@ func mapTask(row tasksqlc.TaskDefinition) Task {
 		SequencePosition: ptrUint32(row.SequencePosition),
 		TaskKind:         row.TaskKind,
 		ActionKey:        row.ActionKey,
-		ActionKind:       string(row.ActionKind),
-		ClaimMode:        string(row.ClaimMode),
-		StartMode:        string(row.StartMode),
+		ActionKind:       row.ActionKind,
+		ClaimMode:        row.ClaimMode,
+		StartMode:        row.StartMode,
 		TargetCount: uint64(
 			row.TargetCount,
 		),
-		ResetUnit:       string(row.ResetUnit),
+		ResetUnit:       row.ResetUnit,
 		ResetEvery:      uint32(row.ResetEvery),
 		Position:        row.Position,
 		Payload:         nullRawMessage(row.Payload),
@@ -162,7 +176,10 @@ func decodeRewards(raw json.RawMessage) []Reward {
 	if len(raw) == 0 {
 		return nil
 	}
+
 	var rewards []Reward
+
 	_ = json.Unmarshal(raw, &rewards)
+
 	return rewards
 }

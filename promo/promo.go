@@ -49,6 +49,7 @@ func NewWithDatabase(
 			err,
 		)
 	}
+
 	return newPromo(ctx, client, false, options), nil
 }
 
@@ -56,35 +57,45 @@ func (p *Promo) Run(ctx context.Context, params DatabaseParams) error {
 	if p == nil {
 		return ErrServiceNil
 	}
+
 	p.lifecycleMu.Lock()
+
 	if p.running {
 		p.lifecycleMu.Unlock()
+
 		return ErrServiceRunning
 	}
+
 	p.running = true
+
 	registrations := append([]callbackRegistration(nil), p.callbacksToRun...)
 	p.lifecycleMu.Unlock()
 
 	running, err := open(ctx, params)
 	if err != nil {
 		p.lifecycleMu.Lock()
+
 		p.running = false
 		p.lifecycleMu.Unlock()
+
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			return nil
 		}
+
 		return wrapLifecycleError(err)
 	}
+
 	p.adopt(running)
+
 	defer p.Close()
 
 	errCh := make(chan error, len(registrations))
 	for _, registration := range registrations {
-		registration := registration
 		p.goroutines.Go("promo.callback", func() {
 			errCh <- p.runCallback(registration.ctx, registration.handler, registration.options...)
 		})
 	}
+
 	select {
 	case <-p.rootCtx.Done():
 		return nil
@@ -92,6 +103,7 @@ func (p *Promo) Run(ctx context.Context, params DatabaseParams) error {
 		if errors.Is(err, context.Canceled) && p.rootCtx.Err() != nil {
 			return nil
 		}
+
 		return wrapLifecycleError(err)
 	}
 }
@@ -100,9 +112,11 @@ func open(ctx context.Context, params DatabaseParams) (*Promo, error) {
 	if params.User == "" {
 		return nil, ErrDatabaseConfigRequired
 	}
+
 	if params.Database == "" {
 		return nil, ErrDatabaseConfigRequired
 	}
+
 	db, err := openPostgres(ctx, params)
 	if err != nil {
 		return nil, serviceerrors.Wrap(
@@ -111,15 +125,18 @@ func open(ctx context.Context, params DatabaseParams) (*Promo, error) {
 			err,
 		)
 	}
+
 	client, err := sqlwrap.New(db, toSQLWrapOptions(params.Options))
 	if err != nil {
 		_ = db.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"promo sql client initialization failed",
 			err,
 		)
 	}
+
 	bootstrap := repository.NewWithOptions(client, repository.Options{
 		QueryTimeout:             params.Options.QueryTimeout,
 		CacheL1Delay:             params.Options.CacheL1Delay,
@@ -129,20 +146,24 @@ func open(ctx context.Context, params DatabaseParams) (*Promo, error) {
 	if err := bootstrap.Bootstrap(ctx); err != nil {
 		_ = bootstrap.Close()
 		_ = client.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"promo bootstrap failed",
 			err,
 		)
 	}
+
 	if err := bootstrap.Close(); err != nil {
 		_ = client.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"promo bootstrap shutdown failed",
 			err,
 		)
 	}
+
 	return newPromo(ctx, client, true, params.Options), nil
 }
 
@@ -151,10 +172,12 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 	if host == "" {
 		host = "localhost"
 	}
+
 	port := params.Port
 	if port == 0 {
 		port = 5432
 	}
+
 	dsn, err := sqlwrap.PostgresDSN(sqlwrap.PostgresParams{
 		User:        params.User,
 		Password:    params.Password,
@@ -167,20 +190,24 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
+
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+
 	return db, nil
 }
 
 func (p *Promo) adopt(running *Promo) {
 	p.lifecycleMu.Lock()
 	defer p.lifecycleMu.Unlock()
+
 	p.Admin, p.User = running.Admin, running.User
 	p.callbacks, p.client, p.ownsClient = running.callbacks, running.client, running.ownsClient
 	p.rootCtx, p.rootCancel = running.rootCtx, running.rootCancel
@@ -200,6 +227,7 @@ func newPromo(
 		CacheL2Delay:             options.CacheL2Delay,
 		OnCacheInvalidationError: options.OnCacheInvalidationError,
 	}
+
 	return &Promo{
 		Admin: admin.NewWithRepositoryOptions(
 			rootCtx,
@@ -224,25 +252,33 @@ func (p *Promo) Close() error {
 	if p == nil {
 		return nil
 	}
+
 	if p.rootCancel != nil {
 		p.rootCancel()
 	}
+
 	if p.goroutines != nil {
 		p.goroutines.Close()
 	}
+
 	var err error
+
 	if p.Admin != nil {
 		err = errors.Join(err, p.Admin.Close())
 	}
+
 	if p.User != nil {
 		err = errors.Join(err, p.User.Close())
 	}
+
 	if p.callbacks != nil {
 		err = errors.Join(err, p.callbacks.Close())
 	}
+
 	if p.ownsClient && p.client != nil {
 		err = errors.Join(err, p.client.Close())
 	}
+
 	return err
 }
 
@@ -251,8 +287,10 @@ func (p *Promo) IsReady() bool {
 	if p == nil {
 		return false
 	}
+
 	p.lifecycleMu.Lock()
 	defer p.lifecycleMu.Unlock()
+
 	return p.rootCtx != nil && p.rootCtx.Err() == nil &&
 		!p.client.IsUnavailable() &&
 		p.Admin != nil &&
@@ -265,5 +303,6 @@ func (p *Promo) bindContext(
 	if p == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}
+
 	return contextutil.Merge(p.rootCtx, ctx)
 }

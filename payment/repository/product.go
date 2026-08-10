@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"time"
 
@@ -160,6 +161,7 @@ func (r *PaymentRepository) GetProduct(
 	if err != nil {
 		return Product{}, err
 	}
+
 	locale := params.Locale
 	if locale == "" {
 		locale = "ru"
@@ -181,6 +183,7 @@ func (r *PaymentRepository) GetProduct(
 	if err != nil {
 		return Product{}, err
 	}
+
 	if !productTargetMatches(
 		product.Target,
 		params.IsPremium,
@@ -214,7 +217,9 @@ func (r *PaymentRepository) ListProducts(
 	if err != nil {
 		return nil, err
 	}
+
 	locale := normalizedLocale(params.Locale)
+
 	now, err := r.catalogNow(ctx, params.Now)
 	if err != nil {
 		return nil, err
@@ -227,6 +232,7 @@ func (r *PaymentRepository) ListProducts(
 		locale,
 		params.GroupCode,
 	)
+
 	rows, err := queryPaymentCache(
 		ctx,
 		r,
@@ -253,6 +259,7 @@ func (r *PaymentRepository) ListProducts(
 	}
 
 	products := mapProductsCatalogRows(rows, now)
+
 	products = filterProductsByTarget(
 		products,
 		params.IsPremium,
@@ -262,9 +269,11 @@ func (r *PaymentRepository) ListProducts(
 		params.Platform,
 		params.PlatformID,
 	)
+
 	if len(products) == 0 {
 		return []Product{}, nil
 	}
+
 	if err := r.attachProductsLimitLocks(
 		ctx,
 		products,
@@ -276,6 +285,7 @@ func (r *PaymentRepository) ListProducts(
 	); err != nil {
 		return nil, err
 	}
+
 	return products, nil
 }
 
@@ -294,6 +304,7 @@ func (r *PaymentRepository) getProductCatalog(
 		assetCode,
 		locale,
 	)
+
 	rows, err := queryPaymentCache(
 		ctx,
 		r,
@@ -314,6 +325,7 @@ func (r *PaymentRepository) getProductCatalog(
 	if err != nil {
 		return Product{}, err
 	}
+
 	return mapProductCatalogRows(rows, now)
 }
 
@@ -325,6 +337,7 @@ func (r *PaymentRepository) attachProductLimitLocks(
 	platformUserID string,
 ) error {
 	var err error
+
 	product.Limit.Global.LockUntil, err = r.getProductLimitLock(
 		ctx,
 		productLimitQuery{
@@ -358,6 +371,7 @@ func (r *PaymentRepository) attachProductLimitLocks(
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -369,12 +383,14 @@ func (r *PaymentRepository) getCheckoutProduct(
 	if err != nil {
 		return Product{}, err
 	}
+
 	locale := normalizedLocale(params.Locale)
 
 	now, err := r.catalogNow(ctx, params.Now)
 	if err != nil {
 		return Product{}, err
 	}
+
 	product, err := r.getProductCatalog(
 		ctx,
 		workspaceID,
@@ -386,6 +402,7 @@ func (r *PaymentRepository) getCheckoutProduct(
 	if err != nil {
 		return Product{}, err
 	}
+
 	if !productTargetMatches(
 		product.Target,
 		params.IsPremium,
@@ -397,6 +414,7 @@ func (r *PaymentRepository) getCheckoutProduct(
 	) {
 		return Product{}, sql.ErrNoRows
 	}
+
 	if err := r.attachProductLimitLocks(
 		ctx,
 		&product,
@@ -423,6 +441,7 @@ func (r *PaymentRepository) GetProductByKey(
 	if err != nil {
 		return Product{}, err
 	}
+
 	if !isPurchaseKeyUsable(key, now) {
 		return Product{}, sql.ErrNoRows
 	}
@@ -457,6 +476,7 @@ func (r *PaymentRepository) GetProductPreview(
 	if err != nil {
 		return ProductPreview{}, err
 	}
+
 	locale := params.Locale
 	if locale == "" {
 		locale = "ru"
@@ -473,6 +493,7 @@ func (r *PaymentRepository) GetProductPreview(
 		params.ProductID,
 		locale,
 	)
+
 	rows, err := queryPaymentCache(
 		ctx,
 		r,
@@ -492,6 +513,7 @@ func (r *PaymentRepository) GetProductPreview(
 	if err != nil {
 		return ProductPreview{}, err
 	}
+
 	product, err := mapProductPreviewCatalogRows(rows, now)
 	if err != nil {
 		return ProductPreview{}, err
@@ -543,11 +565,14 @@ func (r *PaymentRepository) ListProductPriceOptions(
 	if err != nil {
 		return nil, err
 	}
+
 	now, err := r.catalogNow(ctx, time.Time{})
 	if err != nil {
 		return nil, err
 	}
+
 	key := paymentCacheKey("product_price_options", workspaceID, productID)
+
 	rows, err := queryPaymentCache(
 		ctx,
 		r,
@@ -566,11 +591,13 @@ func (r *PaymentRepository) ListProductPriceOptions(
 	if err != nil {
 		return nil, err
 	}
+
 	options := make([]ProductPriceOption, 0, len(rows))
 	for _, row := range rows {
 		if now.Before(row.StartsAt) || now.After(row.EndsAt) {
 			continue
 		}
+
 		options = append(options, ProductPriceOption{
 			PriceID:             uint64(row.PriceID),
 			ProductID:           row.ProductID,
@@ -590,6 +617,7 @@ func (r *PaymentRepository) ListProductPriceOptions(
 			ProviderCodes: splitProviderCodes(row.ProviderCodes),
 		})
 	}
+
 	return options, nil
 }
 
@@ -600,6 +628,7 @@ func (r *PaymentRepository) catalogNow(
 	if !value.IsZero() {
 		return value, nil
 	}
+
 	return r.databaseNow(ctx)
 }
 
@@ -658,6 +687,7 @@ func mapProductCatalogRows(
 		if row.PriceID != selected.PriceID || row.ItemID == "" {
 			continue
 		}
+
 		product.Items = append(product.Items, ProductItem{
 			ID:           row.ItemID,
 			Quantity:     row.ItemQuantity,
@@ -675,16 +705,20 @@ func mapProductsCatalogRows(
 	now time.Time,
 ) []Product {
 	products := make([]Product, 0)
+
 	for start := 0; start < len(rows); {
 		end := start + 1
 		for end < len(rows) && rows[end].ProductID == rows[start].ProductID {
 			end++
 		}
+
 		if product, ok := mapProductsCatalogGroup(rows[start:end], now); ok {
 			products = append(products, product)
 		}
+
 		start = end
 	}
+
 	return products
 }
 
@@ -693,7 +727,9 @@ func mapProductsCatalogGroup(
 	now time.Time,
 ) (Product, bool) {
 	var selected sqlc.ListProductsCatalogCacheRowsRow
+
 	found := false
+
 	for _, row := range rows {
 		if productCatalogRowActive(
 			row.IsVisible,
@@ -706,9 +742,11 @@ func mapProductsCatalogGroup(
 		) {
 			selected = row
 			found = true
+
 			break
 		}
 	}
+
 	if !found {
 		return Product{}, false
 	}
@@ -754,6 +792,7 @@ func mapProductsCatalogGroup(
 		if row.PriceID != selected.PriceID || row.ItemID == "" {
 			continue
 		}
+
 		product.Items = append(product.Items, ProductItem{
 			ID:           row.ItemID,
 			Quantity:     row.ItemQuantity,
@@ -762,6 +801,7 @@ func mapProductsCatalogGroup(
 			DurationUnit: listProductsDurationUnitPtr(row.DurationUnit),
 		})
 	}
+
 	return product, true
 }
 
@@ -795,6 +835,7 @@ func filterProductsByTarget(
 			filtered = append(filtered, product)
 		}
 	}
+
 	return filtered
 }
 
@@ -820,7 +861,9 @@ func listProductsDurationUnitPtr(
 	if !value.Valid {
 		return nil
 	}
+
 	unit := string(value.PaymentProductCacheDurationUnit)
+
 	return &unit
 }
 
@@ -873,6 +916,7 @@ func (r *PaymentRepository) attachProductsLimitLocks(
 			counts,
 		)
 	}
+
 	return nil
 }
 
@@ -887,10 +931,12 @@ func attachProductListLimitLock(
 	if rule.Limit <= 0 || rule.Interval == "UNLIMITED" {
 		return
 	}
+
 	start, end, ok := limitWindow(rule.Interval, rule.IntervalCount, now)
 	if !ok {
 		return
 	}
+
 	if counts[productLimitCounterKey(productID, scope, platformUserID, start, end)] >= uint64(
 		rule.Limit,
 	) {
@@ -929,6 +975,7 @@ func selectProductCatalogPrice(
 			return row, true
 		}
 	}
+
 	return sqlc.ListProductCatalogCacheRowsRow{}, false
 }
 
@@ -976,6 +1023,7 @@ func mapProductPreviewCatalogRows(
 		if row.PriceID != selected.PriceID || row.ItemID == "" {
 			continue
 		}
+
 		product.Items = append(product.Items, ProductItem{
 			ID:           row.ItemID,
 			Quantity:     row.ItemQuantity,
@@ -994,7 +1042,9 @@ func paymentCacheDurationUnitPtr(
 	if !value.Valid {
 		return nil
 	}
+
 	unit := string(value.PaymentProductCacheDurationUnit)
+
 	return &unit
 }
 
@@ -1015,6 +1065,7 @@ func selectProductPreviewCatalogPrice(
 			return row, true
 		}
 	}
+
 	return sqlc.ListProductPreviewCatalogCacheRowsRow{}, false
 }
 
@@ -1043,6 +1094,7 @@ func (r *PaymentRepository) CreateProductPurchaseKey(
 	if err != nil {
 		return "", err
 	}
+
 	maxUses := params.MaxUses
 	if maxUses <= 0 {
 		maxUses = 1
@@ -1086,6 +1138,7 @@ func newPurchaseKey() (string, error) {
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
+
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
@@ -1093,9 +1146,11 @@ func isPurchaseKeyUsable(key sqlc.PaymentPurchaseKey, now time.Time) bool {
 	if key.Status != sqlc.PaymentPurchaseKeyStatusActive {
 		return false
 	}
+
 	if key.ExpiresAt.Valid && !key.ExpiresAt.Time.After(now) {
 		return false
 	}
+
 	return key.UsedCount+key.ReservedCount < key.MaxUses
 }
 
@@ -1103,6 +1158,7 @@ func splitProviderCodes(value []byte) []string {
 	if len(value) == 0 {
 		return nil
 	}
+
 	return strings.Split(string(value), ",")
 }
 
@@ -1136,8 +1192,10 @@ func (r *PaymentRepository) getProductLimitLock(
 		return sql.NullTime{}, nil
 	}
 
-	scope := sqlc.PaymentProductLimitCounterCounterScopeGlobal
+	var scope sqlc.PaymentProductLimitCounterCounterScope
+
 	platformUserID := ""
+
 	if query.platformUserID == "" {
 		scope = sqlc.PaymentProductLimitCounterCounterScopeGlobal
 	} else {
@@ -1158,14 +1216,17 @@ func (r *PaymentRepository) getProductLimitLock(
 			WindowEnd:      end,
 		},
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return sql.NullTime{}, nil
 	}
+
 	if err != nil {
 		return sql.NullTime{}, err
 	}
+
 	amount := normalizeLimitAmount(query.amount)
 	limit := uint64(query.limit)
+
 	if amount <= limit && uint64(total) <= limit-amount {
 		return sql.NullTime{}, nil
 	}
@@ -1177,6 +1238,7 @@ func normalizeLimitAmount(amount uint64) uint64 {
 	if amount == 0 {
 		return 1
 	}
+
 	return amount
 }
 
@@ -1215,6 +1277,7 @@ func limitWindow(
 	}
 
 	anchor := time.Date(2024, 1, 1, 0, 0, 0, 0, now.Location())
+
 	switch interval {
 	case "SECOND":
 		return fixedLimitWindow(anchor, now, time.Duration(count)*time.Second)
@@ -1249,11 +1312,14 @@ func fixedLimitWindow(
 	if duration <= 0 {
 		return time.Time{}, time.Time{}, false
 	}
+
 	if now.Before(anchor) {
 		return anchor, anchor.Add(duration), true
 	}
+
 	elapsed := now.Sub(anchor)
 	start := anchor.Add(time.Duration(int64(elapsed/duration)) * duration)
+
 	return start, start.Add(duration), true
 }
 
@@ -1261,11 +1327,13 @@ func monthLimitWindow(anchor time.Time, now time.Time, count int) time.Time {
 	if now.Before(anchor) {
 		return anchor
 	}
+
 	months := (now.Year()-anchor.Year())*12 + int(
 		now.Month(),
 	) - int(
 		anchor.Month(),
 	)
 	bucket := months / count * count
+
 	return anchor.AddDate(0, bucket, 0)
 }

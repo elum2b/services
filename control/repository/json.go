@@ -10,7 +10,7 @@ func nullRawMessage(value pqtype.NullRawMessage) json.RawMessage {
 		return nil
 	}
 
-	return json.RawMessage(value.RawMessage)
+	return value.RawMessage
 }
 
 func rawMessageParam(value json.RawMessage) pqtype.NullRawMessage {

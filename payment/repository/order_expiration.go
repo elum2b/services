@@ -19,14 +19,17 @@ func (r *PaymentRepository) ExpireStaleOrders(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	if maxAge <= 0 {
 		maxAge = time.Hour
 	}
+
 	if batchSize <= 0 {
 		batchSize = 100
 	}
 
 	createdBefore := now.Add(-maxAge)
+
 	candidates, err := r.q.ListStalePaymentOrderCandidates(
 		ctx,
 		paymentsqlc.ListStalePaymentOrderCandidatesParams{
@@ -41,6 +44,7 @@ func (r *PaymentRepository) ExpireStaleOrders(
 	}
 
 	expired := 0
+
 	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
 		for _, candidate := range candidates {
 			if _, err := txRepo.q.LockPaymentAttemptsForOrder(
@@ -68,9 +72,11 @@ func (r *PaymentRepository) ExpireStaleOrders(
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
+
 			if err != nil {
 				return err
 			}
+
 			orders = append(orders, order)
 		}
 
@@ -97,6 +103,7 @@ func (r *PaymentRepository) ExpireStaleOrders(
 				if err != nil {
 					return err
 				}
+
 				if rows != 1 {
 					return ErrOrderStateInvalid
 				}
@@ -116,6 +123,7 @@ func (r *PaymentRepository) ExpireStaleOrders(
 			if err != nil {
 				return err
 			}
+
 			if rows != 1 {
 				return ErrOrderStateInvalid
 			}

@@ -19,10 +19,13 @@ func (a *TelegramStars) HandleSuccessfulPayment(
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	if payment.InvoicePayload == "" {
 		return nil, ErrInvoicePayloadRequired
 	}
+
 	if payment.TelegramPaymentChargeID == "" {
 		return nil, ErrTelegramPaymentChargeIDRequired
 	}
@@ -59,6 +62,7 @@ func (a *TelegramStars) HandleSuccessfulPayment(
 			SignatureValid: nil,
 		},
 	)
+
 	if err != nil && !isDuplicateEntry(err) {
 		return nil, err
 	}
@@ -67,11 +71,13 @@ func (a *TelegramStars) HandleSuccessfulPayment(
 		if payment.SubscriptionExpirationDate <= 0 {
 			return nil, ErrRecurringExpirationRequired
 		}
+
 		if attempt.ProviderChargeID == nil || *attempt.ProviderChargeID == "" {
 			return nil, repository.ErrPaymentMismatch
 		}
 
 		periodEnd := time.Unix(payment.SubscriptionExpirationDate, 0).UTC()
+
 		renewed, err := a.repository.RecordSubscriptionRenewal(
 			ctx,
 			repository.SubscriptionRenewalParams{
@@ -108,6 +114,7 @@ func (a *TelegramStars) HandleSuccessfulPayment(
 	if err != nil {
 		return nil, err
 	}
+
 	if updated != 1 {
 		return nil, repository.ErrPaymentMismatch
 	}
@@ -132,6 +139,7 @@ func (a *TelegramStars) HandleSuccessfulPayment(
 		if err != nil {
 			return nil, err
 		}
+
 		if _, err := a.repository.UpsertSubscription(
 			ctx,
 			repository.SubscriptionUpsertParams{

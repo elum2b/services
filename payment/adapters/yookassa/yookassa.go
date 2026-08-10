@@ -47,6 +47,7 @@ func NewWithOptions(
 	if err != nil {
 		repo = repository.NewPaymentRepositoryWithOptions(db, options)
 	}
+
 	return &YooKassa{repository: repo, rootCtx: contextutil.Normalize(ctx)}
 }
 
@@ -54,6 +55,7 @@ func (a *YooKassa) Close() error {
 	if a == nil || a.repository == nil {
 		return nil
 	}
+
 	return a.repository.Close()
 }
 
@@ -79,6 +81,7 @@ func NewClient(credentials Credentials) *Client {
 	if credentials.HTTPClient != nil {
 		restClient = resty.NewWithClient(credentials.HTTPClient)
 	}
+
 	restClient.SetBaseURL(apiBaseURL)
 	restClient.SetBasicAuth(credentials.ShopID, credentials.SecretKey)
 	restClient.SetHeader("Accept", "application/json")
@@ -94,5 +97,6 @@ func (c *Client) requireCredentials() error {
 	if c == nil || c.shopID == "" || c.secretKey == "" {
 		return ErrCredentialsRequired
 	}
+
 	return nil
 }

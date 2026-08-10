@@ -11,7 +11,6 @@ func (a *Admin) GetPaymentReport(
 	ctx context.Context,
 	params PaymentReportParams,
 ) (PaymentReport, error) {
-
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
 
@@ -59,26 +58,32 @@ func normalizePaymentReportParams(
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return PaymentReportParams{}, err
 	}
+
 	if params.Identity != nil {
 		if err := params.Identity.Validate(); err != nil {
 			return PaymentReportParams{}, err
 		}
+
 		if params.Identity.WorkspaceID != params.WorkspaceID {
 			return PaymentReportParams{}, repository.ErrPaymentReportInvalid
 		}
 	}
+
 	if params.AppID < 0 || params.PlatformID < 0 ||
 		(params.PlatformUserID != "" && (params.AppID <= 0 || params.PlatformID <= 0)) {
 		return PaymentReportParams{}, repository.ErrPaymentReportInvalid
 	}
+
 	if params.CreatedFrom != nil && params.CreatedUntil != nil &&
 		!params.CreatedFrom.Before(*params.CreatedUntil) {
 		return PaymentReportParams{}, repository.ErrInvalidDateRange
 	}
+
 	if params.MaxAmountMinor > 0 &&
 		params.MinAmountMinor > params.MaxAmountMinor {
 		return PaymentReportParams{}, repository.ErrPaymentReportInvalid
 	}
+
 	if params.Status != "" && !validReportOrderStatus(params.Status) {
 		return PaymentReportParams{}, repository.ErrPaymentReportInvalid
 	}
@@ -86,23 +91,29 @@ func normalizePaymentReportParams(
 	if params.IdentityRole == "" {
 		params.IdentityRole = PaymentIdentityRoleEither
 	}
+
 	if !validPaymentIdentityRole(params.IdentityRole) {
 		return PaymentReportParams{}, repository.ErrPaymentReportInvalid
 	}
+
 	if params.Sort == "" {
 		params.Sort = PaymentSortCreatedAt
 	}
+
 	if !validPaymentSort(params.Sort) {
 		return PaymentReportParams{}, repository.ErrPaymentReportInvalid
 	}
+
 	if params.Direction == "" {
 		params.Direction = SortDescending
 	}
+
 	if params.Direction != SortAscending && params.Direction != SortDescending {
 		return PaymentReportParams{}, repository.ErrPaymentReportInvalid
 	}
 
 	params.Page.Limit, params.Page.Offset = normalizePage(params.Page)
+
 	return params, nil
 }
 

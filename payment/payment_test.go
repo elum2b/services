@@ -67,6 +67,7 @@ func TestPaymentProviderAdaptersNilReceiverReturnsNotInitialized(t *testing.T) {
 				platega.ErrNotInitialized,
 			)
 		}
+
 		if _, err := adapter.HandleWebhook(
 			context.Background(),
 			platega.WebhookRequest{},
@@ -80,6 +81,7 @@ func TestPaymentProviderAdaptersNilReceiverReturnsNotInitialized(t *testing.T) {
 				platega.ErrNotInitialized,
 			)
 		}
+
 		if _, err := adapter.SyncPayment(
 			context.Background(),
 			platega.SyncPaymentParams{},
@@ -93,6 +95,7 @@ func TestPaymentProviderAdaptersNilReceiverReturnsNotInitialized(t *testing.T) {
 				platega.ErrNotInitialized,
 			)
 		}
+
 		if _, err := adapter.GetH2H(
 			context.Background(),
 			platega.GetH2HParams{},
@@ -106,6 +109,7 @@ func TestPaymentProviderAdaptersNilReceiverReturnsNotInitialized(t *testing.T) {
 				platega.ErrNotInitialized,
 			)
 		}
+
 		if _, err := adapter.Execute(
 			context.Background(),
 			platega.RefundParams{},
@@ -137,6 +141,7 @@ func TestPaymentProviderAdaptersNilReceiverReturnsNotInitialized(t *testing.T) {
 				yookassa.ErrNotInitialized,
 			)
 		}
+
 		if _, err := adapter.HandleWebhook(
 			context.Background(),
 			yookassa.WebhookRequest{},
@@ -150,6 +155,7 @@ func TestPaymentProviderAdaptersNilReceiverReturnsNotInitialized(t *testing.T) {
 				yookassa.ErrNotInitialized,
 			)
 		}
+
 		if _, err := adapter.SyncPayment(
 			context.Background(),
 			yookassa.SyncPaymentParams{},
@@ -163,6 +169,7 @@ func TestPaymentProviderAdaptersNilReceiverReturnsNotInitialized(t *testing.T) {
 				yookassa.ErrNotInitialized,
 			)
 		}
+
 		if _, err := adapter.Execute(
 			context.Background(),
 			yookassa.RefundParams{},
@@ -180,15 +187,20 @@ func TestPaymentProviderAdaptersNilReceiverReturnsNotInitialized(t *testing.T) {
 }
 
 func TestPaymentYooKassaGetPaymentClientContract(t *testing.T) {
-	var receivedPath string
-	var receivedUsername string
-	var receivedPassword string
+	var (
+		receivedPath     string
+		receivedUsername string
+		receivedPassword string
+	)
+
 	server := httptest.NewServer(
 		http.HandlerFunc(
 			func(writer http.ResponseWriter, request *http.Request) {
 				receivedPath = request.URL.Path
 				receivedUsername, receivedPassword, _ = request.BasicAuth()
+
 				writer.Header().Set("Content-Type", "application/json")
+
 				_, _ = io.WriteString(writer, `{
 			"id":"payment-1",
 			"status":"pending",
@@ -211,9 +223,11 @@ func TestPaymentYooKassaGetPaymentClientContract(t *testing.T) {
 	); err != nil {
 		t.Fatalf("get YooKassa payment: %v", err)
 	}
+
 	if receivedPath != "/v3/payments/payment-1" {
 		t.Fatalf("request path = %q", receivedPath)
 	}
+
 	if receivedUsername != "shop-id" || receivedPassword != "secret-key" {
 		t.Fatalf(
 			"basic auth username=%q password=%q",
@@ -232,19 +246,23 @@ func TestPaymentYooKassaGetPaymentClientContract(t *testing.T) {
 		}),
 	)
 	t.Cleanup(failedServer.Close)
+
 	failedClient := yookassa.NewClient(yookassa.Credentials{
 		ShopID:     "shop-id",
 		SecretKey:  "secret-key",
 		APIBaseURL: failedServer.URL,
 		HTTPClient: failedServer.Client(),
 	})
+
 	_, err := failedClient.GetPayment(context.Background(), "payment-2")
 	if err == nil {
 		t.Fatal("expected provider error")
 	}
+
 	if !strings.Contains(err.Error(), "get payment") {
 		t.Fatalf("provider error = %v", err)
 	}
+
 	_ = errors.Unwrap(err)
 }
 
@@ -261,6 +279,7 @@ func TestPaymentTONAdapterValidationAndRefundExecutor(t *testing.T) {
 	); err == nil {
 		t.Fatal("invalid subscriber workspace must fail")
 	}
+
 	if _, err := env.api.Adapters.TON.StartSubscriber(
 		env.ctx,
 		paymentton.SubscriberParams{
@@ -283,6 +302,7 @@ func TestPaymentTONAdapterValidationAndRefundExecutor(t *testing.T) {
 	) {
 		t.Fatalf("refund without executor error = %v", err)
 	}
+
 	result, err := env.api.Adapters.TON.Execute(
 		env.ctx,
 		paymentton.RefundParams{
@@ -304,6 +324,7 @@ func TestPaymentTONAdapterValidationAndRefundExecutor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute TON refund: %v", err)
 	}
+
 	if result.ProviderRefundID != "ton-refund-id" ||
 		result.Status != "succeeded" {
 		t.Fatalf("unexpected TON refund result: %#v", result)
@@ -362,11 +383,13 @@ func TestPaymentSubscriptionProviderIDIsScopedByWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create workspace B subscription: %v", err)
 	}
+
 	if secondID == firstID {
 		t.Fatalf("workspace subscriptions share id %d", firstID)
 	}
 
 	var workspaceID string
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT workspace_id FROM payment_subscription WHERE id = $1",
@@ -374,6 +397,7 @@ func TestPaymentSubscriptionProviderIDIsScopedByWorkspace(t *testing.T) {
 	).Scan(&workspaceID); err != nil {
 		t.Fatalf("read subscription owner: %v", err)
 	}
+
 	if workspaceID != workspaceA {
 		t.Fatalf(
 			"subscription workspace = %s, want %s",
@@ -389,6 +413,7 @@ func TestPaymentCreateOrderRejectsItemSnapshotOverflow(t *testing.T) {
 		ListAmountMinor: 1,
 	})
 	now := time.Now().UTC()
+
 	if err := env.api.Admin.SaveProduct(env.ctx, product.UpsertParams{
 		WorkspaceID:    testWorkspaceID,
 		ID:             productID,
@@ -402,7 +427,9 @@ func TestPaymentCreateOrderRejectsItemSnapshotOverflow(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("make product flexible: %v", err)
 	}
+
 	var itemID string
+
 	if err := env.db.QueryRowContext(env.ctx, `
 		SELECT item_id
 		FROM payment_product_item
@@ -410,6 +437,7 @@ func TestPaymentCreateOrderRejectsItemSnapshotOverflow(t *testing.T) {
 	`, testWorkspaceID, productID).Scan(&itemID); err != nil {
 		t.Fatalf("read product item: %v", err)
 	}
+
 	if err := env.api.Admin.AttachProductItem(env.ctx, product.AddItemParams{
 		WorkspaceID: testWorkspaceID,
 		ProductID:   productID,
@@ -434,6 +462,7 @@ func TestPaymentCreateOrderRejectsItemSnapshotOverflow(t *testing.T) {
 	}
 
 	var count int
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT COUNT(*) FROM payment_order WHERE workspace_id = $1 AND product_id = $2",
@@ -442,6 +471,7 @@ func TestPaymentCreateOrderRejectsItemSnapshotOverflow(t *testing.T) {
 	).Scan(&count); err != nil {
 		t.Fatalf("count overflow orders: %v", err)
 	}
+
 	if count != 0 {
 		t.Fatalf("overflow order count = %d, want 0", count)
 	}
@@ -477,6 +507,7 @@ func TestPaymentPublicServiceContractsDoNotExposePersistenceTypes(
 	if err != nil {
 		t.Fatalf("marshal public admin model: %v", err)
 	}
+
 	if !strings.Contains(string(encoded), `"network_config_url":null`) {
 		t.Fatalf(
 			"nullable persistence value leaked into public JSON: %s",
@@ -492,9 +523,11 @@ func assertNoPaymentPersistenceType(
 	seen map[reflect.Type]bool,
 ) {
 	t.Helper()
+
 	if seen[typeValue] {
 		return
 	}
+
 	seen[typeValue] = true
 
 	if typeValue.PkgPath() == "github.com/elum2b/services/payment/sqlc" ||
@@ -516,6 +549,7 @@ func assertNoPaymentPersistenceType(
 		for index := 1; index < typeValue.NumIn(); index++ {
 			assertNoPaymentPersistenceType(t, path, typeValue.In(index), seen)
 		}
+
 		for index := 0; index < typeValue.NumOut(); index++ {
 			assertNoPaymentPersistenceType(t, path, typeValue.Out(index), seen)
 		}
@@ -526,6 +560,7 @@ func assertNoPaymentPersistenceType(
 		) {
 			return
 		}
+
 		for index := 0; index < typeValue.NumField(); index++ {
 			field := typeValue.Field(index)
 			assertNoPaymentPersistenceType(
@@ -546,6 +581,7 @@ func TestFetchDexScreenerPricesBatchesAddressesAndSelectsLiquidity(
 			if r.URL.Path != "/tokens/v1/ton/token-a,token-b" {
 				t.Fatalf("unexpected request path: %s", r.URL.Path)
 			}
+
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header: http.Header{
@@ -588,12 +624,15 @@ func TestFetchDexScreenerPricesBatchesAddressesAndSelectsLiquidity(
 	if err != nil {
 		t.Fatalf("fetch prices: %v", err)
 	}
+
 	if prices["token-a"] != 1_300_000 {
 		t.Fatalf("unexpected token-a price: %d", prices["token-a"])
 	}
+
 	if prices["token-b"] != 4_000 {
 		t.Fatalf("unexpected token-b price: %d", prices["token-b"])
 	}
+
 	if _, ok := prices["unexpected"]; ok {
 		t.Fatal("unexpected token must not be returned")
 	}
@@ -607,6 +646,7 @@ func TestFetchDexScreenerPricesCalculatesNativeTONFromUSDTPair(t *testing.T) {
 			if r.URL.Path != "/tokens/v1/ton/"+usdtAddress {
 				t.Fatalf("unexpected request path: %s", r.URL.Path)
 			}
+
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header: http.Header{
@@ -643,6 +683,7 @@ func TestFetchDexScreenerPricesCalculatesNativeTONFromUSDTPair(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fetch native TON price: %v", err)
 	}
+
 	if prices["TON"] != 1_512_957 {
 		t.Fatalf(
 			"native TON price = %d, want 1512957 micro-USDT",
@@ -661,6 +702,7 @@ func (f roundTripFunc) RoundTrip(
 
 func TestSelectDexScreenerPricesRejectsQuoteAndInvalidPrice(t *testing.T) {
 	pairs := []dexScreenerPair{{PriceUSD: "0"}}
+
 	pairs[0].BaseToken.Address = "token-a"
 
 	prices := selectDexScreenerPrices(pairs, map[string]struct{}{"token-a": {}})
@@ -674,6 +716,7 @@ func TestSelectDexScreenerPricesCalculatesQuoteTokenUSDPrice(t *testing.T) {
 		PriceUSD:    "1.0019",
 		PriceNative: "0.5788",
 	}
+
 	pair.BaseToken.Address = "usdt"
 	pair.QuoteToken.Address = "ton"
 	pair.Liquidity = &struct {
@@ -723,13 +766,16 @@ func TestMergeContextsCancelsOnMethodDone(t *testing.T) {
 
 func TestIsReady(t *testing.T) {
 	var nilService *Payment
+
 	if nilService.IsReady() {
 		t.Fatal("nil payment must not be ready")
 	}
+
 	service := New()
 	if service.IsReady() {
 		t.Fatal("uninitialized payment must not be ready")
 	}
+
 	if _, err := service.User.ListUSDTPrices(
 		context.Background(),
 		user.ListUSDTPricesParams{},
@@ -739,13 +785,18 @@ func TestIsReady(t *testing.T) {
 	) {
 		t.Fatalf("unready payment user error = %v", err)
 	}
+
 	ctx, cancel := context.WithCancel(context.Background())
+
 	service.rootCtx, service.client, service.Admin, service.Operational, service.User = ctx, &sqlwrap.Client{}, &admin.Admin{}, &operational.Operational{}, &user.User{}
 	service.Adapters = &Adapters{}
+
 	if !service.IsReady() {
 		t.Fatal("initialized payment must be ready")
 	}
+
 	cancel()
+
 	if service.IsReady() {
 		t.Fatal("closed payment must not be ready")
 	}
@@ -798,32 +849,41 @@ func TestBootstrapRealPostgres(t *testing.T) {
 	); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
+
 	payments, err := NewWithDatabase(ctx, appDB, paymentTestOptions())
 	if err != nil {
 		t.Fatalf("create payment service: %v", err)
 	}
 	defer payments.Close()
+
 	if payments.User == nil {
 		t.Fatal("payment user service is nil")
 	}
+
 	if payments.Admin == nil {
 		t.Fatal("payment admin service is nil")
 	}
+
 	if payments.Adapters == nil {
 		t.Fatal("payment adapters are nil")
 	}
+
 	if payments.Adapters.VKMA == nil {
 		t.Fatal("payment vkma service is nil")
 	}
+
 	if payments.Adapters.YooKassa == nil {
 		t.Fatal("payment yookassa service is nil")
 	}
+
 	if payments.Adapters.Platega == nil {
 		t.Fatal("payment platega service is nil")
 	}
+
 	if payments.Adapters.TON == nil {
 		t.Fatal("payment ton service is nil")
 	}
+
 	if payments.Adapters.TelegramStars == nil {
 		t.Fatal("payment telegram stars service is nil")
 	}
@@ -832,6 +892,7 @@ func TestBootstrapRealPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list providers: %v", err)
 	}
+
 	if len(providers) < 5 {
 		t.Fatalf("expected seeded providers, got %d", len(providers))
 	}
@@ -840,6 +901,7 @@ func TestBootstrapRealPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list assets: %v", err)
 	}
+
 	if len(assets) < 6 {
 		t.Fatalf("expected seeded assets, got %d", len(assets))
 	}
@@ -847,12 +909,15 @@ func TestBootstrapRealPostgres(t *testing.T) {
 	if _, err := repo.GetProviderAsset(ctx, "yookassa", "RUB"); err != nil {
 		t.Fatalf("get yookassa/RUB provider asset: %v", err)
 	}
+
 	if _, err := repo.GetProviderAsset(ctx, "ton", "DOGS_TON"); err != nil {
 		t.Fatalf("get ton/DOGS_TON provider asset: %v", err)
 	}
+
 	if _, err := repo.GetProviderAsset(ctx, "ton", "NOT_TON"); err != nil {
 		t.Fatalf("get ton/NOT_TON provider asset: %v", err)
 	}
+
 	if _, err := repo.GetProviderAsset(ctx, "ton", "MAJOR_TON"); err != nil {
 		t.Fatalf("get ton/MAJOR_TON provider asset: %v", err)
 	}
@@ -869,15 +934,18 @@ func TestRunCreatesDatabaseSchemaAndCallbackTable(t *testing.T) {
 		t.Fatalf("open admin postgres connection: %v", err)
 	}
 	defer adminDB.Close()
+
 	if err := recreatePaymentTestDatabase(ctx, adminDB, database); err != nil {
 		t.Fatalf("recreate test database: %v", err)
 	}
+
 	t.Cleanup(func() {
 		_, _ = adminDB.ExecContext(
 			context.Background(),
 			"DROP DATABASE IF EXISTS "+quoteIdentifier(database),
 		)
 	})
+
 	appDB, err := openPaymentPostgres(database)
 	if err != nil {
 		t.Fatalf("open payment postgres connection: %v", err)
@@ -894,26 +962,32 @@ func TestRunCreatesDatabaseSchemaAndCallbackTable(t *testing.T) {
 	service := New()
 	runCtx, stop := context.WithCancel(ctx)
 	done := make(chan error, 1)
+
 	go func() {
 		done <- service.Run(runCtx, params)
 	}()
 
 	deadline := time.Now().Add(10 * time.Second)
+
 	for {
 		var tableCount int
+
 		err := appDB.QueryRowContext(ctx, `
 SELECT COUNT(*)
 FROM information_schema.tables
 WHERE table_schema = 'public'
   AND table_name IN ('payment_product', 'payment_clb_event')`).Scan(&tableCount)
+
 		if err == nil && tableCount == 2 {
 			break
 		}
+
 		select {
 		case err := <-done:
 			t.Fatalf("Run returned during bootstrap: %v", err)
 		default:
 		}
+
 		if time.Now().After(deadline) {
 			stop()
 			t.Fatalf(
@@ -922,6 +996,7 @@ WHERE table_schema = 'public'
 				err,
 			)
 		}
+
 		time.Sleep(50 * time.Millisecond)
 	}
 
@@ -933,6 +1008,7 @@ WHERE table_schema = 'public'
 	}
 
 	stop()
+
 	select {
 	case err := <-done:
 		if err != nil {
@@ -964,6 +1040,7 @@ func createCompletedPaymentFixture(
 		AssetCode:       "RUB",
 		ListAmountMinor: 1000,
 	})
+
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
 		Identity:  paymentTestIdentity(testWorkspaceID, appID, 1, suffix),
 		ProductID: productID,
@@ -975,6 +1052,7 @@ func createCompletedPaymentFixture(
 	}
 
 	providerPaymentID := uniquePaymentID(suffix)
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -987,6 +1065,7 @@ func createCompletedPaymentFixture(
 	if err != nil {
 		t.Fatalf("create attempt: %v", err)
 	}
+
 	if _, err := env.api.Operational.CompleteAttempt(
 		env.ctx,
 		checkout.CompleteAttemptParams{
@@ -1041,6 +1120,7 @@ func TestPaymentCompleteAttemptRejectsAnotherWorkspace(t *testing.T) {
 		AssetCode:       "RUB",
 		ListAmountMinor: 1000,
 	})
+
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
 		Identity: paymentTestIdentity(
 			testWorkspaceID,
@@ -1055,7 +1135,9 @@ func TestPaymentCompleteAttemptRejectsAnotherWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create scoped order: %v", err)
 	}
+
 	providerPaymentID := uniquePaymentID("workspace-scope")
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -1088,6 +1170,7 @@ func TestPaymentCompleteAttemptRejectsAnotherWorkspace(t *testing.T) {
 			err,
 		)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, order.ID, "pending_payment")
 	assertAttemptStatus(t, env.ctx, env.db, attempt.ID, "pending")
 }
@@ -1099,6 +1182,7 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 		ListAmountMinor: 1000,
 	})
 	owner := paymentTestIdentity(testWorkspaceID, 7010, 1, "attempt-owner")
+
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
 		Identity:  owner,
 		ProductID: productID,
@@ -1110,6 +1194,7 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 	}
 
 	foreignPaymentID := uniquePaymentID("foreign-attempt")
+
 	_, err = env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
 		Identity: paymentTestIdentity(
 			testWorkspaceID,
@@ -1121,6 +1206,7 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 		ProviderCode:      "yookassa",
 		ProviderPaymentID: &foreignPaymentID,
 	})
+
 	if !errors.Is(err, repository.ErrPaymentMismatch) {
 		t.Fatalf("foreign attempt must be rejected, got %v", err)
 	}
@@ -1145,6 +1231,7 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 		PlatformID:     1,
 		PlatformUserID: "gift-payer",
 	}
+
 	giftOrder, err := env.api.User.CreateOrder(
 		env.ctx,
 		checkout.CreateOrderParams{
@@ -1161,6 +1248,7 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create direct gift order: %v", err)
 	}
+
 	if giftOrder.PlatformUserID != recipient.PlatformUserID {
 		t.Fatalf(
 			"gift recipient = %q, want %q",
@@ -1168,6 +1256,7 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 			recipient.PlatformUserID,
 		)
 	}
+
 	if giftOrder.PayerPlatformUserID == nil ||
 		*giftOrder.PayerPlatformUserID != payer.PlatformUserID {
 		t.Fatalf(
@@ -1188,10 +1277,12 @@ func TestPaymentCreateAttemptRequiresOrderOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get gift payment report: %v", err)
 	}
+
 	if len(giftReport.Payments) != 1 ||
 		giftReport.Payments[0].ID != giftOrder.ID {
 		t.Fatalf("unexpected gift payment report: %#v", giftReport.Payments)
 	}
+
 	if giftReport.Payments[0].Initiator != payer ||
 		giftReport.Payments[0].Recipient != recipient {
 		t.Fatalf(
@@ -1237,6 +1328,7 @@ func TestPaymentAdminRejectsTerminalLifecycleRegression(t *testing.T) {
 	}
 
 	var attemptStatus string
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT status::text FROM payment_attempt WHERE id = $1",
@@ -1244,11 +1336,13 @@ func TestPaymentAdminRejectsTerminalLifecycleRegression(t *testing.T) {
 	).Scan(&attemptStatus); err != nil {
 		t.Fatalf("read attempt status: %v", err)
 	}
+
 	if attemptStatus != "succeeded" {
 		t.Fatalf("attempt status = %q, want succeeded", attemptStatus)
 	}
 
 	var fulfillmentID uint64
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT id FROM payment_fulfillment WHERE order_id = $1",
@@ -1256,6 +1350,7 @@ func TestPaymentAdminRejectsTerminalLifecycleRegression(t *testing.T) {
 	).Scan(&fulfillmentID); err != nil {
 		t.Fatalf("read fulfillment: %v", err)
 	}
+
 	_, err = env.api.Admin.UpdateFulfillmentStatus(
 		env.ctx,
 		admin.FulfillmentStatusParams{
@@ -1273,6 +1368,7 @@ func TestPaymentAdminRejectsTerminalLifecycleRegression(t *testing.T) {
 	}
 
 	var fulfillmentStatus string
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT status::text FROM payment_fulfillment WHERE id = $1",
@@ -1280,6 +1376,7 @@ func TestPaymentAdminRejectsTerminalLifecycleRegression(t *testing.T) {
 	).Scan(&fulfillmentStatus); err != nil {
 		t.Fatalf("read fulfillment status: %v", err)
 	}
+
 	if fulfillmentStatus != "succeeded" {
 		t.Fatalf("fulfillment status = %q, want succeeded", fulfillmentStatus)
 	}
@@ -1297,6 +1394,7 @@ func TestPaymentAdminCannotBypassOperationalCompletion(t *testing.T) {
 		1,
 		"admin-completion-owner",
 	)
+
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
 		Identity:  owner,
 		ProductID: productID,
@@ -1306,7 +1404,9 @@ func TestPaymentAdminCannotBypassOperationalCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create order: %v", err)
 	}
+
 	paymentID := uniquePaymentID("admin-completion")
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -1333,6 +1433,7 @@ func TestPaymentAdminCannotBypassOperationalCompletion(t *testing.T) {
 	}
 
 	var attemptStatus string
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT status::text FROM payment_attempt WHERE id = $1",
@@ -1340,11 +1441,13 @@ func TestPaymentAdminCannotBypassOperationalCompletion(t *testing.T) {
 	).Scan(&attemptStatus); err != nil {
 		t.Fatalf("read attempt status: %v", err)
 	}
+
 	if attemptStatus != "pending" {
 		t.Fatalf("attempt status = %q, want pending", attemptStatus)
 	}
 
 	var fulfillmentCount int
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT COUNT(*) FROM payment_fulfillment WHERE order_id = $1",
@@ -1352,6 +1455,7 @@ func TestPaymentAdminCannotBypassOperationalCompletion(t *testing.T) {
 	).Scan(&fulfillmentCount); err != nil {
 		t.Fatalf("count fulfillments: %v", err)
 	}
+
 	if fulfillmentCount != 0 {
 		t.Fatalf(
 			"admin status update created %d fulfillments",
@@ -1374,19 +1478,25 @@ func TestPaymentRefundRejectsCumulativeAmountAbovePayment(t *testing.T) {
 	}
 
 	results := make(chan error, 2)
+
 	var group sync.WaitGroup
+
 	for range 2 {
 		group.Add(1)
+
 		go func() {
 			defer group.Done()
+
 			_, err := env.api.Admin.CreateRefund(env.ctx, params)
 			results <- err
 		}()
 	}
+
 	group.Wait()
 	close(results)
 
 	var succeeded, rejected int
+
 	for err := range results {
 		switch {
 		case err == nil:
@@ -1397,6 +1507,7 @@ func TestPaymentRefundRejectsCumulativeAmountAbovePayment(t *testing.T) {
 			t.Fatalf("unexpected concurrent refund error: %v", err)
 		}
 	}
+
 	if succeeded != 1 || rejected != 1 {
 		t.Fatalf(
 			"concurrent full refunds: succeeded=%d rejected=%d",
@@ -1458,6 +1569,7 @@ func TestPaymentProviderRefundIDCannotMoveBetweenOrders(t *testing.T) {
 	assertOrderStatus(t, env.ctx, env.db, second.OrderID, "fulfilled")
 
 	var refundCount int
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		`SELECT COUNT(*) FROM payment_refund WHERE workspace_id = $1 AND provider_refund_id = $2`,
@@ -1466,13 +1578,13 @@ func TestPaymentProviderRefundIDCannotMoveBetweenOrders(t *testing.T) {
 	).Scan(&refundCount); err != nil {
 		t.Fatalf("count provider refunds: %v", err)
 	}
+
 	if refundCount != 1 {
 		t.Fatalf("provider refund rows = %d, want 1", refundCount)
 	}
 }
 
 func TestPaymentRefundedOrderRejectsDifferentProviderRefundID(t *testing.T) {
-
 	env := setupPaymentIntegrationTest(t)
 	fixture := createCompletedPaymentFixture(
 		t,
@@ -1505,6 +1617,7 @@ func TestPaymentRefundedOrderRejectsDifferentProviderRefundID(t *testing.T) {
 
 	secondRefundID := uniquePaymentID("provider-refund-second")
 	secondEventID := uniquePaymentID("provider-refund-second-event")
+
 	if _, err := repo.ApplyProviderRefund(
 		env.ctx,
 		repository.ProviderRefundParams{
@@ -1529,8 +1642,11 @@ func TestPaymentRefundedOrderRejectsDifferentProviderRefundID(t *testing.T) {
 		)
 	}
 
-	var refundCount int
-	var storedRefundID string
+	var (
+		refundCount    int
+		storedRefundID string
+	)
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT COUNT(*), MIN(provider_refund_id)
 FROM payment_refund
@@ -1538,6 +1654,7 @@ WHERE workspace_id = $1 AND order_id = $2
 `, testWorkspaceID, fixture.OrderID).Scan(&refundCount, &storedRefundID); err != nil {
 		t.Fatalf("read immutable provider refund: %v", err)
 	}
+
 	if refundCount != 1 || storedRefundID != firstRefundID {
 		t.Fatalf(
 			"refund rows=%d provider_refund_id=%q, want one row with %q",
@@ -1546,10 +1663,10 @@ WHERE workspace_id = $1 AND order_id = $2
 			firstRefundID,
 		)
 	}
+
 	if first.RefundID == 0 {
 		t.Fatal("first provider refund id was not returned")
 	}
-
 }
 
 func TestPaymentOrderRejectsTerminalStatusRegression(t *testing.T) {
@@ -1575,6 +1692,7 @@ func TestPaymentOrderRejectsTerminalStatusRegression(t *testing.T) {
 			)
 		}
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, fixture.OrderID, "fulfilled")
 }
 
@@ -1601,6 +1719,7 @@ func TestPaymentSuccessfulAdminRefundRevokesFulfillment(t *testing.T) {
 			},
 		},
 	)
+
 	t.Cleanup(func() { _ = refundService.Close() })
 
 	if _, err := refundService.Execute(env.ctx, paymentrefund.Params{
@@ -1614,6 +1733,7 @@ func TestPaymentSuccessfulAdminRefundRevokesFulfillment(t *testing.T) {
 	}
 
 	var fulfillmentStatus string
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT status::text FROM payment_fulfillment WHERE order_id = $1",
@@ -1621,6 +1741,7 @@ func TestPaymentSuccessfulAdminRefundRevokesFulfillment(t *testing.T) {
 	).Scan(&fulfillmentStatus); err != nil {
 		t.Fatalf("read fulfillment: %v", err)
 	}
+
 	if fulfillmentStatus != "revoked" {
 		t.Fatalf(
 			"successful refund left fulfillment active: %s",
@@ -1629,6 +1750,7 @@ func TestPaymentSuccessfulAdminRefundRevokesFulfillment(t *testing.T) {
 	}
 
 	var callbacks int
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT COUNT(*) FROM payment_clb_event WHERE workspace_id = $1 AND event_type = 'payment.order.refunded'",
@@ -1636,6 +1758,7 @@ func TestPaymentSuccessfulAdminRefundRevokesFulfillment(t *testing.T) {
 	).Scan(&callbacks); err != nil {
 		t.Fatalf("count refund callbacks: %v", err)
 	}
+
 	if callbacks != 1 {
 		t.Fatalf("successful refund callbacks = %d, want 1", callbacks)
 	}
@@ -1649,6 +1772,7 @@ func TestPaymentAdminRefundStatusUsesCompensationFlow(t *testing.T) {
 		7006,
 		"refund-status-compensation",
 	)
+
 	refundID, err := env.api.Admin.CreateRefund(
 		env.ctx,
 		admin.RefundCreateParams{
@@ -1664,6 +1788,7 @@ func TestPaymentAdminRefundStatusUsesCompensationFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create pending refund: %v", err)
 	}
+
 	if _, err := env.api.Admin.UpdateRefundStatus(
 		env.ctx,
 		admin.RefundStatusParams{
@@ -1677,7 +1802,9 @@ func TestPaymentAdminRefundStatusUsesCompensationFlow(t *testing.T) {
 	}
 
 	assertOrderStatus(t, env.ctx, env.db, fixture.OrderID, "refunded")
+
 	var fulfillmentStatus string
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT status::text FROM payment_fulfillment WHERE order_id = $1",
@@ -1685,12 +1812,14 @@ func TestPaymentAdminRefundStatusUsesCompensationFlow(t *testing.T) {
 	).Scan(&fulfillmentStatus); err != nil {
 		t.Fatalf("read fulfillment: %v", err)
 	}
+
 	if fulfillmentStatus != "revoked" {
 		t.Fatalf(
 			"manual refund status left fulfillment active: %s",
 			fulfillmentStatus,
 		)
 	}
+
 	if _, err := env.api.Admin.UpdateRefundStatus(
 		env.ctx,
 		admin.RefundStatusParams{
@@ -1709,6 +1838,7 @@ func TestPaymentAdminRefundStatusUsesCompensationFlow(t *testing.T) {
 func TestPaymentFinalizeRefundLocksAttemptBeforeRefund(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 	fixture := createCompletedPaymentFixture(t, env, 7007, "refund-lock-order")
+
 	refundID, err := env.api.Admin.CreateRefund(
 		env.ctx,
 		admin.RefundCreateParams{
@@ -1740,6 +1870,7 @@ func TestPaymentFinalizeRefundLocksAttemptBeforeRefund(t *testing.T) {
 	}
 
 	finalizeResult := make(chan error, 1)
+
 	go func() {
 		_, err := env.api.Admin.UpdateRefundStatus(
 			env.ctx,
@@ -1766,6 +1897,7 @@ func TestPaymentFinalizeRefundLocksAttemptBeforeRefund(t *testing.T) {
 	if err := transaction.Commit(); err != nil {
 		t.Fatalf("release competing locks: %v", err)
 	}
+
 	if err := <-finalizeResult; err != nil {
 		t.Fatalf("finalize refund after releasing attempt: %v", err)
 	}
@@ -1790,6 +1922,7 @@ func TestPaymentAdminRefundRequiresWorkspaceScope(t *testing.T) {
 			},
 		},
 	)
+
 	t.Cleanup(func() { _ = refundService.Close() })
 
 	if _, err := refundService.Execute(env.ctx, paymentrefund.Params{
@@ -1802,6 +1935,7 @@ func TestPaymentAdminRefundRequiresWorkspaceScope(t *testing.T) {
 			err,
 		)
 	}
+
 	if providerCalled {
 		t.Fatal("refund provider called before workspace validation")
 	}
@@ -1816,14 +1950,18 @@ func openPaymentPostgres(database string) (*sql.DB, error) {
 		paymentPostgresPassword,
 		database,
 	)
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Ping(); err != nil {
+
+	if err := db.PingContext(context.Background()); err != nil {
 		db.Close()
+
 		return nil, err
 	}
+
 	return db, nil
 }
 
@@ -1831,11 +1969,13 @@ func openMySQL(_ string, dbName string) (*sql.DB, error) {
 	if dbName == "" {
 		dbName = "postgres"
 	}
+
 	return openPaymentPostgres(dbName)
 }
 
 func paymentTestDSN(t interface{ Helper() }) string {
 	t.Helper()
+
 	return ""
 }
 
@@ -1851,13 +1991,16 @@ func recreatePaymentTestDatabase(
 	); err != nil {
 		return err
 	}
+
 	if _, err := db.ExecContext(
 		ctx,
 		"DROP DATABASE IF EXISTS "+quoteIdentifier(dbName),
 	); err != nil {
 		return err
 	}
+
 	_, err := db.ExecContext(ctx, "CREATE DATABASE "+quoteIdentifier(dbName))
+
 	return err
 }
 
@@ -1882,6 +2025,7 @@ func paymentTestIdentity(
 func paymentAttemptIdentity(order *checkout.Order) services.Identity {
 	platformID := order.PlatformID
 	platformUserID := order.PlatformUserID
+
 	if order.PayerPlatformID != nil && order.PayerPlatformUserID != nil {
 		platformID = int64(*order.PayerPlatformID)
 		platformUserID = *order.PayerPlatformUserID
@@ -1941,6 +2085,7 @@ func TestPaymentAssetCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get provider asset: %v", err)
 	}
+
 	if !providerAsset.IsActive || !providerAsset.MinAmountMinor.Valid ||
 		providerAsset.MinAmountMinor.Int64 != minAmount {
 		t.Fatalf("unexpected provider asset: %#v", providerAsset)
@@ -1968,13 +2113,16 @@ func TestPaymentAssetCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list assets: %v", err)
 	}
+
 	found := false
+
 	for _, row := range assets {
 		if row.Code == "CRUD_TON" {
 			found = row.Title == "CRUD Token Updated" && row.Scale == 6
 			break
 		}
 	}
+
 	if !found {
 		t.Fatal("expected updated CRUD_TON asset in list")
 	}
@@ -1987,6 +2135,7 @@ func TestPaymentAssetCRUD(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("delete provider asset rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.Operational.DeleteAsset(
 		env.ctx,
 		"CRUD_TON",
@@ -2011,13 +2160,16 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list providers: %v", err)
 	}
+
 	if len(providers) == 0 {
 		t.Fatal("expected seeded payment providers")
 	}
+
 	provider, err := env.api.Admin.GetProvider(env.ctx, "ton")
 	if err != nil {
 		t.Fatalf("get provider: %v", err)
 	}
+
 	if provider.Code != "ton" {
 		t.Fatalf("provider code = %q, want ton", provider.Code)
 	}
@@ -2026,13 +2178,16 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list assets: %v", err)
 	}
+
 	if len(assets) == 0 {
 		t.Fatal("expected seeded payment assets")
 	}
+
 	asset, err := env.api.Admin.GetAsset(env.ctx, "RUB")
 	if err != nil {
 		t.Fatalf("get asset: %v", err)
 	}
+
 	if asset.Code != "RUB" {
 		t.Fatalf("asset code = %q, want RUB", asset.Code)
 	}
@@ -2047,6 +2202,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list provider assets: %v", err)
 	}
+
 	if len(providerAssets) != 1 {
 		t.Fatalf("provider asset count = %d, want 1", len(providerAssets))
 	}
@@ -2063,6 +2219,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update asset rate: %v", err)
 	}
+
 	if err := env.api.Operational.ConfigureAssetRateAutoUpdate(
 		env.ctx,
 		operational.ConfigureAssetRateAutoUpdateParams{
@@ -2075,13 +2232,16 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	); err != nil {
 		t.Fatalf("configure asset rate auto update: %v", err)
 	}
+
 	rate, err := env.api.Admin.GetAssetRate(env.ctx, "TON", "RUB")
 	if err != nil {
 		t.Fatalf("get asset rate: %v", err)
 	}
+
 	if rate.ReferencePerAssetMinor != 12500 || !rate.AutoUpdateEnabled {
 		t.Fatalf("unexpected asset rate: %#v", rate)
 	}
+
 	rates, err := env.api.Admin.ListAssetRates(
 		env.ctx,
 		admin.AssetRateListParams{
@@ -2092,6 +2252,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list asset rates: %v", err)
 	}
+
 	if len(rates) != 1 {
 		t.Fatalf("asset rate count = %d, want 1", len(rates))
 	}
@@ -2109,6 +2270,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	); err != nil {
 		t.Fatalf("upsert product group: %v", err)
 	}
+
 	group, err := env.api.Admin.GetProductGroup(
 		env.ctx,
 		testWorkspaceID,
@@ -2117,9 +2279,11 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get product group: %v", err)
 	}
+
 	if group.Code != groupCode || group.Position != 10 {
 		t.Fatalf("unexpected product group: %#v", group)
 	}
+
 	groups, err := env.api.Admin.ListProductGroups(
 		env.ctx,
 		admin.ProductGroupListParams{
@@ -2129,6 +2293,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list product groups: %v", err)
 	}
+
 	if len(groups) != 1 {
 		t.Fatalf("product group count = %d, want 1", len(groups))
 	}
@@ -2144,6 +2309,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	); err != nil {
 		t.Fatalf("upsert localization: %v", err)
 	}
+
 	localization, err := env.api.Admin.GetLocalization(
 		env.ctx,
 		testWorkspaceID,
@@ -2153,9 +2319,11 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get localization: %v", err)
 	}
+
 	if localization.Value != "Административный товар" {
 		t.Fatalf("localization value = %q", localization.Value)
 	}
+
 	localizations, err := env.api.Admin.ListLocalizations(
 		env.ctx,
 		admin.LocalizationListParams{
@@ -2166,6 +2334,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list localizations: %v", err)
 	}
+
 	if len(localizations) != 1 {
 		t.Fatalf("localization count = %d, want 1", len(localizations))
 	}
@@ -2186,6 +2355,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert product: %v", err)
 	}
+
 	productValue, err := env.api.Admin.GetProduct(
 		env.ctx,
 		testWorkspaceID,
@@ -2194,9 +2364,11 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get product: %v", err)
 	}
+
 	if productValue.ID != productID || productValue.Position != 20 {
 		t.Fatalf("unexpected product: %#v", productValue)
 	}
+
 	products, err := env.api.Admin.ListProducts(
 		env.ctx,
 		admin.ProductListParams{
@@ -2207,6 +2379,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list products: %v", err)
 	}
+
 	if len(products) != 1 {
 		t.Fatalf("product count = %d, want 1", len(products))
 	}
@@ -2224,6 +2397,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	); err != nil {
 		t.Fatalf("upsert product item: %v", err)
 	}
+
 	if err := env.api.Admin.UpsertProductItem(
 		env.ctx,
 		admin.ProductItemUpsertParams{
@@ -2239,6 +2413,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	) {
 		t.Fatalf("zero quantity error = %v, want ErrInvalidItemQuantity", err)
 	}
+
 	items, err := env.api.Admin.ListProductItems(
 		env.ctx,
 		admin.ProductItemListParams{
@@ -2250,6 +2425,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list product items: %v", err)
 	}
+
 	if len(items) != 1 || items[0].Scale != 2 {
 		t.Fatalf("unexpected product items: %#v", items)
 	}
@@ -2270,13 +2446,16 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create price: %v", err)
 	}
+
 	price, err := env.api.Admin.GetPrice(env.ctx, testWorkspaceID, priceID)
 	if err != nil {
 		t.Fatalf("get price: %v", err)
 	}
+
 	if price.ListAmountMinor != 1000 {
 		t.Fatalf("price amount = %d, want 1000", price.ListAmountMinor)
 	}
+
 	rows, err := env.api.Admin.UpdatePrice(
 		env.ctx,
 		admin.ProductPriceUpdateParams{
@@ -2293,6 +2472,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil || rows != 1 {
 		t.Fatalf("update price rows=%d err=%v", rows, err)
 	}
+
 	prices, err := env.api.Admin.ListPrices(env.ctx, admin.PriceListParams{
 		WorkspaceID: testWorkspaceID,
 		ProductID:   productID,
@@ -2301,6 +2481,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list prices: %v", err)
 	}
+
 	if len(prices) != 1 || prices[0].ListAmountMinor != 1200 {
 		t.Fatalf("unexpected prices: %#v", prices)
 	}
@@ -2312,6 +2493,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 	); err == nil {
 		t.Fatal("cross-workspace product read must fail")
 	}
+
 	if rows, err := env.api.Admin.DeletePrice(
 		env.ctx,
 		testWorkspaceID,
@@ -2320,6 +2502,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("delete price rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.Admin.DeleteProductItem(
 		env.ctx,
 		testWorkspaceID,
@@ -2329,6 +2512,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("delete product item rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.Admin.DeleteProduct(
 		env.ctx,
 		testWorkspaceID,
@@ -2337,6 +2521,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("delete product rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.Admin.DeleteLocalization(
 		env.ctx,
 		testWorkspaceID,
@@ -2346,6 +2531,7 @@ func TestPaymentAdminCatalogSurface(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("delete localization rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.Admin.DeleteProductGroup(
 		env.ctx,
 		testWorkspaceID,
@@ -2367,9 +2553,11 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get order: %v", err)
 	}
+
 	if uint64(order.ID) != fixture.OrderID || order.Status != "fulfilled" {
 		t.Fatalf("unexpected order: %#v", order)
 	}
+
 	orderByPublicID, err := env.api.Admin.GetOrderByPublicID(
 		env.ctx,
 		admin.OrderPublicRefParams{
@@ -2380,6 +2568,7 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get order by public id: %v", err)
 	}
+
 	if orderByPublicID.ID != order.ID {
 		t.Fatalf(
 			"order by public id = %d, want %d",
@@ -2387,6 +2576,7 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 			order.ID,
 		)
 	}
+
 	if _, err := env.api.Admin.GetOrder(env.ctx, admin.OrderRefParams{
 		WorkspaceID: testsupport.WorkspaceID("payment-commerce-other"),
 		ID:          fixture.OrderID,
@@ -2404,6 +2594,7 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get payment attempt: %v", err)
 	}
+
 	if uint64(attempt.ID) != fixture.AttemptID ||
 		attempt.Status != "succeeded" {
 		t.Fatalf("unexpected payment attempt: %#v", attempt)
@@ -2419,10 +2610,13 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list fulfillments: %v", err)
 	}
+
 	if len(fulfillments) != 1 {
 		t.Fatalf("fulfillment count = %d, want 1", len(fulfillments))
 	}
+
 	fulfillmentID := uint64(fulfillments[0].ID)
+
 	fulfillment, err := env.api.Admin.GetFulfillment(
 		env.ctx,
 		admin.FulfillmentRefParams{
@@ -2433,9 +2627,11 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get fulfillment: %v", err)
 	}
+
 	if fulfillment.Status != "succeeded" {
 		t.Fatalf("fulfillment status = %q, want succeeded", fulfillment.Status)
 	}
+
 	fulfillmentItems, err := env.api.Admin.ListFulfillmentItems(
 		env.ctx,
 		admin.FulfillmentItemListParams{
@@ -2446,6 +2642,7 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list fulfillment items: %v", err)
 	}
+
 	if len(fulfillmentItems) != 1 || fulfillmentItems[0].Quantity != 1 {
 		t.Fatalf("unexpected fulfillment items: %#v", fulfillmentItems)
 	}
@@ -2464,9 +2661,11 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create purchase key: %v", err)
 	}
+
 	if key == "" {
 		t.Fatal("expected non-empty purchase key")
 	}
+
 	keys, err := env.api.Admin.ListPurchaseKeys(
 		env.ctx,
 		admin.PurchaseKeyListParams{
@@ -2480,9 +2679,11 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list purchase keys: %v", err)
 	}
+
 	if len(keys) != 1 {
 		t.Fatalf("purchase key count = %d, want 1", len(keys))
 	}
+
 	purchaseKey, err := env.api.Admin.GetPurchaseKey(
 		env.ctx,
 		testWorkspaceID,
@@ -2491,9 +2692,11 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get purchase key: %v", err)
 	}
+
 	if purchaseKey.Status != "active" {
 		t.Fatalf("purchase key status = %q, want active", purchaseKey.Status)
 	}
+
 	rows, err := env.api.Admin.UpdatePurchaseKeyStatus(
 		env.ctx,
 		testWorkspaceID,
@@ -2507,6 +2710,7 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	providerSubscriptionID := uniquePaymentID("admin-subscription")
 	orderID := int64(fixture.OrderID)
 	attemptID := int64(fixture.AttemptID)
+
 	subscriptionID, err := env.api.Admin.UpsertSubscription(
 		env.ctx,
 		admin.SubscriptionUpsertParams{
@@ -2526,6 +2730,7 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upsert subscription: %v", err)
 	}
+
 	subscriptions, err := env.api.Admin.ListSubscriptions(
 		env.ctx,
 		admin.SubscriptionListParams{
@@ -2537,9 +2742,11 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list subscriptions: %v", err)
 	}
+
 	if len(subscriptions) != 1 {
 		t.Fatalf("subscription count = %d, want 1", len(subscriptions))
 	}
+
 	subscriptionValue, err := env.api.Admin.GetSubscription(
 		env.ctx,
 		testWorkspaceID,
@@ -2548,12 +2755,14 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get subscription: %v", err)
 	}
+
 	if subscriptionValue.ProviderSubscriptionID != providerSubscriptionID {
 		t.Fatalf(
 			"provider subscription id = %q",
 			subscriptionValue.ProviderSubscriptionID,
 		)
 	}
+
 	subscriptionByProvider, err := env.api.Admin.GetSubscriptionByProviderID(
 		env.ctx,
 		admin.SubscriptionProviderRefParams{
@@ -2565,6 +2774,7 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get subscription by provider id: %v", err)
 	}
+
 	if subscriptionByProvider.ID != subscriptionValue.ID {
 		t.Fatalf(
 			"subscription by provider = %d, want %d",
@@ -2588,6 +2798,7 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create refund: %v", err)
 	}
+
 	refunds, err := env.api.Admin.ListRefunds(env.ctx, admin.RefundListParams{
 		WorkspaceID:  testWorkspaceID,
 		OrderID:      fixture.OrderID,
@@ -2596,9 +2807,11 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list refunds: %v", err)
 	}
+
 	if len(refunds) != 1 {
 		t.Fatalf("refund count = %d, want 1", len(refunds))
 	}
+
 	refundValue, err := env.api.Admin.GetRefund(env.ctx, admin.RefundRefParams{
 		WorkspaceID: testWorkspaceID,
 		ID:          refundID,
@@ -2606,6 +2819,7 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get refund: %v", err)
 	}
+
 	if refundValue.AmountMinor != 1 {
 		t.Fatalf("refund amount = %d, want 1", refundValue.AmountMinor)
 	}
@@ -2624,6 +2838,7 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create payment event: %v", err)
 	}
+
 	event, err := env.api.Admin.GetPaymentEvent(env.ctx, admin.EventRefParams{
 		WorkspaceID: testWorkspaceID,
 		ID:          eventID,
@@ -2631,9 +2846,11 @@ func TestPaymentAdminCommerceSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get payment event: %v", err)
 	}
+
 	if event.ProcessingStatus != "new" {
 		t.Fatalf("payment event status = %q, want new", event.ProcessingStatus)
 	}
+
 	if err := env.api.Admin.UpdatePaymentEventProcessingStatus(
 		env.ctx,
 		admin.EventStatusParams{
@@ -2682,6 +2899,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	}
 	createOrder := func(identity services.Identity, payer *services.Identity) *checkout.Order {
 		t.Helper()
+
 		params := checkout.CreateOrderParams{
 			Identity:  identity,
 			ProductID: productID,
@@ -2694,6 +2912,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 				PlatformUserID: payer.PlatformUserID,
 			}
 		}
+
 		order, err := env.api.User.CreateOrder(env.ctx, params)
 		if err != nil {
 			t.Fatalf(
@@ -2702,6 +2921,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 				err,
 			)
 		}
+
 		return order
 	}
 
@@ -2709,6 +2929,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	for name, identity := range identities {
 		orderIDs[name] = createOrder(identity, nil).ID
 	}
+
 	giftOrder := createOrder(
 		identities["base"],
 		utils.Ref(identities["other_user"]),
@@ -2716,10 +2937,12 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 
 	assertOrderIDs := func(label string, orders []admin.OrderModel, want ...uint64) {
 		t.Helper()
+
 		got := make(map[uint64]struct{}, len(orders))
 		for _, order := range orders {
 			got[uint64(order.ID)] = struct{}{}
 		}
+
 		if len(got) != len(want) {
 			t.Fatalf(
 				"%s order count = %d, want %d: %#v",
@@ -2729,6 +2952,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 				orders,
 			)
 		}
+
 		for _, id := range want {
 			if _, ok := got[id]; !ok {
 				t.Fatalf("%s does not contain order %d: %#v", label, id, orders)
@@ -2737,10 +2961,12 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	}
 	assertPaymentIDs := func(label string, report admin.PaymentReport, want ...uint64) {
 		t.Helper()
+
 		got := make(map[uint64]struct{}, len(report.Payments))
 		for _, payment := range report.Payments {
 			got[payment.ID] = struct{}{}
 		}
+
 		if len(got) != len(want) ||
 			report.Stats.TotalOrders != uint64(len(want)) {
 			t.Fatalf(
@@ -2752,6 +2978,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 				report,
 			)
 		}
+
 		for _, id := range want {
 			if _, ok := got[id]; !ok {
 				t.Fatalf(
@@ -2770,6 +2997,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		initiator []uint64
 		either    []uint64
 	}
+
 	expectations := []identityExpectation{
 		{
 			name:      "base",
@@ -2809,6 +3037,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			if err != nil {
 				t.Fatalf("list user orders: %v", err)
 			}
+
 			assertOrderIDs("user orders", userOrders, expectation.recipient...)
 
 			filteredOrders, err := env.api.Admin.ListOrders(
@@ -2823,6 +3052,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			if err != nil {
 				t.Fatalf("list filtered orders: %v", err)
 			}
+
 			assertOrderIDs(
 				"filtered orders",
 				filteredOrders,
@@ -2850,6 +3080,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 				if err != nil {
 					t.Fatalf("get identity payment report: %v", err)
 				}
+
 				assertPaymentIDs(
 					"identity payment report",
 					report,
@@ -2870,6 +3101,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			if err != nil {
 				t.Fatalf("get raw identity payment report: %v", err)
 			}
+
 			assertPaymentIDs(
 				"raw identity payment report",
 				report,
@@ -2888,6 +3120,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get base identity report: %v", err)
 	}
+
 	for _, payment := range baseReport.Payments {
 		switch payment.ID {
 		case orderIDs["base"]:
@@ -2914,12 +3147,14 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		AssetCode:       "RUB",
 		ListAmountMinor: 1000,
 	})
+
 	otherWorkspaceIdentity := paymentTestIdentity(
 		otherWorkspaceID,
 		identities["base"].AppID,
 		identities["base"].PlatformID,
 		identities["base"].PlatformUserID,
 	)
+
 	otherWorkspaceOrder, err := env.api.User.CreateOrder(
 		env.ctx,
 		checkout.CreateOrderParams{
@@ -2932,6 +3167,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create same identity tuple in another workspace: %v", err)
 	}
+
 	otherWorkspaceOrders, err := env.api.Admin.ListUserOrders(
 		env.ctx,
 		admin.UserOrderListParams{
@@ -2941,11 +3177,13 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list another workspace identity orders: %v", err)
 	}
+
 	assertOrderIDs(
 		"another workspace orders",
 		otherWorkspaceOrders,
 		otherWorkspaceOrder.ID,
 	)
+
 	baseOrders, err := env.api.Admin.ListUserOrders(
 		env.ctx,
 		admin.UserOrderListParams{
@@ -2955,6 +3193,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list base orders after another workspace order: %v", err)
 	}
+
 	assertOrderIDs(
 		"base workspace orders",
 		baseOrders,
@@ -2974,6 +3213,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 					PlatformID:     identities["base"].PlatformID,
 					PlatformUserID: identities["base"].PlatformUserID,
 				})
+
 				return err
 			},
 		},
@@ -2985,6 +3225,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 					AppID:          identities["base"].AppID,
 					PlatformUserID: identities["base"].PlatformUserID,
 				})
+
 				return err
 			},
 		},
@@ -2996,6 +3237,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 					PlatformID:     identities["base"].PlatformID,
 					PlatformUserID: identities["base"].PlatformUserID,
 				})
+
 				return err
 			},
 		},
@@ -3010,6 +3252,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 						PlatformUserID: identities["base"].PlatformUserID,
 					},
 				)
+
 				return err
 			},
 		},
@@ -3046,6 +3289,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			t.Fatalf("create %s purchase key: %v", name, err)
 		}
 	}
+
 	for name, identity := range identities {
 		keys, err := env.api.Admin.ListPurchaseKeys(
 			env.ctx,
@@ -3060,6 +3304,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("list %s purchase keys: %v", name, err)
 		}
+
 		if len(keys) != 1 ||
 			keys[0].AppID != identity.AppID ||
 			keys[0].PlatformID != identity.PlatformID ||
@@ -3094,6 +3339,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			t.Fatalf("upsert %s subscription: %v", name, err)
 		}
 	}
+
 	for name, identity := range identities {
 		subscriptions, err := env.api.Admin.ListSubscriptions(
 			env.ctx,
@@ -3108,6 +3354,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("list %s subscriptions: %v", name, err)
 		}
+
 		if len(subscriptions) != 1 ||
 			subscriptions[0].Status != subscriptionStatuses[name] ||
 			subscriptions[0].AppID != identity.AppID ||
@@ -3127,6 +3374,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("check %s subscription: %v", name, err)
 		}
+
 		if active != (name == "base") {
 			t.Fatalf(
 				"%s subscription active=%t, want %t",
@@ -3145,6 +3393,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		UserInterval:      "ONCE",
 		UserIntervalCount: 1,
 	})
+
 	limitedOrder, err := env.api.User.CreateOrder(
 		env.ctx,
 		checkout.CreateOrderParams{
@@ -3157,7 +3406,9 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create base limited order: %v", err)
 	}
+
 	providerPaymentID := uniquePaymentID("identity-limit-base")
+
 	limitedAttempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -3170,6 +3421,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create base limited attempt: %v", err)
 	}
+
 	if _, err := env.api.Operational.CompleteAttempt(
 		env.ctx,
 		checkout.CompleteAttemptParams{
@@ -3192,6 +3444,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 	}); !errors.Is(err, repository.ErrProductLocked) {
 		t.Fatalf("same full identity must hit user limit, got %v", err)
 	}
+
 	for name, identity := range identities {
 		productValue, err := env.api.User.GetProduct(env.ctx, product.GetParams{
 			Identity:  identity,
@@ -3202,6 +3455,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("get limited product for %s: %v", name, err)
 		}
+
 		if (productValue.Limit.User.LockUntil != nil) != (name == "base") {
 			t.Fatalf(
 				"%s user limit lock=%v, want locked=%t",
@@ -3211,6 +3465,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			)
 		}
 	}
+
 	for _, name := range []string{"other_app", "other_platform", "other_user"} {
 		identity := identities[name]
 		if _, err := env.api.User.CreateOrder(
@@ -3225,6 +3480,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 			t.Fatalf("%s identity collided with user limit: %v", name, err)
 		}
 	}
+
 	for name, identity := range identities {
 		counters, err := env.api.Admin.ListProductLimitCounters(
 			env.ctx,
@@ -3239,12 +3495,14 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("list %s limit counters: %v", name, err)
 		}
+
 		if len(counters) != 1 ||
 			counters[0].AppID != identity.AppID ||
 			counters[0].PlatformID != identity.PlatformID ||
 			counters[0].PlatformUserID != identity.PlatformUserID {
 			t.Fatalf("%s limit counters collided: %#v", name, counters)
 		}
+
 		if name == "base" &&
 			(counters[0].PaidCount != 1 || counters[0].ReservedCount != 0) {
 			t.Fatalf(
@@ -3252,6 +3510,7 @@ func TestPaymentIdentityCollisionIsolation(t *testing.T) {
 				counters[0],
 			)
 		}
+
 		if name != "base" &&
 			(counters[0].PaidCount != 0 || counters[0].ReservedCount != 1) {
 			t.Fatalf(
@@ -3304,9 +3563,11 @@ func TestPaymentAdminCallbackControls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list callback events: %v", err)
 	}
+
 	if len(events) != 4 {
 		t.Fatalf("callback event count = %d, want 4", len(events))
 	}
+
 	event, err := env.api.Admin.GetCallbackEvent(
 		env.ctx,
 		testWorkspaceID,
@@ -3315,9 +3576,11 @@ func TestPaymentAdminCallbackControls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get callback event: %v", err)
 	}
+
 	if event.ID != retryID {
 		t.Fatalf("callback event id = %d, want %d", event.ID, retryID)
 	}
+
 	if rows, err := env.api.Admin.RetryCallbackEventNow(
 		env.ctx,
 		testWorkspaceID,
@@ -3326,6 +3589,7 @@ func TestPaymentAdminCallbackControls(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("retry callback rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.Admin.MarkCallbackEventOK(
 		env.ctx,
 		testWorkspaceID,
@@ -3334,6 +3598,7 @@ func TestPaymentAdminCallbackControls(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("mark callback ok rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.Admin.MarkCallbackEventReject(
 		env.ctx,
 		testWorkspaceID,
@@ -3353,6 +3618,7 @@ func TestPaymentAdminCallbackControls(t *testing.T) {
 	`, expiredID); err != nil {
 		t.Fatalf("prepare expired callback lease: %v", err)
 	}
+
 	if rows, err := env.api.Admin.ResetExpiredCallbackProcessing(
 		env.ctx,
 		testWorkspaceID,
@@ -3360,6 +3626,7 @@ func TestPaymentAdminCallbackControls(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("reset expired callback rows=%d err=%v", rows, err)
 	}
+
 	if _, err := env.api.Admin.GetCallbackEvent(
 		env.ctx,
 		testsupport.WorkspaceID("payment-callback-other"),
@@ -3388,6 +3655,7 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 	if err != nil || rows != 1 {
 		t.Fatalf("upsert provider cursor rows=%d err=%v", rows, err)
 	}
+
 	cursor, err := env.api.Admin.GetProviderCursor(
 		env.ctx,
 		testWorkspaceID,
@@ -3398,9 +3666,11 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get provider cursor: %v", err)
 	}
+
 	if cursor.CursorSequence != 100 {
 		t.Fatalf("cursor sequence = %d, want 100", cursor.CursorSequence)
 	}
+
 	cursors, err := env.api.Admin.ListProviderCursors(
 		env.ctx,
 		admin.ProviderCursorListParams{
@@ -3412,12 +3682,15 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list provider cursors: %v", err)
 	}
+
 	if len(cursors) != 1 {
 		t.Fatalf("provider cursor count = %d, want 1", len(cursors))
 	}
 
 	repo := repository.NewPaymentRepository(env.client)
+
 	t.Cleanup(func() { _ = repo.Close() })
+
 	transactionID, err := repo.CreateProviderTransaction(
 		env.ctx,
 		paymentsqlc.CreateProviderTransactionParams{
@@ -3439,6 +3712,7 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create provider transaction: %v", err)
 	}
+
 	transactions, err := env.api.Admin.ListProviderTransactions(
 		env.ctx,
 		admin.ProviderTransactionListParams{
@@ -3451,9 +3725,11 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list provider transactions: %v", err)
 	}
+
 	if len(transactions) != 1 {
 		t.Fatalf("provider transaction count = %d, want 1", len(transactions))
 	}
+
 	transaction, err := env.api.Admin.GetProviderTransaction(
 		env.ctx,
 		testWorkspaceID,
@@ -3462,12 +3738,14 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get provider transaction: %v", err)
 	}
+
 	if transaction.ExternalTransactionID != externalTransactionID {
 		t.Fatalf(
 			"external transaction id = %q",
 			transaction.ExternalTransactionID,
 		)
 	}
+
 	transactionByExternalID, err := env.api.Admin.GetProviderTransactionByExternalID(
 		env.ctx,
 		testWorkspaceID,
@@ -3479,6 +3757,7 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get provider transaction by external id: %v", err)
 	}
+
 	if transactionByExternalID.ID != transaction.ID {
 		t.Fatalf(
 			"provider transaction by external id = %d, want %d",
@@ -3486,6 +3765,7 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 			transaction.ID,
 		)
 	}
+
 	rows, err = env.api.Admin.UpdateProviderTransactionStatus(
 		env.ctx,
 		testWorkspaceID,
@@ -3496,6 +3776,7 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 	if err != nil || rows != 1 {
 		t.Fatalf("update provider transaction rows=%d err=%v", rows, err)
 	}
+
 	if _, err := env.api.Admin.UpdateProviderTransactionStatus(
 		env.ctx,
 		testWorkspaceID,
@@ -3505,6 +3786,7 @@ func TestPaymentAdminProviderTransactionSurface(t *testing.T) {
 	); !errors.Is(err, repository.ErrProviderTransactionStatusInvalid) {
 		t.Fatalf("invalid provider transaction status error = %v", err)
 	}
+
 	if _, err := env.api.Admin.GetProviderTransaction(
 		env.ctx,
 		testsupport.WorkspaceID("payment-provider-transaction-other"),
@@ -3550,9 +3832,11 @@ func TestPaymentAdminProductLimitCounterSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list product limit counters: %v", err)
 	}
+
 	if len(counters) != 1 {
 		t.Fatalf("product limit counter count = %d, want 1", len(counters))
 	}
+
 	if counters[0].ReservedCount != 1 || counters[0].PaidCount != 0 {
 		t.Fatalf("unexpected product limit counter: %#v", counters[0])
 	}
@@ -3573,6 +3857,7 @@ func TestPaymentAdminProductLimitCounterSurface(t *testing.T) {
 	if err != nil || rows != 1 {
 		t.Fatalf("delete product limit counter rows=%d err=%v", rows, err)
 	}
+
 	counters, err = env.api.Admin.ListProductLimitCounters(
 		env.ctx,
 		admin.ProductLimitCounterListParams{
@@ -3583,6 +3868,7 @@ func TestPaymentAdminProductLimitCounterSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list product limit counters after delete: %v", err)
 	}
+
 	if len(counters) != 0 {
 		t.Fatalf("product limit counters after delete = %#v", counters)
 	}
@@ -3608,10 +3894,12 @@ func TestPaymentOperationalAndLegacyCatalogServices(t *testing.T) {
 	); err != nil {
 		t.Fatalf("operational upsert provider: %v", err)
 	}
+
 	provider, err := env.api.Admin.GetProvider(env.ctx, providerCode)
 	if err != nil {
 		t.Fatalf("get operational provider: %v", err)
 	}
+
 	if provider.Title != "Legacy provider" {
 		t.Fatalf("provider title = %q", provider.Title)
 	}
@@ -3625,6 +3913,7 @@ func TestPaymentOperationalAndLegacyCatalogServices(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("legacy asset upsert: %v", err)
 	}
+
 	if err := env.api.asset.UpsertProvider(
 		env.ctx,
 		paymentasset.ProviderUpsertParams{
@@ -3635,6 +3924,7 @@ func TestPaymentOperationalAndLegacyCatalogServices(t *testing.T) {
 	); err != nil {
 		t.Fatalf("legacy provider asset upsert: %v", err)
 	}
+
 	providerAsset, err := env.api.asset.GetProvider(
 		env.ctx,
 		providerCode,
@@ -3643,10 +3933,12 @@ func TestPaymentOperationalAndLegacyCatalogServices(t *testing.T) {
 	if err != nil {
 		t.Fatalf("legacy get provider asset: %v", err)
 	}
+
 	if providerAsset.ProviderCode != providerCode ||
 		providerAsset.AssetCode != assetCode {
 		t.Fatalf("unexpected legacy provider asset: %#v", providerAsset)
 	}
+
 	if rows, err := env.api.asset.DeleteProvider(
 		env.ctx,
 		providerCode,
@@ -3655,6 +3947,7 @@ func TestPaymentOperationalAndLegacyCatalogServices(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("legacy delete provider asset rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.asset.Delete(
 		env.ctx,
 		assetCode,
@@ -3662,6 +3955,7 @@ func TestPaymentOperationalAndLegacyCatalogServices(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("legacy delete asset rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.Operational.DeleteProvider(
 		env.ctx,
 		providerCode,
@@ -3682,13 +3976,16 @@ func TestPaymentOperationalAndLegacyCatalogServices(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update USDT rate: %v", err)
 	}
+
 	assetRates, err := env.api.asset.ListUSDTPrices(env.ctx)
 	if err != nil {
 		t.Fatalf("legacy list USDT prices: %v", err)
 	}
+
 	if len(assetRates) != 1 || assetRates[0].AssetCode != "TON" {
 		t.Fatalf("unexpected legacy USDT prices: %#v", assetRates)
 	}
+
 	userRates, err := env.api.User.ListUSDTPrices(
 		env.ctx,
 		user.ListUSDTPricesParams{},
@@ -3696,6 +3993,7 @@ func TestPaymentOperationalAndLegacyCatalogServices(t *testing.T) {
 	if err != nil {
 		t.Fatalf("user list USDT prices: %v", err)
 	}
+
 	if len(userRates) != 1 || userRates[0].AssetCode != "TON" {
 		t.Fatalf("unexpected user USDT prices: %#v", userRates)
 	}
@@ -3719,6 +4017,7 @@ func TestPaymentLegacyProductDeleteSurface(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("legacy upsert group: %v", err)
 	}
+
 	if err := env.api.product.Create(env.ctx, product.UpsertParams{
 		WorkspaceID:    testWorkspaceID,
 		ID:             productID,
@@ -3733,6 +4032,7 @@ func TestPaymentLegacyProductDeleteSurface(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("legacy create product: %v", err)
 	}
+
 	if err := env.api.product.UpsertLocalization(
 		env.ctx,
 		product.UpsertLocalizationParams{
@@ -3744,6 +4044,7 @@ func TestPaymentLegacyProductDeleteSurface(t *testing.T) {
 	); err != nil {
 		t.Fatalf("legacy upsert localization: %v", err)
 	}
+
 	if err := env.api.product.AddItem(env.ctx, product.AddItemParams{
 		WorkspaceID: testWorkspaceID,
 		ProductID:   productID,
@@ -3752,6 +4053,7 @@ func TestPaymentLegacyProductDeleteSurface(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("legacy add item: %v", err)
 	}
+
 	priceID, err := env.api.product.CreatePrice(
 		env.ctx,
 		product.CreatePriceParams{
@@ -3775,6 +4077,7 @@ func TestPaymentLegacyProductDeleteSurface(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("legacy delete price rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.product.RemoveItem(
 		env.ctx,
 		testWorkspaceID,
@@ -3784,6 +4087,7 @@ func TestPaymentLegacyProductDeleteSurface(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("legacy remove item rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.product.DeleteLocalization(
 		env.ctx,
 		testWorkspaceID,
@@ -3793,6 +4097,7 @@ func TestPaymentLegacyProductDeleteSurface(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("legacy delete localization rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.product.Delete(
 		env.ctx,
 		testWorkspaceID,
@@ -3801,6 +4106,7 @@ func TestPaymentLegacyProductDeleteSurface(t *testing.T) {
 		rows != 1 {
 		t.Fatalf("legacy delete product rows=%d err=%v", rows, err)
 	}
+
 	if rows, err := env.api.product.DeleteGroup(
 		env.ctx,
 		testWorkspaceID,
@@ -3839,6 +4145,7 @@ func (s *paymentTestStorage) Set(
 
 func (s *paymentTestStorage) Delete(key string) error {
 	delete(s.values, key)
+
 	return nil
 }
 
@@ -3862,6 +4169,7 @@ func (m *paymentTestMutex) Lock(key string) error {
 
 func (m *paymentTestMutex) Unlock(key string) error {
 	delete(m.locked, key)
+
 	return nil
 }
 
@@ -3894,16 +4202,20 @@ func TestPaymentOptionsDelegateCacheMutexAndCodec(t *testing.T) {
 	); err != nil {
 		t.Fatalf("cache set: %v", err)
 	}
+
 	value, ttl, err := options.Cache.GetWithTTL("key")
 	if err != nil {
 		t.Fatalf("cache get: %v", err)
 	}
+
 	if string(value) != "value" || ttl != time.Minute {
 		t.Fatalf("cache result value=%q ttl=%s", value, ttl)
 	}
+
 	if err := options.Cache.Delete("key"); err != nil {
 		t.Fatalf("cache delete: %v", err)
 	}
+
 	if err := options.Cache.Set(
 		"key",
 		[]byte("value"),
@@ -3911,9 +4223,11 @@ func TestPaymentOptionsDelegateCacheMutexAndCodec(t *testing.T) {
 	); err != nil {
 		t.Fatalf("cache set before reset: %v", err)
 	}
+
 	if err := options.Cache.Reset(); err != nil {
 		t.Fatalf("cache reset: %v", err)
 	}
+
 	if err := options.Cache.Close(); err != nil {
 		t.Fatalf("cache close: %v", err)
 	}
@@ -3921,12 +4235,15 @@ func TestPaymentOptionsDelegateCacheMutexAndCodec(t *testing.T) {
 	if err := options.Mutex.Lock("key"); err != nil {
 		t.Fatalf("mutex lock: %v", err)
 	}
+
 	if !mutex.locked["key"] {
 		t.Fatal("custom mutex did not receive lock")
 	}
+
 	if err := options.Mutex.Unlock("key"); err != nil {
 		t.Fatalf("mutex unlock: %v", err)
 	}
+
 	if mutex.locked["key"] {
 		t.Fatal("custom mutex did not receive unlock")
 	}
@@ -3935,10 +4252,13 @@ func TestPaymentOptionsDelegateCacheMutexAndCodec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("codec marshal: %v", err)
 	}
+
 	var decoded map[string]string
+
 	if err := options.Codec.Unmarshal(encoded, &decoded); err != nil {
 		t.Fatalf("codec unmarshal: %v", err)
 	}
+
 	if decoded["key"] != "value" {
 		t.Fatalf("decoded value = %q", decoded["key"])
 	}
@@ -3952,15 +4272,19 @@ func TestPaymentOptionAdaptersAreNilSafe(t *testing.T) {
 		ttl != 0 {
 		t.Fatalf("nil storage get value=%v ttl=%s err=%v", value, ttl, err)
 	}
+
 	if err := storage.Set("key", []byte("value"), time.Minute); err != nil {
 		t.Fatalf("nil storage set: %v", err)
 	}
+
 	if err := storage.Delete("key"); err != nil {
 		t.Fatalf("nil storage delete: %v", err)
 	}
+
 	if err := storage.Reset(); err != nil {
 		t.Fatalf("nil storage reset: %v", err)
 	}
+
 	if err := storage.Close(); err != nil {
 		t.Fatalf("nil storage close: %v", err)
 	}
@@ -3969,6 +4293,7 @@ func TestPaymentOptionAdaptersAreNilSafe(t *testing.T) {
 	if err := mutex.Lock("key"); err != nil {
 		t.Fatalf("nil mutex lock: %v", err)
 	}
+
 	if err := mutex.Unlock("key"); err != nil {
 		t.Fatalf("nil mutex unlock: %v", err)
 	}
@@ -3977,6 +4302,7 @@ func TestPaymentOptionAdaptersAreNilSafe(t *testing.T) {
 	if value, err := codec.Marshal(struct{}{}); err != nil || value != nil {
 		t.Fatalf("nil codec marshal value=%v err=%v", value, err)
 	}
+
 	if err := codec.Unmarshal(nil, &struct{}{}); err != nil {
 		t.Fatalf("nil codec unmarshal: %v", err)
 	}
@@ -3993,6 +4319,7 @@ func TestPaymentRunBlocksUntilContextCanceled(t *testing.T) {
 		Port:     paymentPostgresPort,
 	}
 	service := New()
+
 	if err := service.OnCallback(context.Background(), func(ctx Context) error {
 		return ctx.Successful()
 	},
@@ -4006,6 +4333,7 @@ func TestPaymentRunBlocksUntilContextCanceled(t *testing.T) {
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+
 	go func() {
 		done <- service.Run(runCtx, params)
 	}()
@@ -4023,6 +4351,7 @@ func TestPaymentRunBlocksUntilContextCanceled(t *testing.T) {
 	}
 
 	cancel()
+
 	select {
 	case err := <-done:
 		if err != nil {
@@ -4083,6 +4412,7 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create product: %v", err)
 	}
+
 	// Localization creation.
 	// Add product and item translations for the locales used by checkout.
 	// Verify product previews resolve localized titles and descriptions.
@@ -4131,6 +4461,7 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 			)
 		}
 	}
+
 	// Item and price setup.
 	// Attach an item reward to the product and create the payable RUB price.
 	// Verify fulfillment and price calculation use catalog data from the API.
@@ -4167,6 +4498,7 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create product price: %v", err)
 	}
+
 	if priceID == 0 {
 		t.Fatal("expected created price id")
 	}
@@ -4186,9 +4518,11 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update product price: %v", err)
 	}
+
 	if updatedRows != 1 {
 		t.Fatalf("unexpected updated price rows: %d", updatedRows)
 	}
+
 	// Regular payment flow.
 	// Create an order, payment attempt, provider event, and complete fulfillment.
 	// Verify a normal purchase becomes fulfilled and completion is idempotent.
@@ -4206,9 +4540,11 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get product: %v", err)
 	}
+
 	if item.Price.PayableAmountMinor != 900 {
 		t.Fatalf("unexpected payable amount: %d", item.Price.PayableAmountMinor)
 	}
+
 	if len(item.Items) != 1 || item.Items[0].Quantity != 2 {
 		t.Fatalf("unexpected product items: %#v", item.Items)
 	}
@@ -4226,23 +4562,29 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list user products: %v", err)
 	}
+
 	var listedProduct *user.ProductModel
+
 	for index := range products {
 		if products[index].ID == productID {
 			listedProduct = &products[index]
 			break
 		}
 	}
+
 	if listedProduct == nil {
 		t.Fatalf("created product %q is missing from user catalog", productID)
 	}
+
 	if listedProduct.Title != "Тестовый товар" ||
 		listedProduct.Price.PayableAmountMinor != 900 {
 		t.Fatalf("unexpected listed product: %#v", listedProduct)
 	}
+
 	if len(listedProduct.Items) != 1 || listedProduct.Items[0].Quantity != 2 {
 		t.Fatalf("unexpected listed product items: %#v", listedProduct.Items)
 	}
+
 	groupProducts, err := env.api.User.ListProducts(
 		env.ctx,
 		user.ListProductsParams{
@@ -4260,9 +4602,11 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list user products by group: %v", err)
 	}
+
 	if len(groupProducts) != 1 || groupProducts[0].ID != productID {
 		t.Fatalf("unexpected grouped products: %#v", groupProducts)
 	}
+
 	missingGroupProducts, err := env.api.User.ListProducts(
 		env.ctx,
 		user.ListProductsParams{
@@ -4280,11 +4624,13 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list user products by missing group: %v", err)
 	}
+
 	if len(missingGroupProducts) != 0 {
 		t.Fatalf("missing group products = %#v", missingGroupProducts)
 	}
 
 	internalUserID := int64(501)
+
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
 		Identity: paymentTestIdentity(
 			testWorkspaceID,
@@ -4300,11 +4646,13 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create order: %v", err)
 	}
+
 	if order.Status != "draft" {
 		t.Fatalf("unexpected order status: %s", order.Status)
 	}
 
 	providerPaymentID := uniquePaymentID("regular")
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -4317,6 +4665,7 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create attempt: %v", err)
 	}
+
 	if attempt.AmountMinor != order.PayableAmountMinor {
 		t.Fatalf(
 			"attempt amount mismatch: got %d want %d",
@@ -4358,9 +4707,11 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("complete attempt: %v", err)
 	}
+
 	if completed.FulfillmentID == nil {
 		t.Fatal("expected fulfillment id")
 	}
+
 	if rows, err := env.api.Admin.UpdateFulfillmentStatus(
 		env.ctx,
 		admin.FulfillmentStatusParams{
@@ -4410,9 +4761,11 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("complete attempt again: %v", err)
 	}
+
 	if !again.AlreadyDone {
 		t.Fatal("expected second completion to be idempotent")
 	}
+
 	if again.FulfillmentID == nil ||
 		*again.FulfillmentID != *completed.FulfillmentID {
 		t.Fatalf(
@@ -4421,6 +4774,7 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 			again.FulfillmentID,
 		)
 	}
+
 	assertCallbackEvent(
 		t,
 		env.ctx,
@@ -4438,10 +4792,12 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 		"ok",
 	)
 	assertPaymentPurchaseStats(t, env, productID, 1, 1, 1, 900)
+
 	// Gift payment flow.
 	// Create a hidden recipient key and let another user pay for that product.
 	// Verify recipient privacy, payer tracking, key usage, and gift fulfillment.
 	recipientInternalID := int64(701)
+
 	key, err := env.api.Admin.CreateProductKey(env.ctx, product.CreateKeyParams{
 		WorkspaceID:    testWorkspaceID,
 		AppID:          2002,
@@ -4466,9 +4822,11 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get product by key: %v", err)
 	}
+
 	if giftProduct.ID != productID {
 		t.Fatalf("unexpected keyed product: %s", giftProduct.ID)
 	}
+
 	if giftProduct.Price.AssetCode != "RUB" {
 		t.Fatalf(
 			"unexpected keyed product asset: %s",
@@ -4479,6 +4837,7 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	payerPlatformID := int64(1)
 	payerPlatformUserID := "payer-visible"
 	payerInternalID := int64(702)
+
 	giftOrder, err := env.api.User.CreateOrderByKey(
 		env.ctx,
 		checkout.CreateOrderByKeyParams{
@@ -4495,12 +4854,14 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create order by key: %v", err)
 	}
+
 	if giftOrder.PlatformUserID != "recipient-hidden" {
 		t.Fatalf(
 			"expected hidden recipient on order, got %s",
 			giftOrder.PlatformUserID,
 		)
 	}
+
 	if giftOrder.PayerPlatformUserID == nil ||
 		*giftOrder.PayerPlatformUserID != payerPlatformUserID {
 		t.Fatalf(
@@ -4510,6 +4871,7 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	}
 
 	giftProviderPaymentID := uniquePaymentID("gift")
+
 	giftAttempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -4537,6 +4899,7 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("complete gift attempt: %v", err)
 	}
+
 	if giftCompleted.FulfillmentID == nil {
 		t.Fatal("expected gift fulfillment id")
 	}
@@ -4570,6 +4933,7 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create order for %s stats: %v", status, err)
 		}
+
 		updated, err := env.api.Admin.UpdateOrderStatus(
 			env.ctx,
 			testWorkspaceID,
@@ -4583,6 +4947,7 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 				err,
 			)
 		}
+
 		if updated != 1 {
 			t.Fatalf(
 				"expected one order updated to %s, got %d",
@@ -4591,15 +4956,18 @@ func TestPaymentCatalogCheckoutAndGiftCycle(t *testing.T) {
 			)
 		}
 	}
+
 	overview, err := env.api.Admin.ListDailyOverview(
 		env.ctx, testWorkspaceID, now.Add(-24*time.Hour), now.Add(24*time.Hour),
 	)
 	if err != nil {
 		t.Fatalf("list complete payment daily overview: %v", err)
 	}
+
 	if len(overview) != 1 {
 		t.Fatalf("unexpected complete payment daily overview: %#v", overview)
 	}
+
 	today := overview[0]
 	if today.OrdersCreated != 5 ||
 		today.DraftOrders != 5 ||
@@ -4637,6 +5005,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	priceEndsAt := now.Add(time.Hour)
 	walletAddress := "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ"
 	walletConfigURL := "https://example.com/payment-ton.config.json"
+
 	expectedWalletAddress, err := paymentton.NormalizeWalletAddress(
 		walletAddress,
 		paymentton.NetworkMainnet,
@@ -4657,6 +5026,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert product group: %v", err)
 	}
+
 	if err := env.api.Admin.SaveProduct(env.ctx, product.UpsertParams{
 		WorkspaceID:    sourceWorkspace,
 		ID:             productID,
@@ -4673,6 +5043,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert product: %v", err)
 	}
+
 	for _, localization := range []product.UpsertLocalizationParams{
 		{WorkspaceID: sourceWorkspace, Locale: "ru", LocalizationKey: groupCode + ".title", Value: "Группа"},
 		{WorkspaceID: sourceWorkspace, Locale: "ru", LocalizationKey: groupCode + ".description", Value: "Описание группы"},
@@ -4688,6 +5059,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 			t.Fatalf("upsert localization: %v", err)
 		}
 	}
+
 	if err := env.api.Admin.AttachProductItem(env.ctx, product.AddItemParams{
 		WorkspaceID: sourceWorkspace,
 		ProductID:   productID,
@@ -4697,6 +5069,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("attach product item: %v", err)
 	}
+
 	if _, err := env.api.Admin.CreateCatalogPrice(
 		env.ctx,
 		product.CreatePriceParams{
@@ -4711,6 +5084,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create price: %v", err)
 	}
+
 	if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
 		WorkspaceID:      sourceWorkspace,
 		Network:          paymentton.NetworkMainnet,
@@ -4730,12 +5104,14 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
+
 	if len(pkg.TONWallets) != 1 ||
 		pkg.TONWallets[0].WalletAddress != expectedWalletAddress ||
 		pkg.TONWallets[0].Manifest == nil ||
 		*pkg.TONWallets[0].Manifest != testTONConnectManifest() {
 		t.Fatalf("unexpected exported ton wallets: %+v", pkg.TONWallets)
 	}
+
 	if _, err := env.api.Adapters.TON.GetManifest(
 		env.ctx,
 		targetWorkspace,
@@ -4749,6 +5125,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 			sql.ErrNoRows,
 		)
 	}
+
 	if _, err := env.api.Admin.Import(
 		env.ctx,
 		targetWorkspace,
@@ -4758,6 +5135,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	); err != nil {
 		t.Fatalf("import: %v", err)
 	}
+
 	imported, err := env.api.Admin.Export(
 		env.ctx,
 		targetWorkspace,
@@ -4766,6 +5144,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export imported: %v", err)
 	}
+
 	if len(imported.Groups) != 1 || len(imported.Groups[0].Products) != 1 ||
 		len(
 			imported.Groups[0].Products[0].Items,
@@ -4773,16 +5152,19 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		imported.Groups[0].Products[0].Items[0].Scale != 2 || len(imported.TONWallets) != 1 {
 		t.Fatalf("unexpected imported package: %+v", imported)
 	}
+
 	importedWallet, err := env.api.Admin.GetTONWallet(env.ctx, targetWorkspace)
 	if err != nil {
 		t.Fatalf("get imported ton wallet: %v", err)
 	}
+
 	if importedWallet.Manifest != testTONConnectManifest() {
 		t.Fatalf(
 			"unexpected imported ton connect manifest: %+v",
 			importedWallet.Manifest,
 		)
 	}
+
 	importedManifest, err := env.api.Adapters.TON.GetManifest(
 		env.ctx,
 		targetWorkspace,
@@ -4790,12 +5172,14 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get imported public ton connect manifest: %v", err)
 	}
+
 	if importedManifest != testTONConnectManifest() {
 		t.Fatalf(
 			"unexpected imported public ton connect manifest: %+v",
 			importedManifest,
 		)
 	}
+
 	if importedWallet.Network != paymentton.NetworkMainnet ||
 		importedWallet.WalletAddress != expectedWalletAddress ||
 		!importedWallet.NetworkConfigUrl.Valid ||
@@ -4819,7 +5203,9 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create order before updating imported price: %v", err)
 	}
+
 	var originalPriceID uint64
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT price_id FROM payment_order WHERE id = $1",
@@ -4827,6 +5213,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	).Scan(&originalPriceID); err != nil {
 		t.Fatalf("get original imported order price id: %v", err)
 	}
+
 	pkg.Groups[0].Products[0].Prices[0].ListAmountMinor = 1200
 	if _, err := env.api.Admin.Import(
 		env.ctx,
@@ -4838,8 +5225,12 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update imported price referenced by order: %v", err)
 	}
-	var updatedPriceID uint64
-	var updatedListAmount uint64
+
+	var (
+		updatedPriceID    uint64
+		updatedListAmount uint64
+	)
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		`SELECT payment_order.price_id, payment_price.list_amount_minor
@@ -4850,6 +5241,7 @@ WHERE payment_order.id = $1`,
 	).Scan(&updatedPriceID, &updatedListAmount); err != nil {
 		t.Fatalf("get updated imported order price: %v", err)
 	}
+
 	if updatedPriceID != originalPriceID || updatedListAmount != 1200 {
 		t.Fatalf(
 			"updated referenced price id/amount = %d/%d, want %d/1200",
@@ -4858,6 +5250,7 @@ WHERE payment_order.id = $1`,
 			originalPriceID,
 		)
 	}
+
 	if _, err := env.db.ExecContext(
 		env.ctx,
 		"DELETE FROM payment_order WHERE id = $1",
@@ -4869,6 +5262,7 @@ WHERE payment_order.id = $1`,
 	pkg.Groups[0].Localization = nil
 	pkg.Groups[0].Products[0].Localization = nil
 	pkg.Groups[0].Products[0].Items = nil
+
 	if _, err := env.api.Admin.Import(
 		env.ctx,
 		targetWorkspace,
@@ -4879,6 +5273,7 @@ WHERE payment_order.id = $1`,
 	); err != nil {
 		t.Fatalf("replace imported payment catalog: %v", err)
 	}
+
 	replaced, err := env.api.Admin.Export(
 		env.ctx,
 		targetWorkspace,
@@ -4887,6 +5282,7 @@ WHERE payment_order.id = $1`,
 	if err != nil {
 		t.Fatalf("export replaced payment catalog: %v", err)
 	}
+
 	if len(replaced.Groups) != 1 ||
 		len(replaced.Groups[0].Localization) != 0 ||
 		len(replaced.Groups[0].Products) != 1 ||
@@ -4919,6 +5315,7 @@ func setupPaymentIntegrationTestWithOptions(
 	if err != nil {
 		t.Fatalf("open admin mysql connection: %v", err)
 	}
+
 	t.Cleanup(func() { adminDB.Close() })
 
 	if err := recreatePaymentTestDatabase(ctx, adminDB, dbName); err != nil {
@@ -4929,6 +5326,7 @@ func setupPaymentIntegrationTestWithOptions(
 	if err != nil {
 		t.Fatalf("open payment mysql connection: %v", err)
 	}
+
 	t.Cleanup(func() { appDB.Close() })
 
 	client, err := sqlwrap.New(appDB, paymentTestSQLOptions())
@@ -4943,42 +5341,12 @@ func setupPaymentIntegrationTestWithOptions(
 	); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
+
 	api, err := NewWithDatabase(ctx, appDB, options)
 	if err != nil {
 		t.Fatalf("create payment service: %v", err)
 	}
-	t.Cleanup(func() { _ = api.Close() })
 
-	return paymentTestEnv{
-		ctx:    ctx,
-		db:     appDB,
-		client: client,
-		api:    api,
-	}
-}
-
-func setupExistingPaymentIntegrationTest(t testing.TB) paymentTestEnv {
-	t.Helper()
-
-	dsn := paymentTestDSN(t)
-	dbName := paymentTestDB
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-
-	appDB, err := openMySQL(dsn, dbName)
-	if err != nil {
-		t.Fatalf("open existing payment mysql connection: %v", err)
-	}
-	t.Cleanup(func() { appDB.Close() })
-
-	client, err := sqlwrap.New(appDB, paymentTestSQLOptions())
-	if err != nil {
-		t.Fatalf("create sql client: %v", err)
-	}
-	api, err := NewWithDatabase(ctx, appDB, paymentTestOptions())
-	if err != nil {
-		t.Fatalf("create payment service: %v", err)
-	}
 	t.Cleanup(func() { _ = api.Close() })
 
 	return paymentTestEnv{
@@ -5015,11 +5383,14 @@ func assertOrderStatus(
 	want string,
 ) {
 	t.Helper()
+
 	var got string
+
 	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_order WHERE id = $1", orderID).
 		Scan(&got); err != nil {
 		t.Fatalf("select order status: %v", err)
 	}
+
 	if got != want {
 		t.Fatalf("unexpected order status: got %s want %s", got, want)
 	}
@@ -5033,11 +5404,14 @@ func assertAttemptStatus(
 	want string,
 ) {
 	t.Helper()
+
 	var got string
+
 	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_attempt WHERE id = $1", attemptID).
 		Scan(&got); err != nil {
 		t.Fatalf("select attempt status: %v", err)
 	}
+
 	if got != want {
 		t.Fatalf("unexpected attempt status: got %s want %s", got, want)
 	}
@@ -5051,11 +5425,14 @@ func assertFulfillmentItemCount(
 	want int,
 ) {
 	t.Helper()
+
 	var got int
+
 	if err := db.QueryRowContext(ctx, "SELECT COALESCE(SUM(quantity), 0) FROM payment_fulfillment_item WHERE fulfillment_id = $1", fulfillmentID).
 		Scan(&got); err != nil {
 		t.Fatalf("select fulfillment item count: %v", err)
 	}
+
 	if got != want {
 		t.Fatalf("unexpected fulfillment item count: got %d want %d", got, want)
 	}
@@ -5070,9 +5447,14 @@ func assertCallbackEvent(
 	want int,
 ) {
 	t.Helper()
-	var got int
-	var idempotencyKey string
+
+	var (
+		got            int
+		idempotencyKey string
+	)
+
 	eventKey := fmt.Sprintf("%s:%d", eventType, orderID)
+
 	if err := db.QueryRowContext(ctx, `
 SELECT COUNT(*), COALESCE(MAX(idempotency_key), '')
 FROM payment_clb_event
@@ -5081,9 +5463,11 @@ WHERE source_service = 'payment' AND event_type = $1 AND event_key = $2`,
 	).Scan(&got, &idempotencyKey); err != nil {
 		t.Fatalf("select callback event: %v", err)
 	}
+
 	if got != want {
 		t.Fatalf("unexpected callback event count: got %d want %d", got, want)
 	}
+
 	if want > 0 && idempotencyKey != eventKey {
 		t.Fatalf(
 			"unexpected callback idempotency key: got %s want %s",
@@ -5103,10 +5487,12 @@ func assertOnCallbackSuccessful(
 	itemID string,
 ) {
 	t.Helper()
+
 	ctx, cancel := context.WithCancel(env.ctx)
 	handled := 0
 	err := env.api.OnCallback(ctx, func(callback Context) error {
 		handled++
+
 		if callback.EventType != CallbackEventPaymentOrderFulfilled {
 			t.Fatalf(
 				"unexpected callback event type: got %s want %s",
@@ -5114,6 +5500,7 @@ func assertOnCallbackSuccessful(
 				CallbackEventPaymentOrderFulfilled,
 			)
 		}
+
 		if callback.EventKey != fmt.Sprintf(
 			"%s:%d",
 			CallbackEventPaymentOrderFulfilled,
@@ -5121,6 +5508,7 @@ func assertOnCallbackSuccessful(
 		) {
 			t.Fatalf("unexpected callback event key: %s", callback.EventKey)
 		}
+
 		if callback.IdempotencyKey != callback.EventKey {
 			t.Fatalf(
 				"unexpected callback idempotency key: got %s want %s",
@@ -5128,9 +5516,11 @@ func assertOnCallbackSuccessful(
 				callback.EventKey,
 			)
 		}
+
 		if callback.PaymentFulfilled == nil {
 			t.Fatal("expected payment fulfilled callback payload")
 		}
+
 		payload := *callback.PaymentFulfilled
 		if payload.OrderID != order.ID ||
 			payload.AttemptID != attempt.ID ||
@@ -5147,6 +5537,7 @@ func assertOnCallbackSuccessful(
 			payload.AmountMinor != attempt.AmountMinor {
 			t.Fatalf("unexpected callback payload: %#v", payload)
 		}
+
 		if len(payload.Rewards) != 1 ||
 			payload.Rewards[0].Key != itemID ||
 			payload.Rewards[0].Type != "quantity" ||
@@ -5154,15 +5545,20 @@ func assertOnCallbackSuccessful(
 			payload.Rewards[0].Unit != nil {
 			t.Fatalf("unexpected callback rewards: %#v", payload.Rewards)
 		}
+
 		if err := callback.Successful(); err != nil {
 			return err
 		}
+
 		cancel()
+
 		return nil
 	}, WithCallbackBatchSize(1), WithCallbackIdleDelay(time.Millisecond))
+
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("on callback: %v", err)
 	}
+
 	if handled != 1 {
 		t.Fatalf("unexpected callback handled count: got %d want 1", handled)
 	}
@@ -5177,12 +5573,16 @@ func assertCallbackStatus(
 	want string,
 ) {
 	t.Helper()
+
 	var got string
+
 	eventKey := fmt.Sprintf("%s:%d", eventType, orderID)
+
 	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_clb_event WHERE source_service = 'payment' AND event_type = $1 AND event_key = $2", eventType, eventKey).
 		Scan(&got); err != nil {
 		t.Fatalf("select callback status: %v", err)
 	}
+
 	if got != want {
 		t.Fatalf("unexpected callback status: got %s want %s", got, want)
 	}
@@ -5195,6 +5595,7 @@ func assertPaymentPurchaseStats(
 	purchaseCount, purchaseQuantity, uniqueBuyers, grossAmount uint64,
 ) {
 	t.Helper()
+
 	report, err := env.api.Admin.GetPaymentReport(
 		env.ctx,
 		admin.PaymentReportParams{
@@ -5204,11 +5605,13 @@ func assertPaymentPurchaseStats(
 	if err != nil {
 		t.Fatalf("get payment report: %v", err)
 	}
+
 	if report.Stats.PurchaseCount != purchaseCount ||
 		report.Stats.PurchaseQuantity != purchaseQuantity ||
 		report.Stats.UniqueBuyers != uniqueBuyers {
 		t.Fatalf("unexpected payment report stats: %#v", report.Stats)
 	}
+
 	if len(report.Stats.Assets) != 1 ||
 		report.Stats.Assets[0].AssetCode != "RUB" ||
 		report.Stats.Assets[0].GrossAmountMinor != grossAmount {
@@ -5225,6 +5628,7 @@ func assertPaymentPurchaseStats(
 	if err != nil {
 		t.Fatalf("get payment product report: %v", err)
 	}
+
 	if productReport.Stats.PurchaseCount != purchaseCount ||
 		productReport.Stats.PurchaseQuantity != purchaseQuantity {
 		t.Fatalf("unexpected payment product stats: %#v", productReport.Stats)
@@ -5239,6 +5643,7 @@ func assertPaymentPurchaseStats(
 	); err != nil {
 		t.Fatalf("refresh payment daily stats: %v", err)
 	}
+
 	daily, err := env.api.Admin.ListDailyStats(
 		env.ctx,
 		testWorkspaceID,
@@ -5249,6 +5654,7 @@ func assertPaymentPurchaseStats(
 	if err != nil {
 		t.Fatalf("list payment daily stats: %v", err)
 	}
+
 	if len(daily) != 1 || daily[0].PurchaseCount != purchaseCount ||
 		daily[0].PurchaseQuantity != purchaseQuantity || daily[0].GrossAmountMinor != grossAmount {
 		t.Fatalf("unexpected payment daily stats: %#v", daily)
@@ -5260,6 +5666,7 @@ func assertPaymentPurchaseStats(
 	if err != nil {
 		t.Fatalf("list payment daily overview: %v", err)
 	}
+
 	if len(overview) != 1 ||
 		overview[0].ProductsTotal != 1 ||
 		overview[0].VisibleProducts != 1 ||
@@ -5279,6 +5686,7 @@ func assertAdminPaymentReadMethods(
 	attemptID uint64,
 ) {
 	t.Helper()
+
 	products, err := env.api.Admin.ListProducts(
 		env.ctx,
 		admin.ProductListParams{
@@ -5288,6 +5696,7 @@ func assertAdminPaymentReadMethods(
 	if err != nil {
 		t.Fatalf("admin list products: %v", err)
 	}
+
 	if len(products) == 0 {
 		t.Fatal("expected admin products")
 	}
@@ -5299,6 +5708,7 @@ func assertAdminPaymentReadMethods(
 	if err != nil {
 		t.Fatalf("admin list orders: %v", err)
 	}
+
 	if len(orders) == 0 || uint64(orders[0].ID) != orderID {
 		t.Fatalf("unexpected admin orders: %#v", orders)
 	}
@@ -5318,6 +5728,7 @@ func assertAdminPaymentReadMethods(
 	if err != nil {
 		t.Fatalf("admin list user orders: %v", err)
 	}
+
 	if len(userOrders) != 1 || uint64(userOrders[0].ID) != orderID {
 		t.Fatalf("unexpected user orders: %#v", userOrders)
 	}
@@ -5336,6 +5747,7 @@ func assertAdminPaymentReadMethods(
 	if err != nil {
 		t.Fatalf("admin list other app user orders: %v", err)
 	}
+
 	if len(otherAppOrders) != 0 {
 		t.Fatalf("unexpected other app user orders: %#v", otherAppOrders)
 	}
@@ -5360,9 +5772,11 @@ func assertAdminPaymentReadMethods(
 	if err != nil {
 		t.Fatalf("admin get payment report: %v", err)
 	}
+
 	if len(report.Payments) != 1 || report.Payments[0].ID != orderID {
 		t.Fatalf("unexpected payment report: %#v", report.Payments)
 	}
+
 	if report.Payments[0].Initiator != report.Payments[0].Recipient {
 		t.Fatalf(
 			"self payment parties differ: initiator=%#v recipient=%#v",
@@ -5370,6 +5784,7 @@ func assertAdminPaymentReadMethods(
 			report.Payments[0].Recipient,
 		)
 	}
+
 	if report.Stats.TotalOrders != 1 ||
 		report.Stats.FulfilledOrders != 1 ||
 		len(report.Stats.Assets) != 1 ||
@@ -5402,6 +5817,7 @@ func assertAdminPaymentReadMethods(
 	if err != nil {
 		t.Fatalf("admin list attempts: %v", err)
 	}
+
 	if len(attempts) == 0 || uint64(attempts[0].ID) != attemptID {
 		t.Fatalf("unexpected admin attempts: %#v", attempts)
 	}
@@ -5415,6 +5831,7 @@ func assertAdminPaymentReadMethods(
 	if err != nil {
 		t.Fatalf("admin list payment events: %v", err)
 	}
+
 	if len(events) == 0 {
 		t.Fatal("expected admin payment events")
 	}
@@ -5429,6 +5846,7 @@ func assertAdminPaymentReadMethods(
 	if err != nil {
 		t.Fatalf("admin list callback events: %v", err)
 	}
+
 	if len(callbacks) == 0 {
 		t.Fatal("expected admin callback events")
 	}
@@ -5441,12 +5859,17 @@ func assertPurchaseKeyUsed(
 	key string,
 ) {
 	t.Helper()
-	var status string
-	var usedCount int
+
+	var (
+		status    string
+		usedCount int
+	)
+
 	if err := db.QueryRowContext(ctx, "SELECT status, used_count FROM payment_purchase_key WHERE key_hash = $1", sha256Hex(key)).
 		Scan(&status, &usedCount); err != nil {
 		t.Fatalf("select purchase key: %v", err)
 	}
+
 	if status != "used" || usedCount != 1 {
 		t.Fatalf(
 			"unexpected purchase key state: status=%s used=%d",
@@ -5503,6 +5926,7 @@ func TestPaymentGlobalDynamicPricingAcrossWorkspaces(t *testing.T) {
 	coefficient := "1"
 	startsAt := now.Add(-time.Hour)
 	endsAt := now.Add(time.Hour)
+
 	for workspaceID, productID := range map[string]string{
 		testWorkspaceID:   firstProductID,
 		secondWorkspaceID: secondProductID,
@@ -5539,6 +5963,7 @@ func TestPaymentGlobalDynamicPricingAcrossWorkspaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update global TON rate: %v", err)
 	}
+
 	if result.UpdatedPrices != 2 || result.AffectedProducts != 2 ||
 		result.AffectedWorkspaces != 2 {
 		t.Fatalf("unexpected global update result: %#v", result)
@@ -5562,6 +5987,7 @@ func TestPaymentGlobalDynamicPricingAcrossWorkspaces(t *testing.T) {
 		if err != nil {
 			t.Fatalf("get dynamic product for %s: %v", workspaceID, err)
 		}
+
 		if item.Price.PayableAmountMinor != 250_000_000 {
 			t.Fatalf(
 				"unexpected dynamic price for %s: %d",
@@ -5580,6 +6006,7 @@ func TestPaymentGlobalDynamicPricingAcrossWorkspaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get fixed TON product: %v", err)
 	}
+
 	if fixed.Price.PayableAmountMinor != 1_000_000_000 {
 		t.Fatalf("fixed TON price changed: %d", fixed.Price.PayableAmountMinor)
 	}
@@ -5591,6 +6018,7 @@ func TestPaymentGlobalDynamicPricingAcrossWorkspaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get global TON rate: %v", err)
 	}
+
 	if rate.USDTPerAssetMinor != 4_000_000 {
 		t.Fatalf("unexpected global TON rate: %d", rate.USDTPerAssetMinor)
 	}
@@ -5601,6 +6029,7 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 	if err := env.api.Close(); err != nil {
 		t.Fatalf("close initial payment service: %v", err)
 	}
+
 	if _, err := env.db.ExecContext(
 		env.ctx,
 		"DELETE FROM payment_asset_rate",
@@ -5609,27 +6038,37 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 	}
 
 	var requests atomic.Int32
+
 	httpClient := &http.Client{
 		Transport: paymentTestRateRoundTrip(
 			func(request *http.Request) (*http.Response, error) {
 				requests.Add(1)
+
 				tokenPath := request.URL.EscapedPath()
+
 				tokenPath = tokenPath[strings.LastIndex(tokenPath, "/")+1:]
 				tokenPath, _ = url.PathUnescape(tokenPath)
+
 				addresses := strings.Split(tokenPath, ",")
+
 				var body strings.Builder
+
 				body.WriteByte('[')
+
 				for index, address := range addresses {
 					if index > 0 {
 						body.WriteByte(',')
 					}
+
 					body.WriteString(`{"baseToken":{"address":`)
 					body.WriteString(strconv.Quote(address))
 					body.WriteString(
 						`},"quoteToken":{"address":"EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c"},"priceNative":"2","priceUsd":"2","liquidity":{"usd":1000000}}`,
 					)
 				}
+
 				body.WriteByte(']')
+
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Header: http.Header{
@@ -5641,6 +6080,7 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 			},
 		),
 	}
+
 	service, err := NewWithDatabase(env.ctx, env.db, Options{
 		PriceUpdateHTTPClient: httpClient,
 		PriceUpdateInterval:   10 * time.Millisecond,
@@ -5655,8 +6095,10 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("price updater did not request rate")
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
+
 	for {
 		rate, rateErr := service.User.GetUSDTPrice(
 			env.ctx,
@@ -5665,6 +6107,7 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 		if rateErr == nil && rate.USDTPerAssetMinor == 2_000_000 {
 			break
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatalf(
 				"automatic DOGS_TON rate was not stored: rate=%#v err=%v",
@@ -5672,8 +6115,10 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 				rateErr,
 			)
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
+
 	for {
 		rate, rateErr := service.User.GetUSDTPrice(
 			env.ctx,
@@ -5682,6 +6127,7 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 		if rateErr == nil && rate.USDTPerAssetMinor == 1_000_000 {
 			break
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatalf(
 				"automatic native TON rate was not stored: rate=%#v err=%v",
@@ -5689,8 +6135,10 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 				rateErr,
 			)
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
+
 	usdtRate, err := service.User.GetUSDTPrice(
 		env.ctx,
 		user.GetUSDTPriceParams{AssetCode: repository.USDTAssetCode},
@@ -5698,17 +6146,22 @@ func TestPaymentPriceUpdaterStopsWithService(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get automatic USDT rate: %v", err)
 	}
+
 	if usdtRate.USDTPerAssetMinor != 1_000_000 {
 		t.Fatalf(
 			"unexpected automatic USDT rate: %d",
 			usdtRate.USDTPerAssetMinor,
 		)
 	}
+
 	if err := service.Close(); err != nil {
 		t.Fatalf("close payment service: %v", err)
 	}
+
 	requestCount := requests.Load()
+
 	time.Sleep(50 * time.Millisecond)
+
 	if requests.Load() != requestCount {
 		t.Fatalf(
 			"price updater continued after Close: before=%d after=%d",
@@ -5760,6 +6213,7 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preview import: %v", err)
 	}
+
 	if preview.Counts.Groups != 1 || preview.Counts.Products != 1 ||
 		preview.Counts.ProductItems != 1 || preview.Counts.Prices != 7 || preview.Counts.Localizations != 4 {
 		t.Fatalf("unexpected preview counts: %+v", preview.Counts)
@@ -5769,6 +6223,7 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("import example: %v", err)
 	}
+
 	if result.Imported.Groups != 1 || result.Imported.Products != 1 ||
 		result.Imported.ProductItems != 1 || result.Imported.Prices != 7 || result.Imported.Localizations != 8 {
 		t.Fatalf("unexpected import counts: %+v", result.Imported)
@@ -5782,20 +6237,25 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export after import: %v", err)
 	}
+
 	group := findExportGroup(t, exported, "topup")
 	if group.TitleKey == nil || *group.TitleKey != "payment.group.topup.title" {
 		t.Fatalf("unexpected group title key: %#v", group.TitleKey)
 	}
+
 	if len(group.Products) != 1 {
 		t.Fatalf("expected one product in group, got %d", len(group.Products))
 	}
+
 	product := group.Products[0]
 	if product.ID != "topup.stars.flexible" {
 		t.Fatalf("unexpected product id: %s", product.ID)
 	}
+
 	if product.QuantityMode != "flexible" {
 		t.Fatalf("unexpected quantity mode: %s", product.QuantityMode)
 	}
+
 	if product.GlobalLimit != 0 || product.UserLimit != 0 ||
 		product.GlobalInterval != "UNLIMITED" || product.UserInterval != "UNLIMITED" {
 		t.Fatalf(
@@ -5806,9 +6266,11 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 			product.UserInterval,
 		)
 	}
+
 	if len(product.Items) != 1 {
 		t.Fatalf("expected one product item, got %d", len(product.Items))
 	}
+
 	if product.Items[0].ItemID != "stars" || product.Items[0].Quantity != 100 ||
 		product.Items[0].Scale != 2 {
 		t.Fatalf("unexpected product item: %+v", product.Items[0])
@@ -5832,6 +6294,7 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create USDT order: %v", err)
 	}
+
 	if usdtOrder.PayableAmountMinor != 150_000 {
 		t.Fatalf(
 			"USDT amount = %d, want 150000 micro-USDT",
@@ -5857,6 +6320,7 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create dynamic TON order: %v", err)
 	}
+
 	if tonOrder.PayableAmountMinor != 98_039_220 {
 		t.Fatalf(
 			"dynamic TON amount = %d, want 98039220 nanoTON for 0.15 USDT at 1.53 USDT/TON",
@@ -5867,6 +6331,7 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	prices := indexExportPrices(product.Prices)
 	assertFixedExamplePrice(t, prices["XTR"], "XTR", 1)
 	assertFixedExamplePrice(t, prices["USDT_TON"], "USDT_TON", 15000)
+
 	for _, code := range []string{"TON", "NOT_TON", "DOGS_TON", "MAJOR_TON", "UTYA_TON"} {
 		assertDynamicExamplePrice(t, prices[code], code)
 	}
@@ -5875,19 +6340,24 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal exported package: %v", err)
 	}
+
 	var exportedRoot map[string]any
+
 	if err := json.Unmarshal(exportedJSON, &exportedRoot); err != nil {
 		t.Fatalf("unmarshal exported package: %v", err)
 	}
+
 	if _, ok := exportedRoot["items"]; ok {
 		t.Fatalf(
 			"payment export must not expose root items, got: %#v",
 			exportedRoot["items"],
 		)
 	}
+
 	if _, ok := exportedRoot["references"]; ok {
 		t.Fatal("payment export must not expose root references")
 	}
+
 	exportedContent := string(exportedJSON)
 	if strings.Contains(exportedContent, "title_key") ||
 		strings.Contains(exportedContent, "description_key") {
@@ -5898,12 +6368,14 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	}
 
 	var localItemTable *string
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT to_regclass('payment_item')::text",
 	).Scan(&localItemTable); err != nil {
 		t.Fatalf("inspect local payment item table: %v", err)
 	}
+
 	if localItemTable != nil {
 		t.Fatalf(
 			"payment must not own local item catalog, found table %q",
@@ -5926,7 +6398,9 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create order with opaque reward key: %v", err)
 	}
+
 	providerPaymentID := "opaque-item-payment"
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -5939,6 +6413,7 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create attempt with opaque reward key: %v", err)
 	}
+
 	completed, err := env.api.Operational.CompleteAttempt(
 		env.ctx,
 		checkout.CompleteAttemptParams{
@@ -5953,12 +6428,16 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("complete attempt with opaque reward key: %v", err)
 	}
+
 	if completed.FulfillmentID == nil {
 		t.Fatal("expected fulfillment for opaque reward key")
 	}
 
-	var quantity int64
-	var scale int16
+	var (
+		quantity int64
+		scale    int16
+	)
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT quantity, scale FROM payment_fulfillment_item WHERE fulfillment_id = $1 AND item_id = $2",
@@ -5967,6 +6446,7 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 	).Scan(&quantity, &scale); err != nil {
 		t.Fatalf("read opaque fulfillment reward: %v", err)
 	}
+
 	if quantity != 300 || scale != 2 {
 		t.Fatalf(
 			"unexpected opaque fulfillment reward: quantity=%d scale=%d",
@@ -6012,33 +6492,43 @@ func loadPaymentImportExample(
 	name string,
 ) repository.ImportRequest {
 	t.Helper()
+
 	data, err := os.ReadFile(filepath.Join("examples", name))
 	if err != nil {
 		t.Fatalf("read payment example %s: %v", name, err)
 	}
+
 	var raw map[string]any
+
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("unmarshal raw payment example %s: %v", name, err)
 	}
+
 	pkg, ok := raw["package"].(map[string]any)
 	if !ok {
 		t.Fatalf("payment example %s must contain package object", name)
 	}
+
 	if _, ok := pkg["items"]; ok {
 		t.Fatalf("payment example %s must not contain root items", name)
 	}
+
 	if _, ok := pkg["references"]; ok {
 		t.Fatalf("payment example %s must not contain root references", name)
 	}
+
 	content := string(data)
 	if strings.Contains(content, "title_key") ||
 		strings.Contains(content, "description_key") {
 		t.Fatalf("payment example %s must not expose localization keys", name)
 	}
+
 	var req repository.ImportRequest
+
 	if err := json.Unmarshal(data, &req); err != nil {
 		t.Fatalf("unmarshal payment example %s: %v", name, err)
 	}
+
 	return req
 }
 
@@ -6048,12 +6538,15 @@ func findExportGroup(
 	code string,
 ) repository.ExportProductGroup {
 	t.Helper()
+
 	for _, group := range pkg.Groups {
 		if group.Code == code {
 			return group
 		}
 	}
+
 	t.Fatalf("group %s not found in export", code)
+
 	return repository.ExportProductGroup{}
 }
 
@@ -6064,6 +6557,7 @@ func indexExportPrices(
 	for _, price := range prices {
 		result[price.AssetCode] = price
 	}
+
 	return result
 }
 
@@ -6074,13 +6568,16 @@ func assertFixedExamplePrice(
 	amount uint64,
 ) {
 	t.Helper()
+
 	if price.AssetCode != assetCode {
 		t.Fatalf("price for %s not found", assetCode)
 	}
+
 	if price.PricingMode != "fixed" || price.ListAmountMinor != amount ||
 		price.DiscountAmountMinor != 0 {
 		t.Fatalf("unexpected fixed price for %s: %+v", assetCode, price)
 	}
+
 	if price.ReferenceAssetCode != nil ||
 		price.ReferenceListAmountMinor != nil ||
 		price.ReferenceDiscountAmountMinor != nil ||
@@ -6099,12 +6596,15 @@ func assertDynamicExamplePrice(
 	assetCode string,
 ) {
 	t.Helper()
+
 	if price.AssetCode != assetCode {
 		t.Fatalf("price for %s not found", assetCode)
 	}
+
 	if price.PricingMode != "dynamic" {
 		t.Fatalf("unexpected pricing mode for %s: %+v", assetCode, price)
 	}
+
 	if price.ReferenceAssetCode == nil ||
 		*price.ReferenceAssetCode != "USDT_TON" {
 		t.Fatalf(
@@ -6113,6 +6613,7 @@ func assertDynamicExamplePrice(
 			price.ReferenceAssetCode,
 		)
 	}
+
 	if price.ReferenceListAmountMinor == nil ||
 		*price.ReferenceListAmountMinor != 15000 {
 		t.Fatalf(
@@ -6121,6 +6622,7 @@ func assertDynamicExamplePrice(
 			price.ReferenceListAmountMinor,
 		)
 	}
+
 	if price.ReferenceDiscountAmountMinor == nil ||
 		*price.ReferenceDiscountAmountMinor != 0 {
 		t.Fatalf(
@@ -6129,6 +6631,7 @@ func assertDynamicExamplePrice(
 			price.ReferenceDiscountAmountMinor,
 		)
 	}
+
 	if price.Coefficient == nil || *price.Coefficient != "1.000000000000" {
 		t.Fatalf(
 			"unexpected coefficient for %s: %+v",
@@ -6146,8 +6649,11 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 		ListAmountMinor: 1299,
 	})
 
-	var createPayload plategaTestCreateTransactionPayload
-	var createPath string
+	var (
+		createPayload plategaTestCreateTransactionPayload
+		createPath    string
+	)
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Header.Get("X-MerchantId") != "merchant-1" ||
@@ -6158,6 +6664,7 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 					r.Header.Get("X-Secret"),
 				)
 			}
+
 			switch {
 			case r.Method == http.MethodPost && r.URL.Path == "/transaction/process":
 				createPath = r.URL.Path
@@ -6165,6 +6672,7 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 					Decode(&createPayload); err != nil {
 					t.Fatalf("decode platega create payload: %v", err)
 				}
+
 				writeJSON(t, w, map[string]any{
 					"paymentMethod":  "SBPQR",
 					"transactionId":  "platega-tx-1",
@@ -6202,6 +6710,7 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 			}
 		}),
 	)
+
 	defer server.Close()
 
 	credentials := platega.Credentials{
@@ -6230,13 +6739,16 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create platega payment: %v", err)
 	}
+
 	if createPath != "/transaction/process" {
 		t.Fatalf("expected method-specific create path, got %s", createPath)
 	}
+
 	if createPayload.PaymentMethod == nil ||
 		*createPayload.PaymentMethod != int(platega.PaymentMethodSBPQR) {
 		t.Fatalf("unexpected payment method payload: %#v", createPayload)
 	}
+
 	if createPayload.PaymentDetails.Amount.String() != "12.99" ||
 		createPayload.PaymentDetails.Currency != "RUB" {
 		t.Fatalf(
@@ -6244,16 +6756,19 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 			createPayload.PaymentDetails,
 		)
 	}
+
 	if createPayload.Payload != payment.OrderPublicID {
 		t.Fatalf(
 			"expected order public id as payload, got %q",
 			createPayload.Payload,
 		)
 	}
+
 	if payment.TransactionID != "platega-tx-1" || payment.PaymentURL == "" ||
 		payment.AmountMinor != 1299 {
 		t.Fatalf("unexpected platega payment response: %#v", payment)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "pending_payment")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "pending")
 
@@ -6264,6 +6779,7 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get platega h2h: %v", err)
 	}
+
 	if !strings.Contains(h2h.QR, "qr.nspk.ru") {
 		t.Fatalf("unexpected h2h response: %#v", h2h)
 	}
@@ -6274,6 +6790,7 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 	headers := http.Header{}
 	headers.Set("X-MerchantId", "merchant-1")
 	headers.Set("X-Secret", "secret-1")
+
 	result, err := env.api.Adapters.Platega.HandleWebhook(
 		env.ctx,
 		platega.WebhookRequest{
@@ -6286,10 +6803,12 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handle platega webhook: %v", err)
 	}
+
 	if result.OrderID != payment.OrderID ||
 		result.AttemptID != payment.AttemptID {
 		t.Fatalf("unexpected platega webhook result: %#v", result)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "fulfilled")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "succeeded")
 
@@ -6304,6 +6823,7 @@ func TestPlategaAdapterFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sync platega payment: %v", err)
 	}
+
 	if !again.AlreadyDone {
 		t.Fatalf("expected idempotent platega sync, got %#v", again)
 	}
@@ -6320,6 +6840,7 @@ func TestPlategaAdapterRejectsInvalidWebhookCredentials(t *testing.T) {
 	headers := http.Header{}
 	headers.Set("X-MerchantId", "merchant-1")
 	headers.Set("X-Secret", "wrong-secret")
+
 	_, err := env.api.Adapters.Platega.HandleWebhook(
 		env.ctx,
 		platega.WebhookRequest{
@@ -6335,7 +6856,9 @@ func TestPlategaAdapterRejectsInvalidWebhookCredentials(t *testing.T) {
 
 func TestPlategaUsesExactMonetaryAmounts(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
+
 	const amountMinor = uint64(9007199254740993)
+
 	productID := createPaymentProduct(t, env, testProductOptions{
 		ProductID:       "platega_exact_amount",
 		AssetCode:       platega.AssetCode,
@@ -6343,13 +6866,17 @@ func TestPlategaUsesExactMonetaryAmounts(t *testing.T) {
 	})
 
 	var receivedAmount json.Number
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var payload plategaTestCreateTransactionPayload
+
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				t.Fatalf("decode exact platega amount: %v", err)
 			}
+
 			receivedAmount = payload.PaymentDetails.Amount
+
 			writeJSON(t, w, map[string]any{
 				"transactionId": "platega-exact-amount",
 				"status":        "PENDING",
@@ -6357,12 +6884,15 @@ func TestPlategaUsesExactMonetaryAmounts(t *testing.T) {
 			})
 		}),
 	)
+
 	defer server.Close()
+
 	credentials := platega.Credentials{
 		MerchantID: "merchant-exact",
 		Secret:     "secret-exact",
 		APIBaseURL: server.URL,
 	}
+
 	payment, err := env.api.Adapters.Platega.CreatePayment(
 		env.ctx,
 		platega.CreatePaymentParams{
@@ -6378,6 +6908,7 @@ func TestPlategaUsesExactMonetaryAmounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create exact platega payment: %v", err)
 	}
+
 	if receivedAmount.String() != "90071992547409.93" {
 		t.Fatalf(
 			"provider amount = %q, want exact decimal",
@@ -6388,6 +6919,7 @@ func TestPlategaUsesExactMonetaryAmounts(t *testing.T) {
 	headers := http.Header{}
 	headers.Set("X-MerchantId", credentials.MerchantID)
 	headers.Set("X-Secret", credentials.Secret)
+
 	result, err := env.api.Adapters.Platega.HandleWebhook(
 		env.ctx,
 		platega.WebhookRequest{
@@ -6402,6 +6934,7 @@ func TestPlategaUsesExactMonetaryAmounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("complete exact platega payment: %v", err)
 	}
+
 	if result.FulfilledID == nil || payment.AmountMinor != amountMinor {
 		t.Fatalf(
 			"exact platega result: payment=%+v result=%+v",
@@ -6478,6 +7011,7 @@ type plategaTestCreateTransactionPayload struct {
 func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
+
 	if err := json.NewEncoder(w).Encode(value); err != nil {
 		t.Fatalf("write json response: %v", err)
 	}
@@ -6486,15 +7020,18 @@ func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
 func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 	cache := newPaymentSharedTestCache()
 	options := paymentTestOptions()
+
 	options.Cache = cache
 	options.CacheL1Delay = time.Minute
 	options.CacheL2Delay = time.Minute
 
 	env := setupPaymentIntegrationTestWithOptions(t, options)
+
 	nodeB, err := NewWithDatabase(env.ctx, env.db, options)
 	if err != nil {
 		t.Fatalf("create second payment node: %v", err)
 	}
+
 	t.Cleanup(func() { _ = nodeB.Close() })
 
 	now := time.Now().UTC()
@@ -6511,6 +7048,7 @@ func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create cache test group: %v", err)
 	}
+
 	if err := env.api.Admin.SaveLocalization(
 		env.ctx,
 		product.UpsertLocalizationParams{
@@ -6522,6 +7060,7 @@ func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create cache test localization: %v", err)
 	}
+
 	if err := env.api.Admin.SaveProduct(env.ctx, product.UpsertParams{
 		WorkspaceID:    testWorkspaceID,
 		ID:             productID,
@@ -6537,6 +7076,7 @@ func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create cache test product: %v", err)
 	}
+
 	if _, err := env.api.Admin.CreateCatalogPrice(
 		env.ctx,
 		product.CreatePriceParams{
@@ -6558,6 +7098,7 @@ func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("warm product cache on node B: %v", err)
 	}
+
 	if warm.Title != "Old title" || warm.Limit.User.Limit != 1 {
 		t.Fatalf("unexpected warm product: %+v", warm)
 	}
@@ -6573,6 +7114,7 @@ func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update cache test localization: %v", err)
 	}
+
 	if err := env.api.Admin.SaveProduct(env.ctx, product.UpsertParams{
 		WorkspaceID:    testWorkspaceID,
 		ID:             productID,
@@ -6596,6 +7138,7 @@ func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read invalidated product on node B: %v", err)
 	}
+
 	if updated.Title != "New title" || updated.Limit.User.Limit != 3 {
 		t.Fatalf("node B returned stale product: %+v", updated)
 	}
@@ -6603,12 +7146,15 @@ func TestPaymentCacheVersionInvalidatesOtherNode(t *testing.T) {
 
 func TestPaymentImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
+
 	const productCount = 3001
+
 	workspaceID := testsupport.WorkspaceID("large-import-workspace")
 
 	products := make([]repository.ExportProduct, 0, productCount)
 	for index := 0; index < productCount; index++ {
 		productID := fmt.Sprintf("large-import-product-%04d", index)
+
 		products = append(products, repository.ExportProduct{
 			ID:             productID,
 			TitleKey:       productID + ".title",
@@ -6637,6 +7183,7 @@ func TestPaymentImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 			err,
 		)
 	}
+
 	if result.Imported.Products != productCount {
 		t.Fatalf(
 			"imported products = %d, want %d",
@@ -6646,6 +7193,7 @@ func TestPaymentImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 	}
 
 	var stored int
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT COUNT(*) FROM payment_product WHERE workspace_id = $1",
@@ -6653,6 +7201,7 @@ func TestPaymentImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 	).Scan(&stored); err != nil {
 		t.Fatalf("count imported products: %v", err)
 	}
+
 	if stored != productCount {
 		t.Fatalf("stored products = %d, want %d", stored, productCount)
 	}
@@ -6666,7 +7215,9 @@ func TestPaymentImportSerializesWithAdminWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin competing transaction: %v", err)
 	}
+
 	t.Cleanup(func() { _ = transaction.Rollback() })
+
 	if _, err := transaction.ExecContext(
 		env.ctx,
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
@@ -6676,6 +7227,7 @@ func TestPaymentImportSerializesWithAdminWrite(t *testing.T) {
 	}
 
 	importResult := make(chan error, 1)
+
 	go func() {
 		_, err := env.api.Admin.Import(
 			env.ctx,
@@ -6716,14 +7268,17 @@ func TestPaymentImportSerializesWithAdminWrite(t *testing.T) {
 	if err := transaction.Commit(); err != nil {
 		t.Fatalf("release payment workspace lock: %v", err)
 	}
+
 	if err := <-importResult; err != nil {
 		t.Fatalf("concurrent import: %v", err)
 	}
+
 	if err := <-adminResult; err != nil {
 		t.Fatalf("concurrent admin write: %v", err)
 	}
 
 	var stored int
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		`SELECT COUNT(*)
@@ -6734,6 +7289,7 @@ WHERE workspace_id = $1
 	).Scan(&stored); err != nil {
 		t.Fatalf("count concurrent payment products: %v", err)
 	}
+
 	if stored != 2 {
 		t.Fatalf("concurrent operations stored %d products, want 2", stored)
 	}
@@ -6747,8 +7303,10 @@ func waitForPaymentWorkspaceLock(
 	t.Helper()
 
 	deadline := time.Now().Add(3 * time.Second)
+
 	for {
 		var waiting int
+
 		err := env.db.QueryRowContext(env.ctx, `
 SELECT COUNT(*)
 FROM pg_stat_activity
@@ -6758,9 +7316,11 @@ WHERE datname = current_database()
 		if err != nil {
 			t.Fatalf("inspect payment workspace lock waiters: %v", err)
 		}
+
 		if waiting >= minimum {
 			return
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatalf(
 				"payment workspace lock waiters = %d, want at least %d",
@@ -6777,8 +7337,10 @@ func waitForPaymentBlockedQuery(t *testing.T, db *sql.DB, relation string) {
 	t.Helper()
 
 	deadline := time.Now().Add(3 * time.Second)
+
 	for {
 		var waiting int
+
 		if err := db.QueryRowContext(context.Background(), `
 SELECT COUNT(*)
 FROM pg_stat_activity
@@ -6787,9 +7349,11 @@ WHERE datname = current_database()
   AND query LIKE '%' || $1 || '%'`, relation).Scan(&waiting); err != nil {
 			t.Fatalf("inspect blocked payment query: %v", err)
 		}
+
 		if waiting > 0 {
 			return
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatalf("no blocked payment query for relation %s", relation)
 		}
@@ -6856,8 +7420,10 @@ func (c *paymentSharedTestCache) GetWithTTL(
 	if !exists {
 		return nil, 0, nil
 	}
+
 	if !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt) {
 		delete(c.entries, key)
+
 		return nil, 0, nil
 	}
 
@@ -6878,6 +7444,7 @@ func (c *paymentSharedTestCache) Set(
 	if expiration > 0 {
 		entry.expiresAt = time.Now().Add(expiration)
 	}
+
 	c.entries[key] = entry
 
 	return nil
@@ -6972,6 +7539,7 @@ func TestPaymentWorkspaceIsolation(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("expected workspace A product to be visible, got %v", err)
 	}
+
 	if _, err := env.api.User.GetProduct(env.ctx, product.GetParams{
 		Identity:  paymentTestIdentity(workspaceB, 4500, 1, "workspace-user"),
 		ProductID: productID,
@@ -6993,6 +7561,7 @@ func TestPaymentWorkspaceIsolation(t *testing.T) {
 			sameProductID,
 		)
 	}
+
 	workspaceBProduct, err := env.api.User.GetProduct(
 		env.ctx,
 		product.GetParams{
@@ -7013,6 +7582,7 @@ func TestPaymentWorkspaceIsolation(t *testing.T) {
 			err,
 		)
 	}
+
 	if workspaceBProduct.Price.ListAmountMinor != 2500 {
 		t.Fatalf(
 			"expected workspace B duplicate product price 2500, got %d",
@@ -7031,6 +7601,7 @@ func TestPaymentWorkspaceIsolation(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("expected workspace A order to be created, got %v", err)
 	}
+
 	if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
 		Identity:  paymentTestIdentity(workspaceB, 4500, 1, "workspace-user"),
 		ProductID: productID,
@@ -7238,7 +7809,6 @@ func TestPaymentLimitsAcrossAllIntervals(t *testing.T) {
 }
 
 func stablePaymentTestIntervalCount(interval string) int32 {
-
 	switch interval {
 	case "SECOND":
 		return 1_000_000_000
@@ -7255,7 +7825,6 @@ func stablePaymentTestIntervalCount(interval string) int32 {
 	default:
 		return 1
 	}
-
 }
 
 func TestPaymentOrderLimitReservationLifecycle(t *testing.T) {
@@ -7330,6 +7899,7 @@ func TestPaymentOrderLimitReservationLifecycle(t *testing.T) {
 		GlobalInterval:      "ONCE",
 		GlobalIntervalCount: 1,
 	})
+
 	snapshotOrder, err := env.api.User.CreateOrder(
 		env.ctx,
 		checkout.CreateOrderParams{
@@ -7347,7 +7917,9 @@ func TestPaymentOrderLimitReservationLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create snapshot order: %v", err)
 	}
+
 	providerPaymentID := uniquePaymentID("limit-snapshot")
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -7360,6 +7932,7 @@ func TestPaymentOrderLimitReservationLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create snapshot attempt: %v", err)
 	}
+
 	if _, err := env.db.ExecContext(
 		env.ctx,
 		`UPDATE payment_product
@@ -7373,6 +7946,7 @@ WHERE workspace_id = $1
 	); err != nil {
 		t.Fatalf("change product after order creation: %v", err)
 	}
+
 	if _, err := env.api.Operational.CompleteAttempt(
 		env.ctx,
 		checkout.CompleteAttemptParams{
@@ -7386,8 +7960,12 @@ WHERE workspace_id = $1
 	); err != nil {
 		t.Fatalf("complete order from limit snapshot: %v", err)
 	}
-	var paidCount int64
-	var reservedCount int64
+
+	var (
+		paidCount     int64
+		reservedCount int64
+	)
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		`SELECT paid_count, reserved_count
@@ -7400,6 +7978,7 @@ WHERE workspace_id = $1
 	).Scan(&paidCount, &reservedCount); err != nil {
 		t.Fatalf("read consumed snapshot reservation: %v", err)
 	}
+
 	if paidCount != 1 || reservedCount != 0 {
 		t.Fatalf(
 			"unexpected snapshot counter: paid=%d reserved=%d",
@@ -7454,11 +8033,13 @@ func TestPaymentStaleOrderExpirationReleasesLimitAndPurchaseKey(t *testing.T) {
 	); err != nil {
 		t.Fatalf("age order: %v", err)
 	}
+
 	if err := env.api.expireStaleOrders(env.ctx); err != nil {
 		t.Fatalf("expire stale orders: %v", err)
 	}
 
 	assertOrderStatus(t, env.ctx, env.db, order.ID, "expired")
+
 	if _, err := env.api.User.CreateOrderByKey(
 		env.ctx,
 		checkout.CreateOrderByKeyParams{
@@ -7530,6 +8111,7 @@ FOR UPDATE`, testWorkspaceID, productID); err != nil {
 	}
 
 	orderResult := make(chan error, 1)
+
 	go func() {
 		_, err := env.api.User.CreateOrderByKey(
 			env.ctx,
@@ -7560,11 +8142,13 @@ FOR UPDATE`, testWorkspaceID, productID); err != nil {
 	if err := transaction.Commit(); err != nil {
 		t.Fatalf("release competing locks: %v", err)
 	}
+
 	if err := <-orderResult; err != nil {
 		t.Fatalf("create keyed order after releasing limit: %v", err)
 	}
 
 	var boundOrders int
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT COUNT(*)
 FROM payment_order
@@ -7573,6 +8157,7 @@ WHERE workspace_id = $1
   AND purchase_key_id IS NOT NULL`, testWorkspaceID, productID).Scan(&boundOrders); err != nil {
 		t.Fatalf("count keyed orders: %v", err)
 	}
+
 	if boundOrders != 2 {
 		t.Fatalf("bound keyed orders = %d, want 2", boundOrders)
 	}
@@ -7588,6 +8173,7 @@ func TestPaymentStaleOrderAndActiveAttemptExpireConsistently(t *testing.T) {
 		GlobalInterval:      "ONCE",
 		GlobalIntervalCount: 1,
 	})
+
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
 		Identity: paymentTestIdentity(
 			testWorkspaceID,
@@ -7602,7 +8188,9 @@ func TestPaymentStaleOrderAndActiveAttemptExpireConsistently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create delayed order: %v", err)
 	}
+
 	providerPaymentID := uniquePaymentID("delayed-payment")
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -7615,11 +8203,13 @@ func TestPaymentStaleOrderAndActiveAttemptExpireConsistently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create delayed attempt: %v", err)
 	}
+
 	if _, err := env.db.ExecContext(env.ctx, `
 		UPDATE payment_order SET created_at = now() - INTERVAL '2 hours' WHERE id = $1
 	`, order.ID); err != nil {
 		t.Fatalf("age delayed order: %v", err)
 	}
+
 	if _, err := env.db.ExecContext(env.ctx, `
 		UPDATE payment_attempt SET updated_at = now() - INTERVAL '2 hours' WHERE id = $1
 	`, attempt.ID); err != nil {
@@ -7629,6 +8219,7 @@ func TestPaymentStaleOrderAndActiveAttemptExpireConsistently(t *testing.T) {
 	if err := env.api.expireStaleOrders(env.ctx); err != nil {
 		t.Fatalf("expire stale orders: %v", err)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, order.ID, "expired")
 	assertAttemptStatus(t, env.ctx, env.db, attempt.ID, "expired")
 
@@ -7649,6 +8240,7 @@ func TestPaymentStaleOrderAndActiveAttemptExpireConsistently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create replacement after expiration: %v", err)
 	}
+
 	if replacement.ID == order.ID {
 		t.Fatalf("replacement reused expired order: %+v", replacement)
 	}
@@ -7661,6 +8253,7 @@ func TestPaymentStaleExpirationLocksAttemptsBeforeOrder(t *testing.T) {
 		AssetCode:       "RUB",
 		ListAmountMinor: 1000,
 	})
+
 	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
 		Identity: paymentTestIdentity(
 			testWorkspaceID,
@@ -7675,7 +8268,9 @@ func TestPaymentStaleExpirationLocksAttemptsBeforeOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create stale order: %v", err)
 	}
+
 	providerPaymentID := uniquePaymentID("expiration-lock")
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -7688,12 +8283,14 @@ func TestPaymentStaleExpirationLocksAttemptsBeforeOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create stale attempt: %v", err)
 	}
+
 	if _, err := env.db.ExecContext(env.ctx, `
 UPDATE payment_order
 SET created_at = now() - INTERVAL '2 hours'
 WHERE id = $1`, order.ID); err != nil {
 		t.Fatalf("age order: %v", err)
 	}
+
 	if _, err := env.db.ExecContext(env.ctx, `
 UPDATE payment_attempt
 SET updated_at = now() - INTERVAL '2 hours'
@@ -7733,6 +8330,7 @@ WHERE id = $1`, attempt.ID); err != nil {
 	if err := transaction.Commit(); err != nil {
 		t.Fatalf("release competing locks: %v", err)
 	}
+
 	if err := <-expireResult; err != nil {
 		t.Fatalf("expire stale order after releasing attempt: %v", err)
 	}
@@ -7768,6 +8366,7 @@ func TestPaymentSubscriptionRejectsMismatchedOrderAndAttempt(t *testing.T) {
 		}
 
 		providerPaymentID := uniquePaymentID("subscription-" + userID)
+
 		attempt, err := env.api.User.CreateAttempt(
 			env.ctx,
 			checkout.CreateAttemptParams{
@@ -7786,6 +8385,7 @@ func TestPaymentSubscriptionRejectsMismatchedOrderAndAttempt(t *testing.T) {
 
 	firstOrderID, firstAttemptID := createOrderAttempt("subscription-first")
 	secondOrderID, secondAttemptID := createOrderAttempt("subscription-second")
+
 	if _, err := env.api.Admin.UpsertSubscription(
 		env.ctx,
 		admin.SubscriptionUpsertParams{
@@ -7867,6 +8467,7 @@ func TestPaymentCatalogAvailabilityAndPriceSafety(t *testing.T) {
 			},
 		},
 	}
+
 	for _, tc := range unavailable {
 		productID := createPaymentProduct(
 			t,
@@ -7897,6 +8498,7 @@ func TestPaymentCatalogAvailabilityAndPriceSafety(t *testing.T) {
 	priceEndsAt := now.Add(time.Hour)
 	expiredStart := now.Add(-3 * time.Hour)
 	expiredEnd := now.Add(-2 * time.Hour)
+
 	if _, err := env.api.Admin.CreateCatalogPrice(
 		env.ctx,
 		product.CreatePriceParams{
@@ -7911,6 +8513,7 @@ func TestPaymentCatalogAvailabilityAndPriceSafety(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create expired price: %v", err)
 	}
+
 	if _, err := env.api.Admin.CreateCatalogPrice(
 		env.ctx,
 		product.CreatePriceParams{
@@ -7936,12 +8539,14 @@ func TestPaymentCatalogAvailabilityAndPriceSafety(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get product with promo price: %v", err)
 	}
+
 	if item.Price.PayableAmountMinor != 700 {
 		t.Fatalf(
 			"expected promo payable amount 700, got %d",
 			item.Price.PayableAmountMinor,
 		)
 	}
+
 	if item.Description == "" {
 		t.Fatal(
 			"expected localization fallback to keep a non-empty description",
@@ -7968,6 +8573,7 @@ func TestPaymentCatalogAvailabilityAndPriceSafety(t *testing.T) {
 	) {
 		t.Fatalf("expected invalid price create rejection, got %v", err)
 	}
+
 	if _, err := env.api.Admin.UpdateCatalogPrice(
 		env.ctx,
 		product.UpdatePriceParams{
@@ -8006,6 +8612,7 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get cached product: %v", err)
 	}
+
 	if item.Title != "Security product" {
 		t.Fatalf("expected initial cached title, got %q", item.Title)
 	}
@@ -8021,6 +8628,7 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update cached product title: %v", err)
 	}
+
 	item, err = env.api.User.GetProduct(env.ctx, product.GetParams{
 		Identity:  paymentTestIdentity(testWorkspaceID, 4600, 1, "cache-user"),
 		ProductID: productID,
@@ -8030,12 +8638,14 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get product after localization update: %v", err)
 	}
+
 	if item.Title != "Updated cached product" {
 		t.Fatalf("expected updated cached title, got %q", item.Title)
 	}
 
 	priceStart := time.Now().Add(-time.Hour)
 	priceEnd := time.Now().Add(time.Hour)
+
 	if _, err := env.api.Admin.UpdateCatalogPrice(
 		env.ctx,
 		product.UpdatePriceParams{
@@ -8050,6 +8660,7 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update cached product price: %v", err)
 	}
+
 	item, err = env.api.User.GetProduct(env.ctx, product.GetParams{
 		Identity:  paymentTestIdentity(testWorkspaceID, 4600, 1, "cache-user"),
 		ProductID: productID,
@@ -8059,6 +8670,7 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get product after price update: %v", err)
 	}
+
 	if item.Price.PayableAmountMinor != 1250 {
 		t.Fatalf(
 			"expected updated cached price 1250, got %d",
@@ -8073,14 +8685,17 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 	); err != nil {
 		t.Fatalf("clear product cache: %v", err)
 	}
+
 	if err := env.client.ResetCache(); err != nil {
 		t.Fatalf("clear go product cache: %v", err)
 	}
+
 	freshAPI, err := NewWithDatabase(env.ctx, env.db, paymentTestOptions())
 	if err != nil {
 		t.Fatalf("create fresh payment service: %v", err)
 	}
 	defer freshAPI.Close()
+
 	if _, err := freshAPI.User.GetProduct(env.ctx, product.GetParams{
 		Identity:  paymentTestIdentity(testWorkspaceID, 4600, 1, "cache-user"),
 		ProductID: productID,
@@ -8089,12 +8704,14 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 	}); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expected empty cache lookup to miss, got %v", err)
 	}
+
 	if err := env.api.Admin.RebuildProductCache(
 		env.ctx,
 		testWorkspaceID,
 	); err != nil {
 		t.Fatalf("rebuild workspace product cache: %v", err)
 	}
+
 	item, err = env.api.User.GetProduct(env.ctx, product.GetParams{
 		Identity:  paymentTestIdentity(testWorkspaceID, 4600, 1, "cache-user"),
 		ProductID: productID,
@@ -8104,6 +8721,7 @@ func TestPaymentProductCacheConsistency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get product after workspace cache rebuild: %v", err)
 	}
+
 	if item.Title != "Updated cached product" ||
 		item.Price.PayableAmountMinor != 1250 {
 		t.Fatalf(
@@ -8141,6 +8759,7 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create provider guard order: %v", err)
 	}
+
 	badProviderPaymentID := uniquePaymentID("bad-provider")
 	if _, err := env.api.User.CreateAttempt(
 		env.ctx,
@@ -8161,6 +8780,7 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 	// Complete the same attempt with wrong provider, amount, asset, and payment id values.
 	// Verify every mismatch is rejected before fulfillment can be created.
 	goodProviderPaymentID := uniquePaymentID("good")
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -8173,6 +8793,7 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create mismatch attempt: %v", err)
 	}
+
 	wrongPaymentID := goodProviderPaymentID + "_wrong"
 	mismatchCases := []struct {
 		name   string
@@ -8233,6 +8854,7 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 			},
 		},
 	}
+
 	for _, tc := range mismatchCases {
 		if _, err := env.api.Operational.CompleteAttempt(
 			env.ctx,
@@ -8262,6 +8884,7 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create event mismatch order: %v", err)
 	}
+
 	mismatchEventID := uniquePaymentID("event-mismatch")
 	if _, err := env.api.Operational.CreateEvent(
 		env.ctx,
@@ -8298,6 +8921,7 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("complete valid attempt after mismatch checks: %v", err)
 	}
+
 	if completed.FulfillmentID == nil {
 		t.Fatal("expected fulfillment after valid completion")
 	}
@@ -8337,6 +8961,7 @@ func TestPaymentCheckoutNegativeSecurityCases(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create event: %v", err)
 	}
+
 	if _, err := env.api.Operational.CreateEvent(
 		env.ctx,
 		checkout.CreateEventParams{
@@ -8369,6 +8994,7 @@ func TestPaymentGiftKeyNegativeCases(t *testing.T) {
 	// Create an already expired key and also try a random unknown key.
 	// Verify neither key can reveal or create a payable gift offer.
 	expiredAt := time.Now().Add(-time.Minute)
+
 	expiredKey, err := env.api.Admin.CreateProductKey(
 		env.ctx,
 		product.CreateKeyParams{
@@ -8384,6 +9010,7 @@ func TestPaymentGiftKeyNegativeCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create expired key: %v", err)
 	}
+
 	for _, key := range []string{expiredKey, "not-a-real-key"} {
 		if _, err := env.api.User.GetProductByKey(
 			env.ctx,
@@ -8394,6 +9021,7 @@ func TestPaymentGiftKeyNegativeCases(t *testing.T) {
 		) {
 			t.Fatalf("expected key %q to be hidden, got %v", key, err)
 		}
+
 		if _, err := env.api.User.CreateOrderByKey(
 			env.ctx,
 			checkout.CreateOrderByKeyParams{
@@ -8431,8 +9059,10 @@ func TestPaymentGiftKeyNegativeCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create one-use key: %v", err)
 	}
+
 	payerPlatformID := int64(1)
 	payerUserID := "payer-once"
+
 	order, err := env.api.User.CreateOrderByKey(
 		env.ctx,
 		checkout.CreateOrderByKeyParams{
@@ -8448,6 +9078,7 @@ func TestPaymentGiftKeyNegativeCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create gift order: %v", err)
 	}
+
 	if _, err := env.api.User.CreateOrderByKey(
 		env.ctx,
 		checkout.CreateOrderByKeyParams{
@@ -8467,6 +9098,7 @@ func TestPaymentGiftKeyNegativeCases(t *testing.T) {
 	}
 
 	providerPaymentID := uniquePaymentID("gift-once")
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -8479,6 +9111,7 @@ func TestPaymentGiftKeyNegativeCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create gift attempt: %v", err)
 	}
+
 	if _, err := env.api.Operational.CompleteAttempt(
 		env.ctx,
 		checkout.CompleteAttemptParams{
@@ -8492,6 +9125,7 @@ func TestPaymentGiftKeyNegativeCases(t *testing.T) {
 	); err != nil {
 		t.Fatalf("complete gift attempt: %v", err)
 	}
+
 	if _, err := env.api.User.CreateOrderByKey(
 		env.ctx,
 		checkout.CreateOrderByKeyParams{
@@ -8520,9 +9154,11 @@ func createPaymentProduct(
 
 	now := time.Now()
 	productID := opt.ProductID
+
 	if productID == "" {
 		productID = fmt.Sprintf("secure_product_%d", time.Now().UnixNano())
 	}
+
 	groupCode := fmt.Sprintf("secure_group_%d", time.Now().UnixNano())
 	itemID := fmt.Sprintf("secure_item_%d", time.Now().UnixNano())
 	productTitleKey := productID + ".title"
@@ -8530,31 +9166,39 @@ func createPaymentProduct(
 	itemTitleKey := itemID + ".title"
 	itemDescriptionKey := itemID + ".description"
 	availableFrom := opt.AvailableFrom
+
 	if availableFrom.IsZero() {
 		availableFrom = now.Add(-time.Hour)
 	}
+
 	availableUntil := opt.AvailableUntil
 	if availableUntil.IsZero() {
 		availableUntil = now.Add(time.Hour)
 	}
+
 	priceStartsAt := now.Add(-time.Hour)
 	priceEndsAt := now.Add(time.Hour)
 	assetCode := opt.AssetCode
+
 	if assetCode == "" {
 		assetCode = "RUB"
 	}
+
 	listAmount := opt.ListAmountMinor
 	if listAmount == 0 {
 		listAmount = 1000
 	}
+
 	globalInterval := opt.GlobalInterval
 	if globalInterval == "" {
 		globalInterval = "UNLIMITED"
 	}
+
 	userInterval := opt.UserInterval
 	if userInterval == "" {
 		userInterval = "UNLIMITED"
 	}
+
 	workspaceID := opt.WorkspaceID
 	if workspaceID == "" {
 		workspaceID = testWorkspaceID
@@ -8570,6 +9214,7 @@ func createPaymentProduct(
 	}); err != nil {
 		t.Fatalf("upsert test product group: %v", err)
 	}
+
 	if err := env.api.Admin.SaveProduct(env.ctx, product.UpsertParams{
 		ID:                  productID,
 		WorkspaceID:         workspaceID,
@@ -8590,6 +9235,7 @@ func createPaymentProduct(
 	}); err != nil {
 		t.Fatalf("create test product: %v", err)
 	}
+
 	for _, localization := range []product.UpsertLocalizationParams{
 		{Locale: "ru", LocalizationKey: productTitleKey, Value: "Security product"},
 		{Locale: "ru", LocalizationKey: productDescriptionKey, Value: "Security product description"},
@@ -8604,6 +9250,7 @@ func createPaymentProduct(
 			t.Fatalf("upsert test localization: %v", err)
 		}
 	}
+
 	if err := env.api.Admin.AttachProductItem(env.ctx, product.AddItemParams{
 		ProductID:   productID,
 		WorkspaceID: workspaceID,
@@ -8612,6 +9259,7 @@ func createPaymentProduct(
 	}); err != nil {
 		t.Fatalf("add test item: %v", err)
 	}
+
 	if _, err := env.api.Admin.CreateCatalogPrice(
 		env.ctx,
 		product.CreatePriceParams{
@@ -8637,39 +9285,51 @@ func mergeProductOptions(
 	if override.AssetCode != "" {
 		base.AssetCode = override.AssetCode
 	}
+
 	if override.ListAmountMinor != 0 {
 		base.ListAmountMinor = override.ListAmountMinor
 	}
+
 	if override.DiscountAmountMinor != 0 {
 		base.DiscountAmountMinor = override.DiscountAmountMinor
 	}
+
 	if override.GlobalLimit != 0 {
 		base.GlobalLimit = override.GlobalLimit
 	}
+
 	if override.GlobalInterval != "" {
 		base.GlobalInterval = override.GlobalInterval
 	}
+
 	if override.GlobalIntervalCount != 0 {
 		base.GlobalIntervalCount = override.GlobalIntervalCount
 	}
+
 	if override.UserLimit != 0 {
 		base.UserLimit = override.UserLimit
 	}
+
 	if override.UserInterval != "" {
 		base.UserInterval = override.UserInterval
 	}
+
 	if override.UserIntervalCount != 0 {
 		base.UserIntervalCount = override.UserIntervalCount
 	}
+
 	if !override.AvailableFrom.IsZero() {
 		base.AvailableFrom = override.AvailableFrom
 	}
+
 	if !override.AvailableUntil.IsZero() {
 		base.AvailableUntil = override.AvailableUntil
 	}
+
 	base.IsVisible = override.IsVisible
 	base.IsHidden = override.IsHidden
 	base.IsClosed = override.IsClosed
+
 	return base
 }
 
@@ -8698,7 +9358,9 @@ func completeTestPayment(
 	if err != nil {
 		t.Fatalf("create order for %s: %v", prefix, err)
 	}
+
 	providerPaymentID := uniquePaymentID(prefix)
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -8711,6 +9373,7 @@ func completeTestPayment(
 	if err != nil {
 		t.Fatalf("create attempt for %s: %v", prefix, err)
 	}
+
 	if _, err := env.api.Operational.CompleteAttempt(
 		env.ctx,
 		checkout.CompleteAttemptParams{
@@ -8734,10 +9397,13 @@ func TestTelegramStarsAdapterFullCycle(t *testing.T) {
 		ListAmountMinor: 25,
 	})
 
-	var createInvoicePayload telegramStarsTestCreateInvoicePayload
-	var answeredPreCheckout bool
-	var refundCalled bool
-	var editSubscriptionCalled bool
+	var (
+		createInvoicePayload   telegramStarsTestCreateInvoicePayload
+		answeredPreCheckout    bool
+		refundCalled           bool
+		editSubscriptionCalled bool
+	)
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
@@ -8746,21 +9412,26 @@ func TestTelegramStarsAdapterFullCycle(t *testing.T) {
 					Decode(&createInvoicePayload); err != nil {
 					t.Fatalf("decode createInvoiceLink payload: %v", err)
 				}
+
 				writeTelegramStarsResult(t, w, "https://t.me/invoice/test-link")
 			case strings.HasSuffix(r.URL.Path, "/answerPreCheckoutQuery"):
 				answeredPreCheckout = true
+
 				writeTelegramStarsResult(t, w, true)
 			case strings.HasSuffix(r.URL.Path, "/refundStarPayment"):
 				refundCalled = true
+
 				writeTelegramStarsResult(t, w, true)
 			case strings.HasSuffix(r.URL.Path, "/editUserStarSubscription"):
 				editSubscriptionCalled = true
+
 				writeTelegramStarsResult(t, w, true)
 			default:
 				t.Fatalf("unexpected telegram bot api path: %s", r.URL.Path)
 			}
 		}),
 	)
+
 	defer server.Close()
 
 	credentials := telegramstars.Credentials{
@@ -8786,10 +9457,12 @@ func TestTelegramStarsAdapterFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create telegram stars payment: %v", err)
 	}
+
 	if payment.InvoiceLink != "https://t.me/invoice/test-link" ||
 		payment.AmountMinor != 25 {
 		t.Fatalf("unexpected telegram stars payment: %#v", payment)
 	}
+
 	if createInvoicePayload.Currency != "XTR" ||
 		createInvoicePayload.ProviderToken != "" ||
 		len(createInvoicePayload.Prices) != 1 {
@@ -8798,6 +9471,7 @@ func TestTelegramStarsAdapterFullCycle(t *testing.T) {
 			createInvoicePayload,
 		)
 	}
+
 	if createInvoicePayload.Payload != payment.OrderPublicID ||
 		createInvoicePayload.Prices[0].Amount != 25 {
 		t.Fatalf(
@@ -8805,13 +9479,16 @@ func TestTelegramStarsAdapterFullCycle(t *testing.T) {
 			createInvoicePayload,
 		)
 	}
+
 	var storedInvoiceLink sql.NullString
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT confirmation_url
 FROM payment_attempt
 WHERE id = $1`, payment.AttemptID).Scan(&storedInvoiceLink); err != nil {
 		t.Fatalf("select telegram stars confirmation url: %v", err)
 	}
+
 	if !storedInvoiceLink.Valid ||
 		storedInvoiceLink.String != payment.InvoiceLink {
 		t.Fatalf(
@@ -8836,6 +9513,7 @@ WHERE id = $1`, payment.AttemptID).Scan(&storedInvoiceLink); err != nil {
 	if err != nil {
 		t.Fatalf("handle pre-checkout query: %v", err)
 	}
+
 	if !answeredPreCheckout || !preCheckout.Accepted {
 		t.Fatalf("expected accepted pre-checkout, got %#v", preCheckout)
 	}
@@ -8853,20 +9531,24 @@ WHERE id = $1`, payment.AttemptID).Scan(&storedInvoiceLink); err != nil {
 	if err != nil {
 		t.Fatalf("handle successful payment: %v", err)
 	}
+
 	if success.OrderID != payment.OrderID ||
 		success.AttemptID != payment.AttemptID {
 		t.Fatalf("unexpected successful payment result: %#v", success)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "fulfilled")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "succeeded")
 
 	var chargeID string
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT provider_charge_id
 FROM payment_attempt
 WHERE id = $1`, payment.AttemptID).Scan(&chargeID); err != nil {
 		t.Fatalf("select telegram charge id: %v", err)
 	}
+
 	if chargeID != "tg-charge-1" {
 		t.Fatalf("unexpected telegram charge id: %s", chargeID)
 	}
@@ -8882,14 +9564,17 @@ WHERE id = $1`, payment.AttemptID).Scan(&chargeID); err != nil {
 	if err != nil {
 		t.Fatalf("orchestrate telegram stars refund: %v", err)
 	}
+
 	if !refundCalled {
 		t.Fatal("expected refundStarPayment call")
 	}
+
 	if refunded.OrderID != payment.OrderID ||
 		refunded.AttemptID != payment.AttemptID ||
 		refunded.Status != "succeeded" {
 		t.Fatalf("unexpected orchestrated refund result: %#v", refunded)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "refunded")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "refunded")
 	assertRefundStatus(t, env.ctx, env.db, refunded.RefundID, "succeeded")
@@ -8905,13 +9590,13 @@ WHERE id = $1`, payment.AttemptID).Scan(&chargeID); err != nil {
 	); err != nil {
 		t.Fatalf("edit telegram stars subscription: %v", err)
 	}
+
 	if !editSubscriptionCalled {
 		t.Fatal("expected editUserStarSubscription call")
 	}
 }
 
 func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
-
 	env := setupPaymentIntegrationTest(t)
 	fixture := createCompletedPaymentFixture(t, env, 7008, "refund-idempotency")
 
@@ -8927,7 +9612,9 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 				params paymentrefund.ProviderRefundParams,
 			) (paymentrefund.ProviderRefundResult, error) {
 				providerCalls++
+
 				appliedRefunds[params.RefundID] = struct{}{}
+
 				if providerCalls == 1 {
 					return paymentrefund.ProviderRefundResult{}, responseLost
 				}
@@ -8943,6 +9630,7 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 		},
 		repository.Options{},
 	)
+
 	defer func() { _ = refundService.Close() }()
 
 	baseParams := paymentrefund.Params{
@@ -8953,7 +9641,9 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 		Reason:         "provider timeout regression",
 	}
 	missingKey := baseParams
+
 	missingKey.IdempotencyKey = ""
+
 	if _, err := refundService.Execute(
 		env.ctx,
 		missingKey,
@@ -8978,8 +9668,11 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 		t.Fatalf("first refund error = %v, want response loss", err)
 	}
 
-	var refundID uint64
-	var refundStatus string
+	var (
+		refundID     uint64
+		refundStatus string
+	)
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT id, status::text FROM payment_refund WHERE workspace_id = $1 AND idempotency_key = $2",
@@ -8988,6 +9681,7 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 	).Scan(&refundID, &refundStatus); err != nil {
 		t.Fatalf("read pending refund: %v", err)
 	}
+
 	if refundStatus != "pending" {
 		t.Fatalf(
 			"refund after ambiguous provider error = %q, want pending",
@@ -8999,6 +9693,7 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("retry refund: %v", err)
 	}
+
 	if retried.RefundID != refundID || retried.Status != "succeeded" {
 		t.Fatalf(
 			"unexpected retried refund: %+v, original id=%d",
@@ -9006,6 +9701,7 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 			refundID,
 		)
 	}
+
 	if providerCalls != 2 || len(appliedRefunds) != 1 {
 		t.Fatalf(
 			"provider calls=%d unique external operations=%d, want 2 calls and 1 operation",
@@ -9018,6 +9714,7 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replay completed refund: %v", err)
 	}
+
 	if replayed.RefundID != refundID || providerCalls != 2 {
 		t.Fatalf(
 			"completed replay = %+v provider calls=%d",
@@ -9025,11 +9722,9 @@ func TestPaymentRefundRetryReusesExternalIdempotency(t *testing.T) {
 			providerCalls,
 		)
 	}
-
 }
 
 func TestTelegramStarsGiftRefundUsesPayer(t *testing.T) {
-
 	env := setupPaymentIntegrationTest(t)
 	productID := createPaymentProduct(t, env, testProductOptions{
 		ProductID:       "telegram_stars_gift_refund",
@@ -9054,6 +9749,7 @@ func TestTelegramStarsGiftRefundUsesPayer(t *testing.T) {
 	}
 
 	providerPaymentID := order.PublicID
+
 	attempt, err := env.api.User.CreateAttempt(
 		env.ctx,
 		checkout.CreateAttemptParams{
@@ -9081,18 +9777,23 @@ func TestTelegramStarsGiftRefundUsesPayer(t *testing.T) {
 	}
 
 	var refundedUserID int64
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 			var body struct {
 				UserID int64 `json:"user_id"`
 			}
+
 			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 				t.Fatalf("decode telegram refund: %v", err)
 			}
+
 			refundedUserID = body.UserID
+
 			writeTelegramStarsResult(t, w, true)
 		}),
 	)
+
 	defer server.Close()
 
 	if _, err := env.api.Admin.ExecuteRefund(env.ctx, paymentrefund.Params{
@@ -9108,10 +9809,10 @@ func TestTelegramStarsGiftRefundUsesPayer(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("refund telegram stars gift: %v", err)
 	}
+
 	if refundedUserID != 111 {
 		t.Fatalf("telegram refund user_id = %d, want payer 111", refundedUserID)
 	}
-
 }
 
 func assertRefundStatus(
@@ -9122,11 +9823,14 @@ func assertRefundStatus(
 	want string,
 ) {
 	t.Helper()
+
 	var got string
+
 	if err := db.QueryRowContext(ctx, "SELECT status FROM payment_refund WHERE id = $1", refundID).
 		Scan(&got); err != nil {
 		t.Fatalf("select refund status: %v", err)
 	}
+
 	if got != want {
 		t.Fatalf("unexpected refund status: got %s want %s", got, want)
 	}
@@ -9177,6 +9881,7 @@ func TestTelegramStarsAdapterSubscriptionCycle(t *testing.T) {
 	}
 
 	expiresAt := time.Now().Add(30 * 24 * time.Hour)
+
 	initial, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(
 		env.ctx,
 		telegramstars.SuccessfulPayment{
@@ -9193,6 +9898,7 @@ func TestTelegramStarsAdapterSubscriptionCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handle successful subscription payment: %v", err)
 	}
+
 	if initial.FulfillmentID == nil || initial.RenewalID != nil ||
 		initial.AlreadyDone {
 		t.Fatalf("unexpected initial subscription result: %+v", initial)
@@ -9214,6 +9920,7 @@ func TestTelegramStarsAdapterSubscriptionCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check telegram stars subscription active: %v", err)
 	}
+
 	if !active {
 		t.Fatal("expected telegram stars subscription to be active")
 	}
@@ -9221,6 +9928,7 @@ func TestTelegramStarsAdapterSubscriptionCycle(t *testing.T) {
 	renewedUntil := expiresAt.Add(30 * 24 * time.Hour).
 		UTC().
 		Truncate(time.Second)
+
 	renewed, err := env.api.Adapters.TelegramStars.HandleSuccessfulPayment(
 		env.ctx,
 		telegramstars.SuccessfulPayment{
@@ -9237,16 +9945,20 @@ func TestTelegramStarsAdapterSubscriptionCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handle recurring subscription payment: %v", err)
 	}
+
 	if renewed.RenewalID == nil || renewed.FulfillmentID != nil ||
 		renewed.AlreadyDone {
 		t.Fatalf("unexpected recurring result: %+v", renewed)
 	}
 
-	var renewalCount int
-	var subscriptionCount int
-	var renewedCallbackCount int
-	var storedAttemptChargeID string
-	var storedPeriodEnd time.Time
+	var (
+		renewalCount          int
+		subscriptionCount     int
+		renewedCallbackCount  int
+		storedAttemptChargeID string
+		storedPeriodEnd       time.Time
+	)
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT
     (SELECT COUNT(*) FROM payment_subscription_renewal WHERE workspace_id = $1),
@@ -9268,6 +9980,7 @@ SELECT
 	); err != nil {
 		t.Fatalf("read recurring payment state: %v", err)
 	}
+
 	if renewalCount != 1 || subscriptionCount != 1 ||
 		renewedCallbackCount != 1 {
 		t.Fatalf(
@@ -9277,12 +9990,14 @@ SELECT
 			renewedCallbackCount,
 		)
 	}
+
 	if storedAttemptChargeID != "tg-sub-charge-1" {
 		t.Fatalf(
 			"attempt subscription charge = %q, want initial charge",
 			storedAttemptChargeID,
 		)
 	}
+
 	if !storedPeriodEnd.Equal(renewedUntil) {
 		t.Fatalf(
 			"subscription period end = %s, want %s",
@@ -9307,6 +10022,7 @@ SELECT
 	if err != nil {
 		t.Fatalf("replay recurring subscription payment: %v", err)
 	}
+
 	if !replayed.AlreadyDone || replayed.RenewalID == nil ||
 		*replayed.RenewalID != *renewed.RenewalID {
 		t.Fatalf("unexpected recurring replay: %+v", replayed)
@@ -9320,6 +10036,7 @@ SELECT
 	).Scan(&renewedCallbackCount); err != nil {
 		t.Fatalf("count replayed renewal callbacks: %v", err)
 	}
+
 	if renewedCallbackCount != 1 {
 		t.Fatalf(
 			"renewal callbacks after replay = %d, want 1",
@@ -9329,18 +10046,22 @@ SELECT
 
 	callbackCtx, cancel := context.WithCancel(env.ctx)
 	defer cancel()
+
 	seenRenewal := false
+
 	err = env.api.OnCallback(
 		callbackCtx,
 		func(callback Context) error {
 			if callback.EventType == CallbackEventPaymentSubscriptionRenewed {
 				seenRenewal = true
+
 				if callback.PaymentSubscriptionRenewed == nil ||
 					callback.Payload == nil {
 					return errors.New(
 						"missing typed subscription renewal payload",
 					)
 				}
+
 				if callback.PaymentSubscriptionRenewed.RenewalID != *renewed.RenewalID ||
 					callback.PaymentSubscriptionRenewed.ProviderSubscriptionID != "tg-sub-charge-1" ||
 					callback.PaymentSubscriptionRenewed.ProviderChargeID != "tg-sub-charge-2" {
@@ -9354,6 +10075,7 @@ SELECT
 			if err := callback.Successful(); err != nil {
 				return err
 			}
+
 			if seenRenewal {
 				cancel()
 			}
@@ -9363,9 +10085,11 @@ SELECT
 		WithCallbackBatchSize(1),
 		WithCallbackIdleDelay(time.Millisecond),
 	)
+
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("consume subscription renewal callback: %v", err)
 	}
+
 	if !seenRenewal {
 		t.Fatal("subscription renewal callback was not delivered")
 	}
@@ -9381,7 +10105,6 @@ func createTelegramStarsSubscriptionFixture(
 	env paymentTestEnv,
 	suffix string,
 ) telegramStarsSubscriptionFixture {
-
 	t.Helper()
 
 	productID := createPaymentProduct(t, env, testProductOptions{
@@ -9444,11 +10167,9 @@ func createTelegramStarsSubscriptionFixture(
 		payment:   *payment,
 		expiresAt: expiresAt,
 	}
-
 }
 
 func TestTelegramStarsDelayedRenewalDoesNotShortenSubscription(t *testing.T) {
-
 	env := setupPaymentIntegrationTest(t)
 	fixture := createTelegramStarsSubscriptionFixture(t, env, "out-of-order")
 	newerPeriodEnd := fixture.expiresAt.Add(60 * 24 * time.Hour)
@@ -9479,6 +10200,7 @@ func TestTelegramStarsDelayedRenewalDoesNotShortenSubscription(t *testing.T) {
 	}
 
 	var storedEnd time.Time
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		`SELECT ended_at FROM payment_subscription WHERE workspace_id = $1 AND attempt_id = $2`,
@@ -9487,6 +10209,7 @@ func TestTelegramStarsDelayedRenewalDoesNotShortenSubscription(t *testing.T) {
 	).Scan(&storedEnd); err != nil {
 		t.Fatalf("read subscription end: %v", err)
 	}
+
 	if !storedEnd.Equal(newerPeriodEnd) {
 		t.Fatalf(
 			"subscription end = %s, want monotonic %s",
@@ -9494,11 +10217,9 @@ func TestTelegramStarsDelayedRenewalDoesNotShortenSubscription(t *testing.T) {
 			newerPeriodEnd,
 		)
 	}
-
 }
 
 func TestTelegramStarsRenewalChargeCannotChangePeriod(t *testing.T) {
-
 	env := setupPaymentIntegrationTest(t)
 	fixture := createTelegramStarsSubscriptionFixture(t, env, "charge-period")
 	chargeID := "renewal-single-charge"
@@ -9533,9 +10254,12 @@ func TestTelegramStarsRenewalChargeCannotChangePeriod(t *testing.T) {
 		)
 	}
 
-	var renewalCount int
-	var callbackCount int
-	var storedEnd time.Time
+	var (
+		renewalCount  int
+		callbackCount int
+		storedEnd     time.Time
+	)
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT
     (SELECT COUNT(*) FROM payment_subscription_renewal WHERE workspace_id = $1 AND provider_charge_id = $2),
@@ -9549,6 +10273,7 @@ SELECT
 	).Scan(&renewalCount, &callbackCount, &storedEnd); err != nil {
 		t.Fatalf("read renewal idempotency state: %v", err)
 	}
+
 	if renewalCount != 1 || callbackCount != 1 {
 		t.Fatalf(
 			"renewals/callbacks = %d/%d, want 1/1",
@@ -9556,16 +10281,15 @@ SELECT
 			callbackCount,
 		)
 	}
+
 	if !storedEnd.Equal(firstPeriodEnd) {
 		t.Fatalf("subscription end = %s, want %s", storedEnd, firstPeriodEnd)
 	}
-
 }
 
 func TestTelegramStarsRenewalReplayDoesNotReactivateRefundedSubscription(
 	t *testing.T,
 ) {
-
 	env := setupPaymentIntegrationTest(t)
 	fixture := createTelegramStarsSubscriptionFixture(
 		t,
@@ -9590,6 +10314,7 @@ func TestTelegramStarsRenewalReplayDoesNotReactivateRefundedSubscription(
 	); err != nil {
 		t.Fatalf("process renewal before refund: %v", err)
 	}
+
 	if rows, err := env.api.Admin.UpdateSubscriptionStatus(
 		env.ctx,
 		admin.SubscriptionStatusUpdateParams{
@@ -9610,11 +10335,13 @@ func TestTelegramStarsRenewalReplayDoesNotReactivateRefundedSubscription(
 	if err != nil {
 		t.Fatalf("replay renewal after refund: %v", err)
 	}
+
 	if !replayed.AlreadyDone {
 		t.Fatalf("renewal replay result: %+v", replayed)
 	}
 
 	var status string
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT status::text
 FROM payment_subscription
@@ -9628,19 +10355,18 @@ WHERE workspace_id = $1
 	).Scan(&status); err != nil {
 		t.Fatalf("read subscription after renewal replay: %v", err)
 	}
+
 	if status != "refunded" {
 		t.Fatalf(
 			"subscription status after renewal replay = %q, want refunded",
 			status,
 		)
 	}
-
 }
 
 func TestTelegramStarsRenewalCannotReactivateCanceledSubscription(
 	t *testing.T,
 ) {
-
 	env := setupPaymentIntegrationTest(t)
 	fixture := createTelegramStarsSubscriptionFixture(
 		t,
@@ -9648,6 +10374,7 @@ func TestTelegramStarsRenewalCannotReactivateCanceledSubscription(
 		"renewal-canceled",
 	)
 	periodEnd := fixture.expiresAt.Add(30 * 24 * time.Hour)
+
 	if rows, err := env.api.Admin.UpdateSubscriptionStatus(
 		env.ctx,
 		admin.SubscriptionStatusUpdateParams{
@@ -9681,8 +10408,11 @@ func TestTelegramStarsRenewalCannotReactivateCanceledSubscription(
 		)
 	}
 
-	var status string
-	var renewalCount int
+	var (
+		status       string
+		renewalCount int
+	)
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT
     (SELECT status::text FROM payment_subscription WHERE workspace_id = $1 AND attempt_id = $2),
@@ -9690,6 +10420,7 @@ SELECT
 `, testWorkspaceID, fixture.payment.AttemptID, "renewal-after-cancel").Scan(&status, &renewalCount); err != nil {
 		t.Fatalf("read canceled subscription: %v", err)
 	}
+
 	if status != "canceled" || renewalCount != 0 {
 		t.Fatalf(
 			"canceled subscription state = status %q renewals %d",
@@ -9697,7 +10428,6 @@ SELECT
 			renewalCount,
 		)
 	}
-
 }
 
 func TestTelegramStarsCreatePaymentIsIdempotent(t *testing.T) {
@@ -9709,15 +10439,18 @@ func TestTelegramStarsCreatePaymentIsIdempotent(t *testing.T) {
 	})
 
 	var createCalls atomic.Int32
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !strings.HasSuffix(r.URL.Path, "/createInvoiceLink") {
 				t.Fatalf("unexpected telegram bot api path: %s", r.URL.Path)
 			}
+
 			createCalls.Add(1)
 			writeTelegramStarsResult(t, w, "https://t.me/invoice/idempotent")
 		}),
 	)
+
 	defer server.Close()
 
 	params := telegramstars.CreatePaymentParams{
@@ -9735,14 +10468,17 @@ func TestTelegramStarsCreatePaymentIsIdempotent(t *testing.T) {
 		Description:    "Idempotent stars payment",
 		IdempotencyKey: "telegram-stars-idempotent-key",
 	}
+
 	first, err := env.api.Adapters.TelegramStars.CreatePayment(env.ctx, params)
 	if err != nil {
 		t.Fatalf("create first telegram stars payment: %v", err)
 	}
+
 	second, err := env.api.Adapters.TelegramStars.CreatePayment(env.ctx, params)
 	if err != nil {
 		t.Fatalf("replay telegram stars payment: %v", err)
 	}
+
 	if first.OrderID != second.OrderID || first.AttemptID != second.AttemptID ||
 		first.InvoiceLink != second.InvoiceLink {
 		t.Fatalf(
@@ -9751,11 +10487,13 @@ func TestTelegramStarsCreatePaymentIsIdempotent(t *testing.T) {
 			second,
 		)
 	}
+
 	if createCalls.Load() != 1 {
 		t.Fatalf("createInvoiceLink calls = %d, want 1", createCalls.Load())
 	}
 
 	var orders, attempts int
+
 	if err := env.db.QueryRowContext(env.ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM payment_order WHERE workspace_id = $1 AND product_id = $2),
@@ -9763,6 +10501,7 @@ func TestTelegramStarsCreatePaymentIsIdempotent(t *testing.T) {
 	`, testWorkspaceID, productID, telegramstars.ProviderCode).Scan(&orders, &attempts); err != nil {
 		t.Fatalf("count telegram stars rows: %v", err)
 	}
+
 	if orders != 1 || attempts != 1 {
 		t.Fatalf(
 			"telegram stars rows orders=%d attempts=%d, want 1 and 1",
@@ -9784,22 +10523,28 @@ func TestTelegramStarsDefinitiveCreateFailureReleasesReservation(t *testing.T) {
 	})
 
 	var calls atomic.Int32
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if calls.Add(1) == 1 {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
+
 				_, _ = w.Write(
 					[]byte(
 						`{"ok":false,"error_code":400,"description":"invalid invoice"}`,
 					),
 				)
+
 				return
 			}
+
 			writeTelegramStarsResult(t, w, "https://t.me/invoice/retry")
 		}),
 	)
+
 	defer server.Close()
+
 	credentials := telegramstars.Credentials{
 		BotToken:   "test-token",
 		APIBaseURL: server.URL,
@@ -9836,6 +10581,7 @@ func TestTelegramStarsDefinitiveCreateFailureReleasesReservation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create after released reservation: %v", err)
 	}
+
 	if retry.OrderID == 0 || retry.AttemptID == 0 {
 		t.Fatalf("retry payment: %+v", retry)
 	}
@@ -9850,6 +10596,7 @@ func TestTelegramStarsPreCheckoutRejectsTerminalAndExpiredOrders(t *testing.T) {
 			name: "terminal",
 			mutate: func(t testing.TB, env *paymentTestEnv, payment *telegramstars.CreatePaymentResponse) {
 				t.Helper()
+
 				if _, err := env.db.ExecContext(
 					env.ctx,
 					"UPDATE payment_attempt SET status = 'canceled' WHERE id = $1",
@@ -9857,6 +10604,7 @@ func TestTelegramStarsPreCheckoutRejectsTerminalAndExpiredOrders(t *testing.T) {
 				); err != nil {
 					t.Fatalf("cancel telegram stars attempt: %v", err)
 				}
+
 				if _, err := env.db.ExecContext(
 					env.ctx,
 					"UPDATE payment_order SET status = 'canceled' WHERE id = $1",
@@ -9870,6 +10618,7 @@ func TestTelegramStarsPreCheckoutRejectsTerminalAndExpiredOrders(t *testing.T) {
 			name: "expired",
 			mutate: func(t testing.TB, env *paymentTestEnv, payment *telegramstars.CreatePaymentResponse) {
 				t.Helper()
+
 				if _, err := env.db.ExecContext(env.ctx, `
 					UPDATE payment_order SET expires_at = now() - INTERVAL '1 minute' WHERE id = $1
 				`, payment.OrderID); err != nil {
@@ -9885,7 +10634,9 @@ func TestTelegramStarsPreCheckoutRejectsTerminalAndExpiredOrders(t *testing.T) {
 				AssetCode:       telegramstars.AssetCode,
 				ListAmountMinor: 25,
 			})
+
 			var answeredOK bool
+
 			server := httptest.NewServer(
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch {
@@ -9899,11 +10650,14 @@ func TestTelegramStarsPreCheckoutRejectsTerminalAndExpiredOrders(t *testing.T) {
 						var request struct {
 							OK bool `json:"ok"`
 						}
+
 						if err := json.NewDecoder(r.Body).
 							Decode(&request); err != nil {
 							t.Fatalf("decode precheckout answer: %v", err)
 						}
+
 						answeredOK = request.OK
+
 						writeTelegramStarsResult(t, w, true)
 					default:
 						t.Fatalf(
@@ -9913,7 +10667,9 @@ func TestTelegramStarsPreCheckoutRejectsTerminalAndExpiredOrders(t *testing.T) {
 					}
 				}),
 			)
+
 			defer server.Close()
+
 			credentials := telegramstars.Credentials{
 				BotToken:   "test-token",
 				APIBaseURL: server.URL,
@@ -9934,6 +10690,7 @@ func TestTelegramStarsPreCheckoutRejectsTerminalAndExpiredOrders(t *testing.T) {
 			if err != nil {
 				t.Fatalf("create telegram stars payment: %v", err)
 			}
+
 			testCase.mutate(t, &env, payment)
 
 			result, err := env.api.Adapters.TelegramStars.HandlePreCheckoutQuery(
@@ -9950,6 +10707,7 @@ func TestTelegramStarsPreCheckoutRejectsTerminalAndExpiredOrders(t *testing.T) {
 			if err != nil {
 				t.Fatalf("handle rejected precheckout: %v", err)
 			}
+
 			if result.Accepted || answeredOK {
 				t.Fatalf(
 					"precheckout accepted terminal/expired payment: result=%+v answer_ok=%t",
@@ -9980,11 +10738,14 @@ func TestTelegramStarsAcceptedPreCheckoutProtectsStaleOrder(t *testing.T) {
 			}
 		}),
 	)
+
 	defer server.Close()
+
 	credentials := telegramstars.Credentials{
 		BotToken:   "test-token",
 		APIBaseURL: server.URL,
 	}
+
 	payment, err := env.api.Adapters.TelegramStars.CreatePayment(
 		env.ctx,
 		telegramstars.CreatePaymentParams{
@@ -10000,11 +10761,13 @@ func TestTelegramStarsAcceptedPreCheckoutProtectsStaleOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create telegram stars payment: %v", err)
 	}
+
 	if _, err := env.db.ExecContext(env.ctx, `
 		UPDATE payment_order SET created_at = now() - INTERVAL '2 hours' WHERE id = $1
 	`, payment.OrderID); err != nil {
 		t.Fatalf("age telegram stars order: %v", err)
 	}
+
 	if _, err := env.db.ExecContext(env.ctx, `
 		UPDATE payment_attempt SET updated_at = now() - INTERVAL '20 minutes' WHERE id = $1
 	`, payment.AttemptID); err != nil {
@@ -10025,9 +10788,11 @@ func TestTelegramStarsAcceptedPreCheckoutProtectsStaleOrder(t *testing.T) {
 	if err != nil || !preCheckout.Accepted {
 		t.Fatalf("accept precheckout: result=%+v err=%v", preCheckout, err)
 	}
+
 	if err := env.api.expireStaleOrders(env.ctx); err != nil {
 		t.Fatalf("expire stale orders after precheckout: %v", err)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "pending_payment")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "pending")
 
@@ -10043,6 +10808,7 @@ func TestTelegramStarsAcceptedPreCheckoutProtectsStaleOrder(t *testing.T) {
 	); err != nil {
 		t.Fatalf("complete protected telegram stars payment: %v", err)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "fulfilled")
 }
 
@@ -10058,7 +10824,9 @@ func TestTelegramStarsStalePendingAttemptExpiresWithOrder(t *testing.T) {
 			writeTelegramStarsResult(t, w, "https://t.me/invoice/stale")
 		}),
 	)
+
 	defer server.Close()
+
 	payment, err := env.api.Adapters.TelegramStars.CreatePayment(
 		env.ctx,
 		telegramstars.CreatePaymentParams{
@@ -10077,11 +10845,13 @@ func TestTelegramStarsStalePendingAttemptExpiresWithOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create stale telegram stars payment: %v", err)
 	}
+
 	if _, err := env.db.ExecContext(env.ctx, `
 		UPDATE payment_order SET created_at = now() - INTERVAL '2 hours' WHERE id = $1
 	`, payment.OrderID); err != nil {
 		t.Fatalf("age telegram stars order: %v", err)
 	}
+
 	if _, err := env.db.ExecContext(env.ctx, `
 		UPDATE payment_attempt SET updated_at = now() - INTERVAL '20 minutes' WHERE id = $1
 	`, payment.AttemptID); err != nil {
@@ -10091,12 +10861,14 @@ func TestTelegramStarsStalePendingAttemptExpiresWithOrder(t *testing.T) {
 	if err := env.api.expireStaleOrders(env.ctx); err != nil {
 		t.Fatalf("expire stale telegram stars payment: %v", err)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "expired")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "expired")
 }
 
 func TestTelegramStarsNilReceiverReturnsNotInitialized(t *testing.T) {
 	var adapter *telegramstars.TelegramStars
+
 	ctx := context.Background()
 
 	if _, err := adapter.CreatePayment(
@@ -10108,6 +10880,7 @@ func TestTelegramStarsNilReceiverReturnsNotInitialized(t *testing.T) {
 	) {
 		t.Fatalf("create payment error = %v", err)
 	}
+
 	if _, err := adapter.HandlePreCheckoutQuery(
 		ctx,
 		telegramstars.PreCheckoutQuery{},
@@ -10117,6 +10890,7 @@ func TestTelegramStarsNilReceiverReturnsNotInitialized(t *testing.T) {
 	) {
 		t.Fatalf("precheckout error = %v", err)
 	}
+
 	if _, err := adapter.HandleSuccessfulPayment(
 		ctx,
 		telegramstars.SuccessfulPayment{},
@@ -10126,6 +10900,7 @@ func TestTelegramStarsNilReceiverReturnsNotInitialized(t *testing.T) {
 	) {
 		t.Fatalf("successful payment error = %v", err)
 	}
+
 	if _, err := adapter.Execute(
 		ctx,
 		telegramstars.RefundParams{},
@@ -10135,6 +10910,7 @@ func TestTelegramStarsNilReceiverReturnsNotInitialized(t *testing.T) {
 	) {
 		t.Fatalf("refund error = %v", err)
 	}
+
 	if err := adapter.EditSubscription(
 		ctx,
 		telegramstars.EditSubscriptionParams{},
@@ -10159,6 +10935,7 @@ type telegramStarsTestCreateInvoicePayload struct {
 func writeTelegramStarsResult(t *testing.T, w http.ResponseWriter, result any) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
+
 	if err := json.NewEncoder(w).Encode(map[string]any{
 		"ok":     true,
 		"result": result,
@@ -10168,7 +10945,6 @@ func writeTelegramStarsResult(t *testing.T, w http.ResponseWriter, result any) {
 }
 
 func TestTONAdapterFullCycleAndCursor(t *testing.T) {
-
 	// Test database setup.
 	// Create a TON-priced product and a blockchain payment request.
 	// Verify the adapter stores a pending attempt with the order public id as comment.
@@ -10201,9 +10977,11 @@ func TestTONAdapterFullCycleAndCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create ton payment: %v", err)
 	}
+
 	if payment.Comment == "" || payment.AmountMinor != 1_000_000_000 {
 		t.Fatalf("unexpected ton payment response: %#v", payment)
 	}
+
 	tx, err := env.api.Adapters.TON.CreateTransaction(
 		env.ctx,
 		paymentton.CreateTransactionParams{
@@ -10217,9 +10995,11 @@ func TestTONAdapterFullCycleAndCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create ton transaction: %v", err)
 	}
+
 	if tonkeeper := paymentton.TonkeeperLink(tx); tonkeeper == "" {
 		t.Fatalf("expected tonkeeper link for ton transaction: %#v", tx)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "pending_payment")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "pending")
 
@@ -10244,14 +11024,17 @@ func TestTONAdapterFullCycleAndCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("process ton transfer: %v", err)
 	}
+
 	if result.Transaction == 0 || result.OrderID != payment.OrderID ||
 		result.AttemptID != payment.AttemptID {
 		t.Fatalf("unexpected ton process result: %#v", result)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "fulfilled")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "succeeded")
 
 	var lastLT uint64
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT cursor_sequence
 FROM payment_provider_cursor
@@ -10261,6 +11044,7 @@ WHERE workspace_id = $1
   AND source_key = $2`, testWorkspaceID, payment.WalletAddress).Scan(&lastLT); err != nil {
 		t.Fatalf("select ton cursor: %v", err)
 	}
+
 	if lastLT == 0 {
 		t.Fatal("expected ton cursor last_lt to be stored")
 	}
@@ -10286,6 +11070,7 @@ WHERE workspace_id = $1
 	if err != nil {
 		t.Fatalf("process duplicate ton transfer: %v", err)
 	}
+
 	if !again.AlreadyDone || again.Transaction != result.Transaction {
 		t.Fatalf(
 			"expected duplicate ton transaction to be idempotent: %#v",
@@ -10319,7 +11104,6 @@ WHERE workspace_id = $1
 }
 
 func TestTONAdapterRetriesTransferAfterLocalCompletionFailure(t *testing.T) {
-
 	env := setupPaymentIntegrationTest(t)
 	productID := createPaymentProduct(t, env, testProductOptions{
 		ProductID:       "ton_retry_after_completion_failure",
@@ -10386,6 +11170,7 @@ func TestTONAdapterRetriesTransferAfterLocalCompletionFailure(t *testing.T) {
 	}
 
 	var storedTransfers int
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT COUNT(*) FROM payment_provider_transaction WHERE external_transaction_id = $1",
@@ -10393,6 +11178,7 @@ func TestTONAdapterRetriesTransferAfterLocalCompletionFailure(t *testing.T) {
 	).Scan(&storedTransfers); err != nil {
 		t.Fatalf("count prematurely stored transfers: %v", err)
 	}
+
 	if storedTransfers != 0 {
 		t.Fatalf(
 			"stored transfers after failed completion = %d, want 0",
@@ -10412,17 +11198,16 @@ func TestTONAdapterRetriesTransferAfterLocalCompletionFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("retry ton transfer: %v", err)
 	}
+
 	if result.AlreadyDone || result.OrderID != payment.OrderID {
 		t.Fatalf("unexpected retry result: %#v", result)
 	}
 
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "fulfilled")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "succeeded")
-
 }
 
 func TestTONAdapterRecoversLegacyFailedMatchingTransfer(t *testing.T) {
-
 	env := setupPaymentIntegrationTest(t)
 	productID := createPaymentProduct(t, env, testProductOptions{
 		ProductID:       "ton_legacy_failed_transfer",
@@ -10467,6 +11252,7 @@ func TestTONAdapterRecoversLegacyFailedMatchingTransfer(t *testing.T) {
 	}
 
 	var transactionID uint64
+
 	if err := env.db.QueryRowContext(env.ctx, `
 INSERT INTO payment_provider_transaction (
     workspace_id,
@@ -10508,6 +11294,7 @@ RETURNING id
 	if err != nil {
 		t.Fatalf("recover failed transfer: %v", err)
 	}
+
 	if result.Transaction != transactionID || result.AlreadyDone ||
 		result.Ignored {
 		t.Fatalf("unexpected recovered transfer: %+v", result)
@@ -10516,8 +11303,11 @@ RETURNING id
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "fulfilled")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "succeeded")
 
-	var status string
-	var storedTransactionCount int
+	var (
+		status                 string
+		storedTransactionCount int
+	)
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT
     (SELECT status::text FROM payment_provider_transaction WHERE id = $1),
@@ -10525,6 +11315,7 @@ SELECT
 `, transactionID, transfer.TxHash).Scan(&status, &storedTransactionCount); err != nil {
 		t.Fatalf("read recovered transfer: %v", err)
 	}
+
 	if status != "matched" || storedTransactionCount != 1 {
 		t.Fatalf(
 			"recovered status/count = %s/%d, want matched/1",
@@ -10532,11 +11323,9 @@ SELECT
 			storedTransactionCount,
 		)
 	}
-
 }
 
 func TestTONAdapterJettonTransfer(t *testing.T) {
-
 	// Test database setup.
 	// Create a USDT_TON-priced product and payment request.
 	// Verify a Jetton transfer is matched by comment and asset code.
@@ -10569,6 +11358,7 @@ func TestTONAdapterJettonTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create ton jetton payment: %v", err)
 	}
+
 	if payment.Decimals != 6 {
 		t.Fatalf("expected USDT_TON decimals=6, got %d", payment.Decimals)
 	}
@@ -10592,9 +11382,11 @@ func TestTONAdapterJettonTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("process ton jetton transfer: %v", err)
 	}
+
 	if result.Transaction == 0 || result.OrderID != payment.OrderID {
 		t.Fatalf("unexpected ton jetton process result: %#v", result)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, payment.OrderID, "fulfilled")
 	assertAttemptStatus(t, env.ctx, env.db, payment.AttemptID, "succeeded")
 }
@@ -10624,6 +11416,7 @@ func TestTONAdapterResolvesMultipleJettonAssets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse %s master address: %v", tt.code, err)
 		}
+
 		resolved, err := env.api.Adapters.TON.ResolveJettonAsset(
 			env.ctx,
 			paymentton.NetworkMainnet,
@@ -10632,6 +11425,7 @@ func TestTONAdapterResolvesMultipleJettonAssets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolve %s by raw master address: %v", tt.code, err)
 		}
+
 		if resolved.Code != tt.code || resolved.Decimals != tt.decimals {
 			t.Fatalf("unexpected resolved asset for %s: %#v", tt.code, resolved)
 		}
@@ -10646,6 +11440,7 @@ func TestTONAdapterUsesWorkspaceWalletForPayment(t *testing.T) {
 		ListAmountMinor: 100_000_000,
 	})
 	rawWallet := "0:0000000000000000000000000000000000000000000000000000000000000000"
+
 	expectedWallet, err := paymentton.NormalizeWalletAddress(
 		rawWallet,
 		paymentton.NetworkMainnet,
@@ -10653,6 +11448,7 @@ func TestTONAdapterUsesWorkspaceWalletForPayment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normalize test wallet: %v", err)
 	}
+
 	configureTONWallet(
 		t,
 		env,
@@ -10676,6 +11472,7 @@ func TestTONAdapterUsesWorkspaceWalletForPayment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create ton payment with workspace wallet: %v", err)
 	}
+
 	if payment.WalletAddress != expectedWallet {
 		t.Fatalf(
 			"expected workspace TON wallet in payment response: %#v",
@@ -10717,6 +11514,7 @@ func configureTONWallet(
 	wallet string,
 ) {
 	t.Helper()
+
 	if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
 		WorkspaceID:   workspaceID,
 		Network:       network,
@@ -10732,6 +11530,7 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 	wallet := "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ"
 	customConfigURL := "https://example.com/ton.config.json"
+
 	expectedWallet, err := paymentton.NormalizeWalletAddress(
 		wallet,
 		paymentton.NetworkMainnet,
@@ -10750,22 +11549,27 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("save enabled ton wallet: %v", err)
 	}
+
 	got, err := env.api.Admin.GetTONWallet(env.ctx, testWorkspaceID)
 	if err != nil {
 		t.Fatalf("get ton wallet: %v", err)
 	}
+
 	if got.WalletAddress != expectedWallet || !got.IsEnabled ||
 		!got.NetworkConfigUrl.Valid ||
 		got.NetworkConfigUrl.String != customConfigURL {
 		t.Fatalf("unexpected ton wallet: %+v", got)
 	}
+
 	if got.Manifest != testTONConnectManifest() {
 		t.Fatalf("unexpected ton connect manifest: %+v", got.Manifest)
 	}
+
 	manifest, err := env.api.Adapters.TON.GetManifest(env.ctx, testWorkspaceID)
 	if err != nil {
 		t.Fatalf("get public ton connect manifest: %v", err)
 	}
+
 	if manifest != testTONConnectManifest() {
 		t.Fatalf("unexpected public ton connect manifest: %+v", manifest)
 	}
@@ -10779,6 +11583,7 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("disable ton wallet: %v", err)
 	}
+
 	if err := env.api.Adapters.TON.SyncManagedSubscribers(env.ctx); err != nil {
 		t.Fatalf("sync managed subscribers with disabled wallet: %v", err)
 	}
@@ -10787,9 +11592,11 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get disabled ton wallet: %v", err)
 	}
+
 	if got.IsEnabled || got.WalletAddress != expectedWallet {
 		t.Fatalf("unexpected disabled ton wallet: %+v", got)
 	}
+
 	if _, err := env.api.Adapters.TON.GetManifest(
 		env.ctx,
 		testWorkspaceID,
@@ -10808,11 +11615,13 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("delete ton wallet: %v", err)
 	}
+
 	if rows != 1 {
 		t.Fatalf("delete ton wallet rows = %d, want 1", rows)
 	}
 
 	replacementWallet := "0:1111111111111111111111111111111111111111111111111111111111111111"
+
 	expectedReplacementWallet, err := paymentton.NormalizeWalletAddress(
 		replacementWallet,
 		paymentton.NetworkTestnet,
@@ -10820,6 +11629,7 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normalize replacement wallet: %v", err)
 	}
+
 	if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
 		WorkspaceID:   testWorkspaceID,
 		Network:       paymentton.NetworkMainnet,
@@ -10829,6 +11639,7 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("save first workspace ton wallet: %v", err)
 	}
+
 	if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
 		WorkspaceID:   testWorkspaceID,
 		Network:       paymentton.NetworkTestnet,
@@ -10838,10 +11649,12 @@ func TestPaymentTONWalletAdminConfig(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("replace workspace ton wallet: %v", err)
 	}
+
 	got, err = env.api.Admin.GetTONWallet(env.ctx, testWorkspaceID)
 	if err != nil {
 		t.Fatalf("get replaced ton wallet: %v", err)
 	}
+
 	if got.Network != paymentton.NetworkTestnet ||
 		got.WalletAddress != expectedReplacementWallet {
 		t.Fatalf("expected replaced workspace ton wallet: %+v", got)
@@ -10889,6 +11702,7 @@ func TestPaymentTONConnectManifestWorkspaceIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get first workspace manifest: %v", err)
 	}
+
 	gotSecond, err := env.api.Adapters.TON.GetManifest(
 		env.ctx,
 		secondWorkspaceID,
@@ -10896,6 +11710,7 @@ func TestPaymentTONConnectManifestWorkspaceIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get second workspace manifest: %v", err)
 	}
+
 	if gotFirst != firstManifest || gotSecond != secondManifest {
 		t.Fatalf(
 			"workspace manifests collided: first=%+v second=%+v",
@@ -10908,15 +11723,18 @@ func TestPaymentTONConnectManifestWorkspaceIsolation(t *testing.T) {
 func TestPaymentTONConnectManifestCacheVersion(t *testing.T) {
 	cache := newPaymentSharedTestCache()
 	options := paymentTestOptions()
+
 	options.Cache = cache
 	options.CacheL1Delay = time.Minute
 	options.CacheL2Delay = time.Minute
 
 	env := setupPaymentIntegrationTestWithOptions(t, options)
+
 	nodeB, err := NewWithDatabase(env.ctx, env.db, options)
 	if err != nil {
 		t.Fatalf("create second payment node: %v", err)
 	}
+
 	t.Cleanup(func() { _ = nodeB.Close() })
 
 	wallet := "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ"
@@ -10925,6 +11743,7 @@ func TestPaymentTONConnectManifestCacheVersion(t *testing.T) {
 		Name:    "First",
 		IconURL: "https://first.example.com/icon.png",
 	}
+
 	if err := env.api.Admin.SaveTONWallet(env.ctx, admin.TONWalletUpsertParams{
 		WorkspaceID:   testWorkspaceID,
 		Network:       paymentton.NetworkMainnet,
@@ -10939,9 +11758,11 @@ func TestPaymentTONConnectManifestCacheVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("warm TON manifest cache: %v", err)
 	}
+
 	if warm != firstManifest {
 		t.Fatalf("warm manifest = %+v, want %+v", warm, firstManifest)
 	}
+
 	if !cache.hasEntryTTLAtLeast(55 * time.Minute) {
 		t.Fatal(
 			"TON manifest cache entry does not have an approximately one hour TTL",
@@ -10955,10 +11776,12 @@ func TestPaymentTONConnectManifestCacheVersion(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update manifest without cache version bump: %v", err)
 	}
+
 	stillCached, err := nodeB.Adapters.TON.GetManifest(env.ctx, testWorkspaceID)
 	if err != nil {
 		t.Fatalf("read cached TON manifest: %v", err)
 	}
+
 	if stillCached != firstManifest {
 		t.Fatalf("manifest cache missed before version bump: %+v", stillCached)
 	}
@@ -10982,6 +11805,7 @@ func TestPaymentTONConnectManifestCacheVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read invalidated TON manifest: %v", err)
 	}
+
 	if updated != secondManifest {
 		t.Fatalf(
 			"manifest cache was not invalidated: got %+v want %+v",
@@ -10996,6 +11820,7 @@ func TestPaymentTONConnectManifestCacheVersion(t *testing.T) {
 	); err != nil {
 		t.Fatalf("delete TON wallet: %v", err)
 	}
+
 	if _, err := nodeB.Adapters.TON.GetManifest(
 		env.ctx,
 		testWorkspaceID,
@@ -11020,7 +11845,6 @@ func testTONConnectManifest() tonconnect.Manifest {
 }
 
 func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
-
 	// Test database setup.
 	// Create the MySQL database connection and bootstrap the payment schema.
 	// Verify the VKMA adapter runs against the same initialized payment API.
@@ -11044,6 +11868,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vkma get item: %v", err)
 	}
+
 	if item.ItemID != productID || item.Price != 35 ||
 		item.Title != "VKMA подписка" {
 		t.Fatalf("unexpected vkma item response: %#v", item)
@@ -11053,6 +11878,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	// Process a chargeable order_status_change notification as a one-time purchase.
 	// Verify the adapter creates and fulfills the payment order.
 	orderPaymentID := int(time.Now().UnixNano() % 1_000_000_000)
+
 	regular, err := env.api.Adapters.VKMA.ChargeableForWorkspace(
 		env.ctx,
 		testWorkspaceID,
@@ -11069,10 +11895,13 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vkma regular chargeable: %v", err)
 	}
+
 	if regular.AppOrderID == 0 || regular.OrderID != orderPaymentID {
 		t.Fatalf("unexpected regular vkma response: %#v", regular)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, regular.AppOrderID, "fulfilled")
+
 	if _, err := env.db.ExecContext(
 		env.ctx,
 		"UPDATE payment_clb_event SET status = 'ok', delivered_at = now() WHERE source_service = 'payment' AND event_key = $1",
@@ -11099,6 +11928,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 			Lang:             "ru",
 		},
 	}
+
 	refundResponse, err := env.api.Adapters.VKMA.HandleRequest(
 		env.ctx,
 		refundRequest,
@@ -11106,20 +11936,25 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vkma regular refund: %v", err)
 	}
+
 	refunded, ok := refundResponse.(*paymentvkma.ChargeableResponse)
 	if !ok || refunded.AppOrderID != regular.AppOrderID ||
 		refunded.OrderID != orderPaymentID {
 		t.Fatalf("unexpected regular vkma refund response: %#v", refundResponse)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, regular.AppOrderID, "refunded")
 
-	var attemptID uint64
-	var attemptStatus string
-	var fulfillmentID uint64
-	var fulfillmentStatus string
-	var refundID uint64
-	var refundStatus string
-	var refundCount int
+	var (
+		attemptID         uint64
+		attemptStatus     string
+		fulfillmentID     uint64
+		fulfillmentStatus string
+		refundID          uint64
+		refundStatus      string
+		refundCount       int
+	)
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT id, status FROM payment_attempt WHERE order_id = $1 AND provider_code = $2",
@@ -11128,18 +11963,22 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	).Scan(&attemptID, &attemptStatus); err != nil {
 		t.Fatalf("select refunded vkma attempt: %v", err)
 	}
+
 	if attemptStatus != "refunded" {
 		t.Fatalf("unexpected refunded vkma attempt status: %s", attemptStatus)
 	}
+
 	if err := env.db.QueryRowContext(env.ctx,
 		"SELECT id, status FROM payment_fulfillment WHERE order_id = $1",
 		regular.AppOrderID,
 	).Scan(&fulfillmentID, &fulfillmentStatus); err != nil {
 		t.Fatalf("select revoked vkma fulfillment: %v", err)
 	}
+
 	if fulfillmentStatus != "revoked" {
 		t.Fatalf("unexpected vkma fulfillment status: %s", fulfillmentStatus)
 	}
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT COUNT(*), MAX(id), MAX(status) FROM payment_refund WHERE order_id = $1",
@@ -11147,6 +11986,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	).Scan(&refundCount, &refundID, &refundStatus); err != nil {
 		t.Fatalf("select vkma refund: %v", err)
 	}
+
 	if refundCount != 1 || refundStatus != "succeeded" {
 		t.Fatalf(
 			"unexpected vkma refund state: count=%d status=%s",
@@ -11154,6 +11994,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 			refundStatus,
 		)
 	}
+
 	productReport, err := env.api.Admin.GetPaymentReport(
 		env.ctx,
 		admin.PaymentReportParams{
@@ -11164,11 +12005,13 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get refunded product report: %v", err)
 	}
+
 	if len(productReport.Stats.Assets) != 1 ||
 		productReport.Stats.Assets[0].RefundCount != 1 ||
 		productReport.Stats.Assets[0].RefundAmountMinor != 35 {
 		t.Fatalf("unexpected refunded product stats: %#v", productReport.Stats)
 	}
+
 	assertVKMARefundedCallback(t, env, PaymentRefundedCallbackPayload{
 		OrderID:           regular.AppOrderID,
 		AttemptID:         attemptID,
@@ -11195,15 +12038,18 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	); err != nil {
 		t.Fatalf("vkma duplicate regular refund: %v", err)
 	}
+
 	if err := env.db.QueryRowContext(env.ctx,
 		"SELECT COUNT(*) FROM payment_refund WHERE order_id = $1",
 		regular.AppOrderID,
 	).Scan(&refundCount); err != nil {
 		t.Fatalf("count duplicate vkma refund: %v", err)
 	}
+
 	if refundCount != 1 {
 		t.Fatalf("expected one idempotent vkma refund, got %d", refundCount)
 	}
+
 	productReport, err = env.api.Admin.GetPaymentReport(
 		env.ctx,
 		admin.PaymentReportParams{
@@ -11214,6 +12060,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get duplicate refunded product report: %v", err)
 	}
+
 	if len(productReport.Stats.Assets) != 1 ||
 		productReport.Stats.Assets[0].RefundCount != 1 {
 		t.Fatalf(
@@ -11221,13 +12068,16 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 			productReport.Stats.Assets,
 		)
 	}
+
 	now := time.Now()
+
 	overview, err := env.api.Admin.ListDailyOverview(
 		env.ctx, testWorkspaceID, now.Add(-24*time.Hour), now.Add(24*time.Hour),
 	)
 	if err != nil {
 		t.Fatalf("list refunded payment daily overview: %v", err)
 	}
+
 	if len(overview) != 1 || overview[0].RefundedOrders != 1 ||
 		overview[0].RefundCount != 1 {
 		t.Fatalf("unexpected refunded payment daily overview: %#v", overview)
@@ -11250,6 +12100,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vkma get subscription: %v", err)
 	}
+
 	if subscriptionItem.Expiration != 2592000 {
 		t.Fatalf(
 			"unexpected subscription expiration: %d",
@@ -11262,6 +12113,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	// Verify the subscription is activated and duplicate callbacks stay idempotent.
 	subscriptionOrderID := orderPaymentID + 1
 	subscriptionID := orderPaymentID + 100
+
 	created, err := env.api.Adapters.VKMA.ChargeableForWorkspace(
 		env.ctx,
 		testWorkspaceID,
@@ -11279,9 +12131,11 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vkma subscription chargeable: %v", err)
 	}
+
 	if created.AppOrderID == 0 || created.OrderID != subscriptionOrderID {
 		t.Fatalf("unexpected subscription vkma response: %#v", created)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, created.AppOrderID, "fulfilled")
 
 	again, err := env.api.Adapters.VKMA.ChargeableForWorkspace(
@@ -11301,6 +12155,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vkma subscription chargeable again: %v", err)
 	}
+
 	if again.AppOrderID != created.AppOrderID {
 		t.Fatalf(
 			"expected idempotent app order id: got %d want %d",
@@ -11325,6 +12180,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("subscription is active: %v", err)
 	}
+
 	if !active {
 		t.Fatal("expected active subscription after chargeable")
 	}
@@ -11345,11 +12201,13 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("subscription is active for other app: %v", err)
 	}
+
 	if otherAppActive {
 		t.Fatal("subscription leaked to the same platform user in another app")
 	}
 
 	wrongWorkspaceID := "00000000-0000-0000-0000-000000000999"
+
 	rows, err := env.api.Admin.UpdateSubscriptionStatus(
 		env.ctx,
 		admin.SubscriptionStatusUpdateParams{
@@ -11362,9 +12220,11 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update subscription through wrong workspace: %v", err)
 	}
+
 	if rows != 0 {
 		t.Fatalf("wrong workspace updated %d subscriptions", rows)
 	}
+
 	active, err = env.api.User.IsSubscriptionActive(
 		env.ctx,
 		subscription.IsActiveParams{
@@ -11420,6 +12280,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("subscription is active after active status: %v", err)
 	}
+
 	if !active {
 		t.Fatal("expected active subscription after active status")
 	}
@@ -11455,6 +12316,7 @@ func TestVKMAAdapterFullCycleWithSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("subscription is active after cancel: %v", err)
 	}
+
 	if active {
 		t.Fatal("expected inactive subscription after cancel")
 	}
@@ -11485,9 +12347,11 @@ func assertVKMARefundedCallback(
 	handled := 0
 	err := env.api.OnCallback(ctx, func(callback Context) error {
 		handled++
+
 		if callback.EventType != CallbackEventPaymentOrderRefunded {
 			t.Fatalf("unexpected callback event type: %s", callback.EventType)
 		}
+
 		if callback.EventKey != fmt.Sprintf(
 			"%s:%d",
 			CallbackEventPaymentOrderRefunded,
@@ -11498,9 +12362,11 @@ func assertVKMARefundedCallback(
 				callback.EventKey,
 			)
 		}
+
 		if callback.PaymentRefunded == nil {
 			t.Fatal("expected payment refunded callback payload")
 		}
+
 		if got := *callback.PaymentRefunded; !reflect.DeepEqual(got, want) {
 			t.Fatalf(
 				"unexpected payment refunded callback payload: got %#v want %#v",
@@ -11508,15 +12374,20 @@ func assertVKMARefundedCallback(
 				want,
 			)
 		}
+
 		if err := callback.Successful(); err != nil {
 			return err
 		}
+
 		cancel()
+
 		return nil
 	}, WithCallbackBatchSize(1), WithCallbackIdleDelay(time.Millisecond))
+
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("on refunded callback: %v", err)
 	}
+
 	if handled != 1 {
 		t.Fatalf(
 			"unexpected refunded callback handled count: got %d want 1",
@@ -11545,10 +12416,12 @@ func TestVKMAAdapterUsesRequestWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vkma get item with request workspace: %v", err)
 	}
+
 	item, ok := response.(*paymentvkma.ItemResponse)
 	if !ok {
 		t.Fatalf("unexpected vkma response type: %T", response)
 	}
+
 	if item.ItemID != productID || item.Price != 35 {
 		t.Fatalf("unexpected vkma item response: %#v", item)
 	}
@@ -11640,7 +12513,6 @@ func createVKMAProduct(t *testing.T, env paymentTestEnv) (string, string) {
 }
 
 func TestYooKassaAdapterFullCycle(t *testing.T) {
-
 	// Test database setup.
 	// Create a RUB product and configure a fake YooKassa HTTP API.
 	// Verify the adapter uses the shared payment database and provider catalog.
@@ -11651,15 +12523,20 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 		ListAmountMinor: 1299,
 	})
 
-	var requestSeen bool
-	var refundSeen bool
+	var (
+		requestSeen bool
+		refundSeen  bool
+	)
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/v3/refunds" {
 				refundSeen = true
+
 				if r.Header.Get("Idempotence-Key") == "" {
 					t.Fatal("expected yookassa refund idempotence key")
 				}
+
 				var body struct {
 					PaymentID string `json:"payment_id"`
 					Amount    struct {
@@ -11667,29 +12544,37 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 						Currency string `json:"currency"`
 					} `json:"amount"`
 				}
+
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 					t.Fatalf("decode yookassa refund: %v", err)
 				}
+
 				if body.PaymentID != "yk_pay_1" ||
 					body.Amount.Value != "12.99" ||
 					body.Amount.Currency != "RUB" {
 					t.Fatalf("unexpected yookassa refund body: %#v", body)
 				}
+
 				w.Header().Set("Content-Type", "application/json")
+
 				_, _ = w.Write([]byte(`{
 				"id": "yk_refund_1",
 				"status": "succeeded",
 				"payment_id": "yk_pay_1",
 				"amount": {"value": "12.99", "currency": "RUB"}
 			}`))
+
 				return
 			}
+
 			if r.URL.Path != "/v3/payments" {
 				t.Fatalf("unexpected yookassa path: %s", r.URL.Path)
 			}
+
 			if r.Method != http.MethodPost {
 				t.Fatalf("unexpected yookassa method: %s", r.Method)
 			}
+
 			shopID, secret, ok := r.BasicAuth()
 			if !ok || shopID != "shop_1" || secret != "secret_1" {
 				t.Fatalf(
@@ -11699,6 +12584,7 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 					secret,
 				)
 			}
+
 			if r.Header.Get("Idempotence-Key") != "idem-yookassa-1" {
 				t.Fatalf(
 					"unexpected idempotence key: %s",
@@ -11737,15 +12623,19 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 				} `json:"receipt"`
 				Metadata map[string]string `json:"metadata"`
 			}
+
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode yookassa request: %v", err)
 			}
+
 			if body.Amount.Value != "12.99" || body.Amount.Currency != "RUB" {
 				t.Fatalf("unexpected yookassa amount: %#v", body.Amount)
 			}
+
 			if !body.Capture {
 				t.Fatal("expected yookassa capture=true")
 			}
+
 			if body.Confirmation.Type != "redirect" ||
 				body.Confirmation.ReturnURL != "https://example.com/return" {
 				t.Fatalf(
@@ -11753,6 +12643,7 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 					body.Confirmation,
 				)
 			}
+
 			if body.PaymentMethodData.Type != string(
 				yookassa.PaymentMethodSBP,
 			) {
@@ -11761,12 +12652,14 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 					body.PaymentMethodData,
 				)
 			}
+
 			if body.Receipt.Customer.Email != "buyer@example.com" {
 				t.Fatalf(
 					"unexpected yookassa receipt customer: %#v",
 					body.Receipt.Customer,
 				)
 			}
+
 			if len(body.Receipt.Items) != 1 ||
 				body.Receipt.Items[0].Description != "Elum Love Premium" ||
 				body.Receipt.Items[0].Amount.Value != "12.99" {
@@ -11775,13 +12668,16 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 					body.Receipt.Items,
 				)
 			}
+
 			if body.Metadata["product_id"] != productID ||
 				body.Metadata["workspace_id"] != testWorkspaceID {
 				t.Fatalf("unexpected yookassa metadata: %#v", body.Metadata)
 			}
 
 			requestSeen = true
+
 			w.Header().Set("Content-Type", "application/json")
+
 			_, _ = w.Write([]byte(`{
 			"id": "yk_pay_1",
 			"status": "pending",
@@ -11794,6 +12690,7 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 		}`))
 		}),
 	)
+
 	defer server.Close()
 
 	credentials := yookassa.Credentials{
@@ -11841,18 +12738,23 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create yookassa payment: %v", err)
 	}
+
 	if !requestSeen {
 		t.Fatal("expected fake yookassa API to receive request")
 	}
+
 	if response.PaymentID != "yk_pay_1" || response.ConfirmationURL == "" {
 		t.Fatalf("unexpected yookassa response: %#v", response)
 	}
+
 	if response.AmountMinor != 1299 || response.AssetCode != "RUB" {
 		t.Fatalf("unexpected yookassa attempt amount: %#v", response)
 	}
+
 	if response.PaymentMethodType != yookassa.PaymentMethodSBP {
 		t.Fatalf("unexpected yookassa response payment method: %#v", response)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, response.OrderID, "pending_payment")
 	assertAttemptStatus(t, env.ctx, env.db, response.AttemptID, "pending")
 
@@ -11869,6 +12771,7 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 			"amount": {"value": "12.99", "currency": "RUB"}
 		}
 	}`)
+
 	completed, err := env.api.Adapters.YooKassa.HandleWebhook(
 		env.ctx,
 		yookassa.WebhookRequest{
@@ -11880,9 +12783,11 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handle yookassa webhook: %v", err)
 	}
+
 	if completed.FulfilledID == nil {
 		t.Fatal("expected yookassa fulfillment id")
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, response.OrderID, "fulfilled")
 	assertAttemptStatus(t, env.ctx, env.db, response.AttemptID, "succeeded")
 	assertFulfillmentItemCount(t, env.ctx, env.db, *completed.FulfilledID, 1)
@@ -11898,6 +12803,7 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handle yookassa webhook again: %v", err)
 	}
+
 	if !again.AlreadyDone {
 		t.Fatal("expected duplicate yookassa webhook to be idempotent")
 	}
@@ -11913,21 +12819,23 @@ func TestYooKassaAdapterFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute yookassa refund: %v", err)
 	}
+
 	if !refundSeen {
 		t.Fatal("expected yookassa refund request")
 	}
+
 	if refunded.ProviderRefundID == nil ||
 		*refunded.ProviderRefundID != "yk_refund_1" ||
 		refunded.Status != "succeeded" {
 		t.Fatalf("unexpected yookassa refund result: %#v", refunded)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, response.OrderID, "refunded")
 	assertAttemptStatus(t, env.ctx, env.db, response.AttemptID, "refunded")
 	assertRefundStatus(t, env.ctx, env.db, refunded.RefundID, "succeeded")
 }
 
 func TestYooKassaAdapterRejectsWrongWebhookAmount(t *testing.T) {
-
 	// Test database setup.
 	// Create a YooKassa payment through a fake API.
 	// Verify webhook amount mismatch cannot fulfill the order.
@@ -11943,6 +12851,7 @@ func TestYooKassaAdapterRejectsWrongWebhookAmount(t *testing.T) {
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+
 			_, _ = w.Write([]byte(`{
 			"id": "yk_pay_wrong_amount",
 			"status": "pending",
@@ -12003,6 +12912,7 @@ func TestYooKassaAdapterRejectsWrongWebhookAmount(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected yookassa wrong amount webhook to fail")
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, response.OrderID, "pending_payment")
 
 	canceled, err := env.api.Adapters.YooKassa.HandleWebhook(
@@ -12025,9 +12935,11 @@ func TestYooKassaAdapterRejectsWrongWebhookAmount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cancel yookassa payment: %v", err)
 	}
+
 	if canceled.Status != "canceled" {
 		t.Fatalf("canceled status = %q, want canceled", canceled.Status)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, response.OrderID, "canceled")
 	assertAttemptStatus(t, env.ctx, env.db, response.AttemptID, "canceled")
 
@@ -12065,10 +12977,12 @@ func TestYooKassaCreatePaymentIsIdempotentAndRejectsProductMixing(
 	})
 
 	var calls atomic.Int32
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			calls.Add(1)
 			w.Header().Set("Content-Type", "application/json")
+
 			_, _ = w.Write([]byte(`{
 			"id":"yk-idempotent-payment",
 			"status":"pending",
@@ -12078,6 +12992,7 @@ func TestYooKassaCreatePaymentIsIdempotentAndRejectsProductMixing(
 		}`))
 		}),
 	)
+
 	defer server.Close()
 
 	params := yookassa.CreatePaymentParams{
@@ -12101,10 +13016,12 @@ func TestYooKassaCreatePaymentIsIdempotentAndRejectsProductMixing(
 	if err != nil {
 		t.Fatalf("first create payment: %v", err)
 	}
+
 	second, err := env.api.Adapters.YooKassa.CreatePayment(env.ctx, params)
 	if err != nil {
 		t.Fatalf("repeat create payment: %v", err)
 	}
+
 	if first.OrderID != second.OrderID || first.AttemptID != second.AttemptID {
 		t.Fatalf(
 			"idempotent result changed: first=%#v second=%#v",
@@ -12112,6 +13029,7 @@ func TestYooKassaCreatePaymentIsIdempotentAndRejectsProductMixing(
 			second,
 		)
 	}
+
 	if calls.Load() != 1 {
 		t.Fatalf("provider calls = %d, want 1", calls.Load())
 	}
@@ -12129,12 +13047,16 @@ func TestYooKassaCreatePaymentIsIdempotentAndRejectsProductMixing(
 			err,
 		)
 	}
+
 	if calls.Load() != 1 {
 		t.Fatalf("provider called for mismatched product: %d", calls.Load())
 	}
 
-	var orderCount int
-	var attemptCount int
+	var (
+		orderCount   int
+		attemptCount int
+	)
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT COUNT(DISTINCT po.id), COUNT(pa.id)
 FROM payment_attempt pa
@@ -12147,6 +13069,7 @@ WHERE pa.workspace_id = $1
 	); err != nil {
 		t.Fatalf("count idempotent records: %v", err)
 	}
+
 	if orderCount != 1 || attemptCount != 1 {
 		t.Fatalf("orders=%d attempts=%d, want 1/1", orderCount, attemptCount)
 	}
@@ -12172,6 +13095,7 @@ func TestYooKassaProviderIDsAreScopedByWorkspace(t *testing.T) {
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+
 			_, _ = w.Write([]byte(`{
 			"id":"same-provider-payment-id",
 			"status":"pending",
@@ -12181,6 +13105,7 @@ func TestYooKassaProviderIDsAreScopedByWorkspace(t *testing.T) {
 		}),
 	)
 	defer server.Close()
+
 	credentials := yookassa.Credentials{
 		ShopID:     "scope-shop",
 		SecretKey:  "scope-secret",
@@ -12190,6 +13115,7 @@ func TestYooKassaProviderIDsAreScopedByWorkspace(t *testing.T) {
 
 	create := func(workspaceID, productID, userID, key string) *yookassa.CreatePaymentResponse {
 		t.Helper()
+
 		result, err := env.api.Adapters.YooKassa.CreatePayment(
 			env.ctx,
 			yookassa.CreatePaymentParams{
@@ -12205,10 +13131,12 @@ func TestYooKassaProviderIDsAreScopedByWorkspace(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create scoped payment: %v", err)
 		}
+
 		return result
 	}
 	first := create(workspaceA, productA, "scope-user-a", "scope-key-a")
 	second := create(workspaceB, productB, "scope-user-b", "scope-key-b")
+
 	if first.AttemptID == second.AttemptID || first.OrderID == second.OrderID {
 		t.Fatalf(
 			"workspace payments reused local records: first=%#v second=%#v",
@@ -12237,6 +13165,7 @@ func TestYooKassaProviderIDsAreScopedByWorkspace(t *testing.T) {
 	); err != nil {
 		t.Fatalf("handle workspace A webhook: %v", err)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, first.OrderID, "fulfilled")
 	assertOrderStatus(t, env.ctx, env.db, second.OrderID, "pending_payment")
 
@@ -12250,6 +13179,7 @@ func TestYooKassaProviderIDsAreScopedByWorkspace(t *testing.T) {
 	); err != nil {
 		t.Fatalf("handle workspace B webhook: %v", err)
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, second.OrderID, "fulfilled")
 }
 
@@ -12265,6 +13195,7 @@ func TestYooKassaConcurrentIdempotencyCreatesOneOrderAndAttempt(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			time.Sleep(20 * time.Millisecond)
 			w.Header().Set("Content-Type", "application/json")
+
 			_, _ = w.Write([]byte(`{
 			"id":"yk-concurrent-payment",
 			"status":"pending",
@@ -12291,15 +13222,21 @@ func TestYooKassaConcurrentIdempotencyCreatesOneOrderAndAttempt(t *testing.T) {
 	}
 
 	const workers = 8
+
 	start := make(chan struct{})
 	results := make(chan *yookassa.CreatePaymentResponse, workers)
 	errorsCh := make(chan error, workers)
+
 	var wait sync.WaitGroup
+
 	wait.Add(workers)
+
 	for range workers {
 		go func() {
 			defer wait.Done()
+
 			<-start
+
 			result, err := env.api.Adapters.YooKassa.CreatePayment(
 				env.ctx,
 				params,
@@ -12308,32 +13245,43 @@ func TestYooKassaConcurrentIdempotencyCreatesOneOrderAndAttempt(t *testing.T) {
 				errorsCh <- err
 				return
 			}
+
 			results <- result
 		}()
 	}
+
 	close(start)
 	wait.Wait()
 	close(results)
 	close(errorsCh)
+
 	for err := range errorsCh {
 		t.Fatalf("concurrent create payment: %v", err)
 	}
 
-	var orderID uint64
-	var attemptID uint64
+	var (
+		orderID   uint64
+		attemptID uint64
+	)
+
 	for result := range results {
 		if orderID == 0 {
 			orderID = result.OrderID
 			attemptID = result.AttemptID
+
 			continue
 		}
+
 		if result.OrderID != orderID || result.AttemptID != attemptID {
 			t.Fatalf("concurrent result changed: %#v", result)
 		}
 	}
 
-	var orderCount int
-	var attemptCount int
+	var (
+		orderCount   int
+		attemptCount int
+	)
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT COUNT(DISTINCT po.id), COUNT(pa.id)
 FROM payment_attempt pa
@@ -12346,6 +13294,7 @@ WHERE pa.workspace_id = $1
 	); err != nil {
 		t.Fatalf("count concurrent records: %v", err)
 	}
+
 	if orderCount != 1 || attemptCount != 1 {
 		t.Fatalf("orders=%d attempts=%d, want 1/1", orderCount, attemptCount)
 	}
@@ -12370,7 +13319,9 @@ func TestYooKassaDefinitiveProviderErrorFailsAttemptAndReleasesOrder(
 		}),
 	)
 	defer server.Close()
+
 	key := "yookassa-definitive-error"
+
 	_, err := env.api.Adapters.YooKassa.CreatePayment(
 		env.ctx,
 		yookassa.CreatePaymentParams{
@@ -12392,8 +13343,11 @@ func TestYooKassaDefinitiveProviderErrorFailsAttemptAndReleasesOrder(
 		t.Fatal("expected provider error")
 	}
 
-	var attemptStatus string
-	var orderStatus string
+	var (
+		attemptStatus string
+		orderStatus   string
+	)
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT pa.status::text, po.status::text
 FROM payment_attempt pa
@@ -12406,6 +13360,7 @@ WHERE pa.workspace_id = $1
 	); err != nil {
 		t.Fatalf("read failed provider attempt: %v", err)
 	}
+
 	if attemptStatus != "failed" || orderStatus != "canceled" {
 		t.Fatalf(
 			"attempt=%s order=%s, want failed/canceled",
@@ -12415,12 +13370,14 @@ WHERE pa.workspace_id = $1
 	}
 
 	var reserved int64
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT COALESCE(SUM(reserved_count), 0)
 FROM payment_product_limit_counter
 WHERE workspace_id = $1 AND product_id = $2`, testWorkspaceID, productID).Scan(&reserved); err != nil {
 		t.Fatalf("read released reservation: %v", err)
 	}
+
 	if reserved != 0 {
 		t.Fatalf("reserved count = %d, want 0", reserved)
 	}
@@ -12435,6 +13392,7 @@ func TestYooKassaAmbiguousProviderErrorRetriesSameAttempt(t *testing.T) {
 	})
 
 	var calls atomic.Int32
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			if calls.Add(1) == 1 {
@@ -12443,10 +13401,12 @@ func TestYooKassaAmbiguousProviderErrorRetriesSameAttempt(t *testing.T) {
 					`{"type":"temporary_error"}`,
 					http.StatusInternalServerError,
 				)
+
 				return
 			}
 
 			w.Header().Set("Content-Type", "application/json")
+
 			_, _ = w.Write([]byte(`{
 			"id":"yk-recovered-payment",
 			"status":"pending",
@@ -12455,6 +13415,7 @@ func TestYooKassaAmbiguousProviderErrorRetriesSameAttempt(t *testing.T) {
 		}`))
 		}),
 	)
+
 	defer server.Close()
 
 	key := "yookassa-ambiguous-retry"
@@ -12484,16 +13445,21 @@ func TestYooKassaAmbiguousProviderErrorRetriesSameAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("retry ambiguous payment: %v", err)
 	}
+
 	if recovered.PaymentID != "yk-recovered-payment" {
 		t.Fatalf("recovered payment id = %q", recovered.PaymentID)
 	}
+
 	if calls.Load() != 2 {
 		t.Fatalf("provider calls = %d, want 2", calls.Load())
 	}
 
-	var orderCount int
-	var attemptCount int
-	var attemptStatus string
+	var (
+		orderCount    int
+		attemptCount  int
+		attemptStatus string
+	)
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT COUNT(DISTINCT po.id), COUNT(pa.id), MIN(pa.status::text)
 FROM payment_attempt pa
@@ -12507,6 +13473,7 @@ WHERE pa.workspace_id = $1
 	); err != nil {
 		t.Fatalf("read recovered payment: %v", err)
 	}
+
 	if orderCount != 1 || attemptCount != 1 || attemptStatus != "pending" {
 		t.Fatalf(
 			"orders=%d attempts=%d status=%s, want 1/1/pending",
@@ -12526,9 +13493,11 @@ func TestPlategaUnknownCreationIsNotRetried(t *testing.T) {
 	})
 
 	var calls atomic.Int32
+
 	httpClient := &http.Client{
 		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			calls.Add(1)
+
 			return nil, errors.New("simulated connection loss")
 		}),
 	}
@@ -12546,12 +13515,14 @@ func TestPlategaUnknownCreationIsNotRetried(t *testing.T) {
 		ProductID:      productID,
 		IdempotencyKey: "platega-unknown-key",
 	}
+
 	if _, err := env.api.Adapters.Platega.CreatePayment(
 		env.ctx,
 		params,
 	); err == nil {
 		t.Fatal("expected connection error")
 	}
+
 	if _, err := env.api.Adapters.Platega.CreatePayment(
 		env.ctx,
 		params,
@@ -12561,12 +13532,16 @@ func TestPlategaUnknownCreationIsNotRetried(t *testing.T) {
 	) {
 		t.Fatalf("retry error = %v, want ErrTransactionStateUnknown", err)
 	}
+
 	if calls.Load() != 1 {
 		t.Fatalf("platega calls = %d, want 1", calls.Load())
 	}
 
-	var attemptStatus string
-	var orderStatus string
+	var (
+		attemptStatus string
+		orderStatus   string
+	)
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT pa.status::text, po.status::text
 FROM payment_attempt pa
@@ -12579,6 +13554,7 @@ WHERE pa.workspace_id = $1
 	); err != nil {
 		t.Fatalf("read unknown platega attempt: %v", err)
 	}
+
 	if attemptStatus != "created" || orderStatus != "pending_payment" {
 		t.Fatalf(
 			"attempt=%s order=%s, want created/pending_payment",
@@ -12596,15 +13572,20 @@ func TestPlategaWebhookRecoversLostCreateResponse(t *testing.T) {
 		ListAmountMinor: 100,
 	})
 
-	const transactionID = "platega-lost-response"
-	const idempotencyKey = "platega-lost-response-key"
+	const (
+		transactionID  = "platega-lost-response"
+		idempotencyKey = "platega-lost-response-key"
+	)
+
 	var getCalls atomic.Int32
+
 	httpClient := &http.Client{
 		Transport: roundTripFunc(
 			func(request *http.Request) (*http.Response, error) {
 				if request.Method == http.MethodPost {
 					return nil, errors.New("simulated response loss")
 				}
+
 				if request.Method != http.MethodGet ||
 					!strings.HasSuffix(
 						request.URL.Path,
@@ -12616,9 +13597,11 @@ func TestPlategaWebhookRecoversLostCreateResponse(t *testing.T) {
 						request.URL.Path,
 					)
 				}
+
 				getCalls.Add(1)
 
 				var orderPublicID string
+
 				if err := env.db.QueryRowContext(env.ctx, `
 SELECT po.public_id
 FROM payment_attempt pa
@@ -12628,6 +13611,7 @@ WHERE pa.workspace_id = $1
   AND pa.idempotency_key = $3`, testWorkspaceID, platega.ProviderCode, idempotencyKey).Scan(&orderPublicID); err != nil {
 					return nil, err
 				}
+
 				body := fmt.Sprintf(`{
 			"id":%q,
 			"status":"CONFIRMED",
@@ -12652,6 +13636,7 @@ WHERE pa.workspace_id = $1
 		APIBaseURL: "https://platega.test",
 		HTTPClient: httpClient,
 	}
+
 	if _, err := env.api.Adapters.Platega.CreatePayment(
 		env.ctx,
 		platega.CreatePaymentParams{
@@ -12677,22 +13662,30 @@ WHERE pa.workspace_id = $1
 	headers := make(http.Header)
 	headers.Set("X-MerchantId", credentials.MerchantID)
 	headers.Set("X-Secret", credentials.Secret)
+
 	request := platega.WebhookRequest{
 		Credentials: credentials,
 		WorkspaceID: testWorkspaceID,
 		Raw:         callback,
 		Headers:     headers,
 	}
+
 	const workers = 8
+
 	start := make(chan struct{})
 	results := make(chan *platega.WebhookResult, workers)
 	errorsCh := make(chan error, workers)
+
 	var group sync.WaitGroup
+
 	group.Add(workers)
+
 	for range workers {
 		go func() {
 			defer group.Done()
+
 			<-start
+
 			result, err := env.api.Adapters.Platega.HandleWebhook(
 				env.ctx,
 				request,
@@ -12701,23 +13694,28 @@ WHERE pa.workspace_id = $1
 				errorsCh <- err
 				return
 			}
+
 			results <- result
 		}()
 	}
+
 	close(start)
 	group.Wait()
 	close(results)
 	close(errorsCh)
+
 	for err := range errorsCh {
 		t.Fatalf("concurrent Platega recovery: %v", err)
 	}
 
 	var result *platega.WebhookResult
+
 	for current := range results {
 		if result == nil {
 			result = current
 			continue
 		}
+
 		if current.OrderID != result.OrderID ||
 			current.AttemptID != result.AttemptID {
 			t.Fatalf(
@@ -12727,23 +13725,29 @@ WHERE pa.workspace_id = $1
 			)
 		}
 	}
+
 	if result == nil {
 		t.Fatal("concurrent recovery returned no result")
 	}
+
 	if result.FulfilledID == nil {
 		t.Fatal("recovered callback did not fulfill order")
 	}
+
 	assertOrderStatus(t, env.ctx, env.db, result.OrderID, "fulfilled")
 	assertAttemptStatus(t, env.ctx, env.db, result.AttemptID, "succeeded")
 
 	recoveryCalls := getCalls.Load()
+
 	again, err := env.api.Adapters.Platega.HandleWebhook(env.ctx, request)
 	if err != nil {
 		t.Fatalf("repeat recovered callback: %v", err)
 	}
+
 	if !again.AlreadyDone {
 		t.Fatal("repeat recovered callback is not idempotent")
 	}
+
 	if recoveryCalls == 0 || recoveryCalls > workers {
 		t.Fatalf(
 			"transaction recovery GET calls = %d, want 1..%d",
@@ -12751,6 +13755,7 @@ WHERE pa.workspace_id = $1
 			workers,
 		)
 	}
+
 	if getCalls.Load() != recoveryCalls {
 		t.Fatalf(
 			"idempotent callback made another recovery GET: before=%d after=%d",
@@ -12767,21 +13772,25 @@ func TestPlategaWebhookRecoveryRejectsWrongWorkspaceAndAmount(t *testing.T) {
 		AssetCode:       platega.AssetCode,
 		ListAmountMinor: 100,
 	})
+
 	const idempotencyKey = "platega-recovery-guards-key"
 
 	var orderPublicID string
+
 	httpClient := &http.Client{
 		Transport: roundTripFunc(
 			func(request *http.Request) (*http.Response, error) {
 				if request.Method == http.MethodPost {
 					return nil, errors.New("simulated response loss")
 				}
+
 				body := fmt.Sprintf(`{
 			"id":"platega-guard-transaction",
 			"status":"CONFIRMED",
 			"paymentDetails":{"amount":2,"currency":"RUB"},
 			"payload":%q
 		}`, orderPublicID)
+
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Header: http.Header{
@@ -12799,6 +13808,7 @@ func TestPlategaWebhookRecoveryRejectsWrongWorkspaceAndAmount(t *testing.T) {
 		APIBaseURL: "https://platega.test",
 		HTTPClient: httpClient,
 	}
+
 	if _, err := env.api.Adapters.Platega.CreatePayment(
 		env.ctx,
 		platega.CreatePaymentParams{
@@ -12813,6 +13823,7 @@ func TestPlategaWebhookRecoveryRejectsWrongWorkspaceAndAmount(t *testing.T) {
 	); err == nil {
 		t.Fatal("expected lost create response")
 	}
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT po.public_id
 FROM payment_attempt pa
@@ -12831,6 +13842,7 @@ WHERE pa.idempotency_key = $1`, idempotencyKey).Scan(&orderPublicID); err != nil
 	headers := make(http.Header)
 	headers.Set("X-MerchantId", credentials.MerchantID)
 	headers.Set("X-Secret", credentials.Secret)
+
 	request := platega.WebhookRequest{
 		Credentials: credentials,
 		WorkspaceID: testsupport.WorkspaceID("wrong-platega-workspace"),
@@ -12859,22 +13871,30 @@ WHERE pa.idempotency_key = $1`, idempotencyKey).Scan(&orderPublicID); err != nil
 	}
 
 	var attemptID uint64
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT id FROM payment_attempt WHERE idempotency_key = $1`, idempotencyKey).Scan(&attemptID); err != nil {
 		t.Fatalf("read guarded attempt: %v", err)
 	}
+
 	assertAttemptStatus(t, env.ctx, env.db, attemptID, "created")
 }
 
 func TestPlategaBackgroundReconciliationRecoversWithoutCallback(t *testing.T) {
-	const idempotencyKey = "platega-background-recovery-key"
-	const transactionID = "platega-background-transaction"
-	var database atomic.Pointer[sql.DB]
-	var exportCalls atomic.Int32
+	const (
+		idempotencyKey = "platega-background-recovery-key"
+		transactionID  = "platega-background-transaction"
+	)
+
+	var (
+		database    atomic.Pointer[sql.DB]
+		exportCalls atomic.Int32
+	)
 
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+
 			switch request.URL.Path {
 			case "/v2/transaction/process":
 				http.Error(
@@ -12884,6 +13904,7 @@ func TestPlategaBackgroundReconciliationRecoversWithoutCallback(t *testing.T) {
 				)
 			case "/transaction/export/json":
 				exportCalls.Add(1)
+
 				db := database.Load()
 				if db == nil {
 					_, _ = w.Write([]byte(`[]`))
@@ -12891,6 +13912,7 @@ func TestPlategaBackgroundReconciliationRecoversWithoutCallback(t *testing.T) {
 				}
 
 				var orderPublicID string
+
 				err := db.QueryRowContext(context.Background(), `
 SELECT po.public_id
 FROM payment_attempt pa
@@ -12898,14 +13920,18 @@ JOIN payment_order po ON po.id = pa.order_id
 WHERE pa.provider_code = $1
   AND pa.idempotency_key = $2
   AND pa.status = 'created'`, platega.ProviderCode, idempotencyKey).Scan(&orderPublicID)
+
 				if errors.Is(err, sql.ErrNoRows) {
 					_, _ = w.Write([]byte(`[]`))
 					return
 				}
+
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
+
 					return
 				}
+
 				_, _ = fmt.Fprintf(w, `[{
 				"recordId":%q,
 				"amount":1,
@@ -12928,6 +13954,7 @@ WHERE pa.provider_code = $1
 		HTTPClient: server.Client(),
 	}
 	options := paymentTestOptions()
+
 	options.OrderExpirationInterval = 5 * time.Millisecond
 	options.OrderExpirationAge = time.Millisecond
 	options.PlategaCredentialsResolver = func(_ context.Context, workspaceID string) (platega.Credentials, error) {
@@ -12937,11 +13964,13 @@ WHERE pa.provider_code = $1
 				workspaceID,
 			)
 		}
+
 		return credentials, nil
 	}
 	options.PlategaReconcileInterval = 10 * time.Millisecond
 	options.PlategaReconcileMinAge = time.Millisecond
 	options.PlategaReconcileBatch = 100
+
 	env := setupPaymentIntegrationTestWithOptions(t, options)
 	database.Store(env.db)
 
@@ -12966,11 +13995,15 @@ WHERE pa.provider_code = $1
 	}
 
 	deadline := time.Now().Add(3 * time.Second)
+
 	for {
-		var orderID uint64
-		var attemptID uint64
-		var orderStatus string
-		var attemptStatus string
+		var (
+			orderID       uint64
+			attemptID     uint64
+			orderStatus   string
+			attemptStatus string
+		)
+
 		err := env.db.QueryRowContext(env.ctx, `
 SELECT po.id, pa.id, po.status::text, pa.status::text
 FROM payment_attempt pa
@@ -12984,9 +14017,11 @@ WHERE pa.idempotency_key = $1`, idempotencyKey).Scan(
 		if err != nil {
 			t.Fatalf("read reconciled payment: %v", err)
 		}
+
 		if orderStatus == "fulfilled" && attemptStatus == "succeeded" {
 			break
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatalf(
 				"reconciliation timeout: order=%s attempt=%s",
@@ -12994,8 +14029,10 @@ WHERE pa.idempotency_key = $1`, idempotencyKey).Scan(
 				attemptStatus,
 			)
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
+
 	if exportCalls.Load() == 0 {
 		t.Fatal("background reconciliation did not call Platega export")
 	}
@@ -13015,10 +14052,12 @@ func TestPlategaReconciliationReleasesMissingTransaction(t *testing.T) {
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+
 			if request.URL.Path == "/transaction/export/json" {
 				_, _ = w.Write([]byte(`[]`))
 				return
 			}
+
 			http.Error(
 				w,
 				`{"error":"temporary"}`,
@@ -13027,13 +14066,16 @@ func TestPlategaReconciliationReleasesMissingTransaction(t *testing.T) {
 		}),
 	)
 	defer server.Close()
+
 	credentials := platega.Credentials{
 		MerchantID: "missing-merchant",
 		Secret:     "missing-secret",
 		APIBaseURL: server.URL,
 		HTTPClient: server.Client(),
 	}
+
 	const idempotencyKey = "platega-missing-recovery-key"
+
 	if _, err := env.api.Adapters.Platega.CreatePayment(
 		env.ctx,
 		platega.CreatePaymentParams{
@@ -13048,12 +14090,14 @@ func TestPlategaReconciliationReleasesMissingTransaction(t *testing.T) {
 	); err == nil {
 		t.Fatal("expected temporary create error")
 	}
+
 	if _, err := env.db.ExecContext(env.ctx, `
 UPDATE payment_attempt
 SET created_at = now() - INTERVAL '1 hour'
 WHERE idempotency_key = $1`, idempotencyKey); err != nil {
 		t.Fatalf("age missing attempt: %v", err)
 	}
+
 	reconciled, err := env.api.Adapters.Platega.ReconcilePending(
 		env.ctx,
 		platega.ReconcileParams{
@@ -13068,12 +14112,16 @@ WHERE idempotency_key = $1`, idempotencyKey); err != nil {
 	if err != nil {
 		t.Fatalf("reconcile missing transaction: %v", err)
 	}
+
 	if reconciled.Released != 1 {
 		t.Fatalf("unexpected missing reconciliation result: %#v", reconciled)
 	}
 
-	var attemptStatus string
-	var orderStatus string
+	var (
+		attemptStatus string
+		orderStatus   string
+	)
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT pa.status::text, po.status::text
 FROM payment_attempt pa
@@ -13081,6 +14129,7 @@ JOIN payment_order po ON po.id = pa.order_id
 WHERE pa.idempotency_key = $1`, idempotencyKey).Scan(&attemptStatus, &orderStatus); err != nil {
 		t.Fatalf("read released transaction: %v", err)
 	}
+
 	if attemptStatus != "failed" || orderStatus != "canceled" {
 		t.Fatalf(
 			"attempt=%s order=%s, want failed/canceled",
@@ -13090,12 +14139,14 @@ WHERE pa.idempotency_key = $1`, idempotencyKey).Scan(&attemptStatus, &orderStatu
 	}
 
 	var reserved int64
+
 	if err := env.db.QueryRowContext(env.ctx, `
 SELECT COALESCE(SUM(reserved_count), 0)
 FROM payment_product_limit_counter
 WHERE workspace_id = $1 AND product_id = $2`, testWorkspaceID, productID).Scan(&reserved); err != nil {
 		t.Fatalf("read released Platega reservation: %v", err)
 	}
+
 	if reserved != 0 {
 		t.Fatalf("reserved count = %d, want 0", reserved)
 	}
@@ -13105,10 +14156,12 @@ func TestPlategaTerminalWebhooksReleaseOrderAndLimits(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 
 	var transactionSequence atomic.Int32
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 			if request.URL.Path != "/v2/transaction/process" {
 				http.NotFound(w, request)
+
 				return
 			}
 
@@ -13116,7 +14169,9 @@ func TestPlategaTerminalWebhooksReleaseOrderAndLimits(t *testing.T) {
 				"platega-terminal-%d",
 				transactionSequence.Add(1),
 			)
+
 			w.Header().Set("Content-Type", "application/json")
+
 			_, _ = fmt.Fprintf(w, `{
 			"transactionId":%q,
 			"status":"PENDING",
@@ -13124,6 +14179,7 @@ func TestPlategaTerminalWebhooksReleaseOrderAndLimits(t *testing.T) {
 		}`, transactionID)
 		}),
 	)
+
 	defer server.Close()
 
 	credentials := platega.Credentials{
@@ -13167,6 +14223,7 @@ func TestPlategaTerminalWebhooksReleaseOrderAndLimits(t *testing.T) {
 				GlobalInterval:      "ONCE",
 				GlobalIntervalCount: 1,
 			})
+
 			created, err := env.api.Adapters.Platega.CreatePayment(
 				env.ctx,
 				platega.CreatePaymentParams{
@@ -13202,12 +14259,14 @@ func TestPlategaTerminalWebhooksReleaseOrderAndLimits(t *testing.T) {
 				Raw:         []byte(callback),
 				Headers:     headers,
 			}
+
 			if _, err := env.api.Adapters.Platega.HandleWebhook(
 				env.ctx,
 				request,
 			); err != nil {
 				t.Fatalf("handle terminal webhook: %v", err)
 			}
+
 			if _, err := env.api.Adapters.Platega.HandleWebhook(
 				env.ctx,
 				request,
@@ -13231,12 +14290,14 @@ func TestPlategaTerminalWebhooksReleaseOrderAndLimits(t *testing.T) {
 			)
 
 			var reserved int64
+
 			if err := env.db.QueryRowContext(env.ctx, `
 SELECT COALESCE(SUM(reserved_count), 0)
 FROM payment_product_limit_counter
 WHERE workspace_id = $1 AND product_id = $2`, testWorkspaceID, productID).Scan(&reserved); err != nil {
 				t.Fatalf("read terminal reservation: %v", err)
 			}
+
 			if reserved != 0 {
 				t.Fatalf("reserved count = %d, want 0", reserved)
 			}
@@ -13258,6 +14319,7 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+
 			_, _ = w.Write([]byte(`{
 			"transactionId":"platega-chargeback-payment",
 			"status":"PENDING",
@@ -13273,6 +14335,7 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 		APIBaseURL: server.URL,
 		HTTPClient: server.Client(),
 	}
+
 	created, err := env.api.Adapters.Platega.CreatePayment(
 		env.ctx,
 		platega.CreatePaymentParams{
@@ -13292,6 +14355,7 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 	headers := make(http.Header)
 	headers.Set("X-MerchantId", credentials.MerchantID)
 	headers.Set("X-Secret", credentials.Secret)
+
 	callback := func(status string, amount int) platega.WebhookRequest {
 		raw := fmt.Sprintf(`{
 			"id":%q,
@@ -13308,6 +14372,7 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 			Headers:     headers,
 		}
 	}
+
 	confirmed, err := env.api.Adapters.Platega.HandleWebhook(
 		env.ctx,
 		callback("CONFIRMED", 1),
@@ -13315,6 +14380,7 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("confirm chargeback payment: %v", err)
 	}
+
 	if confirmed.FulfilledID == nil {
 		t.Fatal("confirmed payment has no fulfillment")
 	}
@@ -13326,6 +14392,7 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply chargeback: %v", err)
 	}
+
 	if chargeback.FulfilledID == nil ||
 		*chargeback.FulfilledID != *confirmed.FulfilledID {
 		t.Fatalf(
@@ -13334,6 +14401,7 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 			*confirmed.FulfilledID,
 		)
 	}
+
 	duplicate, err := env.api.Adapters.Platega.HandleWebhook(
 		env.ctx,
 		callback("CHARGEBACKED", 1),
@@ -13341,9 +14409,11 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("repeat chargeback: %v", err)
 	}
+
 	if !duplicate.AlreadyDone {
 		t.Fatal("repeat chargeback is not idempotent")
 	}
+
 	if _, err := env.api.Adapters.Platega.HandleWebhook(
 		env.ctx,
 		callback("CHARGEBACKED", 2),
@@ -13366,6 +14436,7 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 	)
 
 	var fulfillmentStatus string
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		"SELECT status::text FROM payment_fulfillment WHERE order_id = $1",
@@ -13373,11 +14444,13 @@ func TestPlategaChargebackCreatesExternalCallback(t *testing.T) {
 	).Scan(&fulfillmentStatus); err != nil {
 		t.Fatalf("read chargeback fulfillment: %v", err)
 	}
+
 	if fulfillmentStatus != "revoked" {
 		t.Fatalf("fulfillment status = %q, want revoked", fulfillmentStatus)
 	}
 
 	var callbackPayloadRaw []byte
+
 	if err := env.db.QueryRowContext(
 		env.ctx,
 		`
@@ -13393,10 +14466,13 @@ WHERE event_type = $1 AND event_key = $2`,
 	).Scan(&callbackPayloadRaw); err != nil {
 		t.Fatalf("read chargeback callback: %v", err)
 	}
+
 	var callbackPayload PaymentChargebackedCallbackPayload
+
 	if err := json.Unmarshal(callbackPayloadRaw, &callbackPayload); err != nil {
 		t.Fatalf("decode chargeback callback: %v", err)
 	}
+
 	if callbackPayload.OrderID != created.OrderID ||
 		callbackPayload.AttemptID != created.AttemptID ||
 		callbackPayload.FulfillmentID != *confirmed.FulfilledID ||
@@ -13405,6 +14481,7 @@ WHERE event_type = $1 AND event_key = $2`,
 		len(callbackPayload.Rewards) != 1 {
 		t.Fatalf("unexpected chargeback callback: %#v", callbackPayload)
 	}
+
 	callbackContext, err := newCallbackContext(callbackutil.Context{
 		Context:   env.ctx,
 		EventType: CallbackEventPaymentOrderChargebacked,
@@ -13413,6 +14490,7 @@ WHERE event_type = $1 AND event_key = $2`,
 	if err != nil {
 		t.Fatalf("build external chargeback callback context: %v", err)
 	}
+
 	if callbackContext.PaymentChargebacked == nil ||
 		callbackContext.Payload == nil ||
 		callbackContext.PaymentChargebacked.OrderID != created.OrderID ||
@@ -13430,9 +14508,11 @@ func TestPlategaReconciliationCompletesBoundPendingPayment(t *testing.T) {
 	})
 
 	var orderPublicID string
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+
 			switch request.URL.Path {
 			case "/v2/transaction/process":
 				_, _ = w.Write([]byte(`{
@@ -13454,6 +14534,7 @@ func TestPlategaReconciliationCompletesBoundPendingPayment(t *testing.T) {
 			}
 		}),
 	)
+
 	defer server.Close()
 
 	credentials := platega.Credentials{
@@ -13462,6 +14543,7 @@ func TestPlategaReconciliationCompletesBoundPendingPayment(t *testing.T) {
 		APIBaseURL: server.URL,
 		HTTPClient: server.Client(),
 	}
+
 	created, err := env.api.Adapters.Platega.CreatePayment(
 		env.ctx,
 		platega.CreatePaymentParams{
@@ -13477,6 +14559,7 @@ func TestPlategaReconciliationCompletesBoundPendingPayment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create bound pending payment: %v", err)
 	}
+
 	orderPublicID = created.OrderPublicID
 
 	result, err := env.api.Adapters.Platega.ReconcilePending(
@@ -13492,9 +14575,11 @@ func TestPlategaReconciliationCompletesBoundPendingPayment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reconcile bound pending payment: %v", err)
 	}
+
 	if result.Scanned != 1 || result.Completed != 1 {
 		t.Fatalf("unexpected reconciliation result: %#v", result)
 	}
+
 	assertAttemptStatus(t, env.ctx, env.db, created.AttemptID, "succeeded")
 	assertOrderStatus(t, env.ctx, env.db, created.OrderID, "fulfilled")
 }
@@ -13508,10 +14593,12 @@ func TestPlategaCreateReplayPreservesProviderStatus(t *testing.T) {
 	})
 
 	var providerCalls atomic.Int32
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			providerCalls.Add(1)
 			w.Header().Set("Content-Type", "application/json")
+
 			_, _ = w.Write([]byte(`{
 			"transactionId":"platega-replay-payment",
 			"status":"PENDING",
@@ -13519,6 +14606,7 @@ func TestPlategaCreateReplayPreservesProviderStatus(t *testing.T) {
 		}`))
 		}),
 	)
+
 	defer server.Close()
 
 	params := platega.CreatePaymentParams{
@@ -13535,14 +14623,17 @@ func TestPlategaCreateReplayPreservesProviderStatus(t *testing.T) {
 		ProductID:      productID,
 		IdempotencyKey: "platega-replay-key",
 	}
+
 	created, err := env.api.Adapters.Platega.CreatePayment(env.ctx, params)
 	if err != nil {
 		t.Fatalf("create replay payment: %v", err)
 	}
+
 	replayed, err := env.api.Adapters.Platega.CreatePayment(env.ctx, params)
 	if err != nil {
 		t.Fatalf("replay payment: %v", err)
 	}
+
 	if replayed.Status != created.Status ||
 		replayed.Status != platega.StatusPending {
 		t.Fatalf(
@@ -13551,6 +14642,7 @@ func TestPlategaCreateReplayPreservesProviderStatus(t *testing.T) {
 			created.Status,
 		)
 	}
+
 	if providerCalls.Load() != 1 {
 		t.Fatalf("provider calls = %d, want 1", providerCalls.Load())
 	}
@@ -13565,15 +14657,19 @@ func TestPlategaExportRejectsUnsafeRedirect(t *testing.T) {
 	})
 
 	var unsafeTargetReached atomic.Bool
+
 	unsafeTarget := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			unsafeTargetReached.Store(true)
+
 			_, _ = w.Write([]byte(`[]`))
 		}),
 	)
+
 	defer unsafeTarget.Close()
 
 	var providerURL string
+
 	provider := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 			switch request.URL.Path {
@@ -13592,7 +14688,9 @@ func TestPlategaExportRejectsUnsafeRedirect(t *testing.T) {
 			}
 		}),
 	)
+
 	defer provider.Close()
+
 	providerURL = provider.URL
 
 	credentials := platega.Credentials{
@@ -13629,6 +14727,7 @@ func TestPlategaExportRejectsUnsafeRedirect(t *testing.T) {
 	if !errors.Is(err, platega.ErrExportURLUnsafe) {
 		t.Fatalf("unsafe redirect error = %v, want ErrExportURLUnsafe", err)
 	}
+
 	if unsafeTargetReached.Load() {
 		t.Fatal("unsafe redirect target was requested")
 	}
@@ -13654,6 +14753,7 @@ func TestPlategaExportLimitsInitialResponse(t *testing.T) {
 				)
 			case "/transaction/export/json":
 				w.Header().Set("Content-Type", "application/json")
+
 				_, _ = fmt.Fprintf(
 					w,
 					`[{"recordId":"large","payload":%q}]`,
@@ -13664,6 +14764,7 @@ func TestPlategaExportLimitsInitialResponse(t *testing.T) {
 			}
 		}),
 	)
+
 	defer provider.Close()
 
 	credentials := platega.Credentials{

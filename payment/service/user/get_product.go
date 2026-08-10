@@ -11,6 +11,7 @@ func (u *User) GetProduct(
 	if u == nil || u.products == nil {
 		return nil, ErrProductNotInitialized
 	}
+
 	return u.products.Get(ctx, params)
 }
 
@@ -21,5 +22,6 @@ func (u *User) GetProductByKey(
 	if u == nil || u.products == nil {
 		return nil, ErrProductNotInitialized
 	}
+
 	return u.products.GetByKey(ctx, params)
 }

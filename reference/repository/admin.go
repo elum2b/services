@@ -14,6 +14,7 @@ func (r *Repository) CreateItem(
 	if err := requireWorkspace(params.WorkspaceID); err != nil {
 		return err
 	}
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		params.WorkspaceID,
@@ -30,6 +31,7 @@ func (r *Repository) CreateItem(
 	if err != nil {
 		return err
 	}
+
 	return r.bumpReferenceCacheVersions(
 		params.WorkspaceID,
 		referenceItemMutationCacheMethods...)
@@ -42,12 +44,15 @@ func (r *Repository) UpdateItem(
 	if err := requireWorkspace(params.WorkspaceID); err != nil {
 		return 0, err
 	}
+
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		params.WorkspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminUpdateItem(
 				ctx,
 				refsqlc.AdminUpdateItemParams{
@@ -57,12 +62,15 @@ func (r *Repository) UpdateItem(
 					Key:         params.Key,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	return rows, r.bumpReferenceCacheVersions(
 		params.WorkspaceID,
 		referenceItemMutationCacheMethods...)
@@ -75,12 +83,15 @@ func (r *Repository) DangerousChangeType(
 	if err := requireWorkspace(params.WorkspaceID); err != nil {
 		return 0, err
 	}
+
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		params.WorkspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminDangerousChangeType(
 				ctx,
 				refsqlc.AdminDangerousChangeTypeParams{
@@ -90,12 +101,15 @@ func (r *Repository) DangerousChangeType(
 					ItemType_2:  params.CurrentType,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	return rows, r.bumpReferenceCacheVersions(
 		params.WorkspaceID,
 		referenceItemMutationCacheMethods...)
@@ -108,12 +122,15 @@ func (r *Repository) SoftDeleteItem(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return 0, err
 	}
+
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminSoftDeleteItem(
 				ctx,
 				refsqlc.AdminSoftDeleteItemParams{
@@ -121,12 +138,15 @@ func (r *Repository) SoftDeleteItem(
 					Key:         key,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	return rows, r.bumpReferenceCacheVersions(
 		workspaceID,
 		referenceItemMutationCacheMethods...)
@@ -140,12 +160,15 @@ func (r *Repository) RestoreItem(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return 0, err
 	}
+
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminRestoreItem(
 				ctx,
 				refsqlc.AdminRestoreItemParams{
@@ -154,12 +177,15 @@ func (r *Repository) RestoreItem(
 					Key:         key,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	return rows, r.bumpReferenceCacheVersions(
 		workspaceID,
 		referenceItemMutationCacheMethods...)
@@ -172,7 +198,9 @@ func (r *Repository) AdminGetItem(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return Item{}, err
 	}
+
 	cacheKey := r.referenceCacheKey(referenceCacheAdminGet, workspaceID, key)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:     cacheKey,
 		Timeout: r.timeout,
@@ -193,9 +221,11 @@ func (r *Repository) AdminGetItem(
 		if err != nil {
 			return Item{}, err
 		}
+
 		if len(rows) == 0 {
 			return Item{}, ErrItemNotFound
 		}
+
 		first := rows[0]
 		item := Item{
 			WorkspaceID:   first.WorkspaceID,
@@ -208,6 +238,7 @@ func (r *Repository) AdminGetItem(
 			UpdatedAt:     first.UpdatedAt,
 			Localizations: make([]Localization, 0, len(rows)),
 		}
+
 		for _, row := range rows {
 			if row.Locale.Valid {
 				item.Localizations = append(item.Localizations, Localization{
@@ -219,6 +250,7 @@ func (r *Repository) AdminGetItem(
 				})
 			}
 		}
+
 		return item, nil
 	})
 }
@@ -230,10 +262,12 @@ func (r *Repository) AdminListItems(
 	if err := requireWorkspace(params.WorkspaceID); err != nil {
 		return nil, err
 	}
+
 	cacheKey := r.referenceCacheKey(
 		referenceCacheAdminList, params.WorkspaceID, params.Type,
 		params.OnlyNotDeleted, params.Limit, params.Offset,
 	)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:     cacheKey,
 		Timeout: r.timeout,
@@ -255,6 +289,7 @@ func (r *Repository) AdminListItems(
 		if err != nil {
 			return nil, err
 		}
+
 		result := make([]Item, 0, len(rows))
 		for _, row := range rows {
 			result = append(result, Item{
@@ -268,6 +303,7 @@ func (r *Repository) AdminListItems(
 				UpdatedAt:   row.UpdatedAt,
 			})
 		}
+
 		return result, nil
 	})
 }
@@ -312,12 +348,14 @@ func (r *Repository) GetLocalization(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return Localization{}, err
 	}
+
 	cacheKey := r.referenceCacheKey(
 		referenceCacheAdminGetLocalization,
 		workspaceID,
 		key,
 		locale,
 	)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:     cacheKey,
 		Timeout: r.timeout,
@@ -339,6 +377,7 @@ func (r *Repository) GetLocalization(
 		if err != nil {
 			return Localization{}, err
 		}
+
 		return mapLocalization(row), nil
 	})
 }
@@ -350,11 +389,13 @@ func (r *Repository) ListLocalizations(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
+
 	cacheKey := r.referenceCacheKey(
 		referenceCacheAdminListLocalizations,
 		workspaceID,
 		key,
 	)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:     cacheKey,
 		Timeout: r.timeout,
@@ -375,10 +416,12 @@ func (r *Repository) ListLocalizations(
 		if err != nil {
 			return nil, err
 		}
+
 		result := make([]Localization, 0, len(rows))
 		for _, row := range rows {
 			result = append(result, mapLocalization(row))
 		}
+
 		return result, nil
 	})
 }
@@ -392,11 +435,13 @@ func (r *Repository) DeleteLocalization(
 	}
 
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminDeleteLocalization(
 				ctx,
 				refsqlc.AdminDeleteLocalizationParams{
@@ -405,9 +450,11 @@ func (r *Repository) DeleteLocalization(
 					Locale:      locale,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
@@ -424,7 +471,9 @@ func (r *Repository) GetStats(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return Stats{}, err
 	}
+
 	cacheKey := r.referenceCacheKey(referenceCacheAdminStats, workspaceID)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:     cacheKey,
 		Timeout: r.timeout,
@@ -439,6 +488,7 @@ func (r *Repository) GetStats(
 		if err != nil {
 			return Stats{}, err
 		}
+
 		return Stats{
 			ItemsTotal:      uint64(row.ItemsTotal),
 			ItemsNotDeleted: uint64(row.ItemsNotDeleted),

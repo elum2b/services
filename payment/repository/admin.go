@@ -60,6 +60,7 @@ func (r *PaymentRepository) UpsertProvider(
 		!validProviderKind(params.ProviderKind) {
 		return ErrInvalidProvider
 	}
+
 	if err := r.q.AdminUpsertProvider(
 		ctx,
 		paymentsqlc.AdminUpsertProviderParams{
@@ -77,6 +78,7 @@ func (r *PaymentRepository) UpsertProvider(
 	); err != nil {
 		return err
 	}
+
 	return r.invalidateAllCache()
 }
 
@@ -88,6 +90,7 @@ func (r *PaymentRepository) AdminDeleteProvider(
 	if err != nil {
 		return 0, err
 	}
+
 	return rows, r.invalidateAllCache()
 }
 
@@ -120,6 +123,7 @@ func (r *PaymentRepository) AdminDeleteAsset(
 	code string,
 ) (int64, error) {
 	var rows int64
+
 	err := r.inTransaction(ctx, func(tx *PaymentRepository) error {
 		if _, err := tx.q.DeleteAssetRatesForAsset(
 			ctx,
@@ -130,16 +134,20 @@ func (r *PaymentRepository) AdminDeleteAsset(
 		); err != nil {
 			return err
 		}
+
 		deleted, err := tx.q.DeleteAsset(ctx, code)
 		if err != nil {
 			return err
 		}
+
 		rows = deleted
+
 		return nil
 	})
 	if err != nil {
 		return 0, err
 	}
+
 	return rows, r.invalidateAllCache()
 }
 
@@ -184,6 +192,7 @@ func (r *PaymentRepository) AdminDeleteProviderAsset(
 	if err != nil {
 		return 0, err
 	}
+
 	return rows, r.invalidateAllCache()
 }
 
@@ -333,6 +342,7 @@ func (r *PaymentRepository) AdminGetOrder(
 			ID:          int64(id),
 		},
 	)
+
 	return mapAdminResult(row, err, mapAdminOrder)
 }
 
@@ -348,6 +358,7 @@ func (r *PaymentRepository) AdminGetOrderByPublicID(
 			PublicID:    publicID,
 		},
 	)
+
 	return mapAdminResult(row, err, mapAdminOrder)
 }
 
@@ -371,6 +382,7 @@ func (r *PaymentRepository) AdminGetPaymentAttempt(
 			ID:          int64(id),
 		},
 	)
+
 	return mapAdminResult(row, err, mapAdminPaymentAttempt)
 }
 
@@ -430,6 +442,7 @@ func (r *PaymentRepository) AdminGetPaymentEvent(
 			ID:          int64(id),
 		},
 	)
+
 	return mapAdminResult(row, err, mapAdminPaymentEvent)
 }
 
@@ -492,6 +505,7 @@ func (r *PaymentRepository) AdminGetFulfillment(
 			ID:          int64(id),
 		},
 	)
+
 	return mapAdminResult(row, err, mapAdminFulfillment)
 }
 
@@ -590,5 +604,6 @@ func (r *PaymentRepository) AdminGetRefund(
 			ID:          int64(id),
 		},
 	)
+
 	return mapAdminResult(row, err, mapAdminRefund)
 }

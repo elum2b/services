@@ -53,18 +53,23 @@ func (r *Repository) bumpReferenceCacheVersions(
 	if r == nil || r.db == nil || workspaceID == "" {
 		return nil
 	}
+
 	var result error
+
 	for _, method := range methods {
 		if method == "" {
 			continue
 		}
+
 		if err := r.db.BumpCacheVersion(
 			referenceCacheScope(method, workspaceID)...); err != nil &&
 			result == nil {
 			result = err
 		}
 	}
+
 	r.reportCacheInvalidationError(result)
+
 	return result
 }
 
@@ -72,8 +77,10 @@ func (r *Repository) reportCacheInvalidationError(err error) {
 	if err == nil || r == nil || r.onCacheInvalidationError == nil {
 		return
 	}
+
 	defer func() {
 		_ = recover()
 	}()
+
 	r.onCacheInvalidationError(err)
 }

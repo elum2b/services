@@ -34,6 +34,7 @@ func mapOffer(
 			Description: localization.Description,
 		})
 	}
+
 	for _, reward := range rewards {
 		result.Rewards = append(result.Rewards, user.RewardModel{
 			Key:      reward.Key,
@@ -43,6 +44,7 @@ func mapOffer(
 			Unit:     reward.Unit,
 		})
 	}
+
 	return result
 }
 
@@ -51,12 +53,15 @@ func normalizePage(page Page) (int32, int32) {
 	if limit <= 0 {
 		limit = 100
 	}
+
 	if limit > 1000 {
 		limit = 1000
 	}
+
 	offset := page.Offset
 	if offset < 0 {
 		offset = 0
 	}
+
 	return limit, offset
 }

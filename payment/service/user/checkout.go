@@ -11,6 +11,7 @@ func (u *User) CreateOrder(
 	if u == nil || u.checkout == nil {
 		return nil, ErrCheckoutNotInitialized
 	}
+
 	return u.checkout.CreateOrder(ctx, params)
 }
 
@@ -21,6 +22,7 @@ func (u *User) CreateOrderByKey(
 	if u == nil || u.checkout == nil {
 		return nil, ErrCheckoutNotInitialized
 	}
+
 	return u.checkout.CreateOrderByKey(ctx, params)
 }
 
@@ -31,5 +33,6 @@ func (u *User) CreateAttempt(
 	if u == nil || u.checkout == nil {
 		return nil, ErrCheckoutNotInitialized
 	}
+
 	return u.checkout.CreateAttempt(ctx, params)
 }

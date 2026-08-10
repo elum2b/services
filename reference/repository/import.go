@@ -25,18 +25,22 @@ func (r *Repository) PreviewImport(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return ImportPreview{}, err
 	}
+
 	if err := validateExportPackage(pkg); err != nil {
 		return ImportPreview{}, err
 	}
+
 	preview := ImportPreview{
 		Format:  pkg.Format,
 		Service: pkg.Service,
 		Counts:  countPackage(pkg),
 	}
+
 	existing, err := r.importExistingItemKeys(ctx, workspaceID)
 	if err != nil {
 		return ImportPreview{}, err
 	}
+
 	for _, item := range pkg.Items {
 		if existing[item.Key] {
 			preview.Conflicts = append(
@@ -45,6 +49,7 @@ func (r *Repository) PreviewImport(
 			)
 		}
 	}
+
 	return preview, nil
 }
 
@@ -56,13 +61,16 @@ func (r *Repository) Import(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return ImportResult{}, err
 	}
+
 	if err := validateExportPackage(req.Package); err != nil {
 		return ImportResult{}, err
 	}
+
 	strategy := req.ConflictStrategy
 	if strategy == "" {
 		strategy = ImportConflictFail
 	}
+
 	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
 		strategy != ImportConflictUpdate {
 		return ImportResult{}, fmt.Errorf(
@@ -70,7 +78,9 @@ func (r *Repository) Import(
 			strategy,
 		)
 	}
+
 	result := ImportResult{}
+
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
@@ -80,6 +90,7 @@ func (r *Repository) Import(
 		if err != nil {
 			return err
 		}
+
 		if strategy == ImportConflictFail && len(preview.Conflicts) > 0 {
 			return fmt.Errorf(
 				"import conflicts found: %d",
@@ -99,8 +110,11 @@ func (r *Repository) Import(
 	if err != nil {
 		return ImportResult{}, err
 	}
+
 	methods := append([]string{}, referenceItemMutationCacheMethods...)
+
 	methods = append(methods, referenceLocalizationMutationCacheMethods...)
+
 	return result, r.bumpReferenceCacheVersions(workspaceID, methods...)
 }
 
@@ -113,6 +127,7 @@ func (r *Repository) lockWorkspaceMutation(
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
 		"reference:"+workspaceID,
 	)
+
 	return err
 }
 
@@ -124,10 +139,12 @@ func (r *Repository) withWorkspaceMutation(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return err
 	}
+
 	return r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
+
 		return fn(txRepo)
 	})
 }
@@ -151,6 +168,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.replaceImportedItemLocalizations(
 		ctx,
 		workspaceID,
@@ -160,6 +178,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	return r.importLocalizationsBulk(
 		ctx,
 		workspaceID,
@@ -187,6 +206,7 @@ func (r *Repository) replaceImportedItemLocalizations(
 			keys = append(keys, item.Key)
 		}
 	}
+
 	if len(keys) == 0 {
 		return nil
 	}
@@ -199,6 +219,7 @@ WHERE workspace_id = $1
 		workspaceID,
 		keys,
 	)
+
 	return err
 }
 
@@ -215,12 +236,14 @@ func (r *Repository) importItemsBulk(
 	payloads := make([]string, 0, len(items))
 	active := make([]bool, 0, len(items))
 	deletedAt := make([]sql.NullTime, 0, len(items))
+
 	for _, item := range items {
 		if hasImportConflict(conflicts, "item", item.Key) &&
 			strategy == ImportConflictSkip {
 			result.Skipped.Items++
 			continue
 		}
+
 		keys = append(keys, item.Key)
 		types = append(types, defaultString(item.Type, ItemTypeQuantity))
 		payloads = append(payloads, defaultJSON(item.Payload, "{}"))
@@ -228,9 +251,11 @@ func (r *Repository) importItemsBulk(
 		deletedAt = append(deletedAt, nullableDeletedAt(item.Deleted))
 		result.Imported.Items++
 	}
+
 	if len(keys) == 0 {
 		return nil
 	}
+
 	query := `
 INSERT INTO reference_item (
     workspace_id, key, item_type, payload, is_active, deleted_at
@@ -250,6 +275,7 @@ FROM unnest(
     $6::timestamptz[]
 ) AS value(key, item_type, payload, is_active, deleted_at)
 	` + referenceItemConflictClause(strategy)
+
 	return importexport.ForEachBatch(
 		len(keys),
 		5,
@@ -265,6 +291,7 @@ FROM unnest(
 				active[start:end],
 				deletedAt[start:end],
 			)
+
 			return err
 		},
 	)
@@ -282,11 +309,13 @@ func (r *Repository) importLocalizationsBulk(
 	locales := make([]string, 0)
 	titles := make([]string, 0)
 	descriptions := make([]string, 0)
+
 	for _, item := range items {
 		if hasImportConflict(conflicts, "item", item.Key) &&
 			strategy == ImportConflictSkip {
 			continue
 		}
+
 		for locale, text := range item.Localization {
 			itemKeys = append(itemKeys, item.Key)
 			locales = append(locales, locale)
@@ -295,9 +324,11 @@ func (r *Repository) importLocalizationsBulk(
 			result.Imported.Localizations++
 		}
 	}
+
 	if len(itemKeys) == 0 {
 		return nil
 	}
+
 	query := `
 INSERT INTO reference_localization (
     workspace_id, item_key, locale, title, description
@@ -315,6 +346,7 @@ FROM unnest(
     $5::text[]
 ) AS value(item_key, locale, title, description)
 	` + referenceLocalizationConflictClause(strategy)
+
 	return importexport.ForEachBatch(
 		len(itemKeys),
 		4,
@@ -329,6 +361,7 @@ FROM unnest(
 				titles[start:end],
 				descriptions[start:end],
 			)
+
 			return err
 		},
 	)
@@ -368,6 +401,7 @@ func validateExportPackage(pkg ExportPackage) error {
 	if pkg.Format != ExportFormat {
 		return fmt.Errorf("unsupported export format: %s", pkg.Format)
 	}
+
 	if pkg.Service != "reference" {
 		return fmt.Errorf("unsupported export service: %s", pkg.Service)
 	}
@@ -378,6 +412,7 @@ func validateExportPackage(pkg ExportPackage) error {
 		if !referenceImportItemKeyPattern.MatchString(item.Key) {
 			return fmt.Errorf("%s.key: invalid item key", prefix)
 		}
+
 		if previousIndex, exists := itemKeys[item.Key]; exists {
 			return fmt.Errorf(
 				"%s.key: duplicates items[%d].key",
@@ -385,12 +420,14 @@ func validateExportPackage(pkg ExportPackage) error {
 				previousIndex,
 			)
 		}
+
 		itemKeys[item.Key] = itemIndex
 
 		itemType := defaultString(item.Type, ItemTypeQuantity)
 		if itemType != ItemTypeQuantity && itemType != ItemTypeDuration {
 			return fmt.Errorf("%s.type: unsupported value %q", prefix, itemType)
 		}
+
 		if len(item.Payload) == 0 || !json.Valid(item.Payload) {
 			return fmt.Errorf("%s.payload: must be valid JSON", prefix)
 		}
@@ -399,6 +436,7 @@ func validateExportPackage(pkg ExportPackage) error {
 			if strings.TrimSpace(locale) == "" {
 				return fmt.Errorf("%s.localization: locale is required", prefix)
 			}
+
 			if strings.TrimSpace(text.Title) == "" {
 				return fmt.Errorf(
 					"%s.localization.%s.title: title is required",
@@ -414,10 +452,13 @@ func validateExportPackage(pkg ExportPackage) error {
 
 func countPackage(pkg ExportPackage) ImportCounts {
 	var counts ImportCounts
+
 	counts.Items = uint64(len(pkg.Items))
+
 	for _, item := range pkg.Items {
 		counts.Localizations += uint64(len(item.Localization))
 	}
+
 	return counts
 }
 
@@ -429,10 +470,12 @@ func (r *Repository) importExistingItemKeys(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make(map[string]bool, len(keys))
 	for _, key := range keys {
 		result[key] = true
 	}
+
 	return result, nil
 }
 
@@ -441,6 +484,7 @@ func importConflictSet(preview ImportPreview) map[string]struct{} {
 	for _, conflict := range preview.Conflicts {
 		result[importConflictKey(conflict.Type, conflict.Key)] = struct{}{}
 	}
+
 	return result
 }
 
@@ -457,6 +501,7 @@ func defaultJSON(value []byte, fallback string) string {
 	if len(value) == 0 {
 		return fallback
 	}
+
 	return string(value)
 }
 
@@ -464,6 +509,7 @@ func defaultString(value, fallback string) string {
 	if value == "" {
 		return fallback
 	}
+
 	return value
 }
 
@@ -471,5 +517,6 @@ func nullableDeletedAt(deleted bool) sql.NullTime {
 	if !deleted {
 		return sql.NullTime{}
 	}
+
 	return sql.NullTime{Time: time.Now().UTC(), Valid: true}
 }

@@ -24,6 +24,7 @@ func (a *Product) CreateKey(
 ) (string, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	return a.repository.CreateProductPurchaseKey(

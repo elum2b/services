@@ -35,6 +35,7 @@ func (p LuaProvider) ListPartnerTasks(
 	if err != nil {
 		return nil, err
 	}
+
 	if ok, _ := result["ok"].(bool); !ok {
 		return nil, fmt.Errorf(
 			"lua partner %s list failed: %s",
@@ -42,14 +43,18 @@ func (p LuaProvider) ListPartnerTasks(
 			stringValue(result["error"]),
 		)
 	}
+
 	rawTasks, _ := result["tasks"].([]any)
 	tasks := make([]PartnerExternalTask, 0, len(rawTasks))
+
 	for _, rawTask := range rawTasks {
 		item, ok := rawTask.(map[string]any)
 		if !ok {
 			continue
 		}
+
 		expiresAt := timePtr(item["expires_at"])
+
 		tasks = append(tasks, PartnerExternalTask{
 			ExternalID: stringValue(item["external_id"]),
 			ExternalType: firstNonEmpty(
@@ -66,6 +71,7 @@ func (p LuaProvider) ListPartnerTasks(
 			WindowKey: stringValue(item["window_key"]),
 		})
 	}
+
 	return tasks, nil
 }
 
@@ -87,6 +93,7 @@ func (p LuaProvider) CheckPartnerTask(
 	if err != nil {
 		return PartnerCheckResult{}, err
 	}
+
 	if ok, _ := result["ok"].(bool); !ok {
 		return PartnerCheckResult{}, fmt.Errorf(
 			"lua partner %s check failed: %s",
@@ -94,6 +101,7 @@ func (p LuaProvider) CheckPartnerTask(
 			stringValue(result["error"]),
 		)
 	}
+
 	return PartnerCheckResult{
 		Completed: boolValue(result["completed"]),
 		Status: firstNonEmpty(
@@ -122,9 +130,11 @@ func (p LuaProvider) StartPartnerTask(
 	if err != nil {
 		return PartnerStartResult{}, err
 	}
+
 	if ok, _ := result["ok"].(bool); !ok {
 		return PartnerStartResult{Status: stringValue(result["error"])}, nil
 	}
+
 	return PartnerStartResult{
 		Started: boolValue(result["started"]),
 		Status: firstNonEmpty(
@@ -153,10 +163,12 @@ func (p LuaProvider) handle(
 	if p.Runtime == nil {
 		return nil, fmt.Errorf("lua partner runtime is nil")
 	}
+
 	provider := p.Provider
 	if provider == "" {
 		provider = config.Provider
 	}
+
 	return p.Runtime.Handle(ctx, provider, taskruntime.Event{
 		Action:    action,
 		Provider:  provider,
@@ -216,6 +228,7 @@ func variablesMap(values map[string]string) map[string]any {
 	for key, value := range values {
 		result[key] = value
 	}
+
 	return result
 }
 
@@ -223,10 +236,12 @@ func rawJSON(value any) json.RawMessage {
 	if value == nil {
 		return nil
 	}
+
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return nil
 	}
+
 	return raw
 }
 
@@ -234,10 +249,13 @@ func rawMap(raw json.RawMessage) map[string]any {
 	if len(raw) == 0 {
 		return map[string]any{}
 	}
+
 	var result map[string]any
+
 	if err := json.Unmarshal(raw, &result); err != nil || result == nil {
 		return map[string]any{}
 	}
+
 	return result
 }
 
@@ -246,10 +264,12 @@ func timePtr(value any) *time.Time {
 	if raw == "" {
 		return nil
 	}
+
 	parsed, err := time.Parse(time.RFC3339Nano, raw)
 	if err != nil {
 		return nil
 	}
+
 	return &parsed
 }
 
@@ -262,6 +282,7 @@ func boolValue(value any) bool {
 	case int64:
 		return v != 0
 	}
+
 	return false
 }
 
@@ -279,6 +300,7 @@ func stringValue(value any) string {
 		if v {
 			return "true"
 		}
+
 		return "false"
 	default:
 		return fmt.Sprint(v)
@@ -289,6 +311,7 @@ func stringPtrValue(value *string) string {
 	if value == nil {
 		return ""
 	}
+
 	return *value
 }
 

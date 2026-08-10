@@ -7,7 +7,6 @@ func (a *Admin) Export(
 	workspaceID string,
 	req ExportRequest,
 ) (ExportPackage, error) {
-
 	if a == nil || a.repository == nil {
 		return ExportPackage{}, ErrRepositoryNotConfigured
 	}
@@ -16,5 +15,4 @@ func (a *Admin) Export(
 	defer cancel()
 
 	return a.repository.Export(mergedCtx, workspaceID, req)
-
 }

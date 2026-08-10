@@ -28,9 +28,11 @@ func (a *Admin) CreateReward(
 ) (uint64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if err := validateReward(params); err != nil {
 		return 0, err
 	}
+
 	return a.repository.UpsertReward(
 		mergedCtx,
 		params.WorkspaceID,
@@ -50,12 +52,15 @@ func (a *Admin) UpdateReward(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if params.ID == 0 {
 		return 0, ErrRewardIDRequired
 	}
+
 	if err := validateReward(params); err != nil {
 		return 0, err
 	}
+
 	return a.repository.UpdateReward(
 		mergedCtx,
 		params.WorkspaceID,
@@ -77,9 +82,11 @@ func (a *Admin) GetReward(
 ) (user.RewardModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return user.RewardModel{}, err
 	}
+
 	if calendarID == "" || id == 0 || id > math.MaxInt64 {
 		return user.RewardModel{}, ErrCalendarNumberOutOfRange
 	}
@@ -88,6 +95,7 @@ func (a *Admin) GetReward(
 	if err != nil {
 		return user.RewardModel{}, err
 	}
+
 	return user.RewardModel{
 		Key:      value.Key,
 		Type:     value.Type,
@@ -103,10 +111,12 @@ func (a *Admin) ListRewards(
 ) ([]user.RewardModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	values, err := a.repository.ListRewards(mergedCtx, workspaceID, calendarID)
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]user.RewardModel, 0, len(values))
 	for _, value := range values {
 		result = append(
@@ -120,6 +130,7 @@ func (a *Admin) ListRewards(
 			},
 		)
 	}
+
 	return result, nil
 }
 
@@ -130,9 +141,11 @@ func (a *Admin) DeleteReward(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return 0, err
 	}
+
 	if calendarID == "" || id == 0 || id > math.MaxInt64 {
 		return 0, ErrCalendarNumberOutOfRange
 	}
@@ -144,14 +157,17 @@ func validateReward(params SaveRewardParams) error {
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return err
 	}
+
 	if params.CalendarID == "" || params.StepID == 0 ||
 		params.Key == "" || params.Quantity <= 0 || params.Position == 0 {
 		return ErrRewardRequired
 	}
+
 	if params.StepID > math.MaxInt64 || params.ID > math.MaxInt64 ||
 		params.Scale > math.MaxInt16 || params.Position > math.MaxInt32 {
 		return ErrCalendarNumberOutOfRange
 	}
+
 	switch normalizedRewardType(params.Type) {
 	case "quantity":
 		if params.Unit != nil {
@@ -164,6 +180,7 @@ func validateReward(params SaveRewardParams) error {
 	default:
 		return ErrRewardTypeUnsupported
 	}
+
 	return nil
 }
 
@@ -171,6 +188,7 @@ func normalizedRewardType(value string) string {
 	if value == "" {
 		return "quantity"
 	}
+
 	return value
 }
 

@@ -12,6 +12,7 @@ func (a *Admin) ListDailyStats(
 ) ([]DailyStatsModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	values, err := a.repository.ListPaymentDailyStats(
 		mergedCtx,
 		workspaceID,
@@ -22,6 +23,7 @@ func (a *Admin) ListDailyStats(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]DailyStatsModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, DailyStatsModel{
@@ -36,6 +38,7 @@ func (a *Admin) ListDailyStats(
 			RefundAmountMinor: value.RefundAmountMinor,
 		})
 	}
+
 	return result, nil
 }
 
@@ -46,6 +49,7 @@ func (a *Admin) ListDailyOverview(
 ) ([]DailyOverviewModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	values, err := a.repository.ListPaymentDailyOverview(
 		mergedCtx,
 		workspaceID,
@@ -55,6 +59,7 @@ func (a *Admin) ListDailyOverview(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]DailyOverviewModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, DailyOverviewModel{
@@ -78,6 +83,7 @@ func (a *Admin) ListDailyOverview(
 			RefundCount:          value.RefundCount,
 		})
 	}
+
 	return result, nil
 }
 
@@ -88,6 +94,7 @@ func (a *Admin) RefreshDailyStats(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.RefreshPaymentDailyStats(
 		mergedCtx,
 		workspaceID,

@@ -8,6 +8,7 @@ func (a *Product) RebuildWorkspaceCache(
 ) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	return a.repository.RebuildWorkspaceProductCache(ctx, workspaceID)

@@ -13,9 +13,7 @@ import (
 const maxJSONDocumentBytes = 256 << 10
 
 func validJSONDocument(value []byte) bool {
-
 	return len(value) <= maxJSONDocumentBytes && json.Valid(value)
-
 }
 
 func normalizeSaveTaskParams(params SaveTaskParams) SaveTaskParams {
@@ -27,15 +25,19 @@ func normalizeSaveTaskParams(params SaveTaskParams) SaveTaskParams {
 	params.StartMode = defaultString(params.StartMode, StartModeNone)
 	params.ResetUnit = defaultString(params.ResetUnit, ResetNever)
 	params.ResetEvery = defaultUint32(params.ResetEvery, 1)
+
 	if len(params.Payload) == 0 {
 		params.Payload = []byte("{}")
 	}
+
 	if len(params.Target) == 0 {
 		params.Target = []byte("null")
 	}
+
 	if len(params.IntegrationPayload) == 0 {
 		params.IntegrationPayload = []byte("null")
 	}
+
 	return params
 }
 
@@ -43,28 +45,35 @@ func validateSaveTask(params SaveTaskParams) error {
 	if err := requireWorkspaceID(params.WorkspaceID); err != nil {
 		return err
 	}
+
 	if params.ID > math.MaxInt64 || params.TargetCount > math.MaxInt64 ||
 		params.ResetEvery > math.MaxInt32 {
 		return fmt.Errorf("tasks numeric value is out of database range")
 	}
+
 	if params.Key == "" {
 		return fmt.Errorf("tasks key is required")
 	}
+
 	if params.GroupKey == "" {
 		return fmt.Errorf("tasks group_key is required")
 	}
+
 	if params.ActionKey == "" {
 		return fmt.Errorf("tasks action_key is required")
 	}
+
 	if !validTaskKind(params.TaskKind) {
 		return fmt.Errorf("tasks task_kind %q is unsupported", params.TaskKind)
 	}
+
 	if !validActionKind(params.ActionKind) {
 		return fmt.Errorf(
 			"tasks action_kind %q is unsupported",
 			params.ActionKind,
 		)
 	}
+
 	if !validTaskActionKind(params.TaskKind, params.ActionKind) {
 		return fmt.Errorf(
 			"tasks task_kind %q is incompatible with action_kind %q",
@@ -72,6 +81,7 @@ func validateSaveTask(params SaveTaskParams) error {
 			params.ActionKind,
 		)
 	}
+
 	if params.ClaimMode != ClaimModeManual &&
 		params.ClaimMode != ClaimModeAuto {
 		return fmt.Errorf(
@@ -79,6 +89,7 @@ func validateSaveTask(params SaveTaskParams) error {
 			params.ClaimMode,
 		)
 	}
+
 	if params.ClaimMode == ClaimModeAuto &&
 		params.TaskKind != TaskKindInternal {
 		return fmt.Errorf(
@@ -87,6 +98,7 @@ func validateSaveTask(params SaveTaskParams) error {
 			params.TaskKind,
 		)
 	}
+
 	if params.StartMode != StartModeNone &&
 		params.StartMode != StartModeRequired {
 		return fmt.Errorf(
@@ -94,36 +106,45 @@ func validateSaveTask(params SaveTaskParams) error {
 			params.StartMode,
 		)
 	}
+
 	if params.TargetCount == 0 {
 		return fmt.Errorf("tasks target_count must be positive")
 	}
+
 	if !validResetUnit(params.ResetUnit) || params.ResetEvery == 0 {
 		return fmt.Errorf("tasks reset configuration is invalid")
 	}
+
 	if (params.SequenceKey == nil) != (params.SequencePosition == nil) {
 		return fmt.Errorf(
 			"tasks sequence_key and sequence_position must be set together",
 		)
 	}
+
 	if params.SequencePosition != nil &&
 		(*params.SequencePosition == 0 || *params.SequencePosition > math.MaxInt32) {
 		return fmt.Errorf(
 			"tasks sequence_position must be positive and fit int32",
 		)
 	}
+
 	if params.StartAt != nil && params.EndAt != nil &&
 		!params.StartAt.Before(*params.EndAt) {
 		return fmt.Errorf("tasks start_at must be before end_at")
 	}
+
 	if !validJSONDocument(params.Payload) {
 		return fmt.Errorf("tasks payload must be valid JSON")
 	}
+
 	if err := target.Validate(params.Target); err != nil {
 		return fmt.Errorf("tasks target: %w", err)
 	}
+
 	if !validJSONDocument(params.IntegrationPayload) {
 		return fmt.Errorf("tasks integration payload must be valid JSON")
 	}
+
 	return nil
 }
 
@@ -189,9 +210,11 @@ func validateRewardDefinition(reward ExportReward) error {
 	if strings.TrimSpace(reward.Key) == "" || reward.Quantity <= 0 {
 		return fmt.Errorf("reward key and positive quantity are required")
 	}
+
 	if reward.Scale > math.MaxInt16 {
 		return fmt.Errorf("reward scale is out of database range")
 	}
+
 	switch defaultString(reward.Type, "quantity") {
 	case "quantity":
 		if reward.Unit != nil {
@@ -204,6 +227,7 @@ func validateRewardDefinition(reward ExportReward) error {
 	default:
 		return fmt.Errorf("reward type must be quantity or duration")
 	}
+
 	return nil
 }
 
@@ -220,18 +244,22 @@ func validateComplexCondition(params SaveComplexConditionParams) error {
 	if err := requireWorkspaceID(params.WorkspaceID); err != nil {
 		return err
 	}
+
 	if params.ParentTaskID == 0 || params.ConditionTaskID == 0 {
 		return fmt.Errorf("tasks complex condition task IDs must be positive")
 	}
+
 	if params.ParentTaskID > math.MaxInt64 ||
 		params.ConditionTaskID > math.MaxInt64 {
 		return fmt.Errorf(
 			"tasks complex condition task ID is out of database range",
 		)
 	}
+
 	if params.ParentTaskID == params.ConditionTaskID {
 		return fmt.Errorf("tasks complex condition cannot reference itself")
 	}
+
 	if params.RequiredStatus != ComplexRequiredStatusReady &&
 		params.RequiredStatus != ComplexRequiredStatusClaimed {
 		return fmt.Errorf(
@@ -239,6 +267,7 @@ func validateComplexCondition(params SaveComplexConditionParams) error {
 			params.RequiredStatus,
 		)
 	}
+
 	return nil
 }
 
@@ -249,7 +278,9 @@ func hasDirectedCycle[T comparable](graph map[T][]T) bool {
 	)
 
 	state := make(map[T]uint8, len(graph))
+
 	var visit func(T) bool
+
 	visit = func(node T) bool {
 		switch state[node] {
 		case visiting:
@@ -264,7 +295,9 @@ func hasDirectedCycle[T comparable](graph map[T][]T) bool {
 				return true
 			}
 		}
+
 		state[node] = visited
+
 		return false
 	}
 
@@ -273,5 +306,6 @@ func hasDirectedCycle[T comparable](graph map[T][]T) bool {
 			return true
 		}
 	}
+
 	return false
 }

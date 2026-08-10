@@ -23,6 +23,7 @@ func (u *User) ListActive(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	values, err := u.repository.ListActive(
 		mergedCtx,
 		params.WorkspaceID,
@@ -32,6 +33,7 @@ func (u *User) ListActive(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]ActiveCalendarModel, 0, len(values))
 	for _, value := range values {
 		item := ActiveCalendarModel{
@@ -46,8 +48,10 @@ func (u *User) ListActive(
 			item.Title = value.Localization.Title
 			item.Description = value.Localization.Description
 		}
+
 		result = append(result, item)
 	}
+
 	return result, nil
 }
 
@@ -71,10 +75,12 @@ func (u *User) GetCalendar(
 	if err != nil {
 		return CalendarModel{}, err
 	}
+
 	now := params.Now
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	if !calendarVisibleAt(value, now) {
 		return CalendarModel{}, nil
 	}
@@ -83,6 +89,7 @@ func (u *User) GetCalendar(
 	if !value.HideFutureRewards || value.ID == "" {
 		return result, nil
 	}
+
 	progress, err := u.repository.GetProgress(
 		mergedCtx,
 		repositoryIdentity(params.Identity),
@@ -91,17 +98,21 @@ func (u *User) GetCalendar(
 	if err != nil {
 		return CalendarModel{}, err
 	}
+
 	maxPosition := uint32(1)
 	if progress != nil {
 		maxPosition = progress.CurrentPosition + 1
 	}
+
 	filtered := result.Steps[:0]
 	for _, step := range result.Steps {
 		if step.Position <= maxPosition {
 			filtered = append(filtered, step)
 		}
 	}
+
 	result.Steps = filtered
+
 	return result, nil
 }
 
@@ -109,9 +120,11 @@ func calendarVisibleAt(value repository.Calendar, now time.Time) bool {
 	if value.ID == "" || !value.IsActive || value.DeletedAt != nil {
 		return false
 	}
+
 	if value.StartAt != nil && value.StartAt.After(now) {
 		return false
 	}
+
 	return value.EndAt == nil || value.EndAt.After(now)
 }
 
@@ -134,6 +147,8 @@ func (u *User) GetProgress(
 	if err != nil || value == nil {
 		return nil, err
 	}
+
 	result := mapProgress(*value)
+
 	return &result, nil
 }

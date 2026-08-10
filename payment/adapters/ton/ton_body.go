@@ -43,6 +43,7 @@ func (s *Sub) TonBody(
 	}
 
 	text := ""
+
 	if payload != nil {
 		sumType, err := payload.LoadUInt(32)
 		if err == nil && sumType == 0x00000000 {
@@ -54,6 +55,7 @@ func (s *Sub) TonBody(
 					err,
 				)
 			}
+
 			text = value
 		} else if err != nil {
 			return nil, serviceerrors.Wrap(

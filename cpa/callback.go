@@ -73,24 +73,32 @@ func (c *CPA) OnCallback(
 	if handler == nil {
 		return ErrCallbackHandlerNil
 	}
+
 	if c == nil {
 		return ErrServiceNil
 	}
+
 	c.lifecycleMu.Lock()
+
 	if c.running {
 		c.lifecycleMu.Unlock()
+
 		return ErrCallbacksRegistrationClosed
 	}
+
 	if c.callbacks != nil && !c.client.IsUnavailable() {
 		c.lifecycleMu.Unlock()
+
 		return c.runCallback(ctx, handler, opts...)
 	}
+
 	c.callbacksToRun = append(c.callbacksToRun, callbackRegistration{
 		ctx:     ctx,
 		handler: handler,
 		options: append([]CallbackOption(nil), opts...),
 	})
 	c.lifecycleMu.Unlock()
+
 	return nil
 }
 
@@ -102,12 +110,18 @@ func (c *CPA) runCallback(
 	if c == nil || c.callbacks == nil {
 		return ErrCallbacksNotConfigured
 	}
+
 	runCtx, cancel := c.bindContext(ctx)
+
 	defer cancel()
+
 	opts = append(opts, callbackutil.WithSourceService("cpa"))
+
 	return c.callbacks.On(runCtx, func(callbackCtx callbackutil.Context) error {
 		value := Context{Context: callbackCtx}
+
 		var payload CallbackPayload
+
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
 			return serviceerrors.Wrap(
 				serviceerrors.CodeInternalError,
@@ -115,6 +129,7 @@ func (c *CPA) runCallback(
 				err,
 			)
 		}
+
 		value.Payload = &services.RewardPayload{
 			Identity: services.Identity{
 				WorkspaceID:    payload.WorkspaceID,
@@ -124,12 +139,14 @@ func (c *CPA) runCallback(
 			},
 			Rewards: payload.Rewards,
 		}
+
 		switch callbackCtx.EventType {
 		case CallbackEventIssued:
 			value.Issued = &payload
 		case CallbackEventCompleted:
 			value.Completed = &payload
 		}
+
 		return handler(value)
 	}, opts...)
 }

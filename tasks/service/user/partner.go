@@ -54,10 +54,12 @@ func (u *User) ListPartner(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	platform := params.Platform
 	if platform == "" {
 		platform = params.Identity.Platform
 	}
+
 	config, found, err := u.repository.GetPartnerConfig(
 		mergedCtx,
 		params.Identity.WorkspaceID,
@@ -68,6 +70,7 @@ func (u *User) ListPartner(
 	if err != nil || !found || !config.IsEnabled {
 		return nil, err
 	}
+
 	if !target.Match(config.Target, target.Context{
 		IsPremium:  params.Identity.IsPremium,
 		Sex:        params.Identity.Sex,
@@ -78,7 +81,9 @@ func (u *User) ListPartner(
 	}) {
 		return []TaskModel{}, nil
 	}
+
 	repoIdentity := repositoryIdentity(params.Identity)
+
 	existing, err := u.repository.ListPartnerIssuesForUser(
 		mergedCtx,
 		repoIdentity,
@@ -90,16 +95,20 @@ func (u *User) ListPartner(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]TaskModel, 0, len(existing))
 	seen := make(map[string]struct{}, len(existing))
+
 	for _, issue := range existing {
 		result = append(result, partnerIssueTask(issue, issue.Rewards, now))
 		seen[issue.IssueKey] = struct{}{}
 	}
+
 	provider := u.partnerProvider(params.Provider)
 	if provider == nil {
 		return result, nil
 	}
+
 	externalTasks, err := provider.ListPartnerTasks(
 		mergedCtx,
 		PartnerListProviderParams{
@@ -110,11 +119,13 @@ func (u *User) ListPartner(
 	if err != nil {
 		return nil, err
 	}
+
 	for _, external := range externalTasks {
 		issueKey := partnerIssueKey(config, params.Identity, external)
 		if _, ok := seen[issueKey]; ok {
 			continue
 		}
+
 		rewards, err := u.repository.PartnerRewards(
 			mergedCtx,
 			config.WorkspaceID,
@@ -125,6 +136,7 @@ func (u *User) ListPartner(
 		if err != nil {
 			return nil, err
 		}
+
 		issue, _, err := u.repository.CreatePartnerIssue(
 			mergedCtx,
 			repository.CreatePartnerIssueParams{
@@ -146,9 +158,11 @@ func (u *User) ListPartner(
 		if err != nil {
 			return nil, err
 		}
+
 		result = append(result, partnerIssueTask(issue, issue.Rewards, now))
 		seen[issue.IssueKey] = struct{}{}
 	}
+
 	return result, nil
 }
 
@@ -167,10 +181,12 @@ func (u *User) CheckPartner(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	issueID, ok := repository.ParsePartnerIssueRef(params.IssueRef)
 	if !ok {
 		return PartnerCheckOutput{Status: PartnerStatusNotFound}, nil
 	}
+
 	issue, found, err := u.repository.GetPartnerIssue(
 		mergedCtx,
 		params.Identity.WorkspaceID,
@@ -179,11 +195,13 @@ func (u *User) CheckPartner(
 	if err != nil {
 		return PartnerCheckOutput{}, err
 	}
+
 	if !found || issue.AppID != params.Identity.AppID ||
 		issue.PlatformID != params.Identity.PlatformID ||
 		issue.PlatformUserID != params.Identity.PlatformUserID {
 		return PartnerCheckOutput{Status: PartnerStatusNotFound}, nil
 	}
+
 	task := partnerIssueTask(issue, issue.Rewards, now)
 	if issue.Status == repository.PartnerIssueStatusCompleted ||
 		issue.Status == repository.PartnerIssueStatusClaimed {
@@ -193,6 +211,7 @@ func (u *User) CheckPartner(
 			Task:      &task,
 		}, nil
 	}
+
 	if issue.Status == repository.PartnerIssueStatusExpired {
 		return PartnerCheckOutput{
 			Status:    PartnerStatusExpired,
@@ -200,6 +219,7 @@ func (u *User) CheckPartner(
 			Task:      &task,
 		}, nil
 	}
+
 	if partnerIssueDeadlinePassed(issue, now) {
 		issue, _, err = u.repository.ExpirePartnerIssue(
 			mergedCtx,
@@ -212,13 +232,16 @@ func (u *User) CheckPartner(
 		if err != nil {
 			return PartnerCheckOutput{}, err
 		}
+
 		task = partnerIssueTask(issue, issue.Rewards, now)
+
 		return PartnerCheckOutput{
 			Status:    PartnerStatusExpired,
 			Completed: false,
 			Task:      &task,
 		}, nil
 	}
+
 	if issue.Status == repository.PartnerIssueStatusRevoked ||
 		issue.Status == repository.PartnerIssueStatusRevokedAfterClaim {
 		return PartnerCheckOutput{
@@ -227,6 +250,7 @@ func (u *User) CheckPartner(
 			Task:      &task,
 		}, nil
 	}
+
 	if issue.StartMode == repository.StartModeRequired &&
 		issue.StartedAt == nil {
 		return PartnerCheckOutput{
@@ -235,6 +259,7 @@ func (u *User) CheckPartner(
 			Task:      &task,
 		}, nil
 	}
+
 	config, found, err := u.repository.GetPartnerConfig(
 		mergedCtx,
 		issue.WorkspaceID,
@@ -245,12 +270,14 @@ func (u *User) CheckPartner(
 	if err != nil {
 		return PartnerCheckOutput{}, err
 	}
+
 	if !found || !config.IsEnabled {
 		return PartnerCheckOutput{
 			Status: PartnerStatusNotConfigured,
 			Task:   &task,
 		}, nil
 	}
+
 	provider := u.partnerProvider(issue.Provider)
 	if provider == nil {
 		return PartnerCheckOutput{
@@ -258,6 +285,7 @@ func (u *User) CheckPartner(
 			Task:   &task,
 		}, nil
 	}
+
 	check, err := provider.CheckPartnerTask(
 		mergedCtx,
 		PartnerCheckProviderParams{
@@ -271,6 +299,7 @@ func (u *User) CheckPartner(
 	if err != nil {
 		return PartnerCheckOutput{}, err
 	}
+
 	if !check.Completed {
 		return PartnerCheckOutput{
 			Status:    PartnerStatusNotCompleted,
@@ -278,6 +307,7 @@ func (u *User) CheckPartner(
 			Task:      &task,
 		}, nil
 	}
+
 	issue, _, err = u.repository.CompletePartnerIssue(
 		mergedCtx,
 		repository.PartnerIssueScope{
@@ -294,6 +324,7 @@ func (u *User) CheckPartner(
 	if err != nil {
 		return PartnerCheckOutput{}, err
 	}
+
 	task = partnerIssueTask(issue, issue.Rewards, now)
 	if issue.Status == repository.PartnerIssueStatusExpired {
 		return PartnerCheckOutput{
@@ -302,6 +333,7 @@ func (u *User) CheckPartner(
 			Task:      &task,
 		}, nil
 	}
+
 	return PartnerCheckOutput{
 		Status:    PartnerStatusReady,
 		Completed: true,
@@ -313,7 +345,6 @@ func (u *User) StartPartner(
 	ctx context.Context,
 	params PartnerStartParams,
 ) (PartnerStartOutput, error) {
-
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 
@@ -339,6 +370,7 @@ func (u *User) StartPartner(
 	if err != nil {
 		return PartnerStartOutput{}, err
 	}
+
 	if !found || issue.AppID != params.Identity.AppID ||
 		issue.PlatformID != params.Identity.PlatformID ||
 		issue.PlatformUserID != params.Identity.PlatformUserID {
@@ -348,6 +380,7 @@ func (u *User) StartPartner(
 	if output, done := existingPartnerStartOutput(issue, now); done {
 		return output, nil
 	}
+
 	if partnerIssueDeadlinePassed(issue, now) {
 		issue, _, err = u.repository.ExpirePartnerIssue(
 			mergedCtx,
@@ -378,6 +411,7 @@ func (u *User) StartPartner(
 	if err != nil {
 		return PartnerStartOutput{}, err
 	}
+
 	if !found || !config.IsEnabled {
 		return PartnerStartOutput{
 			Status: PartnerStatusNotConfigured,
@@ -387,6 +421,7 @@ func (u *User) StartPartner(
 
 	provider := u.partnerProvider(issue.Provider)
 	starter, ok := provider.(PartnerStarter)
+
 	if (!ok || starter == nil) &&
 		issue.StartMode != repository.StartModeRequired {
 		return PartnerStartOutput{
@@ -407,6 +442,7 @@ func (u *User) StartPartner(
 		if err != nil {
 			return PartnerStartOutput{}, err
 		}
+
 		if acquired {
 			break
 		}
@@ -419,12 +455,15 @@ func (u *User) StartPartner(
 		if err != nil {
 			return PartnerStartOutput{}, err
 		}
+
 		if !found {
 			return PartnerStartOutput{Status: PartnerStatusNotFound}, nil
 		}
+
 		if output, done := existingPartnerStartOutput(issue, now); done {
 			return output, nil
 		}
+
 		if partnerIssueDeadlinePassed(issue, now) {
 			issue, _, err = u.repository.ExpirePartnerIssue(
 				mergedCtx,
@@ -452,6 +491,7 @@ func (u *User) StartPartner(
 		case <-timer.C:
 		}
 	}
+
 	defer func() {
 		u.releasePartnerIssueStartLease(
 			mergedCtx,
@@ -497,6 +537,7 @@ func (u *User) StartPartner(
 	if err != nil {
 		return PartnerStartOutput{}, err
 	}
+
 	if !started.Started {
 		return PartnerStartOutput{
 			Status:  started.Status,
@@ -525,6 +566,7 @@ func (u *User) StartPartner(
 	if err != nil {
 		return PartnerStartOutput{}, err
 	}
+
 	if !changed {
 		if output, done := existingPartnerStartOutput(updated, now); done {
 			return output, nil
@@ -536,7 +578,6 @@ func (u *User) StartPartner(
 	output, _ := existingPartnerStartOutput(updated, now)
 
 	return output, nil
-
 }
 
 type partnerStartCall struct {
@@ -552,13 +593,13 @@ func (u *User) startPartnerTaskWithLease(
 	issueID uint64,
 	leaseToken string,
 ) (PartnerStartResult, error) {
-
 	providerCtx, cancelProvider := context.WithCancel(ctx)
 	defer cancelProvider()
 
 	resultCh := make(chan partnerStartCall, 1)
 	started := u.goroutines.Go("tasks.partner.start", func() {
 		call := partnerStartCall{}
+
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				call = partnerStartCall{
@@ -568,11 +609,13 @@ func (u *User) startPartnerTaskWithLease(
 					),
 				}
 			}
+
 			resultCh <- call
 		}()
 
 		call.result, call.err = starter.StartPartnerTask(providerCtx, params)
 	})
+
 	if !started {
 		return PartnerStartResult{}, context.Canceled
 	}
@@ -581,7 +624,9 @@ func (u *User) startPartnerTaskWithLease(
 	if renewInterval <= 0 {
 		renewInterval = time.Millisecond
 	}
+
 	ticker := time.NewTicker(renewInterval)
+
 	defer ticker.Stop()
 
 	for {
@@ -601,6 +646,7 @@ func (u *User) startPartnerTaskWithLease(
 
 				return PartnerStartResult{}, err
 			}
+
 			if !renewed {
 				cancelProvider()
 
@@ -612,7 +658,6 @@ func (u *User) startPartnerTaskWithLease(
 			return PartnerStartResult{}, ctx.Err()
 		}
 	}
-
 }
 
 func (u *User) releasePartnerIssueStartLease(
@@ -621,7 +666,6 @@ func (u *User) releasePartnerIssueStartLease(
 	issueID uint64,
 	leaseToken string,
 ) {
-
 	releaseCtx, cancel := context.WithTimeout(
 		context.WithoutCancel(ctx),
 		partnerStartReleaseTimeout,
@@ -634,7 +678,6 @@ func (u *User) releasePartnerIssueStartLease(
 		issueID,
 		leaseToken,
 	)
-
 }
 
 func normalizePartnerStartLeaseDuration(value time.Duration) time.Duration {
@@ -649,10 +692,10 @@ func existingPartnerStartOutput(
 	issue repository.PartnerIssue,
 	now time.Time,
 ) (PartnerStartOutput, bool) {
-
 	task := partnerIssueTask(issue, issue.Rewards, now)
 	started := issue.StartedAt != nil
 	actionURL := ""
+
 	if started {
 		actionURL = partnerIssueActionURL(issue)
 	}
@@ -693,14 +736,12 @@ func existingPartnerStartOutput(
 	}
 
 	return PartnerStartOutput{}, false
-
 }
 
 func partnerStartPublicPayloadPatch(
 	patch json.RawMessage,
 	actionURL string,
 ) (json.RawMessage, error) {
-
 	if len(patch) == 0 && actionURL == "" {
 		return nil, nil
 	}
@@ -714,9 +755,11 @@ func partnerStartPublicPayloadPatch(
 			)
 		}
 	}
+
 	if values == nil {
 		values = make(map[string]any)
 	}
+
 	if actionURL != "" {
 		values["action_url"] = actionURL
 	}
@@ -730,21 +773,19 @@ func partnerStartPublicPayloadPatch(
 	}
 
 	return encoded, nil
-
 }
 
 func partnerIssueActionURL(issue repository.PartnerIssue) string {
-
 	var payload struct {
 		ActionURL string `json:"action_url"`
 	}
+
 	if len(issue.PublicPayload) == 0 ||
 		json.Unmarshal(issue.PublicPayload, &payload) != nil {
 		return ""
 	}
 
 	return payload.ActionURL
-
 }
 
 func partnerIssueKey(
@@ -787,6 +828,7 @@ func partnerIssueTask(
 ) TaskModel {
 	status := repository.StatusOpen
 	progressValue := uint64(0)
+
 	switch issue.Status {
 	case repository.PartnerIssueStatusCompleted:
 		status = repository.StatusReady
@@ -800,10 +842,12 @@ func partnerIssueTask(
 		repository.PartnerIssueStatusRevokedAfterClaim:
 		status = issue.Status
 	}
+
 	periodEnd := now
 	if issue.ExpiresAt != nil {
 		periodEnd = *issue.ExpiresAt
 	}
+
 	return TaskModel{
 		ID:          issue.ID,
 		Key:         repository.PartnerIssueKey(issue.ID),

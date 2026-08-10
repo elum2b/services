@@ -18,6 +18,7 @@ func (a *Admin) CreateProductKey(
 	if a == nil || a.products == nil {
 		return "", ErrProductServiceNotInitialized
 	}
+
 	return a.products.CreateKey(ctx, params)
 }
 
@@ -28,6 +29,7 @@ func (a *Admin) RebuildProductCache(
 	if a == nil || a.products == nil {
 		return ErrProductServiceNotInitialized
 	}
+
 	return a.products.RebuildWorkspaceCache(ctx, workspaceID)
 }
 
@@ -38,5 +40,6 @@ func (a *Admin) ExecuteRefund(
 	if a == nil || a.refunds == nil {
 		return nil, ErrRefundServiceNotInitialized
 	}
+
 	return a.refunds.Execute(ctx, params)
 }

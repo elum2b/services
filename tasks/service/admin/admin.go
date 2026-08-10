@@ -35,6 +35,7 @@ func (a *Admin) Close() error {
 	if a == nil || a.repository == nil {
 		return nil
 	}
+
 	return a.repository.Close()
 }
 
@@ -44,6 +45,7 @@ func (a *Admin) withContext(
 	if a == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}
+
 	return contextutil.Merge(a.rootCtx, ctx)
 }
 
@@ -51,7 +53,10 @@ func (a *Admin) Bootstrap(ctx context.Context) error {
 	if a == nil || a.repository == nil {
 		return ErrRepositoryNotConfigured
 	}
+
 	mergedCtx, cancel := a.withContext(ctx)
+
 	defer cancel()
+
 	return a.repository.Bootstrap(mergedCtx)
 }

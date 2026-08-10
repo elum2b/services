@@ -19,15 +19,20 @@ func (r *PaymentRepository) Export(
 	if err != nil {
 		return ExportPackage{}, err
 	}
+
 	now := req.Now
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	var groups []ExportProductGroup
-	var products []ExportProduct
-	var productItems map[string][]ExportProductItem
-	var prices map[string][]ExportPrice
-	var tonWallets []ExportTONWallet
+
+	var (
+		groups       []ExportProductGroup
+		products     []ExportProduct
+		productItems map[string][]ExportProductItem
+		prices       map[string][]ExportPrice
+		tonWallets   []ExportTONWallet
+	)
+
 	if err := r.WithTx(ctx, func(txRepo *PaymentRepository) error {
 		if _, err := txRepo.executor.ExecContext(
 			ctx,
@@ -62,26 +67,33 @@ func (r *PaymentRepository) Export(
 		}
 
 		tonWallets, err = txRepo.exportTONWallets(ctx, workspaceID)
+
 		return err
 	}); err != nil {
 		return ExportPackage{}, err
 	}
+
 	groupIndex := make(map[string]int, len(groups))
 	for index := range groups {
 		groupIndex[groups[index].Code] = index
 	}
+
 	rootProducts := make([]ExportProduct, 0)
+
 	for _, product := range products {
 		product.Items = productItems[product.ID]
 		product.Prices = prices[product.ID]
+
 		if product.GroupCode != nil {
 			if index, ok := groupIndex[*product.GroupCode]; ok {
 				groups[index].Products = append(groups[index].Products, product)
 				continue
 			}
 		}
+
 		rootProducts = append(rootProducts, product)
 	}
+
 	return ExportPackage{
 		Format:     ExportFormat,
 		Service:    "payment",
@@ -101,6 +113,7 @@ func (r *PaymentRepository) exportGroups(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]ExportProductGroup, 0, len(rows))
 	for _, row := range rows {
 		group := ExportProductGroup{
@@ -110,6 +123,7 @@ func (r *PaymentRepository) exportGroups(
 			Position:       row.Position,
 			IsActive:       row.IsActive,
 		}
+
 		group.Localization = exportText(
 			localizations,
 			group.TitleKey,
@@ -117,6 +131,7 @@ func (r *PaymentRepository) exportGroups(
 		)
 		result = append(result, group)
 	}
+
 	return result, nil
 }
 
@@ -129,6 +144,7 @@ func (r *PaymentRepository) exportProducts(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]ExportProduct, 0, len(rows))
 	for _, row := range rows {
 		product := ExportProduct{
@@ -159,6 +175,7 @@ func (r *PaymentRepository) exportProducts(
 				product.Target[:0],
 				row.Target.RawMessage...)
 		}
+
 		product.Localization = exportText(
 			localizations,
 			&product.TitleKey,
@@ -167,8 +184,10 @@ func (r *PaymentRepository) exportProducts(
 		if len(product.Target) == 0 || string(product.Target) == "null" {
 			product.Target = nil
 		}
+
 		result = append(result, product)
 	}
+
 	return result, nil
 }
 
@@ -180,7 +199,9 @@ func (r *PaymentRepository) exportProductItems(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make(map[string][]ExportProductItem)
+
 	for _, row := range rows {
 		if row.Scale < 0 {
 			return nil, fmt.Errorf(
@@ -189,6 +210,7 @@ func (r *PaymentRepository) exportProductItems(
 				row.ItemID,
 			)
 		}
+
 		item := ExportProductItem{
 			ItemID:       row.ItemID,
 			RewardType:   string(row.RewardType),
@@ -196,8 +218,10 @@ func (r *PaymentRepository) exportProductItems(
 			Scale:        uint16(row.Scale),
 			DurationUnit: exportProductItemDurationUnit(row.DurationUnit),
 		}
+
 		result[row.ProductID] = append(result[row.ProductID], item)
 	}
+
 	return result, nil
 }
 
@@ -209,7 +233,9 @@ func (r *PaymentRepository) exportPrices(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make(map[string][]ExportPrice)
+
 	for _, row := range rows {
 		if row.ID < 0 || row.ListAmountMinor < 0 ||
 			row.DiscountAmountMinor < 0 {
@@ -218,6 +244,7 @@ func (r *PaymentRepository) exportPrices(
 				row.ProductID,
 			)
 		}
+
 		price := ExportPrice{
 			ID:                  uint64(row.ID),
 			AssetCode:           row.AssetCode,
@@ -238,8 +265,10 @@ func (r *PaymentRepository) exportPrices(
 			StartsAt:    row.StartsAt,
 			EndsAt:      row.EndsAt,
 		}
+
 		result[row.ProductID] = append(result[row.ProductID], price)
 	}
+
 	return result, nil
 }
 
@@ -251,13 +280,16 @@ func (r *PaymentRepository) exportLocalizations(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make(map[string]map[string]string)
 	for _, row := range rows {
 		if result[row.LocalizationKey] == nil {
 			result[row.LocalizationKey] = make(map[string]string)
 		}
+
 		result[row.LocalizationKey][row.Locale] = row.Value
 	}
+
 	return result, nil
 }
 
@@ -269,6 +301,7 @@ func (r *PaymentRepository) exportTONWallets(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]ExportTONWallet, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, ExportTONWallet{
@@ -279,6 +312,7 @@ func (r *PaymentRepository) exportTONWallets(
 			IsEnabled:        row.IsEnabled,
 		})
 	}
+
 	return result, nil
 }
 
@@ -305,7 +339,9 @@ func exportProductItemDurationUnit(
 	if !value.Valid {
 		return nil
 	}
+
 	unit := string(value.PaymentProductItemDurationUnit)
+
 	return &unit
 }
 
@@ -317,24 +353,31 @@ func exportText(
 	if titleKey == nil && descriptionKey == nil {
 		return nil
 	}
+
 	result := make(map[string]ExportText)
+
 	if titleKey != nil {
 		for locale, value := range localizations[*titleKey] {
 			text := result[locale]
+
 			text.Title = value
 			result[locale] = text
 		}
 	}
+
 	if descriptionKey != nil {
 		for locale, value := range localizations[*descriptionKey] {
 			text := result[locale]
+
 			text.Description = value
 			result[locale] = text
 		}
 	}
+
 	if len(result) == 0 {
 		return nil
 	}
+
 	return result
 }
 
@@ -342,6 +385,7 @@ func exportNullStringPtr(value sql.NullString) *string {
 	if !value.Valid {
 		return nil
 	}
+
 	return &value.String
 }
 
@@ -349,6 +393,7 @@ func exportNullInt64Ptr(value sql.NullInt64) *int64 {
 	if !value.Valid {
 		return nil
 	}
+
 	return &value.Int64
 }
 
@@ -356,6 +401,8 @@ func exportNullUint64Ptr(value sql.NullInt64) *uint64 {
 	if !value.Valid || value.Int64 < 0 {
 		return nil
 	}
+
 	out := uint64(value.Int64)
+
 	return &out
 }

@@ -96,10 +96,12 @@ func (r *PaymentRepository) ApplyProviderRefund(
 	if err != nil {
 		return ProviderRefundResult{}, err
 	}
+
 	params.WorkspaceID = workspaceID
 	params.ProviderCode = strings.TrimSpace(params.ProviderCode)
 	params.ProviderPaymentID = strings.TrimSpace(params.ProviderPaymentID)
 	params.ProviderRefundID = strings.TrimSpace(params.ProviderRefundID)
+
 	if params.ProviderCode == "" || params.ProviderPaymentID == "" ||
 		params.ProviderRefundID == "" {
 		return ProviderRefundResult{}, ErrAttemptFieldsInvalid
@@ -127,12 +129,14 @@ func (r *PaymentRepository) ApplyProviderRefund(
 		if err != nil {
 			return err
 		}
+
 		if order.WorkspaceID != params.WorkspaceID {
 			return sql.ErrNoRows
 		}
 
 		result.OrderID = uint64(order.ID)
 		result.AttemptID = uint64(attempt.ID)
+
 		if order.Status == sqlc.PaymentOrderStatusRefunded {
 			existing, err := txRepo.q.GetSucceededRefundForOrder(
 				ctx,
@@ -144,9 +148,11 @@ func (r *PaymentRepository) ApplyProviderRefund(
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrOrderStateInvalid
 			}
+
 			if err != nil {
 				return err
 			}
+
 			if existing.AttemptID != attempt.ID ||
 				existing.ProviderCode != params.ProviderCode ||
 				!existing.ProviderRefundID.Valid ||
@@ -161,6 +167,7 @@ func (r *PaymentRepository) ApplyProviderRefund(
 
 			return nil
 		}
+
 		if order.Status != sqlc.PaymentOrderStatusPaid &&
 			order.Status != sqlc.PaymentOrderStatusFulfilled {
 			return ErrOrderStateInvalid
@@ -195,6 +202,7 @@ func (r *PaymentRepository) ApplyProviderRefund(
 
 			return err
 		}
+
 		result.RefundID = uint64(refundID)
 
 		if err := txRepo.q.UpdatePaymentAttemptStatus(
@@ -206,21 +214,25 @@ func (r *PaymentRepository) ApplyProviderRefund(
 		); err != nil {
 			return err
 		}
+
 		if rows, err := txRepo.q.MarkOrderRefunded(ctx, order.ID); err != nil {
 			return err
 		} else if rows == 0 {
 			return ErrOrderStateInvalid
 		}
+
 		if _, err := txRepo.q.MarkFulfillmentRevokedForOrder(
 			ctx,
 			order.ID,
 		); err != nil {
 			return err
 		}
+
 		fulfillment, err := txRepo.q.GetFulfillmentForOrder(ctx, order.ID)
 		if err != nil {
 			return err
 		}
+
 		if _, err := txRepo.q.DecrementProductLimitCountersForRefund(
 			ctx,
 			order.ID,
@@ -229,12 +241,15 @@ func (r *PaymentRepository) ApplyProviderRefund(
 		}
 
 		event := params.Event
+
 		event.WorkspaceID = order.WorkspaceID
-		event.AttemptID = utils.Ref(int64(attempt.ID))
-		event.OrderID = utils.Ref(int64(order.ID))
+		event.AttemptID = utils.Ref(attempt.ID)
+		event.OrderID = utils.Ref(order.ID)
+
 		if _, err := txRepo.CreateEvent(ctx, event); err != nil {
 			return err
 		}
+
 		return txRepo.enqueuePaymentRefundedCallback(
 			ctx,
 			order,
@@ -260,6 +275,7 @@ func (r *PaymentRepository) enqueuePaymentRefundedCallback(
 	if err != nil {
 		return err
 	}
+
 	payload := paymentRefundedCallbackPayload{
 		OrderID:        uint64(order.ID),
 		AttemptID:      uint64(attempt.ID),
@@ -285,9 +301,11 @@ func (r *PaymentRepository) enqueuePaymentRefundedCallback(
 			Unit:     orderDurationUnitPtr(item.DurationUnit),
 		})
 	}
+
 	if attempt.ProviderPaymentID.Valid {
 		payload.ProviderPaymentID = attempt.ProviderPaymentID.String
 	}
+
 	if reason != nil {
 		payload.Reason = *reason
 	}
@@ -296,7 +314,9 @@ func (r *PaymentRepository) enqueuePaymentRefundedCallback(
 	if err != nil {
 		return err
 	}
+
 	eventKey := fmt.Sprintf("payment.order.refunded:%d", order.ID)
+
 	_, err = r.callbacks.CreateEvent(ctx, callbackutil.CreateParams{
 		WorkspaceID:        order.WorkspaceID,
 		SourceService:      "payment",
@@ -306,6 +326,7 @@ func (r *PaymentRepository) enqueuePaymentRefundedCallback(
 		Payload:            raw,
 		PayloadContentType: callbackutil.JSONContentType,
 	})
+
 	return err
 }
 
@@ -317,6 +338,7 @@ func (r *PaymentRepository) GetAttempt(
 	if err != nil {
 		return Attempt{}, err
 	}
+
 	return mapAttempt(attempt), nil
 }
 
@@ -339,9 +361,11 @@ func (r *PaymentRepository) GetRefundAttempt(
 	if err != nil {
 		return Attempt{}, err
 	}
+
 	if len(attempts) == 0 {
 		return Attempt{}, sql.ErrNoRows
 	}
+
 	return mapAttempt(attempts[0]), nil
 }
 
@@ -353,6 +377,7 @@ func (r *PaymentRepository) CreateRefund(
 	if err != nil {
 		return 0, err
 	}
+
 	if params.OrderID == 0 || params.OrderID > math.MaxInt64 ||
 		params.AttemptID == 0 || params.AttemptID > math.MaxInt64 ||
 		params.AmountMinor == 0 || params.AmountMinor > math.MaxInt64 ||
@@ -361,18 +386,22 @@ func (r *PaymentRepository) CreateRefund(
 		) == "" || strings.TrimSpace(params.AssetCode) == "" {
 		return 0, ErrAttemptFieldsInvalid
 	}
+
 	status := params.Status
 	if status == "" {
 		status = string(sqlc.PaymentRefundStatusCreated)
 	}
+
 	if !validRefundStatus(status) {
 		return 0, ErrOrderStateInvalid
 	}
+
 	if status == string(sqlc.PaymentRefundStatusSucceeded) {
 		return 0, ErrOrderStateInvalid
 	}
 
 	var refundID uint64
+
 	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttempt(
 			ctx,
@@ -381,10 +410,12 @@ func (r *PaymentRepository) CreateRefund(
 		if err != nil {
 			return err
 		}
+
 		order, err := txRepo.q.LockPaymentOrder(ctx, attempt.OrderID)
 		if err != nil {
 			return err
 		}
+
 		if order.WorkspaceID != workspaceID ||
 			uint64(attempt.OrderID) != params.OrderID ||
 			attempt.ProviderCode != params.ProviderCode ||
@@ -392,6 +423,7 @@ func (r *PaymentRepository) CreateRefund(
 			params.AmountMinor > uint64(attempt.AmountMinor) {
 			return ErrPaymentMismatch
 		}
+
 		if params.ProviderRefundID != nil && *params.ProviderRefundID != "" {
 			existing, err := txRepo.q.GetRefundByProviderRefundID(
 				ctx,
@@ -411,9 +443,12 @@ func (r *PaymentRepository) CreateRefund(
 					existing.AssetCode != params.AssetCode {
 					return ErrPaymentMismatch
 				}
+
 				refundID = uint64(existing.ID)
+
 				return nil
 			}
+
 			if !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
@@ -427,6 +462,7 @@ func (r *PaymentRepository) CreateRefund(
 			if err != nil {
 				return err
 			}
+
 			if reserved > attempt.AmountMinor-int64(params.AmountMinor) {
 				return ErrPaymentMismatch
 			}
@@ -466,6 +502,7 @@ func (r *PaymentRepository) CreateRefund(
 
 			return err
 		}
+
 		refundID = uint64(id)
 
 		return nil
@@ -478,7 +515,6 @@ func (r *PaymentRepository) CreateIdempotentRefund(
 	ctx context.Context,
 	params IdempotentRefundCreateParams,
 ) (IdempotentRefund, error) {
-
 	workspaceID, err := requireWorkspaceID(params.WorkspaceID)
 	if err != nil {
 		return IdempotentRefund{}, err
@@ -487,6 +523,7 @@ func (r *PaymentRepository) CreateIdempotentRefund(
 	params.ProviderCode = strings.TrimSpace(params.ProviderCode)
 	params.IdempotencyKey = strings.TrimSpace(params.IdempotencyKey)
 	params.AssetCode = strings.TrimSpace(params.AssetCode)
+
 	if params.OrderID == 0 || params.OrderID > math.MaxInt64 ||
 		params.AttemptID == 0 || params.AttemptID > math.MaxInt64 ||
 		params.AmountMinor == 0 || params.AmountMinor > math.MaxInt64 ||
@@ -496,6 +533,7 @@ func (r *PaymentRepository) CreateIdempotentRefund(
 	}
 
 	var result IdempotentRefund
+
 	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttempt(
 			ctx,
@@ -548,6 +586,7 @@ func (r *PaymentRepository) CreateIdempotentRefund(
 
 			return nil
 		}
+
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
@@ -559,6 +598,7 @@ func (r *PaymentRepository) CreateIdempotentRefund(
 		if err != nil {
 			return err
 		}
+
 		if reserved > attempt.AmountMinor-int64(params.AmountMinor) {
 			return ErrPaymentMismatch
 		}
@@ -606,17 +646,14 @@ func (r *PaymentRepository) CreateIdempotentRefund(
 	})
 
 	return result, err
-
 }
 
 func sameRefundReason(stored sql.NullString, received *string) bool {
-
 	if received == nil {
 		return !stored.Valid
 	}
 
 	return stored.Valid && stored.String == *received
-
 }
 
 func (r *PaymentRepository) FinalizeRefund(
@@ -627,6 +664,7 @@ func (r *PaymentRepository) FinalizeRefund(
 	if err != nil {
 		return err
 	}
+
 	if params.RefundID == 0 || params.RefundID > math.MaxInt64 ||
 		!validRefundStatus(params.Status) {
 		return ErrOrderStateInvalid
@@ -658,6 +696,7 @@ func (r *PaymentRepository) FinalizeRefund(
 		if err != nil {
 			return err
 		}
+
 		if order.WorkspaceID != workspaceID ||
 			refund.WorkspaceID != workspaceID ||
 			attempt.OrderID != order.ID ||
@@ -665,6 +704,7 @@ func (r *PaymentRepository) FinalizeRefund(
 			refund.OrderID != order.ID {
 			return sql.ErrNoRows
 		}
+
 		targetStatus := sqlc.PaymentRefundStatus(params.Status)
 		if !validRefundStatusTransition(refund.Status, targetStatus) {
 			return ErrOrderStateInvalid
@@ -684,6 +724,7 @@ func (r *PaymentRepository) FinalizeRefund(
 				return err
 			}
 		}
+
 		if _, err := txRepo.q.AdminUpdateRefundStatus(
 			ctx,
 			sqlc.AdminUpdateRefundStatusParams{
@@ -697,6 +738,7 @@ func (r *PaymentRepository) FinalizeRefund(
 		); err != nil {
 			return err
 		}
+
 		if params.Status != string(sqlc.PaymentRefundStatusSucceeded) {
 			return nil
 		}
@@ -708,13 +750,16 @@ func (r *PaymentRepository) FinalizeRefund(
 		if err != nil {
 			return err
 		}
+
 		if succeeded > attempt.AmountMinor {
 			return ErrPaymentMismatch
 		}
+
 		if succeeded < attempt.AmountMinor ||
 			order.Status == sqlc.PaymentOrderStatusRefunded {
 			return nil
 		}
+
 		if order.Status != sqlc.PaymentOrderStatusPaid &&
 			order.Status != sqlc.PaymentOrderStatusFulfilled {
 			return ErrOrderStateInvalid
@@ -729,11 +774,13 @@ func (r *PaymentRepository) FinalizeRefund(
 		); err != nil {
 			return err
 		}
+
 		if rows, err := txRepo.q.MarkOrderRefunded(ctx, order.ID); err != nil {
 			return err
 		} else if rows != 1 {
 			return ErrOrderStateInvalid
 		}
+
 		if rows, err := txRepo.q.MarkFulfillmentRevokedForOrder(
 			ctx,
 			order.ID,
@@ -742,10 +789,12 @@ func (r *PaymentRepository) FinalizeRefund(
 		} else if rows != 1 {
 			return ErrOrderStateInvalid
 		}
+
 		fulfillment, err := txRepo.q.GetFulfillmentForOrder(ctx, order.ID)
 		if err != nil {
 			return err
 		}
+
 		if _, err := txRepo.q.DecrementProductLimitCountersForRefund(
 			ctx,
 			order.ID,
@@ -806,6 +855,7 @@ func (r *PaymentRepository) AdminUpdateRefundStatus(
 	if id == 0 || id > math.MaxInt64 || !validRefundStatus(status) {
 		return 0, ErrOrderStateInvalid
 	}
+
 	if err := r.FinalizeRefund(ctx, RefundFinalizeParams{
 		WorkspaceID: workspaceID,
 		RefundID:    id,
@@ -894,14 +944,17 @@ func (r *PaymentRepository) UpdateOrderStatus(
 	}
 
 	var rows int64
+
 	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
 		order, err := txRepo.q.LockPaymentOrder(ctx, int64(id))
 		if err != nil {
 			return err
 		}
+
 		if order.WorkspaceID != workspaceID {
 			return sql.ErrNoRows
 		}
+
 		targetStatus := sqlc.PaymentOrderStatus(status)
 		if !validOrderStatusTransition(order.Status, targetStatus) {
 			return ErrOrderStateInvalid
@@ -925,6 +978,7 @@ func (r *PaymentRepository) UpdateOrderStatus(
 				if err != nil {
 					return err
 				}
+
 				if rows != 1 {
 					return ErrOrderStateInvalid
 				}
@@ -942,6 +996,7 @@ func (r *PaymentRepository) UpdateOrderStatus(
 				Column4:     status,
 			},
 		)
+
 		return err
 	})
 
@@ -972,5 +1027,6 @@ func nilIfEmpty(value string) *string {
 	if value == "" {
 		return nil
 	}
+
 	return utils.Ref(value)
 }

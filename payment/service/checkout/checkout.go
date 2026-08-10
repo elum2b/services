@@ -30,6 +30,7 @@ func NewWithOptions(
 	if err == nil {
 		return &Checkout{repository: repo, rootCtx: contextutil.Normalize(ctx)}
 	}
+
 	return &Checkout{
 		repository: repository.NewPaymentRepositoryWithOptions(db, options),
 		rootCtx:    contextutil.Normalize(ctx),
@@ -40,6 +41,7 @@ func (a *Checkout) Close() error {
 	if a == nil || a.repository == nil {
 		return nil
 	}
+
 	return a.repository.Close()
 }
 

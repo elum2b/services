@@ -19,6 +19,7 @@ func (c *Client) CreateTransaction(
 	}
 
 	var result createTransactionResponse
+
 	resp, err := c.rest.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
@@ -28,6 +29,7 @@ func (c *Client) CreateTransaction(
 	if err != nil {
 		return createTransactionResponse{}, err
 	}
+
 	if resp.StatusCode() < http.StatusOK ||
 		resp.StatusCode() >= http.StatusMultipleChoices {
 		return createTransactionResponse{}, wrapAPIError(
@@ -36,5 +38,6 @@ func (c *Client) CreateTransaction(
 			resp.String(),
 		)
 	}
+
 	return result, nil
 }

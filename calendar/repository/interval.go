@@ -9,7 +9,9 @@ func addInterval(value time.Time, unit string, count uint32) time.Time {
 	if count == 0 {
 		count = 1
 	}
+
 	n := int(count)
+
 	switch unit {
 	case "second":
 		return value.Add(time.Duration(n) * time.Second)
@@ -39,10 +41,12 @@ func nextAvailableAt(
 			calendar.IntervalCount,
 		), nil
 	}
+
 	boundary, err := calendarBoundary(calendar, lastClaim)
 	if err != nil {
 		return time.Time{}, err
 	}
+
 	return addInterval(
 			boundary,
 			calendar.IntervalUnit,
@@ -60,8 +64,11 @@ func calendarBoundary(calendar Calendar, value time.Time) (time.Time, error) {
 			err,
 		)
 	}
+
 	local := value.In(location)
+
 	var boundary time.Time
+
 	switch calendar.IntervalUnit {
 	case "second":
 		boundary = time.Date(
@@ -110,6 +117,7 @@ func calendarBoundary(calendar Calendar, value time.Time) (time.Time, error) {
 	case "week":
 		dayOffset := (int(local.Weekday()) + 6) % 7
 		start := local.AddDate(0, 0, -dayOffset)
+
 		boundary = time.Date(
 			start.Year(),
 			start.Month(),
@@ -137,6 +145,7 @@ func calendarBoundary(calendar Calendar, value time.Time) (time.Time, error) {
 			calendar.IntervalUnit,
 		)
 	}
+
 	return boundary.UTC(), nil
 }
 
@@ -148,16 +157,20 @@ func intervalIndex(
 	if calendar.StartAt != nil {
 		anchor = *calendar.StartAt
 	}
+
 	if now.Before(anchor) {
 		return 0, anchor, nil
 	}
+
 	if calendar.IntervalType == IntervalCalendar {
 		var err error
+
 		anchor, err = calendarBoundary(calendar, anchor)
 		if err != nil {
 			return 0, time.Time{}, err
 		}
 	}
+
 	if calendar.IntervalUnit != "month" {
 		next := addInterval(
 			anchor,
@@ -165,16 +178,21 @@ func intervalIndex(
 			calendar.IntervalCount,
 		)
 		duration := next.Sub(anchor)
+
 		if duration > 0 {
 			index := uint64(now.Sub(anchor)/duration) + 1
 			return index, anchor.Add(time.Duration(index) * duration), nil
 		}
 	}
+
 	index := uint64(1)
 	next := addInterval(anchor, calendar.IntervalUnit, calendar.IntervalCount)
+
 	for !now.Before(next) {
 		index++
+
 		next = addInterval(next, calendar.IntervalUnit, calendar.IntervalCount)
 	}
+
 	return index, next, nil
 }

@@ -71,9 +71,11 @@ func wrapAPIError(
 
 func isDefinitiveAPIError(err error) bool {
 	var apiErr *apiError
+
 	if !errors.As(err, &apiErr) {
 		return false
 	}
+
 	return apiErr.status >= 400 && apiErr.status < 500 &&
 		apiErr.status != 408 && apiErr.status != 429
 }

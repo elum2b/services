@@ -6,8 +6,10 @@ func Ref[T any](value T) *T {
 
 func Deref[T any](value *T) T {
 	var zero T
+
 	if value != nil {
 		return *value
 	}
+
 	return zero
 }

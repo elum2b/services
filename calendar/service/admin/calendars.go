@@ -36,12 +36,15 @@ func (a *Admin) CreateCalendar(
 ) (string, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if err := validateCalendar(&params); err != nil {
 		return "", err
 	}
+
 	if params.ID == "" {
 		params.ID = uuid.NewString()
 	}
+
 	return params.ID, a.repository.CreateCalendar(
 		mergedCtx,
 		repository.SaveCalendarParams(params),
@@ -54,12 +57,15 @@ func (a *Admin) UpdateCalendar(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if params.ID == "" {
 		return 0, ErrCalendarIDRequired
 	}
+
 	if err := validateCalendar(&params); err != nil {
 		return 0, err
 	}
+
 	return a.repository.UpdateCalendar(
 		mergedCtx,
 		repository.SaveCalendarParams(params),
@@ -72,10 +78,12 @@ func (a *Admin) GetCalendar(
 ) (CalendarModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	value, err := a.repository.GetCalendar(mergedCtx, workspaceID, id, "")
 	if err != nil {
 		return CalendarModel{}, err
 	}
+
 	localizations, err := a.repository.ListLocalizations(
 		mergedCtx,
 		workspaceID,
@@ -84,8 +92,11 @@ func (a *Admin) GetCalendar(
 	if err != nil {
 		return CalendarModel{}, err
 	}
+
 	result := mapCalendar(value)
+
 	result.Localizations = make([]LocalizationModel, 0, len(localizations))
+
 	for _, item := range localizations {
 		result.Localizations = append(result.Localizations, LocalizationModel{
 			Locale:      item.Locale,
@@ -93,6 +104,7 @@ func (a *Admin) GetCalendar(
 			Description: item.Description,
 		})
 	}
+
 	return result, nil
 }
 
@@ -103,7 +115,9 @@ func (a *Admin) ListCalendars(
 ) ([]CalendarModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	limit, offset := normalizePage(page)
+
 	values, err := a.repository.ListCalendars(
 		mergedCtx,
 		workspaceID,
@@ -113,10 +127,12 @@ func (a *Admin) ListCalendars(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]CalendarModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, mapCalendar(value))
 	}
+
 	return result, nil
 }
 
@@ -127,6 +143,7 @@ func (a *Admin) SetCalendarActive(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.SetCalendarActive(mergedCtx, workspaceID, id, active)
 }
 
@@ -136,6 +153,7 @@ func (a *Admin) DeleteCalendar(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.DeleteCalendar(mergedCtx, workspaceID, id)
 }
 
@@ -143,48 +161,60 @@ func validateCalendar(params *SaveCalendarParams) error {
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return err
 	}
+
 	if strings.TrimSpace(params.Type) == "" {
 		return ErrCalendarScopeRequired
 	}
+
 	if params.IntervalCount == 0 {
 		params.IntervalCount = 1
 	}
+
 	if params.ResetAfterIntervals == 0 {
 		params.ResetAfterIntervals = 1
 	}
+
 	if params.IntervalCount > math.MaxInt32 ||
 		params.ResetAfterIntervals > math.MaxInt32 {
 		return ErrCalendarNumberOutOfRange
 	}
+
 	if params.Timezone == "" {
 		params.Timezone = "UTC"
 	}
+
 	if _, err := time.LoadLocation(params.Timezone); err != nil {
 		return ErrCalendarTimezoneInvalid
 	}
+
 	if params.StartAt != nil && params.EndAt != nil &&
 		!params.StartAt.Before(*params.EndAt) {
 		return ErrCalendarRangeInvalid
 	}
+
 	if params.Mode != repository.ModeInterval &&
 		params.Mode != repository.ModeSequential &&
 		params.Mode != repository.ModeSequentialReset {
 		return ErrCalendarModeInvalid
 	}
+
 	if params.IntervalType != repository.IntervalCalendar &&
 		params.IntervalType != repository.IntervalFloating {
 		return ErrCalendarIntervalTypeInvalid
 	}
+
 	switch params.IntervalUnit {
 	case "second", "minute", "hour", "day", "week", "month":
 	default:
 		return ErrCalendarIntervalUnitInvalid
 	}
+
 	if params.EndBehavior != repository.EndRestart &&
 		params.EndBehavior != repository.EndRepeatLast &&
 		params.EndBehavior != repository.EndStop {
 		return ErrCalendarEndBehaviorInvalid
 	}
+
 	return nil
 }
 
@@ -220,8 +250,10 @@ func mapCalendar(value repository.Calendar) CalendarModel {
 				Unit:     reward.Unit,
 			})
 		}
+
 		model.Steps = append(model.Steps, item)
 	}
+
 	return CalendarModel{
 		CalendarModel: model, DeletedAt: value.DeletedAt,
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,

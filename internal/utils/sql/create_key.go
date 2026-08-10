@@ -10,5 +10,6 @@ import (
 func CreateKey(parts ...any) string {
 	raw := fmt.Sprintf("%#v", parts)
 	sum := sha256.Sum256([]byte(raw))
+
 	return hex.EncodeToString(sum[:])
 }

@@ -56,6 +56,7 @@ func BenchmarkPromoServiceMethods(b *testing.B) {
 		Locale:   "ru",
 	})
 	promoBenchNoError(b, err)
+
 	if first.Status != repository.StatusSuccess {
 		b.Fatalf("seed apply status = %s", first.Status)
 	}
@@ -215,6 +216,7 @@ func BenchmarkPromoServiceMethods(b *testing.B) {
 	b.Run("Admin.RefreshDailyStats", func(b *testing.B) {
 		from := time.Now().Add(-24 * time.Hour)
 		until := time.Now().Add(24 * time.Hour)
+
 		for range b.N {
 			err := env.api.Admin.RefreshDailyStats(
 				env.ctx,
@@ -254,6 +256,7 @@ func BenchmarkPromoServiceMethods(b *testing.B) {
 
 func setupPromoBenchmark(b *testing.B) promoBenchmarkEnv {
 	b.Helper()
+
 	api := newPromoTestService(b)
 	env := promoBenchmarkEnv{
 		ctx:   context.Background(),
@@ -262,11 +265,13 @@ func setupPromoBenchmark(b *testing.B) promoBenchmarkEnv {
 		codes: make([]string, 0, promoBenchPromos),
 	}
 	seedPromoBenchmark(b, &env)
+
 	return env
 }
 
 func seedPromoBenchmark(b *testing.B, env *promoBenchmarkEnv) {
 	b.Helper()
+
 	writeID, err := env.api.Admin.CreatePromo(env.ctx, admin.SavePromoParams{
 		WorkspaceID: promoBenchWriteWorkspace,
 		Code:        "WRITE_BENCH_PROMO",
@@ -274,8 +279,10 @@ func seedPromoBenchmark(b *testing.B, env *promoBenchmarkEnv) {
 		IsActive:    true,
 	})
 	promoBenchNoError(b, err)
+
 	env.writeID = writeID
 	env.writeCode = "WRITE_BENCH_PROMO"
+
 	for i := 0; i < promoBenchPromos; i++ {
 		code := promoBenchmarkCode(i)
 		id, err := env.api.Admin.CreatePromo(env.ctx, admin.SavePromoParams{
@@ -285,6 +292,7 @@ func seedPromoBenchmark(b *testing.B, env *promoBenchmarkEnv) {
 			IsActive:    true,
 		})
 		promoBenchNoError(b, err)
+
 		env.ids = append(env.ids, id)
 		env.codes = append(env.codes, code)
 		promoBenchNoError(
@@ -311,6 +319,7 @@ func seedPromoBenchmark(b *testing.B, env *promoBenchmarkEnv) {
 			}),
 		)
 	}
+
 	for i := 0; i < promoBenchUsers; i++ {
 		_, err := env.api.User.Apply(env.ctx, user.ApplyParams{
 			Identity: promoBenchmarkIdentity(i),
@@ -361,6 +370,7 @@ func promoBenchmarkIdentity(index int) user.Identity {
 
 func promoBenchmarkUniqueIdentity(prefix string, index int) user.Identity {
 	sequence := promoBenchSequence.Add(1)
+
 	return user.Identity{
 		WorkspaceID:    promoBenchWorkspace,
 		AppID:          1,
@@ -380,6 +390,7 @@ func promoBenchmarkRunValue(prefix string, index int) string {
 
 func promoBenchNoError(b testing.TB, err error) {
 	b.Helper()
+
 	if err != nil {
 		b.Fatal(err)
 	}

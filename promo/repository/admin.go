@@ -32,7 +32,9 @@ func (r *Repository) CreatePromo(
 	if len(target) == 0 {
 		target = []byte("null")
 	}
+
 	var id int64
+
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(
 			ctx,
@@ -42,6 +44,7 @@ func (r *Repository) CreatePromo(
 		}
 
 		var err error
+
 		id, err = txRepo.q.AdminCreatePromo(
 			ctx,
 			promosqlc.AdminCreatePromoParams{
@@ -66,11 +69,13 @@ func (r *Repository) CreatePromo(
 				),
 			},
 		)
+
 		return err
 	})
 	if err != nil {
 		return 0, err
 	}
+
 	return uint64(id), r.invalidatePromoCache(params.WorkspaceID)
 }
 
@@ -82,7 +87,9 @@ func (r *Repository) UpdatePromo(
 	if len(target) == 0 {
 		target = []byte("null")
 	}
+
 	var rows int64
+
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(
 			ctx,
@@ -92,6 +99,7 @@ func (r *Repository) UpdatePromo(
 		}
 
 		var err error
+
 		rows, err = txRepo.q.AdminUpdatePromo(
 			ctx,
 			promosqlc.AdminUpdatePromoParams{
@@ -117,11 +125,14 @@ func (r *Repository) UpdatePromo(
 				ID:          int64(params.ID),
 			},
 		)
+
 		return err
 	})
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	return rows, r.invalidatePromoCache(params.WorkspaceID)
 }
 
@@ -135,6 +146,7 @@ func (r *Repository) GetPromo(
 	}
 
 	key := promoCacheKey(promoCacheAdminPromo, workspaceID, id)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:               key,
 		Timeout:           r.timeout,
@@ -149,6 +161,7 @@ func (r *Repository) GetPromo(
 		if err != nil {
 			return Promo{}, err
 		}
+
 		return mapPromo(row), nil
 	})
 }
@@ -163,7 +176,9 @@ func (r *Repository) ListPromos(
 	}
 
 	limit, offset = normalizePage(limit, offset)
+
 	key := promoCacheKey(promoCacheAdminList, workspaceID, limit, offset)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:               key,
 		Timeout:           r.timeout,
@@ -179,10 +194,12 @@ func (r *Repository) ListPromos(
 		if err != nil {
 			return nil, err
 		}
+
 		result := make([]Promo, 0, len(rows))
 		for _, row := range rows {
 			result = append(result, mapPromo(row))
 		}
+
 		return result, nil
 	})
 }
@@ -193,12 +210,14 @@ func (r *Repository) SoftDeletePromo(
 	id uint64,
 ) (int64, error) {
 	var rows int64
+
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
 
 		var err error
+
 		rows, err = txRepo.q.AdminSoftDeletePromo(
 			ctx,
 			promosqlc.AdminSoftDeletePromoParams{
@@ -206,11 +225,14 @@ func (r *Repository) SoftDeletePromo(
 				ID:          int64(id),
 			},
 		)
+
 		return err
 	})
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	return rows, r.invalidatePromoCache(workspaceID)
 }
 
@@ -253,6 +275,7 @@ func (r *Repository) GetLocalization(
 		promoID,
 		locale,
 	)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:          key,
 		Timeout:      r.timeout,
@@ -274,6 +297,7 @@ func (r *Repository) GetLocalization(
 		if err != nil {
 			return Localization{}, err
 		}
+
 		return mapLocalization(row), nil
 	})
 }
@@ -284,6 +308,7 @@ func (r *Repository) ListLocalizations(
 	promoID uint64,
 ) ([]Localization, error) {
 	key := promoCacheKey(promoCacheAdminLocalizations, workspaceID, promoID)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:          key,
 		Timeout:      r.timeout,
@@ -304,10 +329,12 @@ func (r *Repository) ListLocalizations(
 		if err != nil {
 			return nil, err
 		}
+
 		result := make([]Localization, 0, len(rows))
 		for _, row := range rows {
 			result = append(result, mapLocalization(row))
 		}
+
 		return result, nil
 	})
 }
@@ -319,11 +346,13 @@ func (r *Repository) DeleteLocalization(
 	locale string,
 ) (int64, error) {
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminDeleteLocalization(
 				ctx,
 				promosqlc.AdminDeleteLocalizationParams{
@@ -332,9 +361,11 @@ func (r *Repository) DeleteLocalization(
 					Locale:      locale,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
@@ -389,6 +420,7 @@ func (r *Repository) GetReward(
 	}
 
 	cacheKey := promoCacheKey(promoCacheAdminReward, workspaceID, promoID, key)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:               cacheKey,
 		Timeout:           r.timeout,
@@ -404,6 +436,7 @@ func (r *Repository) GetReward(
 		if err != nil {
 			return Reward{}, err
 		}
+
 		return mapReward(row), nil
 	})
 }
@@ -418,6 +451,7 @@ func (r *Repository) ListRewards(
 	}
 
 	key := promoCacheKey(promoCacheAdminRewards, workspaceID, promoID)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:               key,
 		Timeout:           r.timeout,
@@ -432,10 +466,12 @@ func (r *Repository) ListRewards(
 		if err != nil {
 			return nil, err
 		}
+
 		result := make([]Reward, 0, len(rows))
 		for _, row := range rows {
 			result = append(result, mapReward(row))
 		}
+
 		return result, nil
 	})
 }
@@ -454,7 +490,9 @@ func promoDurationUnitPtr(value promosqlc.NullPromoDurationUnit) *string {
 	if !value.Valid {
 		return nil
 	}
+
 	unit := string(value.PromoDurationUnit)
+
 	return &unit
 }
 
@@ -462,6 +500,7 @@ func stringValue(value *string) string {
 	if value == nil {
 		return ""
 	}
+
 	return *value
 }
 
@@ -472,11 +511,13 @@ func (r *Repository) DeleteReward(
 	key string,
 ) (int64, error) {
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminDeleteReward(
 				ctx,
 				promosqlc.AdminDeleteRewardParams{
@@ -485,9 +526,11 @@ func (r *Repository) DeleteReward(
 					RewardKey:   key,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
@@ -527,12 +570,14 @@ func nullRawMessage(value pqtype.NullRawMessage) json.RawMessage {
 	if !value.Valid {
 		return nil
 	}
-	return json.RawMessage(value.RawMessage)
+
+	return value.RawMessage
 }
 
 func rawMessageParam(value json.RawMessage) pqtype.NullRawMessage {
 	if len(value) == 0 {
 		return pqtype.NullRawMessage{}
 	}
+
 	return pqtype.NullRawMessage{RawMessage: value, Valid: true}
 }

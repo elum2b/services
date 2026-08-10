@@ -6,6 +6,7 @@ func Normalize(ctx context.Context) context.Context {
 	if ctx == nil {
 		return context.Background()
 	}
+
 	return ctx
 }
 
@@ -20,6 +21,7 @@ func Merge(
 
 	ctx, cancel := context.WithCancel(requestCtx)
 	stop := context.AfterFunc(rootCtx, cancel)
+
 	return ctx, func() {
 		stop()
 		cancel()

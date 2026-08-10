@@ -298,6 +298,7 @@ func (r *Repository) CompleteTwoFactorChallenge(
 			); err != nil {
 				if errors.Is(err, ErrForbidden) {
 					rejected = err
+
 					return consumeTwoFactorChallenge(
 						ctx,
 						q,

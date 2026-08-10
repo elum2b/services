@@ -9,6 +9,7 @@ import (
 func (a *Product) Upsert(ctx context.Context, params UpsertParams) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	return a.repository.UpsertProduct(ctx, repository.ProductUpsertParams{

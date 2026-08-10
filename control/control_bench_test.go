@@ -160,20 +160,23 @@ func newControlBenchmark(b *testing.B) *controlBenchmark {
 	}
 	defer adminDB.Close()
 
-	if _, err := adminDB.Exec(
+	if _, err := adminDB.ExecContext(
+		b.Context(),
 		"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
 		controlBenchmarkDatabase,
 	); err != nil {
 		b.Fatal(err)
 	}
 
-	if _, err := adminDB.Exec(
+	if _, err := adminDB.ExecContext(
+		b.Context(),
 		fmt.Sprintf("DROP DATABASE IF EXISTS %s", controlBenchmarkDatabase),
 	); err != nil {
 		b.Fatal(err)
 	}
 
-	if _, err := adminDB.Exec(
+	if _, err := adminDB.ExecContext(
+		b.Context(),
 		fmt.Sprintf("CREATE DATABASE %s", controlBenchmarkDatabase),
 	); err != nil {
 		b.Fatal(err)

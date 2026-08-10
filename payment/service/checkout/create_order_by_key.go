@@ -12,6 +12,7 @@ func (a *Checkout) CreateOrderByKey(
 ) (*Order, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	order, err := a.repository.CreateOrderByKey(
@@ -31,5 +32,6 @@ func (a *Checkout) CreateOrderByKey(
 	if err != nil {
 		return nil, err
 	}
+
 	return mapOrder(order), nil
 }

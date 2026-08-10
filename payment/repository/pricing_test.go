@@ -68,6 +68,7 @@ func TestConvertReferenceAmount(t *testing.T) {
 			if err != nil {
 				t.Fatalf("convert amount: %v", err)
 			}
+
 			if got != tt.want {
 				t.Fatalf("unexpected amount: got %d want %d", got, tt.want)
 			}
@@ -89,13 +90,17 @@ func TestConvertReferenceAmountRejectsInvalidDecimals(t *testing.T) {
 
 func mustUSDTMinor(t *testing.T, value string) uint64 {
 	t.Helper()
+
 	rat, ok := new(big.Rat).SetString(value)
 	if !ok {
 		t.Fatalf("invalid test rate %q", value)
 	}
+
 	rat.Mul(rat, big.NewRat(1_000_000, 1))
+
 	if !rat.IsInt() || !rat.Num().IsUint64() {
 		t.Fatalf("test rate is not exact micro-USDT: %q", value)
 	}
+
 	return rat.Num().Uint64()
 }

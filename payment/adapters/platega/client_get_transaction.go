@@ -15,6 +15,7 @@ func (c *Client) GetTransaction(
 	}
 
 	var result transactionStatusResponse
+
 	resp, err := c.rest.R().
 		SetContext(ctx).
 		SetResult(&result).
@@ -22,6 +23,7 @@ func (c *Client) GetTransaction(
 	if err != nil {
 		return transactionStatusResponse{}, err
 	}
+
 	if resp.StatusCode() < http.StatusOK ||
 		resp.StatusCode() >= http.StatusMultipleChoices {
 		return transactionStatusResponse{}, wrapAPIError(
@@ -30,5 +32,6 @@ func (c *Client) GetTransaction(
 			resp.String(),
 		)
 	}
+
 	return result, nil
 }

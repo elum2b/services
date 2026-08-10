@@ -33,7 +33,6 @@ func (a *Admin) GetUserAssignment(
 	ctx context.Context,
 	params user.GetStatusParams,
 ) (*AssignmentModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -49,19 +48,19 @@ func (a *Admin) GetUserAssignment(
 	}
 
 	result := mapAssignment(*value)
-	return &result, nil
 
+	return &result, nil
 }
 
 func (a *Admin) ListAssignments(
 	ctx context.Context,
 	params AssignmentListParams,
 ) ([]AssignmentModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
 	limit, offset := normalizePage(params.Page)
+
 	values, err := a.repository.ListAssignments(
 		mergedCtx,
 		params.WorkspaceID,
@@ -80,18 +79,17 @@ func (a *Admin) ListAssignments(
 	}
 
 	return result, nil
-
 }
 
 func (a *Admin) ListCodes(
 	ctx context.Context,
 	params CodeListParams,
 ) ([]CodeModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
 	limit, offset := normalizePage(params.Page)
+
 	values, err := a.repository.ListCodes(
 		mergedCtx,
 		params.WorkspaceID,
@@ -118,18 +116,17 @@ func (a *Admin) ListCodes(
 	}
 
 	return result, nil
-
 }
 
 func (a *Admin) ListAssignmentEvents(
 	ctx context.Context,
 	params AssignmentEventListParams,
 ) ([]AssignmentEventModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
 	limit, offset := normalizePage(params.Page)
+
 	values, err := a.repository.ListAssignmentEvents(
 		mergedCtx,
 		params.WorkspaceID,
@@ -153,7 +150,6 @@ func (a *Admin) ListAssignmentEvents(
 	}
 
 	return result, nil
-
 }
 
 func mapAssignment(value repository.Assignment) AssignmentModel {

@@ -18,6 +18,7 @@ func (a *Product) GetByKey(
 ) (*ProductModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	product, err := a.repository.GetProductByKey(

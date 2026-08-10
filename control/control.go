@@ -107,6 +107,7 @@ func open(ctx context.Context, params DatabaseParams) (*Control, error) {
 	client, err := sqlwrap.New(db, toSQLWrapOptions(params.Options))
 	if err != nil {
 		_ = db.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"control sql client initialization failed",

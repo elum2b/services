@@ -20,7 +20,9 @@ func (a *TelegramStars) HandlePreCheckoutQuery(
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	client := NewClient(query.Credentials)
 
 	attempt, err := a.repository.ValidatePendingAttempt(
@@ -44,12 +46,14 @@ func (a *TelegramStars) HandlePreCheckoutQuery(
 		if answerErr != nil {
 			return nil, answerErr
 		}
+
 		if !errors.Is(err, sql.ErrNoRows) &&
 			!errors.Is(err, repository.ErrPaymentMismatch) &&
 			!errors.Is(err, repository.ErrOrderStateInvalid) &&
 			!errors.Is(err, repository.ErrAttemptFieldsInvalid) {
 			return nil, err
 		}
+
 		return &PreCheckoutResult{Accepted: false}, nil
 	}
 
@@ -79,6 +83,7 @@ func (a *TelegramStars) HandlePreCheckoutQuery(
 	); err != nil {
 		return nil, err
 	}
+
 	return &PreCheckoutResult{
 		AttemptID: attempt.ID,
 		OrderID:   attempt.OrderID,

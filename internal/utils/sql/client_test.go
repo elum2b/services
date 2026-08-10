@@ -23,9 +23,11 @@ func TestClient_DBAndClose(t *testing.T) {
 	}
 
 	var nilClient *Client
+
 	if nilClient.DB() != nil {
 		t.Fatal("expected nil DB for nil client")
 	}
+
 	if err := nilClient.Close(); err != nil {
 		t.Fatalf("unexpected nil client close error: %v", err)
 	}
@@ -39,6 +41,7 @@ func TestClient_DBAndClose(t *testing.T) {
 func TestCreateContextWithTimeout_DefaultAndParent(t *testing.T) {
 	ctx, cancel := createContextWithTimeout(context.Background(), 0)
 	defer cancel()
+
 	if _, ok := ctx.Deadline(); !ok {
 		t.Fatal("expected deadline for default timeout")
 	}
@@ -48,6 +51,7 @@ func TestCreateContextWithTimeout_DefaultAndParent(t *testing.T) {
 
 	child, childCancel := createContextWithTimeout(parent, time.Second)
 	defer childCancel()
+
 	select {
 	case <-child.Done():
 	default:

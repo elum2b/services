@@ -52,7 +52,9 @@ func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 	if queryTimeout <= 0 {
 		queryTimeout = DefaultQueryTimeout
 	}
+
 	executor := db.WithQueryTimeout(queryTimeout)
+
 	return &Repository{
 		db: db,
 		q:  tasksqlc.New(executor),
@@ -84,7 +86,9 @@ func NewPreparedWithOptions(
 	if queryTimeout <= 0 {
 		queryTimeout = DefaultQueryTimeout
 	}
+
 	executor := db.WithQueryTimeout(queryTimeout)
+
 	return &Repository{
 		db: db,
 		q:  tasksqlc.New(executor),
@@ -107,13 +111,17 @@ func (r *Repository) Close() error {
 	if r == nil {
 		return nil
 	}
+
 	var err error
+
 	if r.q != nil {
 		err = errors.Join(err, r.q.Close())
 	}
+
 	if r.callbacks != nil {
 		err = errors.Join(err, r.callbacks.Close())
 	}
+
 	return err
 }
 
@@ -137,9 +145,11 @@ func (r *Repository) WithTx(
 				onCacheInvalidationError: r.onCacheInvalidationError,
 				secretEncryptionKey:      r.secretEncryptionKey,
 			}
+
 			return struct{}{}, fn(txRepo)
 		},
 	)
+
 	return err
 }
 
@@ -156,6 +166,7 @@ func (r *Repository) lockWorkspaceMutation(
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
 		"tasks:"+workspaceID,
 	)
+
 	return err
 }
 
@@ -177,12 +188,15 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 	if err := r.applySQL(ctx, tasksqlc.SchemaSQL, "schema"); err != nil {
 		return err
 	}
+
 	if err := r.applySchemaUpgrades(ctx); err != nil {
 		return err
 	}
+
 	if err := r.migratePartnerSecrets(ctx); err != nil {
 		return err
 	}
+
 	if err := sqlwrap.Exec(
 		ctx,
 		r.db,
@@ -197,9 +211,11 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 	); err != nil {
 		return err
 	}
+
 	if err := r.applySQL(ctx, tasksqlc.TriggerSQL, "trigger"); err != nil {
 		return err
 	}
+
 	return r.applySQL(ctx, tasksqlc.EventSQL, "event")
 }
 
@@ -266,6 +282,7 @@ func (r *Repository) applySchemaUpgrades(ctx context.Context) error {
 			)
 		}
 	}
+
 	return nil
 }
 
@@ -274,6 +291,7 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 	if err != nil {
 		return fmt.Errorf("tasks %s SQL parse failed: %w", source, err)
 	}
+
 	for _, statement := range statements {
 		if err := sqlwrap.Exec(
 			ctx,
@@ -292,6 +310,7 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 			)
 		}
 	}
+
 	return nil
 }
 
@@ -299,12 +318,15 @@ func normalizePage(limit, offset int32) (int32, int32) {
 	if limit <= 0 {
 		limit = 100
 	}
+
 	if limit > 1000 {
 		limit = 1000
 	}
+
 	if offset < 0 {
 		offset = 0
 	}
+
 	return limit, offset
 }
 

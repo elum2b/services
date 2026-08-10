@@ -57,17 +57,21 @@ func normalizeOptions(options Options) Options {
 	if !options.CacheEnabled {
 		return options
 	}
+
 	if options.CacheL1Delay <= 0 {
 		options.CacheL1Delay = defaultCacheDelay
 	}
+
 	if options.CacheL2Delay <= 0 {
 		options.CacheL2Delay = defaultCacheDelay
 	}
+
 	return options
 }
 
 func toSQLWrapOptions(options Options) sqlwrap.Options {
 	options = normalizeOptions(options)
+
 	result := sqlwrap.Options{
 		MaxConnections: options.MaxConnections,
 		QueryTimeout:   options.QueryTimeout,
@@ -75,15 +79,19 @@ func toSQLWrapOptions(options Options) sqlwrap.Options {
 		CacheSize:      options.CacheSize,
 		CacheTTLCheck:  options.CacheTTLCheck,
 	}
+
 	if options.Cache != nil {
 		result.Cache = storageAdapter{value: options.Cache}
 	}
+
 	if options.Codec != nil {
 		result.Codec = codecAdapter{value: options.Codec}
 	}
+
 	if options.Mutex != nil {
 		result.Mutex = mutexAdapter{value: options.Mutex}
 	}
+
 	return result
 }
 

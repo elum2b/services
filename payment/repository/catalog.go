@@ -126,6 +126,7 @@ func (r *PaymentRepository) UpsertProductGroup(
 	if err != nil {
 		return err
 	}
+
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
@@ -169,12 +170,15 @@ func (r *PaymentRepository) DeleteProductGroup(
 	if err != nil {
 		return 0, err
 	}
+
 	var rows int64
+
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(tx *PaymentRepository) error {
 			var err error
+
 			rows, err = tx.q.DeleteProductGroup(
 				ctx,
 				paymentsqlc.DeleteProductGroupParams{
@@ -182,6 +186,7 @@ func (r *PaymentRepository) DeleteProductGroup(
 					Code:        code,
 				},
 			)
+
 			return err
 		},
 	)
@@ -200,9 +205,11 @@ func (r *PaymentRepository) UpsertProduct(
 	if err != nil {
 		return err
 	}
+
 	if err := target.Validate(params.Target); err != nil {
 		return err
 	}
+
 	if strings.TrimSpace(params.ID) == "" ||
 		strings.TrimSpace(params.TitleKey) == "" ||
 		(params.PeriodSeconds != nil && *params.PeriodSeconds < 0) ||
@@ -213,6 +220,7 @@ func (r *PaymentRepository) UpsertProduct(
 		params.UserIntervalCount < 0 {
 		return ErrInvalidProduct
 	}
+
 	availableFrom := sqlwrap.ValueFromPtr(params.AvailableFrom)
 	if availableFrom.IsZero() {
 		availableFrom = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -234,14 +242,17 @@ func (r *PaymentRepository) UpsertProduct(
 	if userInterval == "" {
 		userInterval = string(paymentsqlc.PaymentProductUserIntervalUNLIMITED)
 	}
+
 	quantityMode := params.QuantityMode
 	if quantityMode == "" {
 		quantityMode = string(paymentsqlc.PaymentProductQuantityModeFixed)
 	}
+
 	target := params.Target
 	if len(target) == 0 {
 		target = []byte("null")
 	}
+
 	if (quantityMode != "fixed" && quantityMode != "flexible") ||
 		!validPaymentInterval(globalInterval) ||
 		!validPaymentInterval(userInterval) ||
@@ -321,6 +332,7 @@ func (r *PaymentRepository) UpsertProduct(
 			}); err != nil {
 				return err
 			}
+
 			return tx.RebuildProductCache(ctx, workspaceID, params.ID)
 		},
 	)
@@ -335,12 +347,15 @@ func (r *PaymentRepository) DeleteProduct(
 	if err != nil {
 		return 0, err
 	}
+
 	var rows int64
+
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(tx *PaymentRepository) error {
 			var err error
+
 			rows, err = tx.q.DeleteProduct(ctx, paymentsqlc.DeleteProductParams{
 				WorkspaceID: workspaceID,
 				ID:          id,
@@ -348,6 +363,7 @@ func (r *PaymentRepository) DeleteProduct(
 			if err != nil {
 				return err
 			}
+
 			_, err = tx.q.DeleteProductCache(
 				ctx,
 				paymentsqlc.DeleteProductCacheParams{
@@ -355,12 +371,14 @@ func (r *PaymentRepository) DeleteProduct(
 					ProductID:   id,
 				},
 			)
+
 			return err
 		},
 	)
 	if err != nil {
 		return 0, err
 	}
+
 	return rows, r.invalidateWorkspaceCache(workspaceID)
 }
 
@@ -372,6 +390,7 @@ func (r *PaymentRepository) UpsertLocalization(
 	if err != nil {
 		return err
 	}
+
 	return r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
@@ -387,6 +406,7 @@ func (r *PaymentRepository) UpsertLocalization(
 			); err != nil {
 				return err
 			}
+
 			return tx.RebuildWorkspaceProductCache(ctx, workspaceID)
 		},
 	)
@@ -402,12 +422,15 @@ func (r *PaymentRepository) DeleteLocalization(
 	if err != nil {
 		return 0, err
 	}
+
 	var rows int64
+
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(tx *PaymentRepository) error {
 			var err error
+
 			rows, err = tx.q.DeleteLocalization(
 				ctx,
 				paymentsqlc.DeleteLocalizationParams{
@@ -419,9 +442,11 @@ func (r *PaymentRepository) DeleteLocalization(
 			if err != nil {
 				return err
 			}
+
 			return tx.RebuildWorkspaceProductCache(ctx, workspaceID)
 		},
 	)
+
 	return rows, err
 }
 
@@ -433,16 +458,20 @@ func (r *PaymentRepository) UpsertProductItem(
 	if err != nil {
 		return err
 	}
+
 	if params.Quantity <= 0 || params.Scale > math.MaxInt16 {
 		return ErrInvalidItemQuantity
 	}
+
 	rewardType := params.RewardType
 	if rewardType == "" {
 		rewardType = "quantity"
 	}
+
 	if !validReward(rewardType, params.DurationUnit) {
 		return ErrInvalidReward
 	}
+
 	return r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
@@ -468,6 +497,7 @@ func (r *PaymentRepository) UpsertProductItem(
 			); err != nil {
 				return err
 			}
+
 			return tx.RebuildProductCache(ctx, workspaceID, params.ProductID)
 		},
 	)
@@ -477,9 +507,11 @@ func validReward(rewardType string, unit *string) bool {
 	if rewardType == "quantity" {
 		return unit == nil
 	}
+
 	if rewardType != "duration" || unit == nil {
 		return false
 	}
+
 	switch *unit {
 	case "second", "minute", "hour", "day", "week", "month", "year":
 		return true
@@ -492,6 +524,7 @@ func pointerString(value *string) string {
 	if value == nil {
 		return ""
 	}
+
 	return *value
 }
 
@@ -505,12 +538,15 @@ func (r *PaymentRepository) DeleteProductItem(
 	if err != nil {
 		return 0, err
 	}
+
 	var rows int64
+
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(tx *PaymentRepository) error {
 			var err error
+
 			rows, err = tx.q.DeleteProductItem(
 				ctx,
 				paymentsqlc.DeleteProductItemParams{
@@ -522,9 +558,11 @@ func (r *PaymentRepository) DeleteProductItem(
 			if err != nil {
 				return err
 			}
+
 			return tx.RebuildProductCache(ctx, workspaceID, productID)
 		},
 	)
+
 	return rows, err
 }
 
@@ -536,6 +574,7 @@ func (r *PaymentRepository) CreateProductPrice(
 	if err != nil {
 		return 0, err
 	}
+
 	startsAt := sqlwrap.ValueFromPtr(params.StartsAt)
 	if startsAt.IsZero() {
 		startsAt = time.Now().Add(-time.Minute)
@@ -545,6 +584,7 @@ func (r *PaymentRepository) CreateProductPrice(
 	if endsAt.IsZero() {
 		endsAt = time.Date(2124, 1, 1, 0, 0, 0, 0, time.UTC)
 	}
+
 	if strings.TrimSpace(params.ProductID) == "" ||
 		strings.TrimSpace(params.AssetCode) == "" ||
 		!startsAt.Before(endsAt) {
@@ -552,6 +592,7 @@ func (r *PaymentRepository) CreateProductPrice(
 	}
 
 	var id int64
+
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
@@ -573,6 +614,7 @@ func (r *PaymentRepository) CreateProductPrice(
 			if err != nil {
 				return err
 			}
+
 			if amounts.dynamic {
 				id, err = tx.createDynamicProductPrice(
 					ctx,
@@ -599,9 +641,11 @@ func (r *PaymentRepository) CreateProductPrice(
 					},
 				)
 			}
+
 			if err != nil {
 				return err
 			}
+
 			return tx.RebuildProductCache(ctx, workspaceID, params.ProductID)
 		},
 	)
@@ -620,6 +664,7 @@ func (r *PaymentRepository) UpdateProductPrice(
 	if err != nil {
 		return 0, err
 	}
+
 	startsAt := sqlwrap.ValueFromPtr(params.StartsAt)
 	if startsAt.IsZero() {
 		startsAt = time.Now().Add(-time.Minute)
@@ -629,6 +674,7 @@ func (r *PaymentRepository) UpdateProductPrice(
 	if endsAt.IsZero() {
 		endsAt = time.Date(2124, 1, 1, 0, 0, 0, 0, time.UTC)
 	}
+
 	if params.ID == 0 || params.ID > math.MaxInt64 ||
 		strings.TrimSpace(params.AssetCode) == "" ||
 		!startsAt.Before(endsAt) {
@@ -636,6 +682,7 @@ func (r *PaymentRepository) UpdateProductPrice(
 	}
 
 	var rows int64
+
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
@@ -650,6 +697,7 @@ func (r *PaymentRepository) UpdateProductPrice(
 			if err != nil {
 				return err
 			}
+
 			amounts, err := tx.resolveProductPriceAmounts(
 				ctx,
 				workspaceID,
@@ -667,6 +715,7 @@ func (r *PaymentRepository) UpdateProductPrice(
 			if err != nil {
 				return err
 			}
+
 			if amounts.dynamic {
 				rows, err = tx.updateDynamicProductPrice(
 					ctx,
@@ -695,12 +744,15 @@ func (r *PaymentRepository) UpdateProductPrice(
 					},
 				)
 			}
+
 			if err != nil {
 				return err
 			}
+
 			return tx.RebuildProductCache(ctx, workspaceID, productID)
 		},
 	)
+
 	return rows, err
 }
 
@@ -713,10 +765,13 @@ func (r *PaymentRepository) DeleteProductPrice(
 	if err != nil {
 		return 0, err
 	}
+
 	if id == 0 || id > math.MaxInt64 {
 		return 0, ErrInvalidPrice
 	}
+
 	var rows int64
+
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
@@ -731,6 +786,7 @@ func (r *PaymentRepository) DeleteProductPrice(
 			if err != nil {
 				return err
 			}
+
 			rows, err = tx.q.DeleteProductPrice(
 				ctx,
 				paymentsqlc.DeleteProductPriceParams{
@@ -741,8 +797,10 @@ func (r *PaymentRepository) DeleteProductPrice(
 			if err != nil {
 				return err
 			}
+
 			return tx.RebuildProductCache(ctx, workspaceID, productID)
 		},
 	)
+
 	return rows, err
 }

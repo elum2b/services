@@ -13,13 +13,13 @@ func (a *Platega) HandleWebhook(
 	ctx context.Context,
 	request WebhookRequest,
 ) (*WebhookResult, error) {
-
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
 	}
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	signatureValid := validateHeaders(request.Headers, request.Credentials)
@@ -28,6 +28,7 @@ func (a *Platega) HandleWebhook(
 	}
 
 	var payload callbackPayload
+
 	if err := json.Unmarshal(request.Raw, &payload); err != nil {
 		return nil, err
 	}
@@ -41,7 +42,6 @@ func (a *Platega) HandleWebhook(
 		signatureValid,
 		nil,
 	)
-
 }
 
 func (a *Platega) handlePayload(
@@ -55,18 +55,25 @@ func (a *Platega) handlePayload(
 ) (*WebhookResult, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	if payload.ID == "" {
 		return nil, ErrTransactionIDRequired
 	}
+
 	if !validTransactionStatus(payload.Status) {
 		return nil, ErrTransactionStateUnknown
 	}
+
 	amountMinor := uint64(0)
+
 	if payload.Status == StatusConfirmed ||
 		payload.Status == StatusChargebacked {
 		var err error
+
 		amountMinor, err = rubMinorFromMajor(payload.Amount)
+
 		if err != nil || amountMinor == 0 {
 			return nil, ErrAmountInvalid
 		}
@@ -99,6 +106,7 @@ func (a *Platega) handlePayload(
 			SignatureValid:    utils.Ref(signatureValid),
 		},
 	)
+
 	if err != nil && !isDuplicateEntry(err) {
 		return nil, err
 	}
@@ -118,6 +126,7 @@ func (a *Platega) handlePayload(
 			ProviderCode,
 			payload.ID,
 		)
+
 		return result, err
 	case StatusCanceled, StatusExpired, StatusFailed:
 		err := a.repository.FinalizeProviderAttempt(
@@ -130,6 +139,7 @@ func (a *Platega) handlePayload(
 				Status:            terminalStatus(payload.Status),
 			},
 		)
+
 		return result, err
 	case StatusChargebacked:
 		chargeback, err := a.repository.ApplyProviderChargeback(
@@ -146,8 +156,10 @@ func (a *Platega) handlePayload(
 		if err != nil {
 			return nil, err
 		}
+
 		result.AlreadyDone = chargeback.AlreadyDone
 		result.FulfilledID = utils.Ref(chargeback.FulfillmentID)
+
 		return result, nil
 	case StatusConfirmed:
 		// Completion is handled below so the returned fulfillment remains identical
@@ -170,8 +182,10 @@ func (a *Platega) handlePayload(
 	if err != nil {
 		return nil, err
 	}
+
 	result.AlreadyDone = completed.AlreadyDone
 	result.FulfilledID = uint64Ptr(completed.FulfillmentID)
+
 	return result, nil
 }
 
@@ -206,6 +220,8 @@ func uint64Ptr(value *int64) *uint64 {
 	if value == nil {
 		return nil
 	}
+
 	v := uint64(*value)
+
 	return utils.Ref(v)
 }

@@ -8,10 +8,12 @@ func (a *Admin) GetStats(
 ) (StatsModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	value, err := a.repository.GetStats(mergedCtx, workspaceID)
 	if err != nil {
 		return StatsModel{}, err
 	}
+
 	return StatsModel{
 		ItemsTotal: value.ItemsTotal, ItemsNotDeleted: value.ItemsNotDeleted,
 		ActiveItems: value.ActiveItems, DeletedItems: value.DeletedItems,

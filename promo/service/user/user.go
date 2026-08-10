@@ -43,6 +43,7 @@ func NewWithRepositoryOptions(
 	if err != nil {
 		repo = repository.NewWithOptions(db, options)
 	}
+
 	return &User{repository: repo, rootCtx: contextutil.Normalize(ctx)}
 }
 
@@ -50,6 +51,7 @@ func (u *User) Close() error {
 	if u == nil || u.repository == nil {
 		return nil
 	}
+
 	return u.repository.Close()
 }
 

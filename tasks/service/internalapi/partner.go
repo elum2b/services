@@ -76,6 +76,7 @@ func (i *Internal) OnPartnerCallback(
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return PartnerCallbackResult{}, err
 	}
+
 	if params.Provider == "" {
 		return PartnerCallbackResult{
 			Status: repository.ClaimStatusNotFound,
@@ -90,10 +91,14 @@ func (i *Internal) OnPartnerCallback(
 			issueID = parsed
 		}
 	}
+
 	if issueID == 0 {
-		var issue repository.PartnerIssue
-		var found bool
-		var err error
+		var (
+			issue repository.PartnerIssue
+			found bool
+			err   error
+		)
+
 		if params.ExternalClickID != "" {
 			issue, found, err = i.repository.GetPartnerIssueByExternalClickID(
 				mergedCtx,
@@ -127,6 +132,7 @@ func (i *Internal) OnPartnerCallback(
 				Status: repository.ClaimStatusNotFound,
 			}, nil
 		}
+
 		if err != nil {
 			if errors.Is(err, repository.ErrPartnerIssueAmbiguous) {
 				return PartnerCallbackResult{
@@ -136,15 +142,18 @@ func (i *Internal) OnPartnerCallback(
 
 			return PartnerCallbackResult{}, err
 		}
+
 		if !found {
 			return PartnerCallbackResult{
 				Status: repository.ClaimStatusNotFound,
 			}, nil
 		}
+
 		issueID = issue.ID
 		params.GroupKey = issue.GroupKey
 		params.Platform = issue.Platform
 	}
+
 	if params.GroupKey == "" || params.Platform == "" {
 		return PartnerCallbackResult{
 			Status: repository.ClaimStatusNotFound,
@@ -174,17 +183,20 @@ func (i *Internal) OnPartnerCallback(
 		if err != nil {
 			return PartnerCallbackResult{}, err
 		}
+
 		if issue.ID == 0 {
 			return PartnerCallbackResult{
 				Status: repository.ClaimStatusNotFound,
 			}, nil
 		}
+
 		if !changed {
 			return PartnerCallbackResult{
 				Status: issue.Status,
 				Issue:  &issue,
 			}, nil
 		}
+
 		return PartnerCallbackResult{Status: issue.Status, Issue: &issue}, nil
 	case PartnerCallbackStatusRevoked,
 		repository.PartnerIssueStatusRevokedAfterClaim,
@@ -203,17 +215,20 @@ func (i *Internal) OnPartnerCallback(
 		if err != nil {
 			return PartnerCallbackResult{}, err
 		}
+
 		if issue.ID == 0 {
 			return PartnerCallbackResult{
 				Status: repository.ClaimStatusNotFound,
 			}, nil
 		}
+
 		if !changed {
 			return PartnerCallbackResult{
 				Status: issue.Status,
 				Issue:  &issue,
 			}, nil
 		}
+
 		return PartnerCallbackResult{Status: issue.Status, Issue: &issue}, nil
 	default:
 		return PartnerCallbackResult{Status: "unsupported_status"}, nil
@@ -230,6 +245,7 @@ func (i *Internal) lookupPartnerIssueByPrivatePayloadList(
 		if item.Key == "" || item.Value == "" {
 			continue
 		}
+
 		issue, found, err := i.lookupPartnerIssueByPrivatePayload(
 			ctx,
 			params,
@@ -241,6 +257,7 @@ func (i *Internal) lookupPartnerIssueByPrivatePayloadList(
 			return issue, found, err
 		}
 	}
+
 	return repository.PartnerIssue{}, false, nil
 }
 
@@ -255,6 +272,7 @@ func (i *Internal) lookupPartnerIssueByPrivatePayload(
 		platformUserID == "" {
 		return repository.PartnerIssue{}, false, nil
 	}
+
 	return i.repository.GetPartnerIssueByPrivatePayloadUser(
 		ctx,
 		repository.PartnerIssuePrivatePayloadLookup{
@@ -281,17 +299,20 @@ func (i *Internal) HandlePartnerWebhook(
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return PartnerCallbackResult{}, err
 	}
+
 	if len(params.Body) > MaxPartnerWebhookBodyBytes {
 		return PartnerCallbackResult{}, fmt.Errorf(
 			"tasks partner webhook body exceeds %d bytes",
 			MaxPartnerWebhookBodyBytes,
 		)
 	}
+
 	if params.Secret == "" {
 		return PartnerCallbackResult{
 			Status: repository.ClaimStatusNotFound,
 		}, nil
 	}
+
 	config, found, err := i.repository.GetPartnerConfigByWebhookSecret(
 		mergedCtx,
 		params.WorkspaceID,
@@ -300,22 +321,26 @@ func (i *Internal) HandlePartnerWebhook(
 	if err != nil {
 		return PartnerCallbackResult{}, err
 	}
+
 	if !found || !config.IsEnabled {
 		return PartnerCallbackResult{
 			Status: repository.ClaimStatusNotFound,
 		}, nil
 	}
+
 	if i.runtime == nil {
 		return PartnerCallbackResult{}, fmt.Errorf(
 			"tasks partner runtime is not configured",
 		)
 	}
+
 	bodyMap := map[string]any{}
 	if len(params.Body) != 0 {
 		if err := json.Unmarshal(params.Body, &bodyMap); err != nil {
 			bodyMap = map[string]any{"raw": string(params.Body)}
 		}
 	}
+
 	result, err := i.runtime.Handle(
 		mergedCtx,
 		config.Provider,
@@ -335,18 +360,22 @@ func (i *Internal) HandlePartnerWebhook(
 	if err != nil {
 		return PartnerCallbackResult{}, err
 	}
+
 	if ok, _ := result["ok"].(bool); !ok {
 		return PartnerCallbackResult{
 			Status: firstWebhookString(result["error"], "unsupported_callback"),
 		}, nil
 	}
+
 	if callbacks, ok := result["callbacks"].([]any); ok {
 		var last PartnerCallbackResult
+
 		for _, item := range callbacks {
 			callback, ok := item.(map[string]any)
 			if !ok {
 				continue
 			}
+
 			last, err = i.applyPartnerWebhookCallback(
 				mergedCtx,
 				config,
@@ -358,11 +387,14 @@ func (i *Internal) HandlePartnerWebhook(
 				return PartnerCallbackResult{}, err
 			}
 		}
+
 		if last.Status == "" {
 			return PartnerCallbackResult{Status: "processed"}, nil
 		}
+
 		return last, nil
 	}
+
 	return i.applyPartnerWebhookCallback(
 		mergedCtx,
 		config,
@@ -383,13 +415,16 @@ func (i *Internal) applyPartnerWebhookCallback(
 	if status == "complete" {
 		status = repository.PartnerIssueStatusCompleted
 	}
+
 	if status == "" && webhookBool(result["completed"]) {
 		status = repository.PartnerIssueStatusCompleted
 	}
+
 	payload := webhookRaw(result["payload"])
 	if len(payload) == 0 {
 		payload = fallbackPayload
 	}
+
 	return i.OnPartnerCallback(ctx, PartnerCallbackParams{
 		WorkspaceID: config.WorkspaceID,
 		Provider:    config.Provider,
@@ -442,6 +477,7 @@ func stringMapToAny(values map[string]string) map[string]any {
 	for key, value := range values {
 		out[key] = value
 	}
+
 	return out
 }
 
@@ -449,10 +485,13 @@ func rawObject(raw json.RawMessage) map[string]any {
 	if len(raw) == 0 {
 		return map[string]any{}
 	}
+
 	var out map[string]any
+
 	if err := json.Unmarshal(raw, &out); err != nil || out == nil {
 		return map[string]any{}
 	}
+
 	return out
 }
 
@@ -460,10 +499,12 @@ func webhookRaw(value any) json.RawMessage {
 	if value == nil {
 		return nil
 	}
+
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return nil
 	}
+
 	return raw
 }
 
@@ -481,21 +522,26 @@ func webhookLookup(result map[string]any) PartnerCallbackLookup {
 		PrivatePayload: []PartnerCallbackLookupItem{},
 	}
 	privatePayload, _ := lookupMap["private_payload"].([]any)
+
 	for _, value := range privatePayload {
 		item, _ := value.(map[string]any)
 		key := firstWebhookString(item["key"])
 		text := firstWebhookString(item["value"])
+
 		if key == "" || text == "" {
 			continue
 		}
+
 		lookup.PrivatePayload = append(
 			lookup.PrivatePayload,
 			PartnerCallbackLookupItem{Key: key, Value: text},
 		)
 	}
+
 	if len(lookup.PrivatePayload) == 0 {
 		lookup.PrivatePayload = nil
 	}
+
 	return lookup
 }
 
@@ -516,6 +562,7 @@ func firstWebhookString(values ...any) string {
 			}
 		}
 	}
+
 	return ""
 }
 
@@ -533,6 +580,7 @@ func webhookUint64(value any) uint64 {
 		parsed, _ := strconv.ParseUint(strings.TrimSpace(typed), 10, 64)
 		return parsed
 	}
+
 	return 0
 }
 
@@ -543,6 +591,7 @@ func webhookBool(value any) bool {
 	case string:
 		return typed == "true" || typed == "1"
 	}
+
 	return false
 }
 
@@ -550,5 +599,6 @@ func stringPtrValue(value *string) string {
 	if value == nil {
 		return ""
 	}
+
 	return *value
 }

@@ -7,10 +7,12 @@ import (
 
 func TestNormalizeWalletAddressAcceptsFriendlyAndRaw(t *testing.T) {
 	raw := "0:0000000000000000000000000000000000000000000000000000000000000000"
+
 	mainnet, err := NormalizeWalletAddress(raw, NetworkMainnet)
 	if err != nil {
 		t.Fatalf("normalize raw mainnet: %v", err)
 	}
+
 	if mainnet != "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c" {
 		t.Fatalf("unexpected normalized mainnet address: %s", mainnet)
 	}
@@ -22,6 +24,7 @@ func TestNormalizeWalletAddressAcceptsFriendlyAndRaw(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normalize friendly mainnet: %v", err)
 	}
+
 	if friendly != "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ" {
 		t.Fatalf("unexpected normalized friendly address: %s", friendly)
 	}
@@ -30,6 +33,7 @@ func TestNormalizeWalletAddressAcceptsFriendlyAndRaw(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normalize raw testnet: %v", err)
 	}
+
 	if testnet == mainnet {
 		t.Fatalf("expected testnet flag to change normalized address")
 	}
@@ -47,10 +51,12 @@ func TestNormalizeWalletAddressRejectsInvalid(t *testing.T) {
 func TestCreateTransactionAcceptsRawDestination(t *testing.T) {
 	api := &TON{rootCtx: context.Background()}
 	raw := "0:0000000000000000000000000000000000000000000000000000000000000000"
+
 	expected, err := NormalizeWalletAddress(raw, NetworkMainnet)
 	if err != nil {
 		t.Fatalf("normalize raw destination: %v", err)
 	}
+
 	tx, err := api.CreateTransaction(
 		context.Background(),
 		CreateTransactionParams{
@@ -64,6 +70,7 @@ func TestCreateTransactionAcceptsRawDestination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create ton transaction: %v", err)
 	}
+
 	if tx.Address != expected {
 		t.Fatalf("transaction address = %s, want %s", tx.Address, expected)
 	}

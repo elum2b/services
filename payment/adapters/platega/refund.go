@@ -24,18 +24,17 @@ func (a *Platega) Execute(
 	ctx context.Context,
 	params RefundParams,
 ) (RefundResult, error) {
-
 	if a == nil {
 		return RefundResult{}, ErrNotInitialized
 	}
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 	if params.Executor != nil {
 		return params.Executor(ctx, params)
 	}
 
 	return RefundResult{}, ErrRefundUnsupported
-
 }

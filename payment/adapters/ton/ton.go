@@ -52,6 +52,7 @@ func NewWithOptions(
 	if err != nil {
 		repo = repository.NewPaymentRepositoryWithOptions(db, options)
 	}
+
 	return &TON{
 		repository:  repo,
 		rootCtx:     ctx,
@@ -65,15 +66,20 @@ func (a *TON) Close() error {
 	if a == nil {
 		return nil
 	}
+
 	a.mu.Lock()
+
 	if a.managedCancel != nil {
 		a.managedCancel()
 	}
+
 	done := a.managedDone
 	subs := make([]*Sub, 0, len(a.subscribers))
+
 	for sub := range a.subscribers {
 		subs = append(subs, sub)
 	}
+
 	a.mu.Unlock()
 
 	if done != nil {
@@ -82,6 +88,7 @@ func (a *TON) Close() error {
 		case <-time.After(5 * time.Second):
 		}
 	}
+
 	if a.goroutines != nil {
 		a.goroutines.Close()
 	}
@@ -93,6 +100,7 @@ func (a *TON) Close() error {
 	if a.repository == nil {
 		return nil
 	}
+
 	return a.repository.Close()
 }
 
@@ -102,6 +110,7 @@ func (a *TON) bindContext(
 	if a == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}
+
 	return contextutil.Merge(a.rootCtx, ctx)
 }
 
@@ -115,7 +124,9 @@ func (a *TON) registerSubscriber(sub *Sub) {
 	if a == nil || sub == nil {
 		return
 	}
+
 	a.mu.Lock()
+
 	a.subscribers[sub] = struct{}{}
 	a.mu.Unlock()
 }
@@ -124,6 +135,7 @@ func (a *TON) unregisterSubscriber(sub *Sub) {
 	if a == nil || sub == nil {
 		return
 	}
+
 	a.mu.Lock()
 	delete(a.subscribers, sub)
 	a.mu.Unlock()

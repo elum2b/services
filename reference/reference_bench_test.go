@@ -25,12 +25,15 @@ var (
 func BenchmarkReferenceServiceMethods(b *testing.B) {
 	service := newReferenceTestService(b)
 	ctx := context.Background()
+
 	for index := range 1000 {
 		key := fmt.Sprintf("item.%04d", index)
 		itemType := repository.ItemTypeQuantity
+
 		if index%2 == 1 {
 			itemType = repository.ItemTypeDuration
 		}
+
 		if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
 			WorkspaceID: referenceBenchmarkWorkspace,
 			Key:         key,
@@ -42,6 +45,7 @@ func BenchmarkReferenceServiceMethods(b *testing.B) {
 		}); err != nil {
 			b.Fatal(err)
 		}
+
 		if err := service.Admin.UpsertLocalization(
 			ctx,
 			admin.SaveLocalizationParams{
@@ -55,6 +59,7 @@ func BenchmarkReferenceServiceMethods(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+
 	resolveKeys := make([]string, 0, 100)
 	for index := range 100 {
 		resolveKeys = append(resolveKeys, fmt.Sprintf("item.%04d", index))
@@ -127,6 +132,7 @@ func BenchmarkReferenceUserGetCacheModes(b *testing.B) {
 
 	prepare := func(b *testing.B, serviceAdmin *admin.Admin) {
 		b.Helper()
+
 		if err := serviceAdmin.CreateItem(ctx, admin.SaveItemParams{
 			WorkspaceID: referenceBenchmarkWorkspace,
 			Key:         "item.0500",
@@ -136,6 +142,7 @@ func BenchmarkReferenceUserGetCacheModes(b *testing.B) {
 		}); err != nil {
 			b.Fatal(err)
 		}
+
 		if err := serviceAdmin.UpsertLocalization(
 			ctx,
 			admin.SaveLocalizationParams{
@@ -159,6 +166,7 @@ func BenchmarkReferenceUserGetCacheModes(b *testing.B) {
 		prepare(b, service.Admin)
 		b.ReportAllocs()
 		b.ResetTimer()
+
 		for range b.N {
 			_, err := service.User.Get(ctx, user.GetParams{
 				WorkspaceID: referenceBenchmarkWorkspace,
@@ -180,6 +188,7 @@ func BenchmarkReferenceUserGetCacheModes(b *testing.B) {
 			},
 		)
 		prepare(b, service.Admin)
+
 		_, err := service.User.Get(ctx, user.GetParams{
 			WorkspaceID: referenceBenchmarkWorkspace,
 			Key:         "item.0500",
@@ -188,6 +197,7 @@ func BenchmarkReferenceUserGetCacheModes(b *testing.B) {
 		benchError(b, err)
 		b.ReportAllocs()
 		b.ResetTimer()
+
 		for range b.N {
 			_, err := service.User.Get(ctx, user.GetParams{
 				WorkspaceID: referenceBenchmarkWorkspace,
@@ -202,6 +212,7 @@ func BenchmarkReferenceUserGetCacheModes(b *testing.B) {
 func BenchmarkReferenceImportExport(b *testing.B) {
 	service := newReferenceTestService(b)
 	ctx := context.Background()
+
 	for index := range 1000 {
 		key := fmt.Sprintf("export.%04d", index)
 		if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
@@ -215,6 +226,7 @@ func BenchmarkReferenceImportExport(b *testing.B) {
 		}); err != nil {
 			b.Fatal(err)
 		}
+
 		if err := service.Admin.UpsertLocalization(
 			ctx,
 			admin.SaveLocalizationParams{
@@ -228,6 +240,7 @@ func BenchmarkReferenceImportExport(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+
 	pkg, err := service.Admin.Export(
 		ctx,
 		referenceBenchmarkImportWorkspace,
@@ -262,6 +275,7 @@ func BenchmarkReferenceImportExport(b *testing.B) {
 
 func benchError(b *testing.B, err error) {
 	b.Helper()
+
 	if err != nil {
 		b.Fatal(err)
 	}

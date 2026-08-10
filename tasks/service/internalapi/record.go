@@ -29,5 +29,6 @@ func (i *Internal) Record(
 ) (RecordResult, error) {
 	mergedCtx, cancel := i.withContext(ctx)
 	defer cancel()
+
 	return i.repository.Record(mergedCtx, repository.RecordParams(params))
 }

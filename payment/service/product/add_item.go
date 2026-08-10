@@ -19,6 +19,7 @@ type AddItemParams struct {
 func (a *Product) AddItem(ctx context.Context, params AddItemParams) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	return a.repository.UpsertProductItem(

@@ -106,14 +106,17 @@ func (d *Delivery) Deliver(ctx context.Context, message Message) error {
 	if err != nil {
 		return err
 	}
+
 	req, err := newRequest(ctx, endpoint, message)
 	if err != nil {
 		return err
 	}
+
 	response, err := d.client.Do(req)
 	if err != nil {
 		return err
 	}
+
 	return validateResponse(response)
 }
 
@@ -125,12 +128,15 @@ func (d *Delivery) endpoint(
 	if err != nil {
 		return Endpoint{}, err
 	}
+
 	if !endpoint.IsEnabled {
 		return Endpoint{}, ErrDestinationDisabled
 	}
+
 	if _, err := validateURL(ctx, endpoint.URL); err != nil {
 		return Endpoint{}, err
 	}
+
 	return endpoint, nil
 }
 
@@ -140,6 +146,7 @@ func newRequest(
 	message Message,
 ) (*http.Request, error) {
 	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
+
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
@@ -149,6 +156,7 @@ func newRequest(
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Delivery-Event", message.EventType)
 	req.Header.Set("X-Delivery-Idempotency-Key", message.IdempotencyKey)
@@ -162,10 +170,12 @@ func newRequest(
 			message.Payload,
 		),
 	)
+
 	return req, nil
 }
 func validateResponse(response *http.Response) error {
 	defer response.Body.Close()
+
 	_, _ = io.Copy(
 		io.Discard,
 		io.LimitReader(response.Body, maxResponseBodySize),
@@ -173,11 +183,13 @@ func validateResponse(response *http.Response) error {
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
 		return nil
 	}
+
 	if response.StatusCode >= 400 && response.StatusCode < 500 &&
 		response.StatusCode != http.StatusRequestTimeout &&
 		response.StatusCode != http.StatusTooManyRequests {
 		return fmt.Errorf("%w: %s", ErrPermanentResponse, response.Status)
 	}
+
 	return fmt.Errorf("delivery endpoint returned %s", response.Status)
 }
 
@@ -254,6 +266,7 @@ func secureDial(
 }
 func publicAddress(value netip.Addr) bool {
 	value = value.Unmap()
+
 	return value.IsValid() && !value.IsLoopback() && !value.IsPrivate() &&
 		!value.IsLinkLocalUnicast() &&
 		!value.IsLinkLocalMulticast() &&

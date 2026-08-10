@@ -25,6 +25,7 @@ func (r *Repository) GetStats(
 	if err != nil {
 		return Stats{}, err
 	}
+
 	codeStats, err := r.q.AdminGetCodeStats(
 		ctx,
 		cpasqlc.AdminGetCodeStatsParams{
@@ -35,6 +36,7 @@ func (r *Repository) GetStats(
 	if err != nil {
 		return Stats{}, err
 	}
+
 	return Stats{
 		AssignmentsTotal: uint64(assignmentStats.AssignmentsTotal),
 		IssuedTotal:      uint64(assignmentStats.IssuedTotal),
@@ -56,6 +58,7 @@ func (r *Repository) ListDailyStats(
 	if err := requireScope(workspaceID, cpaID); err != nil {
 		return nil, err
 	}
+
 	if from.IsZero() || until.IsZero() || from.After(until) {
 		return nil, ErrInvalidDateRange
 	}
@@ -69,6 +72,7 @@ func (r *Repository) ListDailyStats(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]DailyStats, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, DailyStats{
@@ -78,6 +82,7 @@ func (r *Repository) ListDailyStats(
 			UniqueUsers:    uint64(row.UniqueUsers),
 		})
 	}
+
 	return result, nil
 }
 
@@ -89,6 +94,7 @@ func (r *Repository) RefreshDailyStats(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return err
 	}
+
 	if from.IsZero() || until.IsZero() || from.After(until) {
 		return ErrInvalidDateRange
 	}

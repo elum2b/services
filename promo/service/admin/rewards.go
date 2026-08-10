@@ -25,6 +25,7 @@ func (a *Admin) UpsertReward(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	rewardType, err := validateReward(
 		params.Key,
 		params.Type,
@@ -34,12 +35,15 @@ func (a *Admin) UpsertReward(
 	if err != nil {
 		return err
 	}
+
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return err
 	}
+
 	if params.PromoID == 0 {
 		return ErrRewardRequired
 	}
+
 	if params.PromoID > math.MaxInt64 || params.Scale > math.MaxInt16 {
 		return ErrPromoNumberOutOfRange
 	}
@@ -66,10 +70,12 @@ func (a *Admin) GetReward(
 ) (user.RewardModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	value, err := a.repository.GetReward(mergedCtx, workspaceID, promoID, key)
 	if err != nil {
 		return user.RewardModel{}, err
 	}
+
 	return user.RewardModel{
 		Key:      value.Key,
 		Type:     value.Type,
@@ -86,10 +92,12 @@ func (a *Admin) ListRewards(
 ) ([]user.RewardModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	values, err := a.repository.ListRewards(mergedCtx, workspaceID, promoID)
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]user.RewardModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, user.RewardModel{
@@ -100,6 +108,7 @@ func (a *Admin) ListRewards(
 			Unit:     value.Unit,
 		})
 	}
+
 	return result, nil
 }
 
@@ -111,12 +120,15 @@ func (a *Admin) DeleteReward(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return 0, err
 	}
+
 	if promoID == 0 || key == "" {
 		return 0, ErrRewardRequired
 	}
+
 	if promoID > math.MaxInt64 {
 		return 0, ErrPromoNumberOutOfRange
 	}
@@ -132,9 +144,11 @@ func validateReward(
 	if key == "" || quantity <= 0 {
 		return "", ErrRewardRequired
 	}
+
 	if rewardType == "" {
 		rewardType = "quantity"
 	}
+
 	switch rewardType {
 	case "quantity":
 		if unit != nil {
@@ -147,6 +161,7 @@ func validateReward(
 	default:
 		return "", ErrRewardTypeUnsupported
 	}
+
 	return rewardType, nil
 }
 

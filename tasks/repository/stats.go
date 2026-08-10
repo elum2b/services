@@ -86,6 +86,7 @@ func (r *Repository) GetStats(
 	if err != nil {
 		return Stats{}, err
 	}
+
 	return Stats{
 		TasksTotal: uint64(
 			row.TasksTotal,
@@ -139,6 +140,7 @@ func (r *Repository) GetSingleTaskStats(
 	if err != nil {
 		return SingleTaskStats{}, err
 	}
+
 	return SingleTaskStats{
 		TaskID:        uint64(row.TaskID),
 		ProgressTotal: uint64(row.ProgressTotal),
@@ -189,6 +191,7 @@ func (r *Repository) ListDailyStats(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]DailyStats, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, DailyStats{
@@ -212,6 +215,7 @@ func (r *Repository) ListDailyStats(
 			UniqueClaimers: uint64(row.UniqueClaimers),
 		})
 	}
+
 	return result, nil
 }
 
@@ -240,6 +244,7 @@ func (r *Repository) ListDailyOverview(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]DailyOverview, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, DailyOverview{
@@ -267,6 +272,7 @@ func (r *Repository) ListDailyOverview(
 			UniqueClaimers: uint64(row.UniqueClaimers),
 		})
 	}
+
 	return result, nil
 }
 
@@ -278,6 +284,7 @@ func (r *Repository) RefreshDailyStats(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if from.IsZero() || until.IsZero() || from.After(until) {
 		return fmt.Errorf("tasks stats workspace or date range is invalid")
 	}
@@ -292,6 +299,7 @@ func (r *Repository) RefreshDailyStats(
 	); err != nil {
 		return err
 	}
+
 	return r.q.RefreshTaskDailyOverview(
 		ctx,
 		tasksqlc.RefreshTaskDailyOverviewParams{

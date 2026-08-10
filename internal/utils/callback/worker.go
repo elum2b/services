@@ -84,10 +84,13 @@ func (s *Store) On(ctx context.Context, handler Handler, opts ...Option) error {
 	if s == nil {
 		return ErrStoreNotConfigured
 	}
+
 	if handler == nil {
 		return errors.New("callback: handler is nil")
 	}
+
 	options := defaultOptions()
+
 	for _, opt := range opts {
 		if opt != nil {
 			opt(&options)
@@ -98,6 +101,7 @@ func (s *Store) On(ctx context.Context, handler Handler, opts ...Option) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+
 		events, err := s.LeaseEvents(ctx, LeaseParams{
 			SourceService: options.sourceService,
 			WorkerID:      options.workerID,
@@ -107,12 +111,15 @@ func (s *Store) On(ctx context.Context, handler Handler, opts ...Option) error {
 		if err != nil {
 			return err
 		}
+
 		if len(events) == 0 {
 			if err := sleepContext(ctx, options.idleDelay); err != nil {
 				return err
 			}
+
 			continue
 		}
+
 		for _, event := range events {
 			if err := s.handleEvent(
 				ctx,
@@ -130,6 +137,7 @@ func (ctx Context) Successful() error {
 	if err := ctx.mark(); err != nil {
 		return err
 	}
+
 	return ctx.store.MarkOK(ctx.Context, ctx.EventID, ctx.workerID)
 }
 
@@ -141,6 +149,7 @@ func (ctx Context) FailedWithError(message string) error {
 	if err := ctx.mark(); err != nil {
 		return err
 	}
+
 	return ctx.store.MarkFailed(ctx.Context, FailParams{
 		ID:       ctx.EventID,
 		WorkerID: ctx.workerID,
@@ -157,6 +166,7 @@ func (ctx Context) CanceledWithReason(reason string) error {
 	if err := ctx.mark(); err != nil {
 		return err
 	}
+
 	return ctx.store.MarkReject(ctx.Context, ctx.EventID, ctx.workerID, reason)
 }
 
@@ -168,10 +178,13 @@ func (ctx Context) mark() error {
 	if ctx.marked == nil {
 		return errors.New("callback: context is not initialized")
 	}
+
 	if *ctx.marked {
 		return ErrAlreadyMarked
 	}
+
 	*ctx.marked = true
+
 	return nil
 }
 
@@ -197,9 +210,11 @@ func (s *Store) handleEvent(
 		marked:             &marked,
 	}
 	err := handler(callbackCtx)
+
 	if marked {
 		return err
 	}
+
 	if err != nil {
 		return s.MarkFailed(ctx, FailParams{
 			ID:       uint64(event.ID),
@@ -208,6 +223,7 @@ func (s *Store) handleEvent(
 			Attempt:  uint32(event.AttemptCount),
 		})
 	}
+
 	return s.MarkFailed(ctx, FailParams{
 		ID:       uint64(event.ID),
 		WorkerID: workerID,
@@ -229,8 +245,11 @@ func sleepContext(ctx context.Context, delay time.Duration) error {
 	if delay <= 0 {
 		delay = defaultIdleDelay
 	}
+
 	timer := time.NewTimer(delay)
+
 	defer timer.Stop()
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

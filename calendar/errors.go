@@ -37,6 +37,7 @@ func wrapLifecycleError(err error) error {
 	if err == nil {
 		return nil
 	}
+
 	if errors.Is(err, ErrServiceNil) ||
 		errors.Is(err, ErrServiceRunning) ||
 		errors.Is(err, ErrDatabaseConfigRequired) ||
@@ -46,6 +47,7 @@ func wrapLifecycleError(err error) error {
 		serviceerrors.IsStructured(err) {
 		return err
 	}
+
 	return serviceerrors.Wrap(
 		serviceerrors.CodeInternalError,
 		"calendar operation failed",

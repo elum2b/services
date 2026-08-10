@@ -87,6 +87,7 @@ func (r *Repository) Export(
 	}
 
 	var result ExportPackage
+
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if _, err := txRepo.executor.ExecContext(
 			ctx,
@@ -96,9 +97,12 @@ func (r *Repository) Export(
 		}
 
 		var err error
+
 		result, err = txRepo.exportSnapshot(ctx, workspaceID, req)
+
 		return err
 	})
+
 	return result, err
 }
 
@@ -111,7 +115,9 @@ func (r *Repository) exportSnapshot(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	sections := exportSections(req.Sections)
+
 	groups, err := repositoryValue(
 		ctx,
 		r,
@@ -122,7 +128,9 @@ func (r *Repository) exportSnapshot(
 	if err != nil {
 		return ExportPackage{}, err
 	}
+
 	var groupLocalizations []tasksqlc.TaskGroupLocalization
+
 	if sections[ExportSectionLocalization] {
 		groupLocalizations, err = repositoryValue(
 			ctx,
@@ -135,7 +143,9 @@ func (r *Repository) exportSnapshot(
 			return ExportPackage{}, err
 		}
 	}
+
 	var sequences []tasksqlc.TaskSequence
+
 	if sections[ExportSectionSequences] {
 		sequences, err = repositoryValue(
 			ctx,
@@ -148,7 +158,9 @@ func (r *Repository) exportSnapshot(
 			return ExportPackage{}, err
 		}
 	}
+
 	var taskRows []tasksqlc.TaskDefinition
+
 	if sections[ExportSectionTasks] {
 		taskRows, err = repositoryValue(
 			ctx,
@@ -161,7 +173,9 @@ func (r *Repository) exportSnapshot(
 			return ExportPackage{}, err
 		}
 	}
+
 	var taskLocalizations []tasksqlc.TaskLocalization
+
 	if sections[ExportSectionLocalization] {
 		taskLocalizations, err = repositoryValue(
 			ctx,
@@ -174,7 +188,9 @@ func (r *Repository) exportSnapshot(
 			return ExportPackage{}, err
 		}
 	}
+
 	var rewardRows []tasksqlc.TaskReward
+
 	if sections[ExportSectionRewards] {
 		rewardRows, err = repositoryValue(
 			ctx,
@@ -187,7 +203,9 @@ func (r *Repository) exportSnapshot(
 			return ExportPackage{}, err
 		}
 	}
+
 	var partnerConfigs []tasksqlc.TaskPartnerConfig
+
 	if sections[ExportSectionPartnerConfigs] {
 		partnerConfigs, err = repositoryValue(
 			ctx,
@@ -200,7 +218,9 @@ func (r *Repository) exportSnapshot(
 			return ExportPackage{}, err
 		}
 	}
+
 	var partnerRewards []tasksqlc.TaskPartnerRewardRule
+
 	if sections[ExportSectionPartnerRewards] {
 		partnerRewards, err = repositoryValue(
 			ctx,
@@ -213,7 +233,9 @@ func (r *Repository) exportSnapshot(
 			return ExportPackage{}, err
 		}
 	}
+
 	var complexConditions []tasksqlc.TaskComplexCondition
+
 	if sections[ExportSectionComplex] {
 		complexConditions, err = repositoryValue(
 			ctx,
@@ -239,6 +261,7 @@ func (r *Repository) exportSnapshot(
 		),
 		Sequences: make([]ExportSequence, 0, len(sequences)),
 	}
+
 	for _, group := range groups {
 		exportGroup := ExportGroup{
 			Key:      group.Key,
@@ -248,22 +271,27 @@ func (r *Repository) exportSnapshot(
 		if sections[ExportSectionLocalization] {
 			exportGroup.Localization = make(map[string]ExportText)
 		}
+
 		if sections[ExportSectionTasks] {
 			exportGroup.Tasks = make([]ExportTask, 0)
 		}
+
 		out.Groups = append(out.Groups, exportGroup)
 		groupIndexByKey[group.Key] = len(out.Groups) - 1
 	}
+
 	for _, item := range groupLocalizations {
 		index, ok := groupIndexByKey[item.GroupKey]
 		if !ok {
 			continue
 		}
+
 		out.Groups[index].Localization[item.Locale] = ExportText{
 			Title:       item.Title,
 			Description: item.Description,
 		}
 	}
+
 	for _, sequence := range sequences {
 		out.Sequences = append(out.Sequences, ExportSequence{
 			Key:      sequence.Key,
@@ -273,22 +301,27 @@ func (r *Repository) exportSnapshot(
 	}
 
 	taskLocalizationsByID := make(map[uint64]map[string]ExportText)
+
 	for _, item := range taskLocalizations {
 		taskID := uint64(item.TaskID)
 		if taskLocalizationsByID[taskID] == nil {
 			taskLocalizationsByID[taskID] = make(map[string]ExportText)
 		}
+
 		taskLocalizationsByID[taskID][item.Locale] = ExportText{
 			Title:       item.Title,
 			Description: item.Description,
 		}
 	}
+
 	rewardsByTaskID := make(map[uint64][]ExportReward)
+
 	for _, reward := range rewardRows {
 		taskID := uint64(reward.TaskID)
+
 		rewardsByTaskID[taskID] = append(rewardsByTaskID[taskID], ExportReward{
 			Key:      reward.RewardKey,
-			Type:     string(reward.RewardType),
+			Type:     reward.RewardType,
 			Quantity: reward.Quantity,
 			Scale: uint16(
 				reward.Scale,
@@ -297,18 +330,23 @@ func (r *Repository) exportSnapshot(
 			Position: reward.Position,
 		})
 	}
+
 	taskKeyByID := make(map[uint64]string, len(taskRows))
 	for _, row := range taskRows {
 		taskKeyByID[uint64(row.ID)] = row.Key
 	}
+
 	conditionsByParentID := make(map[uint64][]ExportCondition)
+
 	for _, condition := range complexConditions {
 		conditionTaskID := uint64(condition.ConditionTaskID)
 		parentTaskID := uint64(condition.ParentTaskID)
 		taskKey, ok := taskKeyByID[conditionTaskID]
+
 		if !ok {
 			continue
 		}
+
 		conditionsByParentID[parentTaskID] = append(
 			conditionsByParentID[parentTaskID],
 			ExportCondition{
@@ -319,22 +357,27 @@ func (r *Repository) exportSnapshot(
 			},
 		)
 	}
+
 	for _, row := range taskRows {
 		index, ok := groupIndexByKey[row.GroupKey]
 		if !ok {
 			continue
 		}
+
 		task := mapTask(row)
 		sequenceKey := task.SequenceKey
 		sequencePosition := task.SequencePosition
+
 		if !sections[ExportSectionSequences] {
 			sequenceKey = nil
 			sequencePosition = nil
 		}
+
 		target := nullableRaw(task.Target)
 		if !sections[ExportSectionTarget] {
 			target = nil
 		}
+
 		integration := ExportIntegration{}
 		if sections[ExportSectionIntegration] {
 			integration = ExportIntegration{
@@ -342,6 +385,7 @@ func (r *Repository) exportSnapshot(
 				Payload: nullableRaw(task.IntegrationPayload),
 			}
 		}
+
 		out.Groups[index].Tasks = append(out.Groups[index].Tasks, ExportTask{
 			Key:              task.Key,
 			SequenceKey:      sequenceKey,
@@ -370,19 +414,23 @@ func (r *Repository) exportSnapshot(
 			Conditions:   conditionsByParentID[task.ID],
 		})
 	}
+
 	for _, row := range partnerConfigs {
 		index, ok := groupIndexByKey[row.GroupKey]
 		if !ok {
 			continue
 		}
+
 		config, err := r.mapPartnerConfig(row)
 		if err != nil {
 			return ExportPackage{}, err
 		}
+
 		target := nullableRaw(config.Target)
 		if !sections[ExportSectionTarget] {
 			target = nil
 		}
+
 		out.Groups[index].PartnerConfigs = append(
 			out.Groups[index].PartnerConfigs,
 			ExportPartnerConfig{
@@ -399,11 +447,13 @@ func (r *Repository) exportSnapshot(
 			},
 		)
 	}
+
 	for _, row := range partnerRewards {
 		index, ok := groupIndexByKey[row.GroupKey]
 		if !ok {
 			continue
 		}
+
 		out.Groups[index].PartnerRewardRules = append(
 			out.Groups[index].PartnerRewardRules,
 			ExportPartnerRewardRule{
@@ -413,7 +463,7 @@ func (r *Repository) exportSnapshot(
 				IsEnabled:    row.IsEnabled,
 				Reward: ExportReward{
 					Key:      row.RewardKey,
-					Type:     string(row.RewardType),
+					Type:     row.RewardType,
 					Quantity: row.Quantity,
 					Scale: uint16(
 						row.Scale,
@@ -424,6 +474,7 @@ func (r *Repository) exportSnapshot(
 			},
 		)
 	}
+
 	return out, nil
 }
 
@@ -441,16 +492,21 @@ func exportSections(values []string) map[string]bool {
 		ExportSectionComplex,
 	}
 	out := make(map[string]bool, len(all))
+
 	if len(values) == 0 {
 		for _, value := range all {
 			out[value] = true
 		}
+
 		return out
 	}
+
 	for _, value := range values {
 		out[value] = true
 	}
+
 	out[ExportSectionGroups] = true
+
 	return out
 }
 
@@ -458,6 +514,7 @@ func exportSecret(config PartnerConfig, includeValue bool) *ExportSecret {
 	if config.Secret == nil || *config.Secret == "" {
 		return nil
 	}
+
 	secret := &ExportSecret{
 		Mode: "required",
 		Key: partnerSecretImportKey(
@@ -469,6 +526,7 @@ func exportSecret(config PartnerConfig, includeValue bool) *ExportSecret {
 	if includeValue {
 		secret.Value = config.Secret
 	}
+
 	return secret
 }
 
@@ -479,6 +537,7 @@ func exportWebhookSecret(
 	if config.WebhookSecret == nil || *config.WebhookSecret == "" {
 		return nil
 	}
+
 	secret := &ExportSecret{
 		Mode: "required",
 		Key: partnerWebhookSecretImportKey(
@@ -490,6 +549,7 @@ func exportWebhookSecret(
 	if includeValue {
 		secret.Value = config.WebhookSecret
 	}
+
 	return secret
 }
 
@@ -497,6 +557,7 @@ func nullableRaw(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
 	}
+
 	return raw
 }
 

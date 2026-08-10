@@ -9,8 +9,6 @@ import (
 	"github.com/elum2b/services/tasks/service/user"
 )
 
-const defaultCacheDelay = 10 * time.Minute
-
 type Storage interface {
 	GetWithTTL(key string) (val []byte, ttl time.Duration, err error)
 	Set(key string, val []byte, exp time.Duration) error

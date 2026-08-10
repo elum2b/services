@@ -17,7 +17,6 @@ func (u *User) GetCode(
 	ctx context.Context,
 	params GetCodeParams,
 ) (GetCodeResult, error) {
-
 	mergedCtx, cancel := u.withContext(ctx)
 	defer cancel()
 
@@ -38,5 +37,4 @@ func (u *User) GetCode(
 		Rewards:       mapRewards(result.Rewards),
 		AlreadyIssued: result.AlreadyIssued,
 	}, nil
-
 }

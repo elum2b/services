@@ -23,15 +23,18 @@ func (r *Repository) PreviewImport(
 	if err := validateExportPackage(workspaceID, pkg); err != nil {
 		return ImportPreview{}, err
 	}
+
 	preview := ImportPreview{
 		Format:  pkg.Format,
 		Service: pkg.Service,
 		Counts:  countPackage(pkg),
 	}
+
 	existing, err := r.importExistingPromoCodes(ctx, workspaceID)
 	if err != nil {
 		return ImportPreview{}, err
 	}
+
 	for _, promo := range pkg.Promos {
 		key := normalizeCode(promo.Code)
 		if existing[key] {
@@ -41,6 +44,7 @@ func (r *Repository) PreviewImport(
 			})
 		}
 	}
+
 	return preview, nil
 }
 
@@ -52,10 +56,12 @@ func (r *Repository) Import(
 	if err := validateExportPackage(workspaceID, req.Package); err != nil {
 		return ImportResult{}, err
 	}
+
 	strategy := req.ConflictStrategy
 	if strategy == "" {
 		strategy = ImportConflictFail
 	}
+
 	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
 		strategy != ImportConflictUpdate {
 		return ImportResult{}, fmt.Errorf(
@@ -63,7 +69,9 @@ func (r *Repository) Import(
 			strategy,
 		)
 	}
+
 	result := ImportResult{}
+
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
@@ -73,6 +81,7 @@ func (r *Repository) Import(
 		if err != nil {
 			return err
 		}
+
 		if strategy == ImportConflictFail && len(preview.Conflicts) > 0 {
 			return fmt.Errorf(
 				"import conflicts found: %d",
@@ -92,6 +101,7 @@ func (r *Repository) Import(
 	if err != nil {
 		return ImportResult{}, err
 	}
+
 	return result, r.invalidatePromoCache(workspaceID)
 }
 
@@ -108,6 +118,7 @@ func (r *Repository) lockWorkspaceMutation(
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
 		"promo:"+workspaceID,
 	)
+
 	return err
 }
 
@@ -143,6 +154,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	ids, err := r.importPromoIDs(
 		ctx,
 		workspaceID,
@@ -153,6 +165,7 @@ func (r *Repository) importBulk(
 	if err != nil {
 		return err
 	}
+
 	if err := r.replaceImportedPromoChildren(
 		ctx,
 		workspaceID,
@@ -163,6 +176,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.importLocalizationsBulk(
 		ctx,
 		workspaceID,
@@ -174,6 +188,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	return r.importRewardsBulk(
 		ctx,
 		workspaceID,
@@ -203,6 +218,7 @@ func (r *Repository) replaceImportedPromoChildren(
 			promoIDs = append(promoIDs, int64(ids[normalizeCode(promo.Code)]))
 		}
 	}
+
 	if len(promoIDs) == 0 {
 		return nil
 	}
@@ -217,6 +233,7 @@ WHERE workspace_id = $1
 	); err != nil {
 		return err
 	}
+
 	_, err := r.executor.ExecContext(
 		ctx,
 		`DELETE FROM promo_reward
@@ -225,6 +242,7 @@ WHERE workspace_id = $1
 		workspaceID,
 		promoIDs,
 	)
+
 	return err
 }
 
@@ -243,6 +261,7 @@ func (r *Repository) importPromosBulk(
 			result.Skipped.Promos++
 			continue
 		}
+
 		rows = append(rows, []any{
 			workspaceID,
 			promo.Code,
@@ -256,6 +275,7 @@ func (r *Repository) importPromosBulk(
 		})
 		result.Imported.Promos++
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"promo_offer",
@@ -291,18 +311,22 @@ func (r *Repository) importPromoIDs(
 			strategy == ImportConflictSkip {
 			continue
 		}
+
 		needed[normalizeCode(promo.Code)] = struct{}{}
 	}
+
 	rows, err := r.q.ListImportPromoIDs(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
+
 	ids := make(map[string]uint64, len(needed))
 	for _, row := range rows {
 		if _, ok := needed[row.CodeNormalized]; ok {
 			ids[row.CodeNormalized] = uint64(row.ID)
 		}
 	}
+
 	return ids, nil
 }
 
@@ -316,11 +340,13 @@ func (r *Repository) importLocalizationsBulk(
 	result *ImportResult,
 ) error {
 	rows := make([][]any, 0)
+
 	for _, promo := range promos {
 		if previewHasConflict(preview, "promo", promo.Code) &&
 			strategy == ImportConflictSkip {
 			continue
 		}
+
 		id := ids[normalizeCode(promo.Code)]
 		for locale, text := range promo.Localization {
 			rows = append(rows, []any{
@@ -333,6 +359,7 @@ func (r *Repository) importLocalizationsBulk(
 			result.Imported.Localizations++
 		}
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"promo_localization",
@@ -354,11 +381,13 @@ func (r *Repository) importRewardsBulk(
 	result *ImportResult,
 ) error {
 	rows := make([][]any, 0)
+
 	for _, promo := range promos {
 		if previewHasConflict(preview, "promo", promo.Code) &&
 			strategy == ImportConflictSkip {
 			continue
 		}
+
 		id := ids[normalizeCode(promo.Code)]
 		for _, reward := range promo.Rewards {
 			rows = append(rows, []any{
@@ -373,6 +402,7 @@ func (r *Repository) importRewardsBulk(
 			result.Imported.Rewards++
 		}
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"promo_reward",
@@ -404,6 +434,7 @@ func (r *Repository) execImportBulk(
 	if len(rows) == 0 {
 		return nil
 	}
+
 	return importexport.ForEachBatch(
 		len(rows),
 		len(columns),
@@ -418,6 +449,7 @@ func (r *Repository) execImportBulk(
 				strategy,
 			)
 			_, err := r.executor.ExecContext(ctx, query, args...)
+
 			return err
 		},
 	)
@@ -432,27 +464,35 @@ func compileImportBulkUpsert(
 	strategy string,
 ) (string, []any) {
 	var builder strings.Builder
+
 	builder.WriteString("INSERT INTO ")
 	builder.WriteString(table)
 	builder.WriteString(" (")
 	builder.WriteString(strings.Join(columns, ", "))
 	builder.WriteString(") VALUES ")
+
 	args := make([]any, 0, len(rows)*len(columns))
 	for rowIndex, row := range rows {
 		if rowIndex > 0 {
 			builder.WriteString(", ")
 		}
+
 		builder.WriteByte('(')
+
 		for columnIndex := range columns {
 			if columnIndex > 0 {
 				builder.WriteString(", ")
 			}
+
 			builder.WriteByte('$')
-			builder.WriteString(fmt.Sprint(len(args) + columnIndex + 1))
+			fmt.Fprint(&builder, len(args)+columnIndex+1)
 		}
+
 		builder.WriteByte(')')
+
 		args = append(args, row...)
 	}
+
 	switch strategy {
 	case ImportConflictSkip:
 		builder.WriteString(" ON CONFLICT ")
@@ -464,6 +504,7 @@ func compileImportBulkUpsert(
 		builder.WriteString(" DO UPDATE SET ")
 		builder.WriteString(duplicateUpdate)
 	}
+
 	return builder.String(), args
 }
 
@@ -471,6 +512,7 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if pkg.Format != ExportFormat || pkg.Service != "promo" {
 		return fmt.Errorf(
 			"unsupported export package: %s/%s",
@@ -483,9 +525,11 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 	for promoIndex, promo := range pkg.Promos {
 		prefix := fmt.Sprintf("promo import promos[%d]", promoIndex)
 		code := normalizeCode(promo.Code)
+
 		if code == "" {
 			return fmt.Errorf("%s.code: code is required", prefix)
 		}
+
 		if previousIndex, exists := promoCodes[code]; exists {
 			return fmt.Errorf(
 				"%s.code: duplicates promos[%d].code",
@@ -493,20 +537,24 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 				previousIndex,
 			)
 		}
+
 		promoCodes[code] = promoIndex
 
 		if len(promo.Payload) == 0 || !json.Valid(promo.Payload) {
 			return fmt.Errorf("%s.payload: must be valid JSON", prefix)
 		}
+
 		if promo.MaxActivations > math.MaxInt64 {
 			return fmt.Errorf(
 				"%s.max_activations: numeric value is out of database range",
 				prefix,
 			)
 		}
+
 		if err := target.Validate(promo.Target); err != nil {
 			return fmt.Errorf("%s.target: %w", prefix, err)
 		}
+
 		if promo.StartAt != nil && promo.EndAt != nil &&
 			!promo.StartAt.Before(*promo.EndAt) {
 			return fmt.Errorf("%s.start_at: must be before end_at", prefix)
@@ -516,6 +564,7 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 			if strings.TrimSpace(locale) == "" {
 				return fmt.Errorf("%s.localization: locale is required", prefix)
 			}
+
 			if strings.TrimSpace(text.Title) == "" {
 				return fmt.Errorf(
 					"%s.localization.%s.title: title is required",
@@ -534,6 +583,7 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 					rewardIndex,
 				)
 			}
+
 			if previousIndex, exists := rewardKeys[reward.Key]; exists {
 				return fmt.Errorf(
 					"%s.rewards[%d].key: duplicates rewards[%d].key",
@@ -542,6 +592,7 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 					previousIndex,
 				)
 			}
+
 			rewardKeys[reward.Key] = rewardIndex
 			if err := validateExportReward(reward); err != nil {
 				return fmt.Errorf(
@@ -553,6 +604,7 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -560,6 +612,7 @@ func validateExportReward(reward ExportReward) error {
 	if reward.Quantity <= 0 {
 		return fmt.Errorf("quantity must be positive")
 	}
+
 	if reward.Scale > math.MaxInt16 {
 		return fmt.Errorf("scale is out of database range")
 	}
@@ -591,11 +644,14 @@ func validPromoDurationUnit(value string) bool {
 
 func countPackage(pkg ExportPackage) ImportCounts {
 	var counts ImportCounts
+
 	counts.Promos = uint64(len(pkg.Promos))
+
 	for _, promo := range pkg.Promos {
 		counts.Localizations += uint64(len(promo.Localization))
 		counts.Rewards += uint64(len(promo.Rewards))
 	}
+
 	return counts
 }
 
@@ -607,10 +663,12 @@ func (r *Repository) importExistingPromoCodes(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make(map[string]bool, len(rows))
 	for _, code := range rows {
 		result[code] = true
 	}
+
 	return result, nil
 }
 
@@ -621,6 +679,7 @@ func previewHasConflict(preview ImportPreview, kind, key string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -628,6 +687,7 @@ func defaultJSON(value []byte, fallback string) string {
 	if len(value) == 0 {
 		return fallback
 	}
+
 	return string(value)
 }
 
@@ -635,6 +695,7 @@ func defaultString(value, fallback string) string {
 	if value == "" {
 		return fallback
 	}
+
 	return value
 }
 
@@ -642,6 +703,7 @@ func nullString(value *string) sql.NullString {
 	if value == nil {
 		return sql.NullString{}
 	}
+
 	return sql.NullString{String: *value, Valid: true}
 }
 
@@ -649,5 +711,6 @@ func nullTime(value *time.Time) sql.NullTime {
 	if value == nil {
 		return sql.NullTime{}
 	}
+
 	return sql.NullTime{Time: *value, Valid: true}
 }

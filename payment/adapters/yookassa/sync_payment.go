@@ -10,13 +10,13 @@ func (a *YooKassa) SyncPayment(
 	ctx context.Context,
 	params SyncPaymentParams,
 ) (*WebhookResult, error) {
-
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
 	}
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	payment, err := NewClient(
@@ -43,5 +43,4 @@ func (a *YooKassa) SyncPayment(
 	}
 
 	return a.handlePayload(ctx, params.WorkspaceID, webhook, raw, false)
-
 }

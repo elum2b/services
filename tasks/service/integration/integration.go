@@ -38,6 +38,7 @@ func NewWithOptions(
 	channelChecker := NewChannelSubscriptionChecker(
 		ChannelSubscriptionCheckerOptions{},
 	)
+
 	return &Integration{
 		rootCtx: contextutil.Normalize(ctx),
 		repository: repository.NewWithOptions(
@@ -60,6 +61,7 @@ func (i *Integration) Close() error {
 	if i == nil || i.repository == nil {
 		return nil
 	}
+
 	return i.repository.Close()
 }
 
@@ -78,6 +80,7 @@ func (i *Integration) Check(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	task, found, err := i.repository.IntegrationCheckTask(
 		mergedCtx,
 		params.Identity.WorkspaceID,
@@ -86,14 +89,17 @@ func (i *Integration) Check(
 	if err != nil {
 		return Result{}, err
 	}
+
 	if !found {
 		return Result{Status: StatusNotFound}, nil
 	}
+
 	checkParams, ok := i.checkParamsForTask(params, task.ActionKind)
 	if !ok {
 		publicTask := activeTask(task)
 		return Result{Status: StatusInvalidTask, Task: &publicTask}, nil
 	}
+
 	return i.checkLoadedAndRecord(mergedCtx, checkParams, task, now)
 }
 
@@ -202,6 +208,7 @@ func (i *Integration) checkAndRecord(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	task, found, err := i.repository.IntegrationCheckTask(
 		mergedCtx,
 		params.taskRef.Identity.WorkspaceID,
@@ -210,9 +217,11 @@ func (i *Integration) checkAndRecord(
 	if err != nil {
 		return Result{}, err
 	}
+
 	if !found {
 		return Result{Status: StatusNotFound}, nil
 	}
+
 	return i.checkLoadedAndRecord(mergedCtx, params, task, now)
 }
 
@@ -226,21 +235,26 @@ func (i *Integration) checkLoadedAndRecord(
 	if task.ActionKind != params.expectedActionKind {
 		return Result{Status: StatusInvalidTask, Task: &publicTask}, nil
 	}
+
 	if task.ClaimMode != repository.ClaimModeManual {
 		return Result{Status: StatusInvalidTask, Task: &publicTask}, nil
 	}
+
 	provider := ""
 	if task.IntegrationProvider != nil {
 		provider = *task.IntegrationProvider
 	}
+
 	checker := params.checker(provider)
 	if checker == nil {
 		return Result{Status: StatusNoChecker, Task: &publicTask}, nil
 	}
+
 	check, err := params.check(ctx, checker, task, provider, now)
 	if err != nil {
 		return Result{Status: StatusCheckRejected, Task: &publicTask}, err
 	}
+
 	if !check.Completed {
 		return Result{
 			Status:    StatusNotCompleted,
@@ -249,6 +263,7 @@ func (i *Integration) checkLoadedAndRecord(
 			Check:     check.Payload,
 		}, nil
 	}
+
 	ready, err := i.repository.MarkIntegrationTaskReady(
 		ctx,
 		repository.MarkIntegrationTaskReadyParams{
@@ -268,13 +283,16 @@ func (i *Integration) checkLoadedAndRecord(
 	if err != nil {
 		return Result{}, err
 	}
+
 	status := repository.StatusReady
 	if ready.Status == repository.RecordStatusNoTasks {
 		status = StatusNotReady
 	} else if ready.Status == repository.RecordStatusDuplicate && ready.Task.Progress != nil {
 		status = ready.Task.Progress.Status
 	}
+
 	readyTask := activeTask(ready.Task)
+
 	return Result{
 		Status:    status,
 		Completed: true,
@@ -379,9 +397,11 @@ func (i *Integration) ConfirmCompletion(
 	if err != nil {
 		return ConfirmCompletionResult{}, err
 	}
+
 	if !found {
 		return ConfirmCompletionResult{Status: StatusNotFound}, nil
 	}
+
 	result := ConfirmCompletionResult{
 		Status:  StatusNotReady,
 		TaskID:  task.ID,
@@ -390,14 +410,17 @@ func (i *Integration) ConfirmCompletion(
 	if task.Progress == nil {
 		return result, nil
 	}
+
 	if task.Progress.Status != repository.StatusClaimed {
 		result.Status = task.Progress.Status
 		return result, nil
 	}
+
 	result.Status = repository.StatusClaimed
 	result.Completed = true
 	result.ClaimedAt = task.Progress.ClaimedAt
 	result.OperationID = task.Progress.OperationID
+
 	return result, nil
 }
 
@@ -407,6 +430,7 @@ func (i *Integration) withContext(
 	if i == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}
+
 	return contextutil.Merge(i.rootCtx, ctx)
 }
 
@@ -434,6 +458,7 @@ func activeTask(task repository.Task) TaskModel {
 			ClaimedAt:     task.Progress.ClaimedAt,
 		}
 	}
+
 	return result
 }
 
@@ -455,6 +480,7 @@ func integrationSource(provider string) string {
 	if provider == "" {
 		return "tasks.integration"
 	}
+
 	return "tasks.integration:" + provider
 }
 
@@ -481,13 +507,17 @@ func defaultChannelCheckers(
 		"tg":       checker,
 		"vk":       checker,
 	}
+
 	for key, value := range overrides {
 		if value == nil {
 			delete(result, key)
+
 			continue
 		}
+
 		result[key] = value
 	}
+
 	return result
 }
 
@@ -499,13 +529,17 @@ func defaultChannelBoostCheckers(
 		"telegram": checker,
 		"tg":       checker,
 	}
+
 	for key, value := range overrides {
 		if value == nil {
 			delete(result, key)
+
 			continue
 		}
+
 		result[key] = value
 	}
+
 	return result
 }
 
@@ -514,5 +548,6 @@ func cloneExternalCheckers(
 ) map[string]ExternalTaskChecker {
 	result := make(map[string]ExternalTaskChecker, len(values))
 	maps.Copy(result, values)
+
 	return result
 }

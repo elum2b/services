@@ -19,7 +19,9 @@ func (a *VKMA) Active(
 ) (*SubscriptionStatusResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.updateSubscriptionStatus(ctx, workspaceID, params, "active", nil)
 }
 
@@ -30,7 +32,9 @@ func (a *VKMA) Canceled(
 ) (*SubscriptionStatusResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.updateSubscriptionStatus(
 		ctx,
 		workspaceID,
@@ -47,7 +51,9 @@ func (a *VKMA) Refunded(
 ) (*SubscriptionStatusResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.updateSubscriptionStatus(
 		ctx,
 		workspaceID,
@@ -66,7 +72,9 @@ func (a *VKMA) updateSubscriptionStatus(
 ) (*SubscriptionStatusResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	rows, err := a.repository.UpdateSubscriptionStatusByProvider(
 		ctx,
 		repository.SubscriptionStatusUpdateParams{
@@ -81,6 +89,7 @@ func (a *VKMA) updateSubscriptionStatus(
 	if err != nil {
 		return nil, err
 	}
+
 	if rows == 0 {
 		return nil, sql.ErrNoRows
 	}
@@ -108,11 +117,11 @@ func nonEmptyStringPtr(value string) *string {
 	if value == "" {
 		return nil
 	}
+
 	return &value
 }
 
 func cancelReasonPtr(value vkmashop.CancelReason) *string {
-
 	switch value {
 	case vkmashop.CancelUserDecision,
 		vkmashop.CancelAppDecision,
@@ -122,5 +131,4 @@ func cancelReasonPtr(value vkmashop.CancelReason) *string {
 	default:
 		return nil
 	}
-
 }

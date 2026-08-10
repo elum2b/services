@@ -37,6 +37,7 @@ func newL1Cache(maxSize int, ttlCheck time.Duration) *l1Cache {
 	if maxSize <= 0 {
 		maxSize = 1000
 	}
+
 	if ttlCheck <= 0 {
 		ttlCheck = 5 * time.Minute
 	}
@@ -50,6 +51,7 @@ func newL1Cache(maxSize int, ttlCheck time.Duration) *l1Cache {
 	}
 
 	c.workers.Go("sql-l1-cache-cleanup", c.cleanupLoop)
+
 	return c
 }
 
@@ -64,10 +66,12 @@ func (c *l1Cache) Get(key string) (any, bool) {
 
 	if !e.noExpiry && time.Now().After(e.expires) {
 		c.removeElement(e)
+
 		return nil, false
 	}
 
 	c.moveToFront(e)
+
 	return e.value, true
 }
 
@@ -88,15 +92,19 @@ func (c *l1Cache) Set(key string, value any, ttl time.Duration) {
 			old.expires = time.Time{}
 			old.noExpiry = true
 		}
+
 		c.moveToFront(old)
+
 		return
 	}
 
 	e := l1EntryPool.Get().(*l1Entry)
+
 	e.key = key
 	e.value = value
 	e.prev = nil
 	e.next = nil
+
 	if ttl > 0 {
 		e.expires = time.Now().Add(ttl)
 		e.noExpiry = false
@@ -106,6 +114,7 @@ func (c *l1Cache) Set(key string, value any, ttl time.Duration) {
 	}
 
 	c.pushFront(e)
+
 	c.items[key] = e
 	c.curSize++
 
@@ -122,6 +131,7 @@ func (c *l1Cache) Delete(key string) {
 	if !ok {
 		return
 	}
+
 	c.removeElement(e)
 }
 
@@ -132,6 +142,7 @@ func (c *l1Cache) Reset() {
 	for _, e := range c.items {
 		c.recycle(e)
 	}
+
 	c.items = make(map[string]*l1Entry, c.maxSize)
 	c.head = nil
 	c.tail = nil
@@ -148,9 +159,11 @@ func (c *l1Cache) Close() {
 func (c *l1Cache) pushFront(e *l1Entry) {
 	e.prev = nil
 	e.next = c.head
+
 	if c.head != nil {
 		c.head.prev = e
 	}
+
 	c.head = e
 	if c.tail == nil {
 		c.tail = e
@@ -161,6 +174,7 @@ func (c *l1Cache) moveToFront(e *l1Entry) {
 	if e == c.head {
 		return
 	}
+
 	c.remove(e)
 	c.pushFront(e)
 }
@@ -185,6 +199,7 @@ func (c *l1Cache) remove(e *l1Entry) {
 func (c *l1Cache) removeElement(e *l1Entry) {
 	c.remove(e)
 	delete(c.items, e.key)
+
 	c.curSize--
 	c.recycle(e)
 }
@@ -203,6 +218,7 @@ func (c *l1Cache) evict() {
 	if c.tail == nil {
 		return
 	}
+
 	c.removeElement(c.tail)
 }
 

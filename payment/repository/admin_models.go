@@ -34,6 +34,7 @@ func (value NullableString) MarshalJSON() ([]byte, error) {
 	if !value.Valid {
 		return []byte("null"), nil
 	}
+
 	return json.Marshal(value.String)
 }
 
@@ -41,6 +42,7 @@ func (value NullableInt64) MarshalJSON() ([]byte, error) {
 	if !value.Valid {
 		return []byte("null"), nil
 	}
+
 	return json.Marshal(value.Int64)
 }
 
@@ -48,6 +50,7 @@ func (value NullableTime) MarshalJSON() ([]byte, error) {
 	if !value.Valid {
 		return []byte("null"), nil
 	}
+
 	return json.Marshal(value.Time)
 }
 
@@ -55,6 +58,7 @@ func (value NullableBool) MarshalJSON() ([]byte, error) {
 	if !value.Valid {
 		return []byte("null"), nil
 	}
+
 	return json.Marshal(value.Bool)
 }
 
@@ -568,9 +572,11 @@ func mapAdminLocalization(
 
 func mapAdminProduct(row paymentsqlc.PaymentProduct) AdminProductModel {
 	var target json.RawMessage
+
 	if row.Target.Valid {
 		target = append(target, row.Target.RawMessage...)
 	}
+
 	return AdminProductModel{
 		WorkspaceID:          row.WorkspaceID,
 		ID:                   row.ID,
@@ -610,6 +616,7 @@ func mapAdminProductItem(
 			Valid:  true,
 		}
 	}
+
 	return AdminProductItemModel{
 		ID:           row.ID,
 		WorkspaceID:  row.WorkspaceID,
@@ -826,6 +833,7 @@ func mapAdminFulfillmentItem(
 			Valid:  true,
 		}
 	}
+
 	return AdminFulfillmentItemModel{
 		ID:            row.ID,
 		FulfillmentID: row.FulfillmentID,
@@ -912,6 +920,7 @@ func mapAdminSlice[S any, D any](rows []S, mapper func(S) D) []D {
 	for index, row := range rows {
 		result[index] = mapper(row)
 	}
+
 	return result
 }
 
@@ -922,7 +931,9 @@ func mapAdminResult[S any, D any](
 ) (D, error) {
 	if err != nil {
 		var zero D
+
 		return zero, err
 	}
+
 	return mapper(row), nil
 }

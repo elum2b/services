@@ -46,12 +46,14 @@ type Sub struct {
 func (s *Sub) OnJetton(clb CallbackJetton) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.clbJetton = clb
 }
 
 func (s *Sub) OnTON(clb CallbackTON) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.clbTon = clb
 }
 
@@ -59,8 +61,11 @@ func (s *Sub) LastLT() uint64 {
 	if s == nil {
 		return 0
 	}
+
 	s.mu.RLock()
+
 	defer s.mu.RUnlock()
+
 	return s.lt
 }
 
@@ -68,8 +73,11 @@ func (s *Sub) Err() error {
 	if s == nil {
 		return nil
 	}
+
 	s.mu.RLock()
+
 	defer s.mu.RUnlock()
+
 	return s.lastErr
 }
 
@@ -80,6 +88,7 @@ func (s *Sub) JettonMasterAddress(
 	if s == nil || s.Api == nil {
 		return "", ErrSubscriberNotInitialized
 	}
+
 	wallet, err := address.ParseAddr(jettonWalletAddress)
 	if err != nil {
 		return "", serviceerrors.Wrap(
@@ -88,6 +97,7 @@ func (s *Sub) JettonMasterAddress(
 			err,
 		)
 	}
+
 	block, err := s.Api.CurrentMasterchainInfo(ctx)
 	if err != nil {
 		return "", serviceerrors.Wrap(
@@ -96,6 +106,7 @@ func (s *Sub) JettonMasterAddress(
 			err,
 		)
 	}
+
 	result, err := s.Api.WaitForBlock(block.SeqNo).
 		RunGetMethod(ctx, block, wallet, "get_wallet_data")
 	if err != nil {
@@ -105,6 +116,7 @@ func (s *Sub) JettonMasterAddress(
 			err,
 		)
 	}
+
 	masterSlice, err := result.Slice(2)
 	if err != nil {
 		return "", serviceerrors.Wrap(
@@ -113,6 +125,7 @@ func (s *Sub) JettonMasterAddress(
 			err,
 		)
 	}
+
 	master, err := masterSlice.LoadAddr()
 	if err != nil {
 		return "", serviceerrors.Wrap(
@@ -121,9 +134,11 @@ func (s *Sub) JettonMasterAddress(
 			err,
 		)
 	}
+
 	if master == nil || master.IsAddrNone() {
 		return "", ErrJettonMasterAddressEmpty
 	}
+
 	return master.StringRaw(), nil
 }
 
@@ -135,15 +150,18 @@ func NewSub(
 	lt ...uint64,
 ) (*Sub, error) {
 	client := liteclient.NewConnectionPool()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	ctx = client.StickyContext(ctx)
 
 	cfg, err := liteclient.GetConfigFromUrl(ctx, networkConfigURL)
 	if err != nil {
 		return nil, err
 	}
+
 	if err := client.AddConnectionsFromConfig(ctx, cfg); err != nil {
 		return nil, err
 	}
@@ -158,6 +176,7 @@ func NewSub(
 	}
 
 	treasuryAddress := address.MustParseAddr(addr)
+
 	acc, err := api.GetAccount(ctx, master, treasuryAddress)
 	if err != nil {
 		return nil, err
@@ -192,14 +211,18 @@ func (s *Sub) Start() {
 	if s == nil {
 		return
 	}
+
 	s.startOnce.Do(func() {
 		s.mu.Lock()
+
 		s.started = true
 		s.mu.Unlock()
 
 		transactions := make(chan *tlb.Transaction)
+
 		s.manager.Go("payment.ton.subscriber.dispatch", func() {
 			defer s.finish()
+
 			s.subscribe(transactions)
 		})
 		s.manager.Go("payment.ton.subscriber.stop_pool", func() {
@@ -225,13 +248,17 @@ func (s *Sub) finish() {
 
 func (s *Sub) fail(err error) {
 	s.mu.Lock()
+
 	if s.lastErr == nil {
 		s.lastErr = err
 	}
+
 	s.mu.Unlock()
+
 	if s.stop != nil {
 		s.stop()
 	}
+
 	if s.pool != nil {
 		s.pool.Stop()
 	}
@@ -241,30 +268,39 @@ func (s *Sub) Close() error {
 	if s == nil {
 		return nil
 	}
+
 	s.closeOnce.Do(func() {
 		if s.stop != nil {
 			s.stop()
 		}
+
 		if s.pool != nil {
 			s.pool.Stop()
 		}
+
 		s.mu.RLock()
+
 		started := s.started
 		s.mu.RUnlock()
+
 		if !started {
 			s.finish()
 		}
+
 		select {
 		case <-s.done:
 		case <-time.After(5 * time.Second):
 		}
+
 		if s.manager != nil {
 			s.manager.Close()
 		}
+
 		if s.onClose != nil {
 			s.onClose()
 		}
 	})
+
 	return nil
 }
 
@@ -280,6 +316,7 @@ func (s *Sub) subscribe(channel chan *tlb.Transaction) {
 		if tx.IO.In == nil || tx.IO.In.MsgType != tlb.MsgTypeInternal {
 			continue
 		}
+
 		if dsc, ok := tx.Description.(tlb.TransactionDescriptionOrdinary); ok &&
 			dsc.BouncePhase != nil {
 			if _, ok = dsc.BouncePhase.Phase.(tlb.BouncePhaseOk); ok {
@@ -289,6 +326,7 @@ func (s *Sub) subscribe(channel chan *tlb.Transaction) {
 
 		ti := tx.IO.In.AsInternal()
 		bodyCell, err := ti.Body.BeginParse()
+
 		if err != nil || bodyCell == nil {
 			continue
 		}
@@ -301,37 +339,51 @@ func (s *Sub) subscribe(channel chan *tlb.Transaction) {
 		switch opCode {
 		case 0x7362d09c:
 			s.mu.RLock()
+
 			callback := s.clbJetton
 			s.mu.RUnlock()
+
 			if callback == nil {
 				s.fail(errors.New("ton: jetton callback is not configured"))
+
 				return
 			}
+
 			body, err := s.JettonBody(ti, tx.Hash)
 			if err != nil {
 				s.fail(fmt.Errorf("ton: parse jetton transfer: %w", err))
+
 				return
 			}
+
 			if !s.runCallback(func() error { return callback(body) }) {
 				return
 			}
+
 			s.setLastLT(body.CreatedLT)
 		case 0x00000000:
 			s.mu.RLock()
+
 			callback := s.clbTon
 			s.mu.RUnlock()
+
 			if callback == nil {
 				s.fail(errors.New("ton: TON callback is not configured"))
+
 				return
 			}
+
 			body, err := s.TonBody(ti, tx.Hash)
 			if err != nil {
 				s.fail(fmt.Errorf("ton: parse TON transfer: %w", err))
+
 				return
 			}
+
 			if !s.runCallback(func() error { return callback(body) }) {
 				return
 			}
+
 			s.setLastLT(body.CreatedLT)
 		}
 	}
@@ -342,17 +394,21 @@ func (s *Sub) runCallback(callback func() error) bool {
 	if delay <= 0 {
 		delay = time.Second
 	}
+
 	for {
 		if err := callback(); err == nil {
 			return true
 		}
+
 		timer := time.NewTimer(delay)
 		select {
 		case <-s.Context.Done():
 			timer.Stop()
+
 			return false
 		case <-timer.C:
 		}
+
 		if delay < time.Minute {
 			delay *= 2
 			if delay > time.Minute {
@@ -364,6 +420,7 @@ func (s *Sub) runCallback(callback func() error) bool {
 
 func (s *Sub) setLastLT(value uint64) {
 	s.mu.Lock()
+
 	s.lt = value
 	s.mu.Unlock()
 }

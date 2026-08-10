@@ -22,11 +22,14 @@ func (r *Repository) GetProgress(
 		PlatformUserID: identity.PlatformUserID,
 	})
 	if isNoRows(err) {
+		//nolint:nilnil // Missing progress is the valid initial calendar state.
 		return nil, nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	return &Progress{
 		CurrentPosition: uint32(
 			row.CurrentPosition,
@@ -57,15 +60,20 @@ func (r *Repository) Next(
 	if err != nil || calendar.ID == "" {
 		return RecordResult{Status: StatusNotFound, Calendar: calendar}, err
 	}
+
 	progress, err := r.GetProgress(ctx, identity, calendar.ID)
 	if err != nil {
 		return RecordResult{}, err
 	}
+
 	value := Progress{}
 	if progress != nil {
 		value = *progress
 	}
+
 	result, err := calculateRecord(calendar, value, "", now)
+
 	result.OperationID = ""
+
 	return result, err
 }

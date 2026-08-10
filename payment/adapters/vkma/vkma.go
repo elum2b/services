@@ -36,6 +36,7 @@ func NewWithOptions(
 	if err == nil {
 		return &VKMA{repository: repo, rootCtx: contextutil.Normalize(ctx)}
 	}
+
 	return &VKMA{
 		repository: repository.NewPaymentRepositoryWithOptions(db, options),
 		rootCtx:    contextutil.Normalize(ctx),
@@ -46,6 +47,7 @@ func (a *VKMA) Close() error {
 	if a == nil || a.repository == nil {
 		return nil
 	}
+
 	return a.repository.Close()
 }
 

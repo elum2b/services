@@ -19,9 +19,11 @@ func EnsureColumn(
 	if db == nil || db.db == nil {
 		return ErrNilDB
 	}
+
 	if !sqlIdentifierRe.MatchString(table) {
 		return fmt.Errorf("invalid table identifier %q", table)
 	}
+
 	if !sqlIdentifierRe.MatchString(column) {
 		return fmt.Errorf("invalid column identifier %q", column)
 	}
@@ -30,6 +32,7 @@ func EnsureColumn(
 	defer cancel()
 
 	var count int
+
 	if err := db.db.QueryRowContext(qctx, `
 SELECT COUNT(*)
 FROM INFORMATION_SCHEMA.COLUMNS
@@ -39,6 +42,7 @@ WHERE TABLE_SCHEMA = DATABASE()
 `, table, column).Scan(&count); err != nil {
 		return err
 	}
+
 	if count > 0 {
 		return nil
 	}
@@ -49,6 +53,7 @@ WHERE TABLE_SCHEMA = DATABASE()
 		column,
 		definition,
 	))
+
 	return err
 }
 
@@ -61,9 +66,11 @@ func ModifyColumn(
 	if db == nil || db.db == nil {
 		return ErrNilDB
 	}
+
 	if !sqlIdentifierRe.MatchString(table) {
 		return fmt.Errorf("invalid table identifier %q", table)
 	}
+
 	if !sqlIdentifierRe.MatchString(column) {
 		return fmt.Errorf("invalid column identifier %q", column)
 	}
@@ -77,6 +84,7 @@ func ModifyColumn(
 		column,
 		definition,
 	))
+
 	return err
 }
 
@@ -89,9 +97,11 @@ func EnsureIndex(
 	if db == nil || db.db == nil {
 		return ErrNilDB
 	}
+
 	if !sqlIdentifierRe.MatchString(table) {
 		return fmt.Errorf("invalid table identifier %q", table)
 	}
+
 	if !sqlIdentifierRe.MatchString(index) {
 		return fmt.Errorf("invalid index identifier %q", index)
 	}
@@ -100,6 +110,7 @@ func EnsureIndex(
 	defer cancel()
 
 	var count int
+
 	if err := db.db.QueryRowContext(qctx, `
 SELECT COUNT(*)
 FROM INFORMATION_SCHEMA.STATISTICS
@@ -109,6 +120,7 @@ WHERE TABLE_SCHEMA = DATABASE()
 `, table, index).Scan(&count); err != nil {
 		return err
 	}
+
 	if count > 0 {
 		return nil
 	}
@@ -118,5 +130,6 @@ WHERE TABLE_SCHEMA = DATABASE()
 		table,
 		definition,
 	))
+
 	return err
 }

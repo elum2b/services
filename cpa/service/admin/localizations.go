@@ -18,7 +18,6 @@ func (a *Admin) UpsertLocalization(
 	ctx context.Context,
 	params UpsertLocalizationParams,
 ) error {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -29,14 +28,12 @@ func (a *Admin) UpsertLocalization(
 		Title:       params.Title,
 		Description: params.Description,
 	})
-
 }
 
 func (a *Admin) ListLocalizations(
 	ctx context.Context,
 	workspaceID, cpaID string,
 ) ([]LocalizationModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -55,14 +52,12 @@ func (a *Admin) ListLocalizations(
 	}
 
 	return result, nil
-
 }
 
 func (a *Admin) DeleteLocalization(
 	ctx context.Context,
 	workspaceID, cpaID, locale string,
 ) (int64, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -72,5 +67,4 @@ func (a *Admin) DeleteLocalization(
 		cpaID,
 		locale,
 	)
-
 }

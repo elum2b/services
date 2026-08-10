@@ -3,6 +3,7 @@ package vkma
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -20,7 +21,9 @@ func (a *VKMA) ChargeableForWorkspace(
 ) (*ChargeableResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	providerPaymentID := strconv.Itoa(params.OrderID)
 	providerSubscriptionID := nullStringFromPositiveInt(params.SubscriptionID)
 
@@ -46,16 +49,19 @@ func (a *VKMA) ChargeableForWorkspace(
 				return nil, completeErr
 			}
 		}
+
 		order, orderErr := a.repository.GetOrder(ctx, attempt.OrderID)
 		if orderErr != nil {
 			return nil, orderErr
 		}
+
 		return &ChargeableResponse{
 			AppOrderID: order.ID,
 			OrderID:    params.OrderID,
 		}, nil
 	}
-	if err != sql.ErrNoRows {
+
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 

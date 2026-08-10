@@ -22,7 +22,6 @@ func (a *Admin) Complete(
 	ctx context.Context,
 	params CompleteParams,
 ) (CompleteResult, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -48,10 +47,10 @@ func (a *Admin) Complete(
 	}
 
 	rewards := mapOffer(repository.Offer{}, nil, result.Rewards).Rewards
+
 	return CompleteResult{
 		Assignment:  assignment,
 		Rewards:     rewards,
 		AlreadyDone: result.AlreadyDone,
 	}, nil
-
 }

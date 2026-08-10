@@ -15,6 +15,7 @@ func (c *Client) CreateRefund(
 	}
 
 	var result refundAPIResponse
+
 	resp, err := c.rest.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
@@ -25,6 +26,7 @@ func (c *Client) CreateRefund(
 	if err != nil {
 		return refundAPIResponse{}, err
 	}
+
 	if resp.StatusCode() < http.StatusOK ||
 		resp.StatusCode() >= http.StatusMultipleChoices {
 		return refundAPIResponse{}, wrapAPIError(
@@ -33,5 +35,6 @@ func (c *Client) CreateRefund(
 			resp.String(),
 		)
 	}
+
 	return result, nil
 }

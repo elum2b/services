@@ -16,6 +16,7 @@ func (c *Client) AnswerPreCheckoutQuery(
 	}
 
 	var result botAPIResponse[bool]
+
 	resp, err := c.rest.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
@@ -29,6 +30,7 @@ func (c *Client) AnswerPreCheckoutQuery(
 	if err != nil {
 		return err
 	}
+
 	if resp.StatusCode() < http.StatusOK ||
 		resp.StatusCode() >= http.StatusMultipleChoices ||
 		!result.OK ||
@@ -41,5 +43,6 @@ func (c *Client) AnswerPreCheckoutQuery(
 			resp.String(),
 		)
 	}
+
 	return nil
 }

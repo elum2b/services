@@ -17,6 +17,7 @@ func (r *Repository) GetCalendar(
 	}
 
 	key := calendarCacheKey(calendarCacheUserCalendar, workspaceID, ref, locale)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:          key,
 		Timeout:      r.timeout,
@@ -28,6 +29,7 @@ func (r *Repository) GetCalendar(
 		),
 	}, func(ctx context.Context) (Calendar, error) {
 		id, calendarType := calendarReference(ref)
+
 		rows, err := r.q.GetCalendarBundle(
 			ctx,
 			calendarsqlc.GetCalendarBundleParams{
@@ -40,9 +42,11 @@ func (r *Repository) GetCalendar(
 		if err != nil {
 			return Calendar{}, err
 		}
+
 		if len(rows) == 0 {
 			return Calendar{}, nil
 		}
+
 		first := rows[0]
 		value := Calendar{
 			ID:                  first.ID,
@@ -66,6 +70,7 @@ func (r *Repository) GetCalendar(
 			UpdatedAt: first.UpdatedAt,
 			Steps:     make([]Step, 0),
 		}
+
 		if first.LocalizationLocale.Valid {
 			value.Localization = &Localization{
 				WorkspaceID: first.WorkspaceID,
@@ -75,11 +80,13 @@ func (r *Repository) GetCalendar(
 				Description: first.LocalizationDescription.String,
 			}
 		}
+
 		for _, row := range rows {
 			value.Steps = appendStep(value.Steps, row.StepID, row.StepPosition,
 				row.RewardID, row.RewardItemKey, row.RewardType,
 				row.RewardItemCount, row.RewardScale, row.RewardDurationUnit)
 		}
+
 		return value, nil
 	})
 }
@@ -94,6 +101,7 @@ func (r *Repository) ListActive(
 	}
 
 	key := calendarCacheKey(calendarCacheUserCatalog, workspaceID, locale)
+
 	catalog, err := sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:          key,
 		Timeout:      r.timeout,
@@ -114,6 +122,7 @@ func (r *Repository) ListActive(
 		if err != nil {
 			return nil, err
 		}
+
 		result := make([]Calendar, 0, len(rows))
 		for _, row := range rows {
 			value := Calendar{
@@ -135,19 +144,23 @@ func (r *Repository) ListActive(
 					Description: row.Description.String,
 				}
 			}
+
 			result = append(result, value)
 		}
+
 		return result, nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]Calendar, 0, len(catalog))
 	for _, calendar := range catalog {
 		if calendarVisibleAt(calendar, now) {
 			result = append(result, calendar)
 		}
 	}
+
 	return result, nil
 }
 
@@ -155,8 +168,10 @@ func calendarVisibleAt(value Calendar, now time.Time) bool {
 	if !value.IsActive || value.DeletedAt != nil {
 		return false
 	}
+
 	if value.StartAt != nil && value.StartAt.After(now) {
 		return false
 	}
+
 	return value.EndAt == nil || value.EndAt.After(now)
 }

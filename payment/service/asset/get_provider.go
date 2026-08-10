@@ -11,6 +11,7 @@ func (a *Asset) GetProvider(
 ) (ProviderModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	return a.repository.GetProviderAsset(ctx, providerCode, assetCode)

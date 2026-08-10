@@ -11,6 +11,7 @@ func (u *User) GetUSDTPrice(
 	if u == nil || u.assets == nil {
 		return nil, ErrAssetNotInitialized
 	}
+
 	return u.assets.GetUSDTPrice(ctx, params.AssetCode)
 }
 
@@ -21,5 +22,6 @@ func (u *User) ListUSDTPrices(
 	if u == nil || u.assets == nil {
 		return nil, ErrAssetNotInitialized
 	}
+
 	return u.assets.ListUSDTPrices(ctx)
 }

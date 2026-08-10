@@ -13,6 +13,7 @@ func (a *Admin) SavePartnerConfig(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.SavePartnerConfig(
 		mergedCtx,
 		repository.SavePartnerConfigParams{
@@ -35,6 +36,7 @@ func (a *Admin) GetPartnerConfig(
 ) (PartnerConfigModel, bool, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	config, found, err := a.repository.GetPartnerConfig(
 		mergedCtx,
 		workspaceID,
@@ -45,6 +47,7 @@ func (a *Admin) GetPartnerConfig(
 	if err != nil || !found {
 		return PartnerConfigModel{}, found, err
 	}
+
 	return mapPartnerConfig(config), true, nil
 }
 
@@ -54,14 +57,17 @@ func (a *Admin) ListPartnerConfigs(
 ) ([]PartnerConfigModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	configs, err := a.repository.ListPartnerConfigs(mergedCtx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]PartnerConfigModel, 0, len(configs))
 	for _, config := range configs {
 		result = append(result, mapPartnerConfig(config))
 	}
+
 	return result, nil
 }
 
@@ -71,10 +77,12 @@ func (a *Admin) SavePartnerRewardRule(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	rewardType, err := validateReward(params.Reward)
 	if err != nil {
 		return err
 	}
+
 	return a.repository.SavePartnerRewardRule(
 		mergedCtx,
 		repository.SavePartnerRewardRuleParams{
@@ -101,6 +109,7 @@ func (a *Admin) DeletePartnerRewardRule(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.DeletePartnerRewardRule(
 		mergedCtx,
 		workspaceID,
@@ -118,6 +127,7 @@ func (a *Admin) ListPartnerDailyStats(
 ) ([]PartnerDailyStatsModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	values, err := a.repository.ListPartnerDailyStats(
 		mergedCtx,
 		workspaceID,
@@ -129,6 +139,7 @@ func (a *Admin) ListPartnerDailyStats(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]PartnerDailyStatsModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, PartnerDailyStatsModel{
@@ -149,6 +160,7 @@ func (a *Admin) ListPartnerDailyStats(
 			UniqueClaimers:         value.UniqueClaimers,
 		})
 	}
+
 	return result, nil
 }
 

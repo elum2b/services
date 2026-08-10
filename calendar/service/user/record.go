@@ -25,6 +25,7 @@ func (u *User) Record(
 	if err := params.Identity.Validate(); err != nil {
 		return RecordResult{}, err
 	}
+
 	if strings.TrimSpace(params.CalendarRef) == "" ||
 		strings.TrimSpace(params.OperationID) == "" {
 		return RecordResult{}, ErrRecordParamsRequired

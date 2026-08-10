@@ -31,7 +31,9 @@ func (a *Admin) ListOperations(
 ) ([]OperationModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	limit, offset := normalizePage(page)
+
 	values, err := a.repository.ListOperations(
 		mergedCtx,
 		workspaceID,
@@ -42,12 +44,15 @@ func (a *Admin) ListOperations(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]OperationModel, 0, len(values))
 	for _, value := range values {
 		var rewards []user.RewardModel
+
 		if err := json.Unmarshal(value.Rewards, &rewards); err != nil {
 			return nil, err
 		}
+
 		result = append(result, OperationModel{
 			ID:              value.ID,
 			AppID:           value.Identity.AppID,
@@ -63,6 +68,7 @@ func (a *Admin) ListOperations(
 			OccurredAt:      value.OccurredAt,
 		})
 	}
+
 	return result, nil
 }
 
@@ -73,6 +79,7 @@ func (a *Admin) GetOperation(
 ) (OperationModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	value, err := a.repository.GetOperation(
 		mergedCtx,
 		workspaceID,
@@ -82,10 +89,13 @@ func (a *Admin) GetOperation(
 	if err != nil {
 		return OperationModel{}, err
 	}
+
 	var rewards []user.RewardModel
+
 	if err := json.Unmarshal(value.Rewards, &rewards); err != nil {
 		return OperationModel{}, err
 	}
+
 	return OperationModel{
 		ID:              value.ID,
 		AppID:           value.Identity.AppID,
@@ -108,10 +118,12 @@ func (a *Admin) GetStats(
 ) (StatsModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	value, err := a.repository.GetStats(mergedCtx, workspaceID, calendarID)
 	if err != nil {
 		return StatsModel{}, err
 	}
+
 	return StatsModel(value), nil
 }
 
@@ -122,6 +134,7 @@ func (a *Admin) ListDailyStats(
 ) ([]DailyStatsModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	values, err := a.repository.ListDailyStats(
 		mergedCtx,
 		workspaceID,
@@ -132,10 +145,12 @@ func (a *Admin) ListDailyStats(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]DailyStatsModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, DailyStatsModel(value))
 	}
+
 	return result, nil
 }
 
@@ -146,5 +161,6 @@ func (a *Admin) RefreshDailyStats(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.RefreshDailyStats(mergedCtx, workspaceID, from, until)
 }

@@ -49,12 +49,15 @@ func (p TgrassProvider) ListPartnerTasks(
 		"lang":       params.Locale,
 	}
 	addPartnerIdentity(body, params.Identity)
+
 	if body["lang"] == "" {
 		body["lang"] = partnerString(params.Variables, "lang")
 	}
+
 	if value := partnerString(params.Variables, "tg_login"); value != "" {
 		body["tg_login"] = value
 	}
+
 	if value := partnerString(
 		params.Variables,
 		"username",
@@ -62,14 +65,19 @@ func (p TgrassProvider) ListPartnerTasks(
 		body["tg_login"] == nil {
 		body["tg_login"] = value
 	}
+
 	if value := partnerString(params.Variables, "gender"); value != "" {
 		body["gender"] = value
 	}
+
 	if params.Limit > 0 {
 		body["offers_limit"] = params.Limit
 	}
+
 	var response tgrassOffersResponse
+
 	path := "/offers"
+
 	if partnerConfigSetting(
 		params.Config.Settings,
 		"list_endpoint",
@@ -77,27 +85,33 @@ func (p TgrassProvider) ListPartnerTasks(
 	) == "tasks" {
 		path = "/tasks"
 	}
+
 	if err := p.client().postJSON(ctx, path, map[string]string{
 		"Auth": partnerSecret(params.Config.Secret),
 	}, body, &response); err != nil {
 		return nil, err
 	}
+
 	if response.Status == "no_offers" {
 		return []PartnerExternalTask{}, nil
 	}
+
 	result := make([]PartnerExternalTask, 0, len(response.Offers))
 	for _, offer := range response.Offers {
 		if offer.Link == "" || offer.OfferID == 0 || offer.Subscribed {
 			continue
 		}
+
 		externalType := strings.TrimSpace(offer.Type)
 		if externalType == "" {
 			externalType = "offer"
 		}
+
 		name := ""
 		if offer.Name != nil {
 			name = *offer.Name
 		}
+
 		publicPayload := partnerMarshal(map[string]any{
 			"offer_id":      offer.OfferID,
 			"channel_id":    offer.ChannelID,
@@ -110,6 +124,7 @@ func (p TgrassProvider) ListPartnerTasks(
 		privatePayload := partnerMarshal(map[string]any{
 			"offer_id": offer.OfferID, "link": offer.Link, "type": externalType,
 		})
+
 		result = append(result, PartnerExternalTask{
 			ExternalID: strconv.FormatInt(
 				offer.OfferID,
@@ -120,6 +135,7 @@ func (p TgrassProvider) ListPartnerTasks(
 			PrivatePayload: privatePayload,
 		})
 	}
+
 	return result, nil
 }
 
@@ -130,6 +146,7 @@ func (p TgrassProvider) CheckPartnerTask(
 	var private struct {
 		OfferID int64 `json:"offer_id"`
 	}
+
 	if err := json.Unmarshal(
 		params.Issue.PrivatePayload,
 		&private,
@@ -139,6 +156,7 @@ func (p TgrassProvider) CheckPartnerTask(
 			err,
 		)
 	}
+
 	if private.OfferID == 0 {
 		if parsed, err := strconv.ParseInt(
 			params.Issue.ExternalID,
@@ -148,17 +166,21 @@ func (p TgrassProvider) CheckPartnerTask(
 			private.OfferID = parsed
 		}
 	}
+
 	body := map[string]any{
 		"tg_user_id": partnerInt64String(params.Identity.PlatformUserID),
 		"offer_id":   private.OfferID,
 	}
 	addPartnerIdentity(body, params.Identity)
+
 	var response tgrassCheckResponse
+
 	if err := p.client().postJSON(ctx, "/check", map[string]string{
 		"Auth": partnerSecret(params.Config.Secret),
 	}, body, &response); err != nil {
 		return PartnerCheckResult{}, err
 	}
+
 	completed := response.Status == "subscribed" && !response.IsFake
 	payload := partnerMarshal(map[string]any{
 		"provider":  "tgrass",
@@ -166,6 +188,7 @@ func (p TgrassProvider) CheckPartnerTask(
 		"is_fake":   response.IsFake,
 		"completed": completed,
 	})
+
 	return PartnerCheckResult{
 		Completed: completed,
 		Status:    tgrassInternalStatus(response),
@@ -178,6 +201,7 @@ func (p TgrassProvider) client() partnerHTTPClient {
 	if baseURL == "" {
 		baseURL = defaultTgrassBaseURL
 	}
+
 	return partnerHTTPClient{
 		client:  p.Client,
 		timeout: p.Timeout,
@@ -198,9 +222,11 @@ func tgrassInternalStatus(response tgrassCheckResponse) string {
 	if response.IsFake {
 		return "fake"
 	}
+
 	if response.Status == "" {
 		return "unknown"
 	}
+
 	return response.Status
 }
 

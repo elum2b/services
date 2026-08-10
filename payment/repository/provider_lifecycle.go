@@ -71,8 +71,10 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 	if err != nil {
 		return err
 	}
+
 	params.ProviderCode = strings.TrimSpace(params.ProviderCode)
 	params.ProviderPaymentID = strings.TrimSpace(params.ProviderPaymentID)
+
 	if params.AttemptID == 0 || params.AttemptID > math.MaxInt64 ||
 		params.ProviderCode == "" || params.ProviderPaymentID == "" {
 		return ErrAttemptFieldsInvalid
@@ -96,6 +98,7 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 		if err != nil {
 			return err
 		}
+
 		if attempt.WorkspaceID != workspaceID ||
 			order.WorkspaceID != workspaceID ||
 			attempt.ProviderCode != params.ProviderCode ||
@@ -103,9 +106,11 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 			attempt.ProviderPaymentID.String != params.ProviderPaymentID {
 			return ErrPaymentMismatch
 		}
+
 		if attempt.Status == attemptStatus && order.Status == orderStatus {
 			return nil
 		}
+
 		if !providerAttemptCanTerminate(attempt.Status) ||
 			(order.Status != sqlc.PaymentOrderStatusDraft &&
 				order.Status != sqlc.PaymentOrderStatusPendingPayment) {
@@ -115,6 +120,7 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 		if err := txRepo.releaseOrderLimits(ctx, order); err != nil {
 			return err
 		}
+
 		if order.PurchaseKeyID.Valid {
 			rows, err := txRepo.q.ReleasePurchaseKeyReservation(
 				ctx,
@@ -123,6 +129,7 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 			if err != nil {
 				return err
 			}
+
 			if rows != 1 {
 				return ErrOrderStateInvalid
 			}
@@ -152,6 +159,7 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 		if err != nil {
 			return err
 		}
+
 		if rows != 1 {
 			return ErrOrderStateInvalid
 		}
@@ -168,9 +176,11 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 	if err != nil {
 		return ProviderChargebackResult{}, err
 	}
+
 	params.ProviderCode = strings.TrimSpace(params.ProviderCode)
 	params.ProviderPaymentID = strings.TrimSpace(params.ProviderPaymentID)
 	params.AssetCode = strings.TrimSpace(params.AssetCode)
+
 	if params.ProviderCode == "" || params.ProviderPaymentID == "" ||
 		params.AssetCode == "" ||
 		params.AmountMinor == 0 ||
@@ -179,6 +189,7 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 	}
 
 	var result ProviderChargebackResult
+
 	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttemptByProviderPaymentID(
 			ctx,
@@ -199,9 +210,11 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 		if err != nil {
 			return err
 		}
+
 		if order.WorkspaceID != workspaceID {
 			return ErrPaymentMismatch
 		}
+
 		if uint64(attempt.AmountMinor) != params.AmountMinor ||
 			attempt.AssetCode != params.AssetCode {
 			return ErrPaymentMismatch
@@ -209,6 +222,7 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 
 		result.OrderID = uint64(order.ID)
 		result.AttemptID = uint64(attempt.ID)
+
 		if order.Status == sqlc.PaymentOrderStatusChargebacked &&
 			attempt.Status == sqlc.PaymentAttemptStatusChargebacked {
 			result.AlreadyDone = true
@@ -217,10 +231,12 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 			if err != nil {
 				return err
 			}
+
 			result.FulfillmentID = uint64(fulfillment.ID)
 
 			return nil
 		}
+
 		if (order.Status != sqlc.PaymentOrderStatusPaid &&
 			order.Status != sqlc.PaymentOrderStatusFulfilled) ||
 			attempt.Status != sqlc.PaymentAttemptStatusSucceeded {
@@ -231,6 +247,7 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 		if err != nil {
 			return err
 		}
+
 		result.FulfillmentID = uint64(fulfillment.ID)
 
 		if err := txRepo.q.UpdatePaymentAttemptStatus(
@@ -242,6 +259,7 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 		); err != nil {
 			return err
 		}
+
 		if rows, err := txRepo.q.MarkOrderChargebacked(
 			ctx,
 			order.ID,
@@ -250,6 +268,7 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 		} else if rows != 1 {
 			return ErrOrderStateInvalid
 		}
+
 		if rows, err := txRepo.q.MarkFulfillmentRevokedForOrder(
 			ctx,
 			order.ID,
@@ -258,6 +277,7 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 		} else if rows != 1 {
 			return ErrOrderStateInvalid
 		}
+
 		if _, err := txRepo.q.DecrementProductLimitCountersForRefund(
 			ctx,
 			order.ID,
@@ -320,7 +340,9 @@ func (r *PaymentRepository) enqueuePaymentChargebackedCallback(
 	if err != nil {
 		return err
 	}
+
 	eventKey := fmt.Sprintf("payment.order.chargebacked:%d", order.ID)
+
 	_, err = r.callbacks.CreateEvent(ctx, callbackutil.CreateParams{
 		WorkspaceID:        order.WorkspaceID,
 		SourceService:      "payment",

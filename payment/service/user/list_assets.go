@@ -11,5 +11,6 @@ func (u *User) ListAssets(
 	if u == nil || u.assets == nil {
 		return nil, ErrAssetNotInitialized
 	}
+
 	return u.assets.List(ctx)
 }

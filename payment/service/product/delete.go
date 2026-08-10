@@ -9,6 +9,7 @@ func (a *Product) Delete(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	return a.repository.DeleteProduct(ctx, workspaceID, id)

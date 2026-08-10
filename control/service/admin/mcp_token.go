@@ -97,6 +97,7 @@ func mcpTokenExpiresAt(
 	now time.Time,
 ) (*time.Time, error) {
 	if duration == 0 {
+		//nolint:nilnil // A nil expiration represents a token that never expires.
 		return nil, nil
 	}
 

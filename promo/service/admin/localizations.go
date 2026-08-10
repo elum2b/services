@@ -25,9 +25,11 @@ func (a *Admin) UpsertLocalization(
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if params.Locale == "" || params.Title == "" {
 		return ErrLocalizationRequired
 	}
+
 	return a.repository.UpsertLocalization(
 		mergedCtx,
 		repository.Localization(params),
@@ -46,6 +48,7 @@ func (a *Admin) GetLocalization(
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	value, err := a.repository.GetLocalization(
 		mergedCtx,
 		workspaceID,
@@ -55,6 +58,7 @@ func (a *Admin) GetLocalization(
 	if err != nil {
 		return LocalizationModel{}, err
 	}
+
 	return LocalizationModel{
 		Locale:      value.Locale,
 		Title:       value.Title,
@@ -73,6 +77,7 @@ func (a *Admin) ListLocalizations(
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	values, err := a.repository.ListLocalizations(
 		mergedCtx,
 		workspaceID,
@@ -81,6 +86,7 @@ func (a *Admin) ListLocalizations(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]LocalizationModel, 0, len(values))
 	for _, value := range values {
 		result = append(
@@ -92,6 +98,7 @@ func (a *Admin) ListLocalizations(
 			},
 		)
 	}
+
 	return result, nil
 }
 
@@ -107,6 +114,7 @@ func (a *Admin) DeleteLocalization(
 
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.DeleteLocalization(
 		mergedCtx,
 		workspaceID,

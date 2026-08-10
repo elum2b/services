@@ -44,6 +44,8 @@ func uint64Ptr(value *int64) *uint64 {
 	if value == nil {
 		return nil
 	}
+
 	v := uint64(*value)
+
 	return &v
 }

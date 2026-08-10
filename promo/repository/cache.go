@@ -28,6 +28,7 @@ func (r *Repository) invalidatePromoCache(workspaceID string) error {
 	if r == nil || r.db == nil || workspaceID == "" {
 		return nil
 	}
+
 	err := errors.Join(
 		r.db.BumpCacheVersion(
 			promoCacheScope(promoCacheAdminPromo, workspaceID)...),
@@ -43,6 +44,7 @@ func (r *Repository) invalidatePromoCache(workspaceID string) error {
 			promoCacheScope(promoCacheAdminRewards, workspaceID)...),
 	)
 	r.reportCacheInvalidationError(err)
+
 	return nil
 }
 
@@ -50,8 +52,10 @@ func (r *Repository) reportCacheInvalidationError(err error) {
 	if err == nil || r == nil || r.onCacheInvalidationError == nil {
 		return
 	}
+
 	defer func() {
 		_ = recover()
 	}()
+
 	r.onCacheInvalidationError(err)
 }

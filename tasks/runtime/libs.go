@@ -27,21 +27,29 @@ func registerJSON(L *lua.LState) {
 	L.SetFuncs(module, map[string]lua.LGFunction{
 		"decode": func(L *lua.LState) int {
 			raw := L.CheckString(1)
+
 			var value any
+
 			if err := json.Unmarshal([]byte(raw), &value); err != nil {
 				L.RaiseError("json.decode failed: %v", err)
+
 				return 0
 			}
+
 			L.Push(goToLua(L, normalizeJSON(value)))
+
 			return 1
 		},
 		"encode": func(L *lua.LState) int {
 			raw, err := json.Marshal(luaToGo(L.CheckAny(1)))
 			if err != nil {
 				L.RaiseError("json.encode failed: %v", err)
+
 				return 0
 			}
+
 			L.Push(lua.LString(raw))
+
 			return 1
 		},
 	})
@@ -53,6 +61,7 @@ func registerUUID(L *lua.LState) {
 	L.SetFuncs(module, map[string]lua.LGFunction{
 		"new": func(L *lua.LState) int {
 			L.Push(lua.LString(uuid.NewString()))
+
 			return 1
 		},
 	})
@@ -64,10 +73,12 @@ func registerTime(L *lua.LState) {
 	L.SetFuncs(module, map[string]lua.LGFunction{
 		"now": func(L *lua.LState) int {
 			L.Push(lua.LString(time.Now().UTC().Format(time.RFC3339Nano)))
+
 			return 1
 		},
 		"unix": func(L *lua.LState) int {
 			L.Push(lua.LNumber(time.Now().UTC().Unix()))
+
 			return 1
 		},
 	})
@@ -81,17 +92,22 @@ func registerHTTP(L *lua.LState, client *httpClient, calls *int, maxCalls int) {
 			*calls = *calls + 1
 			if *calls > maxCalls {
 				L.RaiseError("http request limit exceeded")
+
 				return 0
 			}
+
 			response, err := client.request(
 				L.Context(),
 				luaToGo(L.CheckTable(1)),
 			)
 			if err != nil {
 				L.RaiseError("http.request failed: %v", err)
+
 				return 0
 			}
+
 			L.Push(goToLua(L, response))
+
 			return 1
 		},
 	})
@@ -106,29 +122,37 @@ func (c *httpClient) request(
 	if !ok {
 		return nil, fmt.Errorf("params must be object")
 	}
+
 	method := strings.ToUpper(stringValue(params["method"]))
 	if method == "" {
 		method = http.MethodGet
 	}
+
 	rawURL := stringValue(params["url"])
 	if rawURL == "" {
 		return nil, fmt.Errorf("url is required")
 	}
+
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, err
 	}
+
 	if err := validatePartnerURL(ctx, parsed, c.allowPrivate); err != nil {
 		return nil, err
 	}
+
 	if query, ok := params["query"].(map[string]any); ok {
 		q := parsed.Query()
 		for key, value := range query {
 			q.Set(key, stringValue(value))
 		}
+
 		parsed.RawQuery = q.Encode()
 	}
+
 	var body io.Reader
+
 	if rawBody, ok := params["body"]; ok && rawBody != nil {
 		switch v := rawBody.(type) {
 		case string:
@@ -138,50 +162,64 @@ func (c *httpClient) request(
 			if err != nil {
 				return nil, err
 			}
+
 			body = bytes.NewReader(encoded)
 		}
 	}
+
 	req, err := http.NewRequestWithContext(ctx, method, parsed.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
 	if headers, ok := params["headers"].(map[string]any); ok {
 		for key, value := range headers {
 			req.Header.Set(key, stringValue(value))
 		}
 	}
+
 	if req.Body != nil && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
+
 	client := c.secureClient()
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
+
 	defer func() { _ = resp.Body.Close() }()
+
 	limit := c.maxResponseBytes
 	if limit <= 0 {
 		limit = defaultMaxResponseBytes
 	}
+
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return nil, err
 	}
+
 	if int64(len(raw)) > limit {
 		return nil, fmt.Errorf("response body exceeds %d bytes", limit)
 	}
+
 	headers := make(map[string]any, len(resp.Header))
 	for key, values := range resp.Header {
 		if len(values) == 1 {
 			headers[key] = values[0]
 			continue
 		}
+
 		items := make([]any, 0, len(values))
 		for _, value := range values {
 			items = append(items, value)
 		}
+
 		headers[key] = items
 	}
+
 	return map[string]any{
 		"status":  int64(resp.StatusCode),
 		"headers": headers,
@@ -194,8 +232,10 @@ func (c *httpClient) secureClient() *http.Client {
 	if c.client != nil {
 		base = c.client
 	}
+
 	client := *base
 	previousRedirect := client.CheckRedirect
+
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if err := validatePartnerURL(
 			req.Context(),
@@ -204,32 +244,43 @@ func (c *httpClient) secureClient() *http.Client {
 		); err != nil {
 			return err
 		}
+
 		if previousRedirect != nil {
 			return previousRedirect(req, via)
 		}
+
 		return nil
 	}
+
 	baseTransport := client.Transport
+
 	if baseTransport == nil {
 		baseTransport = http.DefaultTransport
 	}
+
 	if transport, ok := baseTransport.(*http.Transport); ok {
 		transport := transport.Clone()
 		dial := transport.DialContext
+
 		if dial == nil {
 			var dialer net.Dialer
+
 			dial = dialer.DialContext
 		}
+
 		transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(address)
 			if err != nil {
 				return nil, err
 			}
+
 			addresses, err := resolvePartnerHost(ctx, host, c.allowPrivate)
 			if err != nil {
 				return nil, err
 			}
+
 			var dialErr error
+
 			for _, resolved := range addresses {
 				connection, err := dial(
 					ctx,
@@ -239,12 +290,15 @@ func (c *httpClient) secureClient() *http.Client {
 				if err == nil {
 					return connection, nil
 				}
+
 				dialErr = err
 			}
+
 			return nil, dialErr
 		}
 		client.Transport = transport
 	}
+
 	return &client
 }
 
@@ -255,18 +309,21 @@ func normalizeJSON(value any) any {
 		for key, item := range v {
 			out[key] = normalizeJSON(item)
 		}
+
 		return out
 	case []any:
 		out := make([]any, 0, len(v))
 		for _, item := range v {
 			out = append(out, normalizeJSON(item))
 		}
+
 		return out
 	case float64:
 		if v == float64(int64(v)) {
 			return int64(v)
 		}
 	}
+
 	return value
 }
 

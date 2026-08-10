@@ -25,6 +25,7 @@ func TestValidateWorkspaceIDRequiresCanonicalUUID(t *testing.T) {
 		if err == nil {
 			t.Fatalf("workspace %q must be rejected", value)
 		}
+
 		if value == "" && !errors.Is(err, ErrIdentityWorkspaceRequired) {
 			t.Fatalf("empty workspace error = %v", err)
 		}
@@ -52,9 +53,11 @@ func TestRewardPayloadJSON(t *testing.T) {
 	}
 
 	var decoded RewardPayload
+
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatal(err)
 	}
+
 	if decoded.WorkspaceID != value.WorkspaceID ||
 		decoded.AppID != value.AppID ||
 		decoded.PlatformID != value.PlatformID ||

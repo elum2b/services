@@ -25,19 +25,23 @@ func (r *PaymentRepository) PreviewImport(
 	if err != nil {
 		return ImportPreview{}, err
 	}
+
 	pkg = normalizeExportPackage(pkg)
 	if err := validateExportPackage(pkg); err != nil {
 		return ImportPreview{}, err
 	}
+
 	preview := ImportPreview{
 		Format:  pkg.Format,
 		Service: pkg.Service,
 		Counts:  countPackage(pkg),
 	}
+
 	existing, err := r.importExistingKeys(ctx, workspaceID)
 	if err != nil {
 		return ImportPreview{}, err
 	}
+
 	for _, group := range pkg.Groups {
 		if existing.groups[group.Code] {
 			preview.Conflicts = append(
@@ -45,6 +49,7 @@ func (r *PaymentRepository) PreviewImport(
 				ImportConflict{Type: "group", Key: group.Code},
 			)
 		}
+
 		for _, product := range group.Products {
 			if existing.products[product.ID] {
 				preview.Conflicts = append(
@@ -54,6 +59,7 @@ func (r *PaymentRepository) PreviewImport(
 			}
 		}
 	}
+
 	for _, product := range pkg.Products {
 		if existing.products[product.ID] {
 			preview.Conflicts = append(
@@ -62,12 +68,14 @@ func (r *PaymentRepository) PreviewImport(
 			)
 		}
 	}
+
 	if existing.tonWallet && len(pkg.TONWallets) > 0 {
 		preview.Conflicts = append(
 			preview.Conflicts,
 			ImportConflict{Type: "ton_wallet", Key: "default"},
 		)
 	}
+
 	return preview, nil
 }
 
@@ -80,14 +88,17 @@ func (r *PaymentRepository) Import(
 	if err != nil {
 		return ImportResult{}, err
 	}
+
 	req.Package = normalizeExportPackage(req.Package)
 	if err := validateExportPackage(req.Package); err != nil {
 		return ImportResult{}, err
 	}
+
 	strategy := req.ConflictStrategy
 	if strategy == "" {
 		strategy = ImportConflictFail
 	}
+
 	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
 		strategy != ImportConflictUpdate {
 		return ImportResult{}, fmt.Errorf(
@@ -95,7 +106,9 @@ func (r *PaymentRepository) Import(
 			strategy,
 		)
 	}
+
 	result := ImportResult{}
+
 	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
@@ -105,6 +118,7 @@ func (r *PaymentRepository) Import(
 		if err != nil {
 			return err
 		}
+
 		if strategy == ImportConflictFail && len(preview.Conflicts) > 0 {
 			return fmt.Errorf(
 				"import conflicts found: %d",
@@ -122,12 +136,14 @@ func (r *PaymentRepository) Import(
 		); err != nil {
 			return err
 		}
+
 		if _, err := txRepo.q.DeleteWorkspaceProductCache(
 			ctx,
 			workspaceID,
 		); err != nil {
 			return err
 		}
+
 		return txRepo.q.RebuildWorkspaceProductCache(
 			ctx,
 			paymentsqlc.RebuildWorkspaceProductCacheParams{
@@ -139,6 +155,7 @@ func (r *PaymentRepository) Import(
 	if err != nil {
 		return ImportResult{}, err
 	}
+
 	cacheErr := r.invalidateWorkspaceCache(workspaceID)
 	if len(req.Package.TONWallets) > 0 {
 		cacheErr = errors.Join(
@@ -163,6 +180,7 @@ func (r *PaymentRepository) lockWorkspaceMutation(
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
 		"payment:"+workspaceID,
 	)
+
 	return err
 }
 
@@ -208,6 +226,7 @@ func (r *PaymentRepository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.importProductsBulk(
 		ctx,
 		workspaceID,
@@ -218,6 +237,7 @@ func (r *PaymentRepository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.replaceImportedPaymentChildren(
 		ctx,
 		workspaceID,
@@ -228,6 +248,7 @@ func (r *PaymentRepository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.importLocalizationsBulk(
 		ctx,
 		workspaceID,
@@ -238,6 +259,7 @@ func (r *PaymentRepository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.importProductItemsBulk(
 		ctx,
 		workspaceID,
@@ -248,6 +270,7 @@ func (r *PaymentRepository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.importPricesBulk(
 		ctx,
 		workspaceID,
@@ -258,6 +281,7 @@ func (r *PaymentRepository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	return r.importTONWalletsBulk(
 		ctx,
 		workspaceID,
@@ -301,6 +325,7 @@ func (r *PaymentRepository) resolveImportedDynamicPrices(
 			) != PricingModeDynamic {
 				continue
 			}
+
 			if price.ReferenceAssetCode == nil {
 				return ErrInvalidPrice
 			}
@@ -323,6 +348,7 @@ func (r *PaymentRepository) resolveImportedDynamicPrices(
 			)
 		}
 	}
+
 	if len(requested) == 0 {
 		return nil
 	}
@@ -368,6 +394,7 @@ func (r *PaymentRepository) resolveImportedDynamicPrices(
 			) != PricingModeDynamic {
 				continue
 			}
+
 			if price.ReferenceAssetCode == nil ||
 				price.ReferenceListAmountMinor == nil ||
 				price.ReferenceDiscountAmountMinor == nil ||
@@ -382,6 +409,7 @@ func (r *PaymentRepository) resolveImportedDynamicPrices(
 				),
 			}
 			rate, exists := rates[key]
+
 			if !exists {
 				return fmt.Errorf(
 					"payment import product %q price %q: %w",
@@ -400,6 +428,7 @@ func (r *PaymentRepository) resolveImportedDynamicPrices(
 			if err != nil {
 				return err
 			}
+
 			discount, err := convertReferenceAmount(
 				*price.ReferenceDiscountAmountMinor,
 				rate.targetScale,
@@ -436,19 +465,23 @@ func (r *PaymentRepository) replaceImportedPaymentChildren(
 		if titleKey != "" {
 			localizationKeys = append(localizationKeys, titleKey)
 		}
+
 		if descriptionKey != nil && *descriptionKey != "" {
 			localizationKeys = append(localizationKeys, *descriptionKey)
 		}
 	}
+
 	for _, group := range pkg.Groups {
 		if previewHasConflict(preview, "group", group.Code) {
 			titleKey := ""
 			if group.TitleKey != nil {
 				titleKey = *group.TitleKey
 			}
+
 			appendLocalizationKeys(titleKey, group.DescriptionKey)
 		}
 	}
+
 	for _, product := range products {
 		if previewHasConflict(preview, "product", product.ID) {
 			productIDs = append(productIDs, product.ID)
@@ -465,6 +498,7 @@ func (r *PaymentRepository) replaceImportedPaymentChildren(
 		); err != nil {
 			return err
 		}
+
 		if _, err := r.executor.ExecContext(
 			ctx,
 			`DELETE FROM payment_price AS price
@@ -481,9 +515,11 @@ WHERE price.workspace_id = $1
 			return err
 		}
 	}
+
 	if len(localizationKeys) == 0 {
 		return nil
 	}
+
 	_, err := r.executor.ExecContext(
 		ctx,
 		`DELETE FROM payment_localization
@@ -492,6 +528,7 @@ WHERE workspace_id = $1
 		workspaceID,
 		localizationKeys,
 	)
+
 	return err
 }
 
@@ -510,6 +547,7 @@ func (r *PaymentRepository) importGroupsBulk(
 			result.Skipped.Groups++
 			continue
 		}
+
 		rows = append(
 			rows,
 			[]any{
@@ -523,6 +561,7 @@ func (r *PaymentRepository) importGroupsBulk(
 		)
 		result.Imported.Groups++
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"payment_product_group",
@@ -556,6 +595,7 @@ func (r *PaymentRepository) importLocalizationsBulk(
 			strategy == ImportConflictSkip {
 			return
 		}
+
 		for locale, text := range localization {
 			if titleKey != "" {
 				rowsByKey[locale+"\x00"+titleKey] = []any{
@@ -565,6 +605,7 @@ func (r *PaymentRepository) importLocalizationsBulk(
 					text.Title,
 				}
 			}
+
 			if descriptionKey != nil {
 				rowsByKey[locale+"\x00"+*descriptionKey] = []any{
 					workspaceID,
@@ -575,11 +616,13 @@ func (r *PaymentRepository) importLocalizationsBulk(
 			}
 		}
 	}
+
 	for _, group := range pkg.Groups {
 		titleKey := ""
 		if group.TitleKey != nil {
 			titleKey = *group.TitleKey
 		}
+
 		addText(
 			"group",
 			group.Code,
@@ -587,6 +630,7 @@ func (r *PaymentRepository) importLocalizationsBulk(
 			group.DescriptionKey,
 			group.Localization,
 		)
+
 		for _, product := range group.Products {
 			addText(
 				"product",
@@ -597,6 +641,7 @@ func (r *PaymentRepository) importLocalizationsBulk(
 			)
 		}
 	}
+
 	for _, product := range pkg.Products {
 		addText(
 			"product",
@@ -606,11 +651,13 @@ func (r *PaymentRepository) importLocalizationsBulk(
 			product.Localization,
 		)
 	}
+
 	rows := make([][]any, 0, len(rowsByKey))
 	for _, row := range rowsByKey {
 		rows = append(rows, row)
 		result.Imported.Localizations++
 	}
+
 	return r.execImportBulk(ctx, "payment_localization",
 		[]string{"workspace_id", "locale", "localization_key", "value"},
 		rows,
@@ -635,6 +682,7 @@ func (r *PaymentRepository) importProductsBulk(
 			result.Skipped.Products++
 			continue
 		}
+
 		rows = append(rows, []any{
 			workspaceID,
 			product.ID,
@@ -680,6 +728,7 @@ func (r *PaymentRepository) importProductsBulk(
 		})
 		result.Imported.Products++
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"payment_product",
@@ -731,11 +780,13 @@ func (r *PaymentRepository) importProductItemsBulk(
 	result *ImportResult,
 ) error {
 	rows := make([][]any, 0)
+
 	for _, product := range products {
 		if previewHasConflict(preview, "product", product.ID) &&
 			strategy == ImportConflictSkip {
 			continue
 		}
+
 		for _, item := range product.Items {
 			rows = append(rows, []any{
 				workspaceID,
@@ -749,6 +800,7 @@ func (r *PaymentRepository) importProductItemsBulk(
 			result.Imported.ProductItems++
 		}
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"payment_product_item",
@@ -778,11 +830,13 @@ func (r *PaymentRepository) importPricesBulk(
 	result *ImportResult,
 ) error {
 	rows := make([][]any, 0)
+
 	for _, product := range products {
 		if previewHasConflict(preview, "product", product.ID) &&
 			strategy == ImportConflictSkip {
 			continue
 		}
+
 		for _, price := range product.Prices {
 			rows = append(rows, []any{
 				workspaceID,
@@ -809,6 +863,7 @@ func (r *PaymentRepository) importPricesBulk(
 			result.Imported.Prices++
 		}
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"payment_price",
@@ -853,6 +908,7 @@ func (r *PaymentRepository) importTONWalletsBulk(
 			result.Skipped.TONWallets++
 			continue
 		}
+
 		rows = append(rows, []any{
 			workspaceID,
 			defaultString(wallet.Network, "mainnet"),
@@ -897,6 +953,7 @@ func (r *PaymentRepository) importTONWalletsBulk(
 		})
 		result.Imported.TONWallets++
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"payment_ton_wallet",
@@ -948,6 +1005,7 @@ func (r *PaymentRepository) execImportBulk(
 	if len(rows) == 0 {
 		return nil
 	}
+
 	return importexport.ForEachBatch(
 		len(rows),
 		len(columns),
@@ -962,6 +1020,7 @@ func (r *PaymentRepository) execImportBulk(
 				strategy,
 			)
 			_, err := r.executor.ExecContext(ctx, query, args...)
+
 			return err
 		},
 	)
@@ -976,26 +1035,34 @@ func compileImportBulkUpsert(
 	strategy string,
 ) (string, []any) {
 	var builder strings.Builder
+
 	builder.WriteString("INSERT INTO ")
 	builder.WriteString(table)
 	builder.WriteString(" (")
 	builder.WriteString(strings.Join(columns, ", "))
 	builder.WriteString(") VALUES ")
+
 	args := make([]any, 0, len(rows)*len(columns))
 	for rowIndex, row := range rows {
 		if rowIndex > 0 {
 			builder.WriteString(", ")
 		}
+
 		builder.WriteByte('(')
+
 		for columnIndex := range columns {
 			if columnIndex > 0 {
 				builder.WriteString(", ")
 			}
+
 			fmt.Fprintf(&builder, "$%d", len(args)+columnIndex+1)
 		}
+
 		builder.WriteByte(')')
+
 		args = append(args, row...)
 	}
+
 	switch strategy {
 	case ImportConflictSkip:
 		builder.WriteString(" ON CONFLICT ")
@@ -1007,6 +1074,7 @@ func compileImportBulkUpsert(
 		builder.WriteString(" DO UPDATE SET ")
 		builder.WriteString(duplicateUpdate)
 	}
+
 	return builder.String(), args
 }
 
@@ -1014,14 +1082,17 @@ func validateExportPackage(pkg ExportPackage) error {
 	if pkg.Format != ExportFormat {
 		return fmt.Errorf("unsupported export format: %s", pkg.Format)
 	}
+
 	if pkg.Service != "payment" {
 		return fmt.Errorf("unsupported export service: %s", pkg.Service)
 	}
+
 	if len(pkg.TONWallets) > 1 {
 		return fmt.Errorf(
 			"payment import ton_wallets contains more than one wallet",
 		)
 	}
+
 	for index, wallet := range pkg.TONWallets {
 		if strings.TrimSpace(wallet.WalletAddress) == "" {
 			return fmt.Errorf(
@@ -1029,6 +1100,7 @@ func validateExportPackage(pkg ExportPackage) error {
 				index,
 			)
 		}
+
 		if network := defaultString(
 			strings.TrimSpace(wallet.Network),
 			"mainnet",
@@ -1039,6 +1111,7 @@ func validateExportPackage(pkg ExportPackage) error {
 				index,
 			)
 		}
+
 		if wallet.Manifest != nil {
 			if err := wallet.Manifest.Validate(); err != nil {
 				return fmt.Errorf(
@@ -1052,12 +1125,16 @@ func validateExportPackage(pkg ExportPackage) error {
 
 	groupIndexes := make(map[string]int, len(pkg.Groups))
 	productPaths := make(map[string]string)
+
 	for groupIndex, group := range pkg.Groups {
 		groupPath := fmt.Sprintf("payment import groups[%d]", groupIndex)
+
 		group.Code = strings.TrimSpace(group.Code)
+
 		if group.Code == "" {
 			return fmt.Errorf("%s.key is required", groupPath)
 		}
+
 		if previous, exists := groupIndexes[group.Code]; exists {
 			return fmt.Errorf(
 				"%s.key duplicates groups[%d].key",
@@ -1065,6 +1142,7 @@ func validateExportPackage(pkg ExportPackage) error {
 				previous,
 			)
 		}
+
 		groupIndexes[group.Code] = groupIndex
 		if err := validateExportLocalization(
 			groupPath,
@@ -1079,6 +1157,7 @@ func validateExportPackage(pkg ExportPackage) error {
 				strings.TrimSpace(*product.GroupCode) != group.Code {
 				return fmt.Errorf("%s.group_code must match parent group", path)
 			}
+
 			if err := validateExportProduct(
 				product,
 				path,
@@ -1088,6 +1167,7 @@ func validateExportPackage(pkg ExportPackage) error {
 			}
 		}
 	}
+
 	for productIndex, product := range pkg.Products {
 		path := fmt.Sprintf("payment import products[%d]", productIndex)
 		if err := validateExportProduct(
@@ -1098,6 +1178,7 @@ func validateExportPackage(pkg ExportPackage) error {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -1110,21 +1191,26 @@ func validateExportProduct(
 	if product.ID == "" {
 		return fmt.Errorf("%s.key is required", path)
 	}
+
 	if previous, exists := productPaths[product.ID]; exists {
 		return fmt.Errorf("%s.key duplicates %s.key", path, previous)
 	}
+
 	productPaths[product.ID] = path
 
 	if err := target.Validate(product.Target); err != nil {
 		return fmt.Errorf("%s.target: %w", path, err)
 	}
+
 	quantityMode := defaultString(product.QuantityMode, "fixed")
 	if quantityMode != "fixed" && quantityMode != "flexible" {
 		return fmt.Errorf("%s.quantity_mode is unsupported", path)
 	}
+
 	if product.PeriodSeconds != nil && *product.PeriodSeconds < 0 {
 		return fmt.Errorf("%s.period_seconds must not be negative", path)
 	}
+
 	if product.TrialDurationSeconds != nil &&
 		*product.TrialDurationSeconds < 0 {
 		return fmt.Errorf(
@@ -1132,16 +1218,20 @@ func validateExportProduct(
 			path,
 		)
 	}
+
 	if product.GlobalLimit < 0 || product.GlobalIntervalCount < 0 ||
 		product.UserLimit < 0 || product.UserIntervalCount < 0 {
 		return fmt.Errorf("%s limits must not be negative", path)
 	}
+
 	globalInterval := defaultString(product.GlobalInterval, "UNLIMITED")
 	userInterval := defaultString(product.UserInterval, "UNLIMITED")
+
 	if !validPaymentInterval(globalInterval) ||
 		!validPaymentInterval(userInterval) {
 		return fmt.Errorf("%s limit interval is unsupported", path)
 	}
+
 	availableFrom := defaultTime(
 		product.AvailableFrom,
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -1150,12 +1240,14 @@ func validateExportProduct(
 		product.AvailableUntil,
 		time.Date(2124, 1, 1, 0, 0, 0, 0, time.UTC),
 	)
+
 	if !availableFrom.Before(availableUntil) {
 		return fmt.Errorf(
 			"%s.available_from must be before available_until",
 			path,
 		)
 	}
+
 	if err := validateExportLocalization(
 		path,
 		product.Localization,
@@ -1166,10 +1258,13 @@ func validateExportProduct(
 	itemIndexes := make(map[string]int, len(product.Items))
 	for itemIndex, item := range product.Items {
 		itemPath := fmt.Sprintf("%s.items[%d]", path, itemIndex)
+
 		item.ItemID = strings.TrimSpace(item.ItemID)
+
 		if item.ItemID == "" {
 			return fmt.Errorf("%s.item_id is required", itemPath)
 		}
+
 		if previous, exists := itemIndexes[item.ItemID]; exists {
 			return fmt.Errorf(
 				"%s.item_id duplicates items[%d].item_id",
@@ -1177,6 +1272,7 @@ func validateExportProduct(
 				previous,
 			)
 		}
+
 		itemIndexes[item.ItemID] = itemIndex
 		if item.Quantity <= 0 || item.Scale > math.MaxInt16 ||
 			!validReward(
@@ -1193,6 +1289,7 @@ func validateExportProduct(
 		if err := validateExportPrice(price, pricePath); err != nil {
 			return err
 		}
+
 		key := fmt.Sprintf(
 			"%s\x00%t\x00%s\x00%s",
 			price.AssetCode,
@@ -1207,8 +1304,10 @@ func validateExportProduct(
 				previous,
 			)
 		}
+
 		priceIndexes[key] = priceIndex
 	}
+
 	return nil
 }
 
@@ -1217,10 +1316,12 @@ func validateExportPrice(price ExportPrice, path string) error {
 	if price.AssetCode == "" {
 		return fmt.Errorf("%s.asset_code is required", path)
 	}
+
 	if price.ListAmountMinor > math.MaxInt64 ||
 		price.DiscountAmountMinor > price.ListAmountMinor {
 		return fmt.Errorf("%s amount is invalid", path)
 	}
+
 	if !price.StartsAt.Before(price.EndsAt) {
 		return fmt.Errorf("%s.starts_at must be before ends_at", path)
 	}
@@ -1248,6 +1349,7 @@ func validateExportPrice(price ExportPrice, path string) error {
 				path,
 			)
 		}
+
 		if strings.TrimSpace(*price.ReferenceAssetCode) == price.AssetCode ||
 			*price.ReferenceListAmountMinor > math.MaxInt64 ||
 			*price.ReferenceDiscountAmountMinor > *price.ReferenceListAmountMinor ||
@@ -1257,6 +1359,7 @@ func validateExportPrice(price ExportPrice, path string) error {
 	default:
 		return fmt.Errorf("%s.pricing_mode is unsupported", path)
 	}
+
 	return nil
 }
 
@@ -1270,6 +1373,7 @@ func validateExportLocalization(
 			return fmt.Errorf("%s.localization requires locale and title", path)
 		}
 	}
+
 	return nil
 }
 
@@ -1296,13 +1400,17 @@ func positiveDecimal(value string) bool {
 
 func countPackage(pkg ExportPackage) ImportCounts {
 	var counts ImportCounts
+
 	counts.Groups = uint64(len(pkg.Groups))
 	counts.TONWallets = uint64(len(pkg.TONWallets))
+
 	for _, group := range pkg.Groups {
 		counts.Localizations += uint64(len(group.Localization))
 		countProducts(&counts, group.Products)
 	}
+
 	countProducts(&counts, pkg.Products)
+
 	return counts
 }
 
@@ -1329,24 +1437,30 @@ func (r *PaymentRepository) importExistingKeys(
 		groups:   make(map[string]bool),
 		products: make(map[string]bool),
 	}
+
 	groupRows, err := r.q.ImportListProductGroupCodes(ctx, workspaceID)
 	if err != nil {
 		return existing, err
 	}
+
 	for _, key := range groupRows {
 		existing.groups[key] = true
 	}
+
 	productRows, err := r.q.ImportListProductIDs(ctx, workspaceID)
 	if err != nil {
 		return existing, err
 	}
+
 	for _, key := range productRows {
 		existing.products[key] = true
 	}
+
 	existing.tonWallet, err = r.q.ImportHasTONWallet(ctx, workspaceID)
 	if err != nil {
 		return existing, err
 	}
+
 	return existing, nil
 }
 
@@ -1356,6 +1470,7 @@ func previewHasConflict(preview ImportPreview, kind, key string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -1364,16 +1479,21 @@ func flattenProducts(pkg ExportPackage) []ExportProduct {
 	for _, group := range pkg.Groups {
 		total += len(group.Products)
 	}
+
 	result := make([]ExportProduct, 0, total)
+
 	for _, group := range pkg.Groups {
 		for _, product := range group.Products {
 			if product.GroupCode == nil {
 				product.GroupCode = &group.Code
 			}
+
 			result = append(result, product)
 		}
 	}
+
 	result = append(result, pkg.Products...)
+
 	return result
 }
 
@@ -1383,18 +1503,22 @@ func normalizeExportPackage(pkg ExportPackage) ExportPackage {
 		if group.TitleKey == nil && group.Code != "" {
 			group.TitleKey = stringPtr("payment.group." + group.Code + ".title")
 		}
+
 		if group.DescriptionKey == nil && group.Code != "" {
 			group.DescriptionKey = stringPtr(
 				"payment.group." + group.Code + ".description",
 			)
 		}
+
 		for productIndex := range group.Products {
 			normalizeExportProduct(&group.Products[productIndex])
 		}
 	}
+
 	for index := range pkg.Products {
 		normalizeExportProduct(&pkg.Products[index])
 	}
+
 	return pkg
 }
 
@@ -1402,9 +1526,11 @@ func normalizeExportProduct(product *ExportProduct) {
 	if product == nil || product.ID == "" {
 		return
 	}
+
 	if product.TitleKey == "" {
 		product.TitleKey = "payment.product." + product.ID + ".title"
 	}
+
 	if product.DescriptionKey == nil {
 		product.DescriptionKey = stringPtr(
 			"payment.product." + product.ID + ".description",
@@ -1420,6 +1546,7 @@ func defaultString(value, fallback string) string {
 	if value == "" {
 		return fallback
 	}
+
 	return value
 }
 
@@ -1427,6 +1554,7 @@ func defaultJSON(value []byte, fallback string) string {
 	if len(value) == 0 {
 		return fallback
 	}
+
 	return string(value)
 }
 
@@ -1434,6 +1562,7 @@ func defaultTime(value, fallback time.Time) time.Time {
 	if value.IsZero() {
 		return fallback
 	}
+
 	return value
 }
 
@@ -1441,6 +1570,7 @@ func nullableString(value *string) sql.NullString {
 	if value == nil {
 		return sql.NullString{}
 	}
+
 	return sql.NullString{String: *value, Valid: true}
 }
 
@@ -1448,6 +1578,7 @@ func nullableInt64(value *int64) sql.NullInt64 {
 	if value == nil {
 		return sql.NullInt64{}
 	}
+
 	return sql.NullInt64{Int64: *value, Valid: true}
 }
 
@@ -1455,5 +1586,6 @@ func nullableUint64(value *uint64) sql.NullInt64 {
 	if value == nil {
 		return sql.NullInt64{}
 	}
+
 	return sql.NullInt64{Int64: int64(*value), Valid: true}
 }

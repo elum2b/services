@@ -22,6 +22,7 @@ func TestHandleWebhookRejectsInvalidSignatureBeforePayloadParsing(
 	if err == nil {
 		t.Fatal("expected invalid signature to fail")
 	}
+
 	if !errors.Is(err, ErrWebhookSignatureInvalid) {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -62,11 +63,14 @@ func TestParseRubAmountRejectsOverflow(t *testing.T) {
 						got,
 					)
 				}
+
 				return
 			}
+
 			if err != nil {
 				t.Fatalf("parseRubAmount(%q): %v", test.value, err)
 			}
+
 			if got != test.want {
 				t.Fatalf(
 					"parseRubAmount(%q) = %d, want %d",

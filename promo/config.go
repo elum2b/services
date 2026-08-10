@@ -6,8 +6,6 @@ import (
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 )
 
-const defaultCacheDelay = 10 * time.Minute
-
 type Storage interface {
 	GetWithTTL(key string) ([]byte, time.Duration, error)
 	Set(key string, value []byte, expiration time.Duration) error
@@ -58,12 +56,15 @@ func toSQLWrapOptions(value Options) sqlwrap.Options {
 	if value.Cache != nil {
 		result.Cache = storageAdapter{value.Cache}
 	}
+
 	if value.Codec != nil {
 		result.Codec = codecAdapter{value.Codec}
 	}
+
 	if value.Mutex != nil {
 		result.Mutex = mutexAdapter{value.Mutex}
 	}
+
 	return result
 }
 

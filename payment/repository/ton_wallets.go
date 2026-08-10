@@ -49,6 +49,7 @@ func (r *PaymentRepository) AdminGetTONWallet(
 	}
 
 	row, err := r.q.AdminGetTONWallet(ctx, workspaceID)
+
 	return mapAdminResult(row, err, mapAdminTONWallet)
 }
 
@@ -113,6 +114,7 @@ func (r *PaymentRepository) GetEnabledTONConnectManifest(
 	if err != nil {
 		return tonconnect.Manifest{}, err
 	}
+
 	if !entry.Found {
 		return tonconnect.Manifest{}, sql.ErrNoRows
 	}
@@ -129,10 +131,13 @@ func cloneTONConnectManifest(manifest tonconnect.Manifest) tonconnect.Manifest {
 	clone := manifest
 	if manifest.TermsOfUseURL != nil {
 		value := *manifest.TermsOfUseURL
+
 		clone.TermsOfUseURL = &value
 	}
+
 	if manifest.PrivacyPolicyURL != nil {
 		value := *manifest.PrivacyPolicyURL
+
 		clone.PrivacyPolicyURL = &value
 	}
 

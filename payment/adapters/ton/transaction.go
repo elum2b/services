@@ -38,8 +38,10 @@ func TransactionTON(
 	if len(message) > 0 {
 		msg = message[0]
 	}
+
 	if amount == nil {
 		zero := 0
+
 		amount = &zero
 	}
 
@@ -62,6 +64,7 @@ func TonkeeperLink(tx *Transaction) string {
 
 	values := url.Values{}
 	values.Set("amount", tx.Amount)
+
 	if tx.Payload != "" {
 		values.Set("bin", tx.Payload)
 	}
@@ -75,15 +78,18 @@ func (a *TON) CreateTransaction(
 ) (*Transaction, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	ctx = mergedCtx
 
 	assetCode := normalizeAsset(params.AssetCode)
+
 	network, err := validateNetwork(params.Network)
 	if err != nil {
 		return nil, err
 	}
 
 	destination := strings.TrimSpace(params.Destination)
+
 	destination, err = normalizeTONAddress(
 		destination,
 		network,
@@ -106,16 +112,19 @@ func (a *TON) CreateTransaction(
 	if err != nil {
 		return nil, err
 	}
+
 	if asset.Chain.Valid && asset.Chain.String != "" &&
 		!strings.EqualFold(asset.Chain.String, "ton") {
 		return nil, ErrAssetChainMismatch
 	}
+
 	if asset.Network.Valid && asset.Network.String != "" &&
 		normalizeNetwork(asset.Network.String) != network {
 		return nil, ErrAssetNetworkMismatch
 	}
 
 	sourceWallet := strings.TrimSpace(params.SourceWallet)
+
 	sourceWallet, err = normalizeTONAddress(
 		sourceWallet,
 		network,
@@ -162,7 +171,9 @@ func transactionTONMinor(
 	if amountMinor > math.MaxInt64 {
 		return nil, ErrAmountOverflow
 	}
+
 	amount := int(amountMinor)
+
 	return TransactionTON(destination, &amount, comment), nil
 }
 
@@ -190,6 +201,7 @@ func transactionJetton(
 			err,
 		)
 	}
+
 	response, err := address.ParseAddr(responseDestination)
 	if err != nil {
 		return nil, serviceerrors.Wrap(
@@ -251,6 +263,7 @@ func resolveJettonWalletAddress(
 	defer client.Stop()
 
 	stickyCtx := client.StickyContext(ctx)
+
 	cfg, err := liteclient.GetConfigFromUrl(stickyCtx, configURL)
 	if err != nil {
 		return "", serviceerrors.Wrap(
@@ -259,6 +272,7 @@ func resolveJettonWalletAddress(
 			err,
 		)
 	}
+
 	if err := client.AddConnectionsFromConfig(stickyCtx, cfg); err != nil {
 		return "", serviceerrors.Wrap(
 			serviceerrors.CodeUnavailable,
@@ -275,6 +289,7 @@ func resolveJettonWalletAddress(
 			err,
 		)
 	}
+
 	owner, err := address.ParseAddr(ownerWallet)
 	if err != nil {
 		return "", serviceerrors.Wrap(
@@ -287,7 +302,9 @@ func resolveJettonWalletAddress(
 	api := tonclient.NewAPIClient(client, tonclient.ProofCheckPolicyFast).
 		WithRetryTimeout(0, 5*time.Second)
 	api.SetTrustedBlockFromConfig(cfg)
+
 	masterClient := jetton.NewJettonMasterClient(api, master)
+
 	wallet, err := masterClient.GetJettonWallet(stickyCtx, owner)
 	if err != nil {
 		return "", serviceerrors.Wrap(
@@ -296,6 +313,7 @@ func resolveJettonWalletAddress(
 			err,
 		)
 	}
+
 	return wallet.Address().String(), nil
 }
 

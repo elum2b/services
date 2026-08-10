@@ -15,10 +15,11 @@ func (a *TON) CreatePayment(
 	ctx context.Context,
 	params CreatePaymentParams,
 ) (*CreatePaymentResponse, error) {
-
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	assetCode := normalizeAsset(params.AssetCode)
 
 	asset, err := a.repository.GetAsset(ctx, assetCode)
@@ -39,6 +40,7 @@ func (a *TON) CreatePayment(
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrWalletNotConfigured
 		}
+
 		return nil, err
 	}
 
@@ -56,6 +58,7 @@ func (a *TON) CreatePayment(
 	if walletAddress == "" {
 		return nil, ErrWalletNotConfigured
 	}
+
 	walletAddress, err = NormalizeWalletAddress(walletAddress, network)
 	if err != nil {
 		return nil, err
@@ -79,6 +82,7 @@ func (a *TON) CreatePayment(
 	}
 
 	comment := order.PublicID
+
 	attempt, err := a.repository.CreateAttempt(
 		ctx,
 		repository.AttemptCreateParams{
@@ -113,5 +117,6 @@ func normalizeAsset(assetCode string) string {
 	if assetCode == "" {
 		return AssetTON
 	}
+
 	return assetCode
 }

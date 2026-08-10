@@ -12,11 +12,13 @@ import (
 func (a *Refund) Execute(ctx context.Context, params Params) (*Result, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return nil, err
 	}
+
 	if params.IdempotencyKey == "" ||
 		params.IdempotencyKey != strings.TrimSpace(params.IdempotencyKey) ||
 		len(params.IdempotencyKey) > 128 {
@@ -27,6 +29,7 @@ func (a *Refund) Execute(ctx context.Context, params Params) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if params.WorkspaceID != order.WorkspaceID {
 		return nil, sql.ErrNoRows
 	}
@@ -35,10 +38,12 @@ func (a *Refund) Execute(ctx context.Context, params Params) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	amount := params.AmountMinor
 	if amount == 0 {
 		amount = attempt.AmountMinor
 	}
+
 	if amount == 0 || amount > attempt.AmountMinor {
 		return nil, ErrAmountInvalid
 	}
@@ -77,6 +82,7 @@ func (a *Refund) Execute(ctx context.Context, params Params) (*Result, error) {
 			Status:           refundState.Status,
 		}, nil
 	}
+
 	if refundState.Status != "created" && refundState.Status != "pending" {
 		return nil, repository.ErrOrderStateInvalid
 	}
@@ -113,6 +119,7 @@ func (a *Refund) Execute(ctx context.Context, params Params) (*Result, error) {
 	if status == "" {
 		status = "succeeded"
 	}
+
 	if err := a.repository.FinalizeRefund(ctx, repository.RefundFinalizeParams{
 		WorkspaceID:      order.WorkspaceID,
 		RefundID:         refundState.ID,

@@ -86,6 +86,7 @@ func New(db *sqlwrap.Client) *Repository {
 func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 	timeout := queryTimeout(options.QueryTimeout)
 	executor := db.WithQueryTimeout(timeout)
+
 	return &Repository{
 		db: db,
 		q:  cpasqlc.New(executor),
@@ -117,13 +118,17 @@ func (r *Repository) Close() error {
 	if r == nil {
 		return nil
 	}
+
 	var err error
+
 	if r.q != nil {
 		err = errors.Join(err, r.q.Close())
 	}
+
 	if r.callbacks != nil {
 		err = errors.Join(err, r.callbacks.Close())
 	}
+
 	return err
 }
 
@@ -148,9 +153,11 @@ func (r *Repository) WithTx(
 				cacheL2:                  r.cacheL2,
 				onCacheInvalidationError: r.onCacheInvalidationError,
 			}
+
 			return struct{}{}, fn(txRepo)
 		},
 	)
+
 	return err
 }
 
@@ -174,9 +181,11 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 	if err := r.applySQL(ctx, cpasqlc.SchemaSQL, "schema"); err != nil {
 		return err
 	}
+
 	if err := r.applySchemaUpgrades(ctx); err != nil {
 		return err
 	}
+
 	if err := sqlwrap.Exec(
 		ctx,
 		r.db,
@@ -193,6 +202,7 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 	); err != nil {
 		return err
 	}
+
 	return r.applySQL(ctx, cpasqlc.EventSQL, "event")
 }
 
@@ -239,6 +249,7 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 	if err != nil {
 		return fmt.Errorf("cpa %s SQL parse failed: %w", source, err)
 	}
+
 	for _, statement := range statements {
 		if err := sqlwrap.Exec(
 			ctx,
@@ -254,6 +265,7 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 			if isCreateTypeAlreadyExists(statement, err) {
 				continue
 			}
+
 			return fmt.Errorf(
 				"cpa %s SQL statement failed: %w\n%s",
 				source,
@@ -262,11 +274,13 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 			)
 		}
 	}
+
 	return nil
 }
 
 func isCreateTypeAlreadyExists(statement string, err error) bool {
 	var pgErr *pgconn.PgError
+
 	return strings.HasPrefix(
 		strings.ToUpper(strings.TrimSpace(statement)),
 		"CREATE TYPE ",
@@ -279,6 +293,7 @@ func queryTimeout(value time.Duration) time.Duration {
 	if value <= 0 {
 		return time.Second
 	}
+
 	return value
 }
 
@@ -286,9 +301,11 @@ func requireScope(workspaceID, cpaID string) error {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return err
 	}
+
 	if strings.TrimSpace(cpaID) == "" {
 		return ErrOfferRequired
 	}
+
 	return validateStoredString("cpa_id", cpaID, maxOfferIDLength)
 }
 
@@ -305,6 +322,7 @@ func (r *Repository) lockWorkspaceMutation(
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
 		"cpa:"+workspaceID,
 	)
+
 	return err
 }
 
@@ -317,6 +335,7 @@ func (r *Repository) lockWorkspaceCatalogRead(
 		"SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 0))",
 		"cpa:"+workspaceID,
 	)
+
 	return err
 }
 
@@ -337,6 +356,7 @@ func (r *Repository) lockIssueIdentity(
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
 		key,
 	)
+
 	return err
 }
 
@@ -344,6 +364,7 @@ func requireLocale(locale string) error {
 	if strings.TrimSpace(locale) == "" {
 		return ErrLocaleRequired
 	}
+
 	return validateStoredString("locale", locale, maxLocaleLength)
 }
 
@@ -351,6 +372,7 @@ func requireRewardKey(rewardKey string) error {
 	if strings.TrimSpace(rewardKey) == "" {
 		return ErrRewardKeyRequired
 	}
+
 	return validateStoredString("reward_key", rewardKey, maxRewardKeyLength)
 }
 
@@ -360,6 +382,7 @@ func isNoRows(err error) bool {
 
 func isForeignKeyViolation(err error) bool {
 	var pgErr *pgconn.PgError
+
 	return errors.As(err, &pgErr) &&
 		(pgErr.Code == "23503" || pgErr.Code == "23001")
 }

@@ -14,15 +14,19 @@ func (a *Admin) UpsertLocalization(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	params.ItemKey = normalizeKey(params.ItemKey)
 	params.Locale = strings.ToLower(strings.TrimSpace(params.Locale))
+
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return err
 	}
+
 	if !itemKeyPattern.MatchString(params.ItemKey) ||
 		params.Locale == "" || strings.TrimSpace(params.Title) == "" {
 		return ErrLocalizationRequired
 	}
+
 	return a.repository.UpsertLocalization(mergedCtx, repository.Localization{
 		WorkspaceID: params.WorkspaceID,
 		ItemKey:     params.ItemKey,
@@ -38,6 +42,7 @@ func (a *Admin) GetLocalization(
 ) (LocalizationModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	value, err := a.repository.GetLocalization(
 		mergedCtx, workspaceID, normalizeKey(key),
 		strings.ToLower(strings.TrimSpace(locale)),
@@ -45,6 +50,7 @@ func (a *Admin) GetLocalization(
 	if err != nil {
 		return LocalizationModel{}, err
 	}
+
 	return mapLocalization(value), nil
 }
 
@@ -54,6 +60,7 @@ func (a *Admin) ListLocalizations(
 ) ([]LocalizationModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	values, err := a.repository.ListLocalizations(
 		mergedCtx,
 		workspaceID,
@@ -62,10 +69,12 @@ func (a *Admin) ListLocalizations(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]LocalizationModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, mapLocalization(value))
 	}
+
 	return result, nil
 }
 
@@ -75,6 +84,7 @@ func (a *Admin) DeleteLocalization(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.DeleteLocalization(
 		mergedCtx, workspaceID, normalizeKey(key),
 		strings.ToLower(strings.TrimSpace(locale)),

@@ -47,6 +47,7 @@ func NewWithOptions(
 	if err != nil {
 		repo = repository.NewPaymentRepositoryWithOptions(db, options)
 	}
+
 	return &Platega{repository: repo, rootCtx: contextutil.Normalize(ctx)}
 }
 
@@ -54,6 +55,7 @@ func (a *Platega) Close() error {
 	if a == nil || a.repository == nil {
 		return nil
 	}
+
 	return a.repository.Close()
 }
 
@@ -79,10 +81,12 @@ func NewClient(credentials Credentials) *Client {
 
 	restClient := resty.New()
 	httpClient := http.DefaultClient
+
 	if credentials.HTTPClient != nil {
 		restClient = resty.NewWithClient(credentials.HTTPClient)
 		httpClient = credentials.HTTPClient
 	}
+
 	restClient.SetBaseURL(apiBaseURL)
 	restClient.SetHeader("Accept", "application/json")
 	restClient.SetHeader("X-MerchantId", credentials.MerchantID)
@@ -101,5 +105,6 @@ func (c *Client) requireCredentials() error {
 	if c == nil || c.merchantID == "" || c.secret == "" {
 		return ErrCredentialsRequired
 	}
+
 	return nil
 }

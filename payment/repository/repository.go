@@ -82,6 +82,7 @@ func NewPaymentRepositoryWithOptions(
 ) *PaymentRepository {
 	timeout := queryTimeout(options.QueryTimeout)
 	executor := db.WithQueryTimeout(timeout)
+
 	return &PaymentRepository{
 		db: db,
 		q:  paymentsqlc.New(executor),
@@ -116,10 +117,13 @@ func (r *PaymentRepository) Close() error {
 	if r == nil || r.q == nil {
 		return nil
 	}
+
 	var callbackErr error
+
 	if r.callbacks != nil {
 		callbackErr = r.callbacks.Close()
 	}
+
 	return errors.Join(r.q.Close(), callbackErr)
 }
 
@@ -130,6 +134,7 @@ func (r *PaymentRepository) WithTx(
 	pendingWorkspaces := make(map[string]struct{})
 	pendingTONManifests := make(map[string]struct{})
 	pendingInvalidateAll := false
+
 	_, err := sqlwrap.Transaction(
 		ctx,
 		r.db,
@@ -149,7 +154,9 @@ func (r *PaymentRepository) WithTx(
 				onCacheInvalidationError:        r.onCacheInvalidationError,
 			}
 			callbackErr := fn(txRepo)
+
 			pendingInvalidateAll = txRepo.pendingInvalidateAll
+
 			return struct{}{}, callbackErr
 		},
 	)
@@ -158,6 +165,7 @@ func (r *PaymentRepository) WithTx(
 	}
 
 	var cacheErr error
+
 	if pendingInvalidateAll {
 		cacheErr = InvalidateAllCache(r.db)
 	} else {
@@ -168,13 +176,16 @@ func (r *PaymentRepository) WithTx(
 			)
 		}
 	}
+
 	for workspaceID := range pendingTONManifests {
 		cacheErr = errors.Join(
 			cacheErr,
 			InvalidateTONManifestCache(r.db, workspaceID),
 		)
 	}
+
 	r.reportCacheInvalidationError(cacheErr)
+
 	return nil
 }
 
@@ -185,6 +196,7 @@ func (r *PaymentRepository) inTransaction(
 	if r.inTx {
 		return fn(r)
 	}
+
 	return r.WithTx(ctx, fn)
 }
 
@@ -193,11 +205,13 @@ func (r *PaymentRepository) Bootstrap(
 	schemaPath ...string,
 ) error {
 	raw := paymentsqlc.SchemaSQL
+
 	if len(schemaPath) > 0 && strings.TrimSpace(schemaPath[0]) != "" {
 		data, err := os.ReadFile(schemaPath[0])
 		if err != nil {
 			return err
 		}
+
 		raw = string(data)
 	}
 
@@ -205,6 +219,7 @@ func (r *PaymentRepository) Bootstrap(
 	if err != nil {
 		return fmt.Errorf("payment schema SQL parse failed: %w", err)
 	}
+
 	for _, stmt := range statements {
 		if err := sqlwrap.Exec(
 			ctx,
@@ -218,9 +233,11 @@ func (r *PaymentRepository) Bootstrap(
 			if isDuplicateTypeStatement(stmt, err) {
 				continue
 			}
+
 			return fmt.Errorf("statement failed: %w\n%s", err, stmt)
 		}
 	}
+
 	if err := r.applySchemaUpgrades(ctx); err != nil {
 		return err
 	}
@@ -239,9 +256,11 @@ func (r *PaymentRepository) Bootstrap(
 	); err != nil {
 		return err
 	}
+
 	if err := r.applySQL(ctx, paymentsqlc.TriggerSQL, "trigger"); err != nil {
 		return err
 	}
+
 	return r.applySQL(ctx, paymentsqlc.EventSQL, "event")
 }
 
@@ -252,7 +271,9 @@ func isDuplicateTypeStatement(stmt string, err error) bool {
 	) {
 		return false
 	}
+
 	var pgErr *pgconn.PgError
+
 	return errors.As(err, &pgErr) && pgErr.Code == "42710"
 }
 
@@ -263,11 +284,11 @@ func isUniqueViolation(err error) bool {
 }
 
 func (r *PaymentRepository) applySchemaUpgrades(ctx context.Context) error {
-
 	_, err := r.db.DB().ExecContext(
 		ctx,
 		"ALTER TABLE payment_product_item ALTER COLUMN quantity SET DEFAULT 1",
 	)
+
 	return err
 }
 
@@ -279,6 +300,7 @@ func (r *PaymentRepository) applySQL(
 	if err != nil {
 		return fmt.Errorf("payment %s SQL parse failed: %w", source, err)
 	}
+
 	for _, statement := range statements {
 		if err := sqlwrap.Exec(
 			ctx,
@@ -297,6 +319,7 @@ func (r *PaymentRepository) applySQL(
 			)
 		}
 	}
+
 	return nil
 }
 
@@ -304,6 +327,7 @@ func queryTimeout(value time.Duration) time.Duration {
 	if value <= 0 {
 		return time.Second
 	}
+
 	return value
 }
 
@@ -311,6 +335,7 @@ func (r *PaymentRepository) ListProviders(
 	ctx context.Context,
 ) ([]AdminProviderModel, error) {
 	key := paymentCacheKey("providers")
+
 	providers, err := queryPaymentCache(
 		ctx,
 		r,
@@ -323,6 +348,7 @@ func (r *PaymentRepository) ListProviders(
 	if err != nil {
 		return nil, err
 	}
+
 	return mapAdminSlice(cloneSlice(providers), mapAdminProvider), nil
 }
 
@@ -330,6 +356,7 @@ func (r *PaymentRepository) ListAssets(
 	ctx context.Context,
 ) ([]AdminAssetModel, error) {
 	key := paymentCacheKey("assets")
+
 	assets, err := queryPaymentCache(
 		ctx,
 		r,
@@ -342,6 +369,7 @@ func (r *PaymentRepository) ListAssets(
 	if err != nil {
 		return nil, err
 	}
+
 	return mapAdminSlice(cloneSlice(assets), mapAdminAsset), nil
 }
 
@@ -366,6 +394,7 @@ func (r *PaymentRepository) UpsertAsset(
 		!validAssetKind(params.AssetKind) {
 		return ErrInvalidAsset
 	}
+
 	if err := r.q.UpsertAsset(ctx, paymentsqlc.UpsertAssetParams{
 		Code:      params.Code,
 		Title:     params.Title,
@@ -390,6 +419,7 @@ func (r *PaymentRepository) UpsertAsset(
 	}); err != nil {
 		return err
 	}
+
 	return r.invalidateAllCache()
 }
 
@@ -401,6 +431,7 @@ func (r *PaymentRepository) DeleteAsset(
 	if err != nil {
 		return 0, err
 	}
+
 	return rows, r.invalidateAllCache()
 }
 
@@ -422,6 +453,7 @@ func (r *PaymentRepository) GetProviderAsset(
 			})
 		},
 	)
+
 	return mapAdminResult(row, err, mapAdminProviderAsset)
 }
 
@@ -445,6 +477,7 @@ func (r *PaymentRepository) UpsertProviderAsset(
 		(params.MinAmountMinor != nil && params.MaxAmountMinor != nil && *params.MinAmountMinor > *params.MaxAmountMinor) {
 		return ErrInvalidProviderAsset
 	}
+
 	if err := r.q.UpsertProviderAsset(
 		ctx,
 		paymentsqlc.UpsertProviderAssetParams{
@@ -473,6 +506,7 @@ func (r *PaymentRepository) UpsertProviderAsset(
 	); err != nil {
 		return err
 	}
+
 	return r.invalidateAllCache()
 }
 
@@ -491,6 +525,7 @@ func (r *PaymentRepository) DeleteProviderAsset(
 	if err != nil {
 		return 0, err
 	}
+
 	return rows, r.invalidateAllCache()
 }
 

@@ -27,9 +27,11 @@ func (a *TON) Execute(
 ) (RefundResult, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 	if params.Executor != nil {
 		return params.Executor(ctx, params)
 	}
+
 	return RefundResult{}, ErrRefundUnsupported
 }

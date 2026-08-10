@@ -10,9 +10,9 @@ func (a *Checkout) CreateAttempt(
 	ctx context.Context,
 	params CreateAttemptParams,
 ) (*Attempt, error) {
-
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	if err := params.Identity.Validate(); err != nil {
@@ -40,5 +40,4 @@ func (a *Checkout) CreateAttempt(
 	}
 
 	return mapAttempt(attempt), nil
-
 }

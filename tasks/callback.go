@@ -66,24 +66,32 @@ func (t *Tasks) OnCallback(
 	if handler == nil {
 		return ErrCallbackHandlerNil
 	}
+
 	if t == nil {
 		return ErrServiceNil
 	}
+
 	t.lifecycleMu.Lock()
+
 	if t.running {
 		t.lifecycleMu.Unlock()
+
 		return ErrCallbacksRegistrationClosed
 	}
+
 	if t.callbacks != nil && !t.client.IsUnavailable() {
 		t.lifecycleMu.Unlock()
+
 		return t.runCallback(ctx, handler, opts...)
 	}
+
 	t.callbacksToRun = append(t.callbacksToRun, callbackRegistration{
 		ctx:     ctx,
 		handler: handler,
 		options: append([]CallbackOption(nil), opts...),
 	})
 	t.lifecycleMu.Unlock()
+
 	return nil
 }
 
@@ -95,11 +103,16 @@ func (t *Tasks) runCallback(
 	if t == nil || t.callbacks == nil {
 		return ErrCallbacksNotConfigured
 	}
+
 	runCtx, cancel := t.bindContext(ctx)
+
 	defer cancel()
+
 	opts = append(opts, callbackutil.WithSourceService("tasks"))
+
 	return t.callbacks.On(runCtx, func(callbackCtx callbackutil.Context) error {
 		var payload CallbackPayload
+
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
 			return serviceerrors.Wrap(
 				serviceerrors.CodeInternalError,
@@ -107,6 +120,7 @@ func (t *Tasks) runCallback(
 				err,
 			)
 		}
+
 		eventCtx := Context{
 			Context: callbackCtx,
 			Payload: &services.RewardPayload{
@@ -124,6 +138,7 @@ func (t *Tasks) runCallback(
 		default:
 			eventCtx.Claimed = &payload
 		}
+
 		return handler(eventCtx)
 	}, opts...)
 }

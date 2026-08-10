@@ -7,7 +7,6 @@ import (
 )
 
 func TestValidateHTTPCheckURLRejectsUnsafeTargets(t *testing.T) {
-
 	for _, raw := range []string{
 		"http://example.com/check",
 		"https://127.0.0.1/check",
@@ -20,6 +19,7 @@ func TestValidateHTTPCheckURLRejectsUnsafeTargets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse %q: %v", raw, err)
 		}
+
 		if err := validateHTTPCheckURL(
 			context.Background(),
 			value,
@@ -28,15 +28,14 @@ func TestValidateHTTPCheckURLRejectsUnsafeTargets(t *testing.T) {
 			t.Fatalf("unsafe URL %q was accepted", raw)
 		}
 	}
-
 }
 
 func TestValidateHTTPCheckURLAllowsExplicitPrivateHost(t *testing.T) {
-
 	value, err := url.Parse("http://127.0.0.1/check")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := validateHTTPCheckURL(
 		context.Background(),
 		value,
@@ -44,5 +43,4 @@ func TestValidateHTTPCheckURLAllowsExplicitPrivateHost(t *testing.T) {
 	); err != nil {
 		t.Fatalf("explicit private URL rejected: %v", err)
 	}
-
 }

@@ -14,6 +14,7 @@ func (c *Client) CreateInvoiceLink(
 	}
 
 	var result botAPIResponse[string]
+
 	resp, err := c.rest.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
@@ -23,6 +24,7 @@ func (c *Client) CreateInvoiceLink(
 	if err != nil {
 		return "", err
 	}
+
 	if resp.StatusCode() < http.StatusOK ||
 		resp.StatusCode() >= http.StatusMultipleChoices ||
 		!result.OK {
@@ -34,5 +36,6 @@ func (c *Client) CreateInvoiceLink(
 			resp.String(),
 		)
 	}
+
 	return result.Result, nil
 }

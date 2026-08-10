@@ -66,24 +66,32 @@ func (p *Promo) OnCallback(
 	if handler == nil {
 		return ErrCallbackHandlerNil
 	}
+
 	if p == nil {
 		return ErrServiceNil
 	}
+
 	p.lifecycleMu.Lock()
+
 	if p.running {
 		p.lifecycleMu.Unlock()
+
 		return ErrCallbacksRegistrationClosed
 	}
+
 	if p.callbacks != nil && !p.client.IsUnavailable() {
 		p.lifecycleMu.Unlock()
+
 		return p.runCallback(ctx, handler, opts...)
 	}
+
 	p.callbacksToRun = append(p.callbacksToRun, callbackRegistration{
 		ctx:     ctx,
 		handler: handler,
 		options: append([]CallbackOption(nil), opts...),
 	})
 	p.lifecycleMu.Unlock()
+
 	return nil
 }
 
@@ -95,11 +103,16 @@ func (p *Promo) runCallback(
 	if p == nil || p.callbacks == nil {
 		return ErrCallbacksNotConfigured
 	}
+
 	runCtx, cancel := p.bindContext(ctx)
+
 	defer cancel()
+
 	opts = append(opts, callbackutil.WithSourceService("promo"))
+
 	return p.callbacks.On(runCtx, func(callbackCtx callbackutil.Context) error {
 		var payload CallbackPayload
+
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
 			return serviceerrors.Wrap(
 				serviceerrors.CodeInternalError,
@@ -107,6 +120,7 @@ func (p *Promo) runCallback(
 				err,
 			)
 		}
+
 		return handler(Context{
 			Context: callbackCtx,
 			Payload: &services.RewardPayload{

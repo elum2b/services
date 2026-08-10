@@ -17,6 +17,7 @@ func (r *Repository) Get(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return Item{}, err
 	}
+
 	cacheKey := r.referenceCacheKey(referenceCacheGet, workspaceID, key, locale)
 	item, err := sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:               cacheKey,
@@ -33,11 +34,14 @@ func (r *Repository) Get(
 		if err != nil {
 			return Item{}, err
 		}
+
 		if len(rows) == 0 {
 			return Item{}, sql.ErrNoRows
 		}
+
 		return mapGetRow(rows[0]), nil
 	})
+
 	return item, mapNoRows(err)
 }
 
@@ -50,17 +54,21 @@ func (r *Repository) Resolve(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
+
 	if len(keys) == 0 {
 		return []Item{}, nil
 	}
+
 	cacheKeys := append([]string(nil), keys...)
 	sort.Strings(cacheKeys)
+
 	cacheKey := r.referenceCacheKey(
 		referenceCacheResolve,
 		workspaceID,
 		locale,
 		strings.Join(cacheKeys, "\x1f"),
 	)
+
 	items, err := sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:     cacheKey,
 		Timeout: r.timeout,
@@ -82,15 +90,18 @@ func (r *Repository) Resolve(
 		if err != nil {
 			return nil, err
 		}
+
 		result := make([]Item, 0, len(rows))
 		for _, row := range rows {
 			result = append(result, mapResolveRow(row))
 		}
+
 		return result, nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	ordered := make([]Item, 0, len(keys))
 	for _, key := range keys {
 		index := sort.Search(len(items), func(index int) bool {
@@ -100,6 +111,7 @@ func (r *Repository) Resolve(
 			ordered = append(ordered, items[index])
 		}
 	}
+
 	return ordered, nil
 }
 
@@ -111,6 +123,7 @@ func (r *Repository) List(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
+
 	cacheKey := r.referenceCacheKey(
 		referenceCacheList,
 		workspaceID,
@@ -118,6 +131,7 @@ func (r *Repository) List(
 		limit,
 		offset,
 	)
+
 	return sqlwrap.Query(ctx, r.db, sqlwrap.Params{
 		Key:               cacheKey,
 		Timeout:           r.timeout,
@@ -134,10 +148,12 @@ func (r *Repository) List(
 		if err != nil {
 			return nil, err
 		}
+
 		result := make([]Item, 0, len(rows))
 		for _, row := range rows {
 			result = append(result, mapListRow(row))
 		}
+
 		return result, nil
 	})
 }
@@ -197,6 +213,7 @@ func nullableLocalization(
 	if !locale.Valid {
 		return nil
 	}
+
 	return &Localization{
 		WorkspaceID: workspaceID,
 		ItemKey:     key,

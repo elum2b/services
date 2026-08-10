@@ -3,6 +3,7 @@ package ton
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -23,16 +24,20 @@ func (a *TON) StartSubscriber(
 ) (*Sub, error) {
 	params.NetworkConfigURL = strings.TrimSpace(params.NetworkConfigURL)
 	params.WalletAddress = strings.TrimSpace(params.WalletAddress)
+
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return nil, err
 	}
+
 	if params.WalletAddress == "" {
 		return nil, ErrWalletAddressRequired
 	}
+
 	network, err := validateNetwork(params.Network)
 	if err != nil {
 		return nil, err
 	}
+
 	params.WalletAddress, err = NormalizeWalletAddress(
 		params.WalletAddress,
 		network,
@@ -40,10 +45,13 @@ func (a *TON) StartSubscriber(
 	if err != nil {
 		return nil, err
 	}
+
 	if params.NetworkConfigURL == "" {
 		params.NetworkConfigURL = defaultNetworkConfigURL(network)
 	}
+
 	lastLT := uint64(0)
+
 	cursor, err := a.repository.GetProviderCursor(
 		ctx,
 		paymentsqlc.GetProviderCursorParams{
@@ -55,11 +63,12 @@ func (a *TON) StartSubscriber(
 	)
 	if err == nil {
 		lastLT = uint64(cursor.CursorSequence)
-	} else if err != sql.ErrNoRows {
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 
 	runCtx, cancel := a.bindContext(ctx)
+
 	sub, err := NewSub(
 		runCtx,
 		cancel,
@@ -69,8 +78,10 @@ func (a *TON) StartSubscriber(
 	)
 	if err != nil {
 		cancel()
+
 		return nil, err
 	}
+
 	sub.onClose = func() {
 		a.unregisterSubscriber(sub)
 	}
@@ -81,6 +92,7 @@ func (a *TON) StartSubscriber(
 		if err != nil {
 			return err
 		}
+
 		_, err = a.ProcessTransfer(runCtx, IncomingTransfer{
 			WorkspaceID:        params.WorkspaceID,
 			Network:            network,
@@ -93,6 +105,7 @@ func (a *TON) StartSubscriber(
 			AmountMinor:        amount,
 			Comment:            tx.Body.Message,
 		})
+
 		return err
 	})
 
@@ -101,14 +114,17 @@ func (a *TON) StartSubscriber(
 		if err != nil {
 			return err
 		}
+
 		masterAddress, err := sub.JettonMasterAddress(runCtx, tx.SrcAddr)
 		if err != nil {
 			return err
 		}
+
 		asset, err := a.ResolveJettonAsset(runCtx, network, masterAddress)
 		if err != nil {
 			return err
 		}
+
 		_, err = a.ProcessTransfer(runCtx, IncomingTransfer{
 			WorkspaceID:        params.WorkspaceID,
 			Network:            network,
@@ -122,6 +138,7 @@ func (a *TON) StartSubscriber(
 			Comment:            tx.Body.Message,
 			JettonSender:       tx.Body.Sender,
 		})
+
 		return err
 	})
 	sub.Start()

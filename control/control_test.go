@@ -631,7 +631,6 @@ func TestControlOneTimeInviteIsAtomic(t *testing.T) {
 	var wait sync.WaitGroup
 
 	for _, subject := range []string{"friend-a", "friend-b"} {
-
 		wait.Add(1)
 
 		go func() {
@@ -1086,7 +1085,7 @@ func TestControlBackupCodeIsSingleUseAcrossConcurrentChallenges(t *testing.T) {
 
 	t.Cleanup(func() { _ = db.Close() })
 
-	if _, err := db.Exec(`
+	if _, err := db.ExecContext(ctx, `
 		CREATE OR REPLACE FUNCTION control_test_delay_backup_update()
 		RETURNS trigger
 		LANGUAGE plpgsql
@@ -1100,7 +1099,7 @@ func TestControlBackupCodeIsSingleUseAcrossConcurrentChallenges(t *testing.T) {
 		t.Fatalf("create backup delay function: %v", err)
 	}
 
-	if _, err := db.Exec(`
+	if _, err := db.ExecContext(ctx, `
 		CREATE TRIGGER control_test_delay_backup_update
 		BEFORE UPDATE OF backup_hashes ON control_two_factor
 		FOR EACH ROW
@@ -1127,7 +1126,6 @@ func TestControlBackupCodeIsSingleUseAcrossConcurrentChallenges(t *testing.T) {
 	results := make(chan error, len(challenges))
 
 	for _, challenge := range challenges {
-
 		go func() {
 			<-start
 
@@ -1571,11 +1569,11 @@ func TestControlRemovalSerializesConcurrentAuthentication(t *testing.T) {
 		END
 		$$
 	`, member.Account.ID)
-	if _, err := db.Exec(delayFunction); err != nil {
+	if _, err := db.ExecContext(ctx, delayFunction); err != nil {
 		t.Fatalf("create session delay function: %v", err)
 	}
 
-	if _, err := db.Exec(`
+	if _, err := db.ExecContext(ctx, `
 		CREATE TRIGGER control_test_delay_member_session
 		BEFORE INSERT ON control_session
 		FOR EACH ROW
@@ -1585,10 +1583,12 @@ func TestControlRemovalSerializesConcurrentAuthentication(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		_, _ = db.Exec(
+		_, _ = db.ExecContext(
+			context.Background(),
 			"DROP TRIGGER IF EXISTS control_test_delay_member_session ON control_session",
 		)
-		_, _ = db.Exec(
+		_, _ = db.ExecContext(
+			context.Background(),
 			"DROP FUNCTION IF EXISTS control_test_delay_member_session()",
 		)
 	})
@@ -1620,7 +1620,8 @@ func TestControlRemovalSerializesConcurrentAuthentication(t *testing.T) {
 		t.Fatalf("concurrent authentication: %v", concurrentAuth.err)
 	}
 
-	if _, err := db.Exec(
+	if _, err := db.ExecContext(
+		ctx,
 		"DROP TRIGGER IF EXISTS control_test_delay_member_session ON control_session",
 	); err != nil {
 		t.Fatalf("drop session delay trigger: %v", err)
@@ -1674,7 +1675,7 @@ func TestControlTwoFactorSetupSerializesBeginAndConfirm(t *testing.T) {
 
 	t.Cleanup(func() { _ = db.Close() })
 
-	if _, err := db.Exec(`
+	if _, err := db.ExecContext(ctx, `
 		CREATE OR REPLACE FUNCTION control_test_delay_two_factor_confirm()
 		RETURNS trigger
 		LANGUAGE plpgsql
@@ -1688,7 +1689,7 @@ func TestControlTwoFactorSetupSerializesBeginAndConfirm(t *testing.T) {
 		t.Fatalf("create two-factor delay function: %v", err)
 	}
 
-	if _, err := db.Exec(`
+	if _, err := db.ExecContext(ctx, `
 		CREATE TRIGGER control_test_delay_two_factor_confirm
 		BEFORE UPDATE OF backup_hashes ON control_two_factor
 		FOR EACH ROW
@@ -1698,10 +1699,12 @@ func TestControlTwoFactorSetupSerializesBeginAndConfirm(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		_, _ = db.Exec(
+		_, _ = db.ExecContext(
+			context.Background(),
 			"DROP TRIGGER IF EXISTS control_test_delay_two_factor_confirm ON control_two_factor",
 		)
-		_, _ = db.Exec(
+		_, _ = db.ExecContext(
+			context.Background(),
 			"DROP FUNCTION IF EXISTS control_test_delay_two_factor_confirm()",
 		)
 	})
@@ -2117,11 +2120,11 @@ func TestControlUnbindIdentitySerializesAuthentication(t *testing.T) {
 		END
 		$$
 	`, owner.Account.ID)
-	if _, err := db.Exec(delayFunction); err != nil {
+	if _, err := db.ExecContext(ctx, delayFunction); err != nil {
 		t.Fatalf("create identity delay function: %v", err)
 	}
 
-	if _, err := db.Exec(`
+	if _, err := db.ExecContext(ctx, `
 		CREATE TRIGGER control_test_delay_identity_delete
 		BEFORE DELETE ON control_identity
 		FOR EACH ROW
@@ -2131,10 +2134,12 @@ func TestControlUnbindIdentitySerializesAuthentication(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		_, _ = db.Exec(
+		_, _ = db.ExecContext(
+			context.Background(),
 			"DROP TRIGGER IF EXISTS control_test_delay_identity_delete ON control_identity",
 		)
-		_, _ = db.Exec(
+		_, _ = db.ExecContext(
+			context.Background(),
 			"DROP FUNCTION IF EXISTS control_test_delay_identity_delete()",
 		)
 	})
@@ -2940,20 +2945,23 @@ func newControlTestService(t testing.TB) *control.Control {
 	}
 	defer adminDB.Close()
 
-	if _, err := adminDB.Exec(
+	if _, err := adminDB.ExecContext(
+		t.Context(),
 		"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
 		controlTestDatabase,
 	); err != nil {
 		t.Fatalf("terminate test database connections: %v", err)
 	}
 
-	if _, err := adminDB.Exec(
+	if _, err := adminDB.ExecContext(
+		t.Context(),
 		fmt.Sprintf("DROP DATABASE IF EXISTS %s", controlTestDatabase),
 	); err != nil {
 		t.Fatalf("drop test database: %v", err)
 	}
 
-	if _, err := adminDB.Exec(
+	if _, err := adminDB.ExecContext(
+		t.Context(),
 		fmt.Sprintf("CREATE DATABASE %s", controlTestDatabase),
 	); err != nil {
 		t.Fatalf("create test database: %v", err)

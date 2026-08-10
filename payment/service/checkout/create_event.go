@@ -12,6 +12,7 @@ func (a *Checkout) CreateEvent(
 ) (uint64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	return a.repository.CreateEvent(ctx, repository.EventCreateParams{

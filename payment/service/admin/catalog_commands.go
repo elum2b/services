@@ -20,6 +20,7 @@ func (a *Admin) SaveProduct(
 	if a == nil || a.products == nil {
 		return ErrProductServiceNotInitialized
 	}
+
 	return a.products.Upsert(ctx, params)
 }
 
@@ -30,6 +31,7 @@ func (a *Admin) SaveProductGroup(
 	if a == nil || a.products == nil {
 		return ErrProductServiceNotInitialized
 	}
+
 	return a.products.UpsertGroup(ctx, params)
 }
 
@@ -40,6 +42,7 @@ func (a *Admin) SaveLocalization(
 	if a == nil || a.products == nil {
 		return ErrProductServiceNotInitialized
 	}
+
 	return a.products.UpsertLocalization(ctx, params)
 }
 
@@ -50,6 +53,7 @@ func (a *Admin) AttachProductItem(
 	if a == nil || a.products == nil {
 		return ErrProductServiceNotInitialized
 	}
+
 	return a.products.AddItem(ctx, params)
 }
 
@@ -60,6 +64,7 @@ func (a *Admin) CreateCatalogPrice(
 	if a == nil || a.products == nil {
 		return 0, ErrProductServiceNotInitialized
 	}
+
 	return a.products.CreatePrice(ctx, params)
 }
 
@@ -70,5 +75,6 @@ func (a *Admin) UpdateCatalogPrice(
 	if a == nil || a.products == nil {
 		return 0, ErrProductServiceNotInitialized
 	}
+
 	return a.products.UpdatePrice(ctx, params)
 }

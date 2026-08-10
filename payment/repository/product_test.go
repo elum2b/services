@@ -3,7 +3,6 @@ package repository
 import "testing"
 
 func TestPayableAmountMinorRejectsInvalidAmounts(t *testing.T) {
-
 	for _, value := range []struct {
 		list     int64
 		discount int64
@@ -27,5 +26,4 @@ func TestPayableAmountMinorRejectsInvalidAmounts(t *testing.T) {
 			)
 		}
 	}
-
 }

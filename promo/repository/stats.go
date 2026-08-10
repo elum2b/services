@@ -21,12 +21,16 @@ func (r *Repository) GetRedemption(
 		PlatformUserID: identity.PlatformUserID,
 	})
 	if isNoRows(err) {
+		//nolint:nilnil // No redemption is a valid lookup result.
 		return nil, nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	value := mapRedemption(row)
+
 	return &value, nil
 }
 
@@ -37,6 +41,7 @@ func (r *Repository) ListRedemptions(
 	limit, offset int32,
 ) ([]Redemption, error) {
 	limit, offset = normalizePage(limit, offset)
+
 	rows, err := r.q.AdminListRedemptions(
 		ctx,
 		promosqlc.AdminListRedemptionsParams{
@@ -49,10 +54,12 @@ func (r *Repository) ListRedemptions(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]Redemption, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, mapRedemption(row))
 	}
+
 	return result, nil
 }
 
@@ -72,6 +79,7 @@ func (r *Repository) GetStats(
 	if err != nil {
 		return Stats{}, err
 	}
+
 	return Stats{
 		ActivationCount:      uint64(row.ActivationCount),
 		MaxActivations:       uint64(row.MaxActivations),
@@ -97,6 +105,7 @@ func (r *Repository) ListDailyStats(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]DailyStats, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, DailyStats{
@@ -105,6 +114,7 @@ func (r *Repository) ListDailyStats(
 			UniqueUsers:     uint64(row.UniqueUsers),
 		})
 	}
+
 	return result, nil
 }
 
@@ -116,6 +126,7 @@ func (r *Repository) RefreshDailyStats(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if from.IsZero() || until.IsZero() || from.After(until) {
 		return fmt.Errorf("promo stats workspace or date range is invalid")
 	}
@@ -131,6 +142,8 @@ func remainingActivations(value int64) *uint64 {
 	if value < 0 {
 		return nil
 	}
+
 	converted := uint64(value)
+
 	return &converted
 }

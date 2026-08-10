@@ -11,5 +11,6 @@ func (u *User) ListProducts(
 	if u == nil || u.products == nil {
 		return nil, ErrProductNotInitialized
 	}
+
 	return u.products.List(ctx, params)
 }

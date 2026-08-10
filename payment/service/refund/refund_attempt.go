@@ -15,6 +15,7 @@ func (a *Refund) refundAttempt(
 ) (repository.Attempt, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	if attemptID != 0 {
@@ -22,9 +23,11 @@ func (a *Refund) refundAttempt(
 		if err != nil {
 			return repository.Attempt{}, err
 		}
+
 		if attempt.OrderID != order.ID {
 			return repository.Attempt{}, sql.ErrNoRows
 		}
+
 		return attempt, nil
 	}
 
@@ -36,5 +39,6 @@ func (a *Refund) refundAttempt(
 	if errors.Is(err, sql.ErrNoRows) {
 		return repository.Attempt{}, ErrAttemptRequired
 	}
+
 	return attempt, err
 }

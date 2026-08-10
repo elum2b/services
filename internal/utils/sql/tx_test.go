@@ -42,7 +42,9 @@ func (c *testConn) Begin() (driver.Tx, error) {
 	if c.stats.failBegin {
 		return nil, errors.New("begin fail")
 	}
+
 	c.stats.beginCount.Add(1)
+
 	return &testTx{stats: c.stats}, nil
 }
 
@@ -53,7 +55,9 @@ func (c *testConn) BeginTx(
 	if c.stats.failBegin {
 		return nil, errors.New("begin fail")
 	}
+
 	c.stats.beginCount.Add(1)
+
 	return &testTx{stats: c.stats}, nil
 }
 
@@ -65,12 +69,15 @@ func (t *testTx) Commit() error {
 	if t.stats.failCommit {
 		return errors.New("commit fail")
 	}
+
 	t.stats.commitCount.Add(1)
+
 	return nil
 }
 
 func (t *testTx) Rollback() error {
 	t.stats.rollbackCount.Add(1)
+
 	return nil
 }
 
@@ -80,6 +87,7 @@ func openTestDB(t *testing.T) (*sql.DB, *txStats) {
 	t.Helper()
 
 	stats := &txStats{}
+
 	return openTestDBWithStats(t, stats), stats
 }
 
@@ -93,6 +101,7 @@ func openTestDBWithStats(t *testing.T, stats *txStats) *sql.DB {
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
 
 	return db
@@ -113,9 +122,11 @@ func TestWithTx_Commit(t *testing.T) {
 	if stats.beginCount.Load() != 1 {
 		t.Fatalf("expected begin=1, got %d", stats.beginCount.Load())
 	}
+
 	if stats.commitCount.Load() != 1 {
 		t.Fatalf("expected commit=1, got %d", stats.commitCount.Load())
 	}
+
 	if stats.rollbackCount.Load() != 0 {
 		t.Fatalf("expected rollback=0, got %d", stats.rollbackCount.Load())
 	}
@@ -136,6 +147,7 @@ func TestWithTx_RollbackOnError(t *testing.T) {
 	if stats.commitCount.Load() != 0 {
 		t.Fatalf("expected commit=0, got %d", stats.commitCount.Load())
 	}
+
 	if stats.rollbackCount.Load() != 1 {
 		t.Fatalf("expected rollback=1, got %d", stats.rollbackCount.Load())
 	}
@@ -148,9 +160,11 @@ func TestWithTx_RollbackOnPanic(t *testing.T) {
 		if p := recover(); p == nil {
 			t.Fatal("expected panic to propagate")
 		}
+
 		if stats.commitCount.Load() != 0 {
 			t.Fatalf("expected commit=0, got %d", stats.commitCount.Load())
 		}
+
 		if stats.rollbackCount.Load() != 1 {
 			t.Fatalf("expected rollback=1, got %d", stats.rollbackCount.Load())
 		}
@@ -211,6 +225,7 @@ func TestWithTx_Validation(t *testing.T) {
 	) {
 		t.Fatalf("expected ErrNilDB, got %v", err)
 	}
+
 	if err := WithTx[fakeQueries](
 		context.Background(),
 		db,
@@ -219,6 +234,7 @@ func TestWithTx_Validation(t *testing.T) {
 	); err == nil {
 		t.Fatal("expected newQueries nil error")
 	}
+
 	if err := WithTx[fakeQueries](
 		context.Background(),
 		db,
@@ -239,6 +255,7 @@ func TestInTx(t *testing.T) {
 	); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if stats.commitCount.Load() != 1 {
 		t.Fatalf("expected commit=1, got %d", stats.commitCount.Load())
 	}
@@ -254,7 +271,9 @@ func TestInTx_ValidationAndRollback(t *testing.T) {
 	}
 
 	db, stats := openTestDB(t)
+
 	c = &Client{db: db}
+
 	if err := c.InTx(context.Background(), nil); err == nil {
 		t.Fatal("expected callback nil error")
 	}
@@ -266,6 +285,7 @@ func TestInTx_ValidationAndRollback(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected callback error")
 	}
+
 	if stats.rollbackCount.Load() != 1 {
 		t.Fatalf("expected rollback=1, got %d", stats.rollbackCount.Load())
 	}
@@ -275,6 +295,7 @@ func TestInTx_BeginCommitAndPanicPaths(t *testing.T) {
 	stats := &txStats{failBegin: true}
 	db := openTestDBWithStats(t, stats)
 	c := &Client{db: db}
+
 	if err := c.InTx(
 		context.Background(),
 		func(*sql.Tx) error { return nil },
@@ -285,6 +306,7 @@ func TestInTx_BeginCommitAndPanicPaths(t *testing.T) {
 	stats = &txStats{failCommit: true}
 	db = openTestDBWithStats(t, stats)
 	c = &Client{db: db}
+
 	if err := c.InTx(
 		context.Background(),
 		func(*sql.Tx) error { return nil },
@@ -300,10 +322,12 @@ func TestInTx_BeginCommitAndPanicPaths(t *testing.T) {
 		if p := recover(); p == nil {
 			t.Fatal("expected panic")
 		}
+
 		if stats.rollbackCount.Load() != 1 {
 			t.Fatalf("expected rollback=1, got %d", stats.rollbackCount.Load())
 		}
 	}()
+
 	_ = c.InTx(context.Background(), func(*sql.Tx) error {
 		panic("panic in InTx")
 	})

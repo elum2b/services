@@ -9,7 +9,6 @@ func (a *Admin) GetStats(
 	ctx context.Context,
 	workspaceID, cpaID string,
 ) (StatsModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -19,7 +18,6 @@ func (a *Admin) GetStats(
 	}
 
 	return StatsModel(value), nil
-
 }
 
 func (a *Admin) ListDailyStats(
@@ -27,7 +25,6 @@ func (a *Admin) ListDailyStats(
 	workspaceID, cpaID string,
 	from, until time.Time,
 ) ([]DailyStatsModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -48,7 +45,6 @@ func (a *Admin) ListDailyStats(
 	}
 
 	return result, nil
-
 }
 
 func (a *Admin) RefreshDailyStats(
@@ -56,10 +52,8 @@ func (a *Admin) RefreshDailyStats(
 	workspaceID string,
 	from, until time.Time,
 ) error {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
 	return a.repository.RefreshDailyStats(mergedCtx, workspaceID, from, until)
-
 }

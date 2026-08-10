@@ -33,6 +33,7 @@ func NewWithOptions(
 			rootCtx:    contextutil.Normalize(ctx),
 		}
 	}
+
 	return &Subscription{
 		repository: repository.NewPaymentRepositoryWithOptions(db, options),
 		rootCtx:    contextutil.Normalize(ctx),
@@ -43,6 +44,7 @@ func (a *Subscription) Close() error {
 	if a == nil || a.repository == nil {
 		return nil
 	}
+
 	return a.repository.Close()
 }
 

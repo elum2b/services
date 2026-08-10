@@ -24,30 +24,40 @@ func (a *TON) StartManagedSubscribers(
 	if a == nil {
 		done := make(chan struct{})
 		close(done)
+
 		return done
 	}
+
 	if interval <= 0 {
 		interval = defaultWalletSyncInterval
 	}
+
 	runCtx, cancel := a.bindContext(ctx)
 
 	a.mu.Lock()
+
 	if a.managedStarted {
 		cancel()
+
 		done := a.managedDone
 		a.mu.Unlock()
+
 		return done
 	}
+
 	a.managedStarted = true
 	a.managedCancel = cancel
 	a.managedDone = make(chan struct{})
+
 	done := a.managedDone
 	a.mu.Unlock()
 
 	a.goroutines.Go("payment.ton.managed_subscribers", func() {
 		defer close(done)
+
 		a.managedSubscriberLoop(runCtx, interval)
 	})
+
 	return done
 }
 
@@ -62,6 +72,7 @@ func (a *TON) managedSubscriberLoop(
 		select {
 		case <-ctx.Done():
 			a.closeManagedSubscribers()
+
 			return
 		case <-timer.C:
 			a.syncManagedSubscribersSafely(ctx)
@@ -79,6 +90,7 @@ func (a *TON) syncManagedSubscribersSafely(ctx context.Context) {
 			)
 		}
 	}()
+
 	if err := a.SyncManagedSubscribers(ctx); err != nil && ctx.Err() == nil {
 		log.Printf("payment ton wallet sync: %v", err)
 	}
@@ -88,6 +100,7 @@ func (a *TON) SyncManagedSubscribers(ctx context.Context) error {
 	if a == nil || a.repository == nil {
 		return ErrSubscriberNotInitialized
 	}
+
 	rows, err := a.repository.ListEnabledTONWallets(ctx)
 	if err != nil {
 		return err
@@ -99,17 +112,21 @@ func (a *TON) SyncManagedSubscribers(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+
 		if !ok {
 			continue
 		}
+
 		desired[managedSubscriberKey(params)] = params
 	}
 
 	a.mu.Lock()
+
 	current := make(map[string]managedSubscriber, len(a.managed))
 	for key, managed := range a.managed {
 		current[key] = managed
 	}
+
 	a.mu.Unlock()
 
 	for key, managed := range current {
@@ -118,32 +135,41 @@ func (a *TON) SyncManagedSubscribers(ctx context.Context) error {
 			managed.sub == nil ||
 			managed.sub.Err() != nil {
 			_ = managed.sub.Close()
+
 			a.mu.Lock()
+
 			if existing, exists := a.managed[key]; exists &&
 				existing.sub == managed.sub {
 				delete(a.managed, key)
 			}
+
 			a.mu.Unlock()
 		}
 	}
 
 	for key, params := range desired {
 		a.mu.Lock()
+
 		managed, exists := a.managed[key]
 		a.mu.Unlock()
+
 		if exists && sameSubscriberParams(managed.params, params) &&
 			managed.sub != nil &&
 			managed.sub.Err() == nil {
 			continue
 		}
+
 		sub, err := a.StartSubscriber(ctx, params)
 		if err != nil {
 			return err
 		}
+
 		a.mu.Lock()
+
 		a.managed[key] = managedSubscriber{params: params, sub: sub}
 		a.mu.Unlock()
 	}
+
 	return nil
 }
 
@@ -151,13 +177,17 @@ func (a *TON) closeManagedSubscribers() {
 	if a == nil {
 		return
 	}
+
 	a.mu.Lock()
+
 	managed := make([]managedSubscriber, 0, len(a.managed))
 	for _, item := range a.managed {
 		managed = append(managed, item)
 	}
+
 	a.managed = make(map[string]managedSubscriber)
 	a.mu.Unlock()
+
 	for _, item := range managed {
 		_ = item.sub.Close()
 	}
@@ -169,29 +199,37 @@ func subscriberParamsFromWallet(
 	if !row.IsEnabled {
 		return SubscriberParams{}, false, nil
 	}
+
 	network, err := validateNetwork(row.Network)
 	if err != nil {
 		return SubscriberParams{}, false, err
 	}
+
 	workspaceID := row.WorkspaceID
 	walletAddress := strings.TrimSpace(row.WalletAddress)
+
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return SubscriberParams{}, false, err
 	}
+
 	if walletAddress == "" {
 		return SubscriberParams{}, false, nil
 	}
+
 	walletAddress, err = NormalizeWalletAddress(walletAddress, network)
 	if err != nil {
 		return SubscriberParams{}, false, err
 	}
+
 	networkConfigURL := ""
 	if row.NetworkConfigUrl.Valid {
 		networkConfigURL = strings.TrimSpace(row.NetworkConfigUrl.String)
 	}
+
 	if networkConfigURL == "" {
 		networkConfigURL = defaultNetworkConfigURL(network)
 	}
+
 	return SubscriberParams{
 		WorkspaceID:      workspaceID,
 		Network:          network,

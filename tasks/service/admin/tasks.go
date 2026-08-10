@@ -14,6 +14,7 @@ func (a *Admin) UpsertGroup(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.UpsertGroup(
 		mergedCtx,
 		workspaceID,
@@ -29,7 +30,9 @@ func (a *Admin) GetGroup(
 ) (GroupModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	value, err := a.repository.GetGroup(mergedCtx, workspaceID, key)
+
 	return mapGroup(value), err
 }
 
@@ -39,14 +42,17 @@ func (a *Admin) ListGroups(
 ) ([]GroupModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	values, err := a.repository.ListGroups(mergedCtx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]GroupModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, mapGroup(value))
 	}
+
 	return result, nil
 }
 
@@ -56,6 +62,7 @@ func (a *Admin) DeleteGroup(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.DeleteGroup(mergedCtx, workspaceID, key)
 }
 
@@ -65,6 +72,7 @@ func (a *Admin) UpsertGroupLocalization(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.UpsertGroupLocalization(
 		mergedCtx,
 		workspaceID,
@@ -81,6 +89,7 @@ func (a *Admin) GetGroupLocalization(
 ) (repository.Localization, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.GetGroupLocalization(
 		mergedCtx,
 		workspaceID,
@@ -95,6 +104,7 @@ func (a *Admin) ListGroupLocalizations(
 ) ([]repository.Localization, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.ListGroupLocalizations(mergedCtx, workspaceID, key)
 }
 
@@ -104,6 +114,7 @@ func (a *Admin) DeleteGroupLocalization(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.DeleteGroupLocalization(
 		mergedCtx,
 		workspaceID,
@@ -120,6 +131,7 @@ func (a *Admin) UpsertSequence(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.UpsertSequence(
 		mergedCtx,
 		workspaceID,
@@ -135,7 +147,9 @@ func (a *Admin) GetSequence(
 ) (SequenceModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	value, err := a.repository.GetSequence(mergedCtx, workspaceID, key)
+
 	return mapGroup(value), err
 }
 
@@ -145,14 +159,17 @@ func (a *Admin) ListSequences(
 ) ([]SequenceModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	values, err := a.repository.ListSequences(mergedCtx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]SequenceModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, mapGroup(value))
 	}
+
 	return result, nil
 }
 
@@ -162,6 +179,7 @@ func (a *Admin) DeleteSequence(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.DeleteSequence(mergedCtx, workspaceID, key)
 }
 
@@ -180,6 +198,7 @@ func (a *Admin) SaveTask(
 ) (uint64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.SaveTask(mergedCtx, repository.SaveTaskParams(params))
 }
 
@@ -190,6 +209,7 @@ func (a *Admin) DeleteTask(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.DeleteTask(mergedCtx, workspaceID, id)
 }
 
@@ -200,10 +220,12 @@ func (a *Admin) GetTask(
 ) (TaskModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	task, err := a.repository.GetTask(mergedCtx, workspaceID, id)
 	if err != nil {
 		return TaskModel{}, err
 	}
+
 	return mapTask(task), nil
 }
 
@@ -214,6 +236,7 @@ func (a *Admin) ListTasks(
 ) ([]TaskModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	tasks, err := a.repository.ListTasks(
 		mergedCtx,
 		workspaceID,
@@ -224,10 +247,12 @@ func (a *Admin) ListTasks(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]TaskModel, 0, len(tasks))
 	for _, task := range tasks {
 		result = append(result, mapTask(task))
 	}
+
 	return result, nil
 }
 
@@ -239,6 +264,7 @@ func (a *Admin) UpsertTaskLocalization(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.UpsertTaskLocalization(
 		mergedCtx,
 		workspaceID,
@@ -257,6 +283,7 @@ func (a *Admin) GetTaskLocalization(
 ) (repository.Localization, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.GetTaskLocalization(
 		mergedCtx,
 		workspaceID,
@@ -272,6 +299,7 @@ func (a *Admin) ListTaskLocalizations(
 ) ([]repository.Localization, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.ListTaskLocalizations(mergedCtx, workspaceID, taskID)
 }
 
@@ -283,6 +311,7 @@ func (a *Admin) DeleteTaskLocalization(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.DeleteTaskLocalization(
 		mergedCtx,
 		workspaceID,
@@ -300,10 +329,12 @@ func (a *Admin) UpsertReward(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	rewardType, err := validateReward(reward)
 	if err != nil {
 		return err
 	}
+
 	return a.repository.UpsertReward(
 		mergedCtx,
 		workspaceID,
@@ -323,10 +354,12 @@ func validateReward(reward RewardModel) (string, error) {
 	if reward.Key == "" || reward.Quantity <= 0 {
 		return "", ErrRewardRequired
 	}
+
 	rewardType := reward.Type
 	if rewardType == "" {
 		rewardType = "quantity"
 	}
+
 	switch rewardType {
 	case "quantity":
 		if reward.Unit != nil {
@@ -339,6 +372,7 @@ func validateReward(reward RewardModel) (string, error) {
 	default:
 		return "", ErrRewardTypeUnsupported
 	}
+
 	return rewardType, nil
 }
 
@@ -359,6 +393,7 @@ func (a *Admin) DeleteReward(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.DeleteReward(mergedCtx, workspaceID, taskID, key)
 }
 
@@ -370,7 +405,9 @@ func (a *Admin) GetReward(
 ) (RewardModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	value, err := a.repository.GetReward(mergedCtx, workspaceID, taskID, key)
+
 	return RewardModel{
 		Key:      value.Key,
 		Type:     value.Type,
@@ -387,10 +424,12 @@ func (a *Admin) ListRewards(
 ) ([]RewardModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	values, err := a.repository.ListRewards(mergedCtx, workspaceID, taskID)
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]RewardModel, 0, len(values))
 	for _, value := range values {
 		result = append(
@@ -404,6 +443,7 @@ func (a *Admin) ListRewards(
 			},
 		)
 	}
+
 	return result, nil
 }
 
@@ -413,9 +453,10 @@ func (a *Admin) UpsertComplexCondition(
 ) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.UpsertComplexCondition(
 		mergedCtx,
-		repository.SaveComplexConditionParams(params),
+		params,
 	)
 }
 
@@ -427,6 +468,7 @@ func (a *Admin) DeleteComplexCondition(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.DeleteComplexCondition(
 		mergedCtx,
 		workspaceID,
@@ -441,6 +483,7 @@ func (a *Admin) ListComplexConditions(
 ) ([]ComplexConditionModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	conditions, err := a.repository.ListComplexConditions(
 		mergedCtx,
 		workspaceID,
@@ -448,6 +491,7 @@ func (a *Admin) ListComplexConditions(
 	if err != nil {
 		return nil, err
 	}
+
 	out := make([]ComplexConditionModel, 0, len(conditions))
 	for _, condition := range conditions {
 		out = append(out, ComplexConditionModel{
@@ -459,6 +503,7 @@ func (a *Admin) ListComplexConditions(
 			IsRequired:      condition.IsRequired,
 		})
 	}
+
 	return out, nil
 }
 
@@ -469,12 +514,14 @@ func (a *Admin) GetComplexCondition(
 ) (ComplexConditionModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	value, err := a.repository.GetComplexCondition(
 		mergedCtx,
 		workspaceID,
 		parentTaskID,
 		conditionTaskID,
 	)
+
 	return ComplexConditionModel{
 		WorkspaceID:     value.WorkspaceID,
 		ParentTaskID:    value.ParentTaskID,

@@ -14,7 +14,9 @@ func (a *TelegramStars) EditSubscription(
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return NewClient(
 		params.Credentials,
 	).EditUserStarSubscription(ctx, editUserStarSubscriptionRequest{

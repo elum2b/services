@@ -102,6 +102,7 @@ func (r *PaymentRepository) UpsertSubscription(
 	if err != nil {
 		return 0, err
 	}
+
 	startedAt := params.StartedAt
 	if startedAt.IsZero() {
 		startedAt = time.Now()
@@ -171,7 +172,6 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 	ctx context.Context,
 	params SubscriptionRenewalParams,
 ) (SubscriptionRenewalResult, error) {
-
 	workspaceID, err := requireWorkspaceID(params.WorkspaceID)
 	if err != nil {
 		return SubscriptionRenewalResult{}, err
@@ -184,6 +184,7 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 	)
 	params.ProviderChargeID = strings.TrimSpace(params.ProviderChargeID)
 	params.AssetCode = strings.TrimSpace(params.AssetCode)
+
 	if params.AttemptID == 0 || params.AttemptID > math.MaxInt64 ||
 		params.ProviderCode == "" || params.ProviderPaymentID == "" ||
 		params.ProviderSubscriptionID == "" || params.ProviderChargeID == "" ||
@@ -193,6 +194,7 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 	}
 
 	var result SubscriptionRenewalResult
+
 	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttempt(
 			ctx,
@@ -253,6 +255,7 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 
 			return nil
 		}
+
 		if !errors.Is(lookupErr, sql.ErrNoRows) {
 			return lookupErr
 		}
@@ -269,8 +272,10 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrPaymentMismatch
 			}
+
 			return err
 		}
+
 		if !subscription.OrderID.Valid ||
 			subscription.OrderID.Int64 != order.ID ||
 			!subscription.AttemptID.Valid ||
@@ -302,6 +307,7 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 		if err != nil {
 			return err
 		}
+
 		result.SubscriptionID = subscriptionID
 
 		renewalID, err := txRepo.q.CreatePaymentSubscriptionRenewal(
@@ -339,9 +345,11 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 					},
 				)
 			}
+
 			if lookupErr != nil {
 				return lookupErr
 			}
+
 			if existing.SubscriptionID != int64(subscriptionID) ||
 				existing.OrderID != order.ID || existing.AttemptID != attempt.ID ||
 				existing.ProviderSubscriptionID != params.ProviderSubscriptionID ||
@@ -357,9 +365,11 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 
 			return nil
 		}
+
 		if err != nil {
 			return err
 		}
+
 		result.RenewalID = uint64(renewalID)
 
 		items, err := txRepo.q.GetFulfillmentItemsForOrder(ctx, order.ID)
@@ -378,7 +388,6 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 	})
 
 	return result, err
-
 }
 
 func (r *PaymentRepository) enqueuePaymentSubscriptionRenewedCallback(
@@ -389,7 +398,6 @@ func (r *PaymentRepository) enqueuePaymentSubscriptionRenewedCallback(
 	params SubscriptionRenewalParams,
 	items []paymentsqlc.GetFulfillmentItemsForOrderRow,
 ) error {
-
 	payload := paymentSubscriptionRenewedCallbackPayload{
 		RenewalID:              result.RenewalID,
 		SubscriptionID:         result.SubscriptionID,
@@ -431,6 +439,7 @@ func (r *PaymentRepository) enqueuePaymentSubscriptionRenewedCallback(
 		result.SubscriptionID,
 		params.PeriodEnd.Unix(),
 	)
+
 	_, err = r.callbacks.CreateEvent(ctx, callbackutil.CreateParams{
 		WorkspaceID:        order.WorkspaceID,
 		SourceService:      "payment",
@@ -442,7 +451,6 @@ func (r *PaymentRepository) enqueuePaymentSubscriptionRenewedCallback(
 	})
 
 	return err
-
 }
 
 func (r *PaymentRepository) UpdateSubscriptionStatus(
@@ -517,13 +525,16 @@ func (r *PaymentRepository) IsSubscriptionActive(
 	if err != nil {
 		return false, err
 	}
+
 	now := params.Now
 	if now.IsZero() {
 		now = time.Now()
 	}
 
 	endedAt := sql.NullTime{Time: now, Valid: true}
+
 	var count int64
+
 	if params.ProductID != "" && params.ProviderCode != "" {
 		count, err = r.q.CountActivePaymentSubscriptionsForProductProvider(
 			ctx,
@@ -573,6 +584,7 @@ func (r *PaymentRepository) IsSubscriptionActive(
 			},
 		)
 	}
+
 	if err != nil {
 		return false, err
 	}

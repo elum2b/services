@@ -24,9 +24,12 @@ func (r *Repository) Record(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	var result RecordResult
+
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		refID, calendarType := calendarReference(params.CalendarRef)
+
 		rows, err := txRepo.q.GetRecordBundleForUpdate(
 			ctx,
 			calendarsqlc.GetRecordBundleForUpdateParams{
@@ -45,14 +48,17 @@ func (r *Repository) Record(
 		if err != nil {
 			return err
 		}
+
 		if len(rows) == 0 {
 			result = RecordResult{
 				OperationID: params.OperationID,
 				Status:      StatusNotFound,
 				OccurredAt:  now,
 			}
+
 			return nil
 		}
+
 		if err := txRepo.q.EnsureProgressForUpdate(
 			ctx,
 			calendarsqlc.EnsureProgressForUpdateParams{
@@ -65,6 +71,7 @@ func (r *Repository) Record(
 		); err != nil {
 			return err
 		}
+
 		if _, err := txRepo.q.LockProgressForUpdate(
 			ctx,
 			calendarsqlc.LockProgressForUpdateParams{
@@ -77,6 +84,7 @@ func (r *Repository) Record(
 		); err != nil {
 			return err
 		}
+
 		rows, err = txRepo.q.GetRecordBundleForUpdate(
 			ctx,
 			calendarsqlc.GetRecordBundleForUpdateParams{
@@ -95,15 +103,19 @@ func (r *Repository) Record(
 		if err != nil {
 			return err
 		}
+
 		calendar, progress, repeated, err := mapRecordBundle(rows)
 		if err != nil {
 			return err
 		}
+
 		if repeated != nil {
 			result = *repeated
 			result.Calendar = calendar
+
 			return nil
 		}
+
 		result, err = calculateRecord(
 			calendar,
 			progress,
@@ -113,10 +125,12 @@ func (r *Repository) Record(
 		if err != nil {
 			return err
 		}
+
 		rawRewards, err := json.Marshal(result.Rewards)
 		if err != nil {
 			return err
 		}
+
 		id, err := txRepo.q.CreateOperation(
 			ctx,
 			calendarsqlc.CreateOperationParams{
@@ -150,6 +164,7 @@ func (r *Repository) Record(
 		if err != nil {
 			return err
 		}
+
 		result.OperationRowID = uint64(id)
 		if result.Granted {
 			if err := txRepo.q.UpsertProgress(
@@ -174,6 +189,7 @@ func (r *Repository) Record(
 			); err != nil {
 				return err
 			}
+
 			payload, err := json.Marshal(rewardGrantedCallbackPayload{
 				OperationRowID: result.OperationRowID,
 				OperationID:    result.OperationID,
@@ -189,6 +205,7 @@ func (r *Repository) Record(
 			if err != nil {
 				return err
 			}
+
 			eventKey := fmt.Sprintf(
 				"calendar.reward_granted:%d",
 				result.OperationRowID,
@@ -209,8 +226,10 @@ func (r *Repository) Record(
 				return err
 			}
 		}
+
 		return nil
 	})
+
 	return result, err
 }
 
@@ -240,6 +259,7 @@ func mapRecordBundle(
 		UpdatedAt: row.UpdatedAt,
 		Steps:     make([]Step, 0),
 	}
+
 	for _, item := range rows {
 		calendar.Steps = appendStep(
 			calendar.Steps,
@@ -253,6 +273,7 @@ func mapRecordBundle(
 			item.RewardDurationUnit,
 		)
 	}
+
 	progress := Progress{
 		CurrentPosition:   nonNegativeUint32(row.CurrentPosition),
 		ClaimCount:        uint64(row.ClaimCount.Int64),
@@ -268,10 +289,12 @@ func mapRecordBundle(
 	if !row.OperationRowID.Valid {
 		return calendar, progress, nil, nil
 	}
+
 	rewards, err := decodeRewards(row.OperationRewardsSnapshot)
 	if err != nil {
 		return Calendar{}, Progress{}, nil, err
 	}
+
 	repeated := &RecordResult{
 		OperationRowID: uint64(row.OperationRowID.Int64),
 		OperationID:    row.ExistingOperationID.String,
@@ -291,6 +314,7 @@ func mapRecordBundle(
 		},
 		OccurredAt: row.OperationOccurredAt.Time,
 	}
+
 	return calendar, progress, repeated, nil
 }
 
@@ -311,6 +335,7 @@ func uint32Value(value *uint32) uint32 {
 	if value == nil {
 		return 0
 	}
+
 	return *value
 }
 
@@ -338,6 +363,7 @@ func calculateRecord(
 	case calendar.StartAt != nil && now.Before(*calendar.StartAt):
 		result.Status = StatusNotStarted
 		result.Progress.NextClaimAt = calendar.StartAt
+
 		return result, nil
 	case calendar.EndAt != nil && !now.Before(*calendar.EndAt):
 		result.Status = StatusExpired
@@ -355,34 +381,43 @@ func calculateRecord(
 	if err != nil {
 		return RecordResult{}, err
 	}
+
 	if status != "" {
 		result.Status = status
 		result.Progress.NextClaimAt = nextAt
+
 		return result, nil
 	}
+
 	step, found := stepAt(calendar.Steps, position)
 	if !found {
 		result.Status = StatusCompleted
 		result.Progress.IsCompleted = true
+
 		return result, nil
 	}
+
 	result.Granted = true
 	result.Status = StatusGranted
 	result.Position = &position
 	result.Rewards = append(result.Rewards, step.Rewards...)
 	result.Progress.CurrentPosition = position
 	result.Progress.ClaimCount++
+
 	result.Progress.LastClaimPosition = &position
 	result.Progress.LastClaimAt = &now
 	result.Progress.NextClaimAt = nextAt
 	result.Progress.LastWasReset = reset
+
 	if reset {
 		result.Progress.ResetCount++
 	}
+
 	if position == calendar.Steps[len(calendar.Steps)-1].Position &&
 		calendar.EndBehavior == EndStop {
 		result.Progress.IsCompleted = true
 	}
+
 	return result, nil
 }
 
@@ -395,26 +430,34 @@ func calculatePosition(
 		if progress.NextClaimAt != nil && now.Before(*progress.NextClaimAt) {
 			return 0, progress.NextClaimAt, false, StatusNotAvailable, nil
 		}
+
 		index, next, err := intervalIndex(calendar, now)
 		if err != nil {
 			return 0, nil, false, "", err
 		}
+
 		position, status := positionAtOrdinal(index, calendar)
+
 		return position, &next, false, status, nil
 	}
+
 	if progress.IsCompleted && calendar.EndBehavior == EndStop {
 		return 0, progress.NextClaimAt, false, StatusCompleted, nil
 	}
+
 	if progress.LastClaimAt != nil {
 		next, err := nextAvailableAt(calendar, *progress.LastClaimAt)
 		if err != nil {
 			return 0, nil, false, "", err
 		}
+
 		if now.Before(next) {
 			return 0, &next, false, StatusNotAvailable, nil
 		}
+
 		reset := false
 		position, status := nextStepPosition(progress.CurrentPosition, calendar)
+
 		if calendar.Mode == ModeSequentialReset {
 			resetAt := next
 			for range calendar.ResetAfterIntervals {
@@ -424,16 +467,21 @@ func calculatePosition(
 					calendar.IntervalCount,
 				)
 			}
+
 			if !now.Before(resetAt) {
 				position, status = positionAtOrdinal(1, calendar)
 				reset = true
 			}
 		}
+
 		following, err := nextAvailableAt(calendar, now)
+
 		return position, &following, reset, status, err
 	}
+
 	position, status := positionAtOrdinal(1, calendar)
 	next, err := nextAvailableAt(calendar, now)
+
 	return position, &next, false, status, err
 }
 
@@ -443,6 +491,7 @@ func nextStepPosition(current uint32, calendar Calendar) (uint32, string) {
 			return positionAtOrdinal(uint64(index+2), calendar)
 		}
 	}
+
 	return 0, StatusCompleted
 }
 
@@ -450,6 +499,7 @@ func positionAtOrdinal(ordinal uint64, calendar Calendar) (uint32, string) {
 	if ordinal > 0 && ordinal <= uint64(len(calendar.Steps)) {
 		return calendar.Steps[ordinal-1].Position, ""
 	}
+
 	last := calendar.Steps[len(calendar.Steps)-1].Position
 	switch calendar.EndBehavior {
 	case EndRestart:
@@ -467,6 +517,7 @@ func stepAt(steps []Step, position uint32) (Step, bool) {
 			return step, true
 		}
 	}
+
 	return Step{}, false
 }
 
@@ -474,6 +525,7 @@ func nullableUint32(value *uint32) sql.NullInt32 {
 	if value == nil {
 		return sql.NullInt32{}
 	}
+
 	return sql.NullInt32{Int32: int32(*value), Valid: true}
 }
 
@@ -481,7 +533,9 @@ func sqlNullUint32Ptr(value sql.NullInt32) *uint32 {
 	if !value.Valid || value.Int32 < 0 {
 		return nil
 	}
+
 	result := uint32(value.Int32)
+
 	return &result
 }
 
@@ -497,6 +551,8 @@ func sqlNullTimePtr(value sql.NullTime) *time.Time {
 	if !value.Valid {
 		return nil
 	}
+
 	result := value.Time
+
 	return &result
 }

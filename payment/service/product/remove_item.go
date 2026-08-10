@@ -10,6 +10,7 @@ func (a *Product) RemoveItem(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	return a.repository.DeleteProductItem(ctx, workspaceID, productID, itemID)

@@ -32,9 +32,11 @@ func (a *Admin) CreatePromo(
 ) (uint64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if err := validatePromo(params); err != nil {
 		return 0, err
 	}
+
 	return a.repository.CreatePromo(
 		mergedCtx,
 		repository.SavePromoParams(params),
@@ -47,15 +49,19 @@ func (a *Admin) UpdatePromo(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if params.ID == 0 {
 		return 0, ErrPromoIDRequired
 	}
+
 	if params.ID > math.MaxInt64 {
 		return 0, ErrPromoNumberOutOfRange
 	}
+
 	if err := validatePromo(params); err != nil {
 		return 0, err
 	}
+
 	return a.repository.UpdatePromo(
 		mergedCtx,
 		repository.SavePromoParams(params),
@@ -69,12 +75,15 @@ func (a *Admin) GetPromo(
 ) (PromoModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return PromoModel{}, err
 	}
+
 	if id == 0 {
 		return PromoModel{}, ErrPromoScopeRequired
 	}
+
 	if id > math.MaxInt64 {
 		return PromoModel{}, ErrPromoNumberOutOfRange
 	}
@@ -83,6 +92,7 @@ func (a *Admin) GetPromo(
 	if err != nil {
 		return PromoModel{}, err
 	}
+
 	localizations, err := a.repository.ListLocalizations(
 		mergedCtx,
 		workspaceID,
@@ -91,10 +101,12 @@ func (a *Admin) GetPromo(
 	if err != nil {
 		return PromoModel{}, err
 	}
+
 	rewards, err := a.repository.ListRewards(mergedCtx, workspaceID, id)
 	if err != nil {
 		return PromoModel{}, err
 	}
+
 	return mapPromo(promo, localizations, rewards), nil
 }
 
@@ -105,7 +117,9 @@ func (a *Admin) ListPromos(
 ) ([]PromoModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	limit, offset := normalizePage(page)
+
 	values, err := a.repository.ListPromos(
 		mergedCtx,
 		workspaceID,
@@ -115,10 +129,12 @@ func (a *Admin) ListPromos(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]PromoModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, mapPromo(value, nil, nil))
 	}
+
 	return result, nil
 }
 
@@ -129,12 +145,15 @@ func (a *Admin) DeletePromo(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return 0, err
 	}
+
 	if id == 0 {
 		return 0, ErrPromoScopeRequired
 	}
+
 	if id > math.MaxInt64 {
 		return 0, ErrPromoNumberOutOfRange
 	}
@@ -146,22 +165,28 @@ func validatePromo(params SavePromoParams) error {
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return err
 	}
+
 	if strings.TrimSpace(params.Code) == "" {
 		return ErrPromoScopeRequired
 	}
+
 	if len(params.Payload) == 0 || !json.Valid(params.Payload) {
 		return ErrPromoPayloadInvalid
 	}
+
 	if params.MaxActivations > math.MaxInt64 {
 		return ErrPromoNumberOutOfRange
 	}
+
 	if err := target.Validate(params.Target); err != nil {
 		return ErrPromoPayloadInvalid
 	}
+
 	if params.StartAt != nil && params.EndAt != nil &&
 		!params.StartAt.Before(*params.EndAt) {
 		return ErrPromoRangeInvalid
 	}
+
 	return nil
 }
 
@@ -193,6 +218,7 @@ func mapPromo(
 			Description: item.Description,
 		})
 	}
+
 	for _, reward := range rewards {
 		result.Rewards = append(result.Rewards, user.RewardModel{
 			Key:      reward.Key,
@@ -202,5 +228,6 @@ func mapPromo(
 			Unit:     reward.Unit,
 		})
 	}
+
 	return result
 }

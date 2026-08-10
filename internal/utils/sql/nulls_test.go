@@ -12,12 +12,14 @@ func TestNullHelpers(t *testing.T) {
 	if got := ValueFromPtr(&now); !got.Equal(now) {
 		t.Fatalf("expected %v from ValueFromPtr, got %v", now, got)
 	}
+
 	if got := ValueFromPtr[*time.Time](nil); got != nil {
 		t.Fatalf(
 			"expected nil pointer from ValueFromPtr for nil input, got %v",
 			got,
 		)
 	}
+
 	if got := ValueFromPtr[int64](nil); got != 0 {
 		t.Fatalf(
 			"expected zero int64 from ValueFromPtr for nil input, got %d",
@@ -31,6 +33,7 @@ func TestNullHelpers(t *testing.T) {
 	if !nString.Valid || nString.String != "x" {
 		t.Fatalf("expected valid null string 'x', got %+v", nString)
 	}
+
 	if nString := NullFromPtr[string, sql.NullString](
 		nil,
 		func(v string) sql.NullString {
@@ -53,6 +56,7 @@ func TestNullHelpers(t *testing.T) {
 	if s == nil || *s != "x" {
 		t.Fatalf("expected string pointer 'x', got %v", s)
 	}
+
 	if s := NullStringPtr(sql.NullString{Valid: false}); s != nil {
 		t.Fatalf("expected nil string pointer, got %v", s)
 	}
@@ -61,9 +65,11 @@ func TestNullHelpers(t *testing.T) {
 	if i64 == nil || *i64 != 7 {
 		t.Fatalf("expected uint64 pointer 7, got %v", i64)
 	}
+
 	if i64 := NullInt64Ptr(sql.NullInt64{Valid: false}); i64 != nil {
 		t.Fatalf("expected nil int64 pointer, got %v", i64)
 	}
+
 	if i64 := NullInt64Ptr(sql.NullInt64{Int64: -1, Valid: true}); i64 != nil {
 		t.Fatalf("expected nil int64 pointer for negative value, got %v", i64)
 	}
@@ -72,9 +78,11 @@ func TestNullHelpers(t *testing.T) {
 	if i32 == nil || *i32 != 3 {
 		t.Fatalf("expected uint64 pointer 3, got %v", i32)
 	}
+
 	if i32 := NullInt32Ptr(sql.NullInt32{Valid: false}); i32 != nil {
 		t.Fatalf("expected nil int32 pointer, got %v", i32)
 	}
+
 	if i32 := NullInt32Ptr(sql.NullInt32{Int32: -1, Valid: true}); i32 != nil {
 		t.Fatalf("expected nil int32 pointer for negative value, got %v", i32)
 	}
@@ -82,6 +90,7 @@ func TestNullHelpers(t *testing.T) {
 	if v := NullBoolToInt(sql.NullBool{Bool: true, Valid: true}); v != 1 {
 		t.Fatalf("expected 1, got %d", v)
 	}
+
 	if v := NullBoolToInt(sql.NullBool{Bool: false, Valid: true}); v != 0 {
 		t.Fatalf("expected 0, got %d", v)
 	}
@@ -90,9 +99,11 @@ func TestNullHelpers(t *testing.T) {
 	if !nTime.Valid || !nTime.Time.Equal(now) {
 		t.Fatalf("expected valid null time %v, got %+v", now, nTime)
 	}
+
 	if nTime := NullTimeFromPtr(nil); nTime.Valid {
 		t.Fatalf("expected invalid null time for nil ptr, got %+v", nTime)
 	}
+
 	zero := time.Time{}
 	if nTime := NullTimeFromPtr(&zero); nTime.Valid {
 		t.Fatalf("expected invalid null time for zero ptr, got %+v", nTime)
@@ -102,6 +113,7 @@ func TestNullHelpers(t *testing.T) {
 	if !nInt.Valid || nInt.Int64 != 9 {
 		t.Fatalf("expected valid null int64 9, got %+v", nInt)
 	}
+
 	if nInt := NullInt64FromUint64(9, false); nInt.Valid {
 		t.Fatalf("expected invalid null int64, got %+v", nInt)
 	}

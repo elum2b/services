@@ -13,7 +13,9 @@ func (a *Admin) ListProviderCursors(
 ) ([]ProviderCursorModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	limit, offset := normalizePage(params.Page)
+
 	return a.repository.AdminListProviderCursors(
 		mergedCtx,
 		paymentsqlc.AdminListProviderCursorsParams{
@@ -34,6 +36,7 @@ func (a *Admin) GetProviderCursor(
 ) (ProviderCursorModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.GetProviderCursor(
 		mergedCtx,
 		paymentsqlc.GetProviderCursorParams{
@@ -49,6 +52,7 @@ func (a *Admin) UpsertProviderCursor(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.UpsertProviderCursor(
 		mergedCtx,
 		paymentsqlc.UpsertProviderCursorParams{
@@ -68,7 +72,9 @@ func (a *Admin) ListProviderTransactions(
 ) ([]ProviderTransactionModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	limit, offset := normalizePage(params.Page)
+
 	return a.repository.AdminListProviderTransactions(
 		mergedCtx,
 		paymentsqlc.AdminListProviderTransactionsParams{
@@ -96,6 +102,7 @@ func (a *Admin) GetProviderTransaction(
 ) (ProviderTransactionModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.AdminGetProviderTransaction(
 		mergedCtx,
 		paymentsqlc.AdminGetProviderTransactionParams{
@@ -111,6 +118,7 @@ func (a *Admin) GetProviderTransactionByExternalID(
 ) (ProviderTransactionModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.GetProviderTransactionByExternalID(
 		mergedCtx,
 		paymentsqlc.GetProviderTransactionByExternalIDParams{
@@ -132,6 +140,7 @@ func (a *Admin) UpdateProviderTransactionStatus(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.AdminUpdateProviderTransactionStatus(
 		mergedCtx,
 		paymentsqlc.AdminUpdateProviderTransactionStatusParams{

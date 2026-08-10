@@ -39,5 +39,6 @@ func (a *Checkout) CreateOrder(
 	if err != nil {
 		return nil, err
 	}
+
 	return mapOrder(order), nil
 }

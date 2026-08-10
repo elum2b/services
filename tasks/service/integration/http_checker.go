@@ -86,11 +86,15 @@ func (h HTTPChecker) check(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	var config HTTPCheckPayload
+
 	if err := json.Unmarshal(task.IntegrationPayload, &config); err != nil {
 		return CheckResult{}, err
 	}
+
 	values := templateValues(identity, task, provider, variables, now)
+
 	req, err := buildHTTPCheckRequest(
 		ctx,
 		config.Request,
@@ -100,22 +104,27 @@ func (h HTTPChecker) check(
 	if err != nil {
 		return CheckResult{}, err
 	}
+
 	client := secureHTTPCheckClient(h.Client, h.Timeout, h.AllowPrivateHosts)
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return CheckResult{}, err
 	}
 	defer resp.Body.Close()
+
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxHTTPCheckResponse+1))
 	if err != nil {
 		return CheckResult{}, err
 	}
+
 	if len(body) > maxHTTPCheckResponse {
 		return CheckResult{}, fmt.Errorf(
 			"HTTP check response body exceeds %d bytes",
 			maxHTTPCheckResponse,
 		)
 	}
+
 	completed, reason := matchHTTPCheckSuccess(
 		resp.StatusCode,
 		body,
@@ -127,6 +136,7 @@ func (h HTTPChecker) check(
 		"completed":   completed,
 		"reason":      reason,
 	})
+
 	return CheckResult{
 		Completed: completed,
 		Reason:    reason,
@@ -144,43 +154,56 @@ func buildHTTPCheckRequest(
 	if method == "" {
 		method = http.MethodGet
 	}
+
 	rawURL := renderTemplate(config.URL, values)
+
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, err
 	}
+
 	if err := validateHTTPCheckURL(ctx, parsed, allowPrivateHosts); err != nil {
 		return nil, err
 	}
+
 	query := parsed.Query()
 	for key, value := range config.Query {
 		query.Set(renderTemplate(key, values), renderTemplate(value, values))
 	}
+
 	parsed.RawQuery = query.Encode()
+
 	var body io.Reader
+
 	if len(config.Body) > 0 {
 		body = bytes.NewReader(
 			[]byte(renderTemplate(string(config.Body), values)),
 		)
 	}
+
 	req, err := http.NewRequestWithContext(ctx, method, parsed.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
 	for key, value := range config.Headers {
 		key = renderTemplate(key, values)
 		value = renderTemplate(value, values)
+
 		if strings.ContainsAny(key, "\r\n") ||
 			strings.ContainsAny(value, "\r\n") {
 			return nil, fmt.Errorf(
 				"HTTP check headers cannot contain line breaks",
 			)
 		}
+
 		req.Header.Set(key, value)
 	}
+
 	if len(config.Body) > 0 && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
+
 	return req, nil
 }
 
@@ -195,33 +218,41 @@ func matchHTTPCheckSuccess(
 		}
 	} else {
 		ok := false
+
 		for _, expected := range success.StatusCodes {
 			if statusCode == expected {
 				ok = true
 				break
 			}
 		}
+
 		if !ok {
 			return false, "status_code"
 		}
 	}
+
 	if success.BodyContains != "" &&
 		!strings.Contains(string(body), success.BodyContains) {
 		return false, "body_contains"
 	}
+
 	if success.JSONPath != "" {
 		var data any
+
 		if err := json.Unmarshal(body, &data); err != nil {
 			return false, "json"
 		}
+
 		value, ok := lookupJSONPath(data, success.JSONPath)
 		if !ok {
 			return false, "json_path"
 		}
+
 		if success.Equals != nil && !jsonValuesEqual(value, success.Equals) {
 			return false, "json_equals"
 		}
 	}
+
 	return true, ""
 }
 
@@ -252,6 +283,7 @@ func templateValues(
 		"time_unix_ms": strconv.FormatInt(now.UTC().UnixMilli(), 10),
 	}
 	maps.Copy(values, variables)
+
 	return values
 }
 
@@ -260,44 +292,55 @@ func renderTemplate(value string, values map[string]string) string {
 		if value, ok := values[name]; ok {
 			return value
 		}
+
 		return ""
 	})
 }
 
 func osExpandManual(value string, mapping func(string) string) string {
 	var out strings.Builder
+
 	for i := 0; i < len(value); i++ {
 		if value[i] == '$' && i+2 < len(value) && value[i+1] == '{' {
 			end := strings.IndexByte(value[i+2:], '}')
 			if end >= 0 {
 				name := value[i+2 : i+2+end]
 				out.WriteString(mapping(name))
+
 				i += end + 2
+
 				continue
 			}
 		}
+
 		out.WriteByte(value[i])
 	}
+
 	return out.String()
 }
 
 func lookupJSONPath(value any, path string) (any, bool) {
 	path = strings.TrimPrefix(path, "$.")
 	path = strings.TrimPrefix(path, ".")
+
 	current := value
+
 	for _, part := range strings.Split(path, ".") {
 		if part == "" {
 			continue
 		}
+
 		object, ok := current.(map[string]any)
 		if !ok {
 			return nil, false
 		}
+
 		current, ok = object[part]
 		if !ok {
 			return nil, false
 		}
 	}
+
 	return current, true
 }
 

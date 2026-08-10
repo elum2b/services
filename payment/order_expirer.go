@@ -21,9 +21,11 @@ func (a *Payment) startOrderExpirationWorker() {
 	if a.orderExpirationInterval <= 0 {
 		a.orderExpirationInterval = defaultOrderExpirationInterval
 	}
+
 	if a.orderExpirationAge <= 0 {
 		a.orderExpirationAge = defaultOrderExpirationAge
 	}
+
 	if a.orderExpirationBatch <= 0 {
 		a.orderExpirationBatch = defaultOrderExpirationBatch
 	}
@@ -70,6 +72,7 @@ func (a *Payment) expireStaleOrders(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+
 		if count < int(a.orderExpirationBatch) {
 			return nil
 		}

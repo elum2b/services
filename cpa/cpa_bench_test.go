@@ -46,6 +46,7 @@ func benchmarkCPAUserGetCodeNewAssignmentParallel(b *testing.B) {
 	upsertSharedOffer(b, env, "parallel_issue_offer", true)
 
 	var sequence atomic.Uint64
+
 	b.ResetTimer()
 	b.RunParallel(func(worker *testing.PB) {
 		for worker.Next() {
@@ -60,6 +61,7 @@ func benchmarkCPAUserGetCodeNewAssignmentParallel(b *testing.B) {
 				},
 			); err != nil {
 				b.Errorf("parallel issue code: %v", err)
+
 				return
 			}
 		}
@@ -69,6 +71,7 @@ func benchmarkCPAUserGetCodeNewAssignmentParallel(b *testing.B) {
 func benchmarkCPAUserListActiveCacheHit(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	seedCPACatalog(b, env, 100)
+
 	params := user.ListActiveParams{
 		Identity: cpaTestIdentity("list-user"),
 		Locale:   "ru",
@@ -76,7 +79,9 @@ func benchmarkCPAUserListActiveCacheHit(b *testing.B) {
 	if _, err := env.Service.User.ListActive(env.Context, params); err != nil {
 		b.Fatalf("warm list active cache: %v", err)
 	}
+
 	b.ResetTimer()
+
 	for b.Loop() {
 		if _, err := env.Service.User.ListActive(
 			env.Context,
@@ -91,6 +96,7 @@ func benchmarkCPAUserGetCodeNewAssignment(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	upsertSharedOffer(b, env, "issue_offer", true)
 	b.ResetTimer()
+
 	for index := 0; b.Loop(); index++ {
 		if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
 			Identity: cpaBenchmarkIdentity(index),
@@ -104,6 +110,7 @@ func benchmarkCPAUserGetCodeNewAssignment(b *testing.B) {
 func benchmarkCPAUserGetCodeExistingAssignment(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	upsertSharedOffer(b, env, "existing_offer", true)
+
 	identity := cpaTestIdentity("existing-user")
 	if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
 		Identity: identity,
@@ -111,7 +118,9 @@ func benchmarkCPAUserGetCodeExistingAssignment(b *testing.B) {
 	}); err != nil {
 		b.Fatalf("seed assignment: %v", err)
 	}
+
 	b.ResetTimer()
+
 	for b.Loop() {
 		if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
 			Identity: identity,
@@ -125,6 +134,7 @@ func benchmarkCPAUserGetCodeExistingAssignment(b *testing.B) {
 func benchmarkCPAAdminCompleteNewAssignment(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	upsertSharedOffer(b, env, "complete_offer", true)
+
 	identities := make([]user.Identity, b.N)
 	for index := range identities {
 		identities[index] = cpaBenchmarkIdentity(index)
@@ -135,7 +145,9 @@ func benchmarkCPAAdminCompleteNewAssignment(b *testing.B) {
 			b.Fatalf("seed completion assignment: %v", err)
 		}
 	}
+
 	b.ResetTimer()
+
 	for index := range identities {
 		if _, err := env.Service.Admin.Complete(
 			env.Context,
@@ -152,6 +164,7 @@ func benchmarkCPAAdminCompleteNewAssignment(b *testing.B) {
 func benchmarkCPAAdminGetOfferCacheHit(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	upsertSharedOffer(b, env, "get_offer", true)
+
 	if _, err := env.Service.Admin.GetOffer(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -159,7 +172,9 @@ func benchmarkCPAAdminGetOfferCacheHit(b *testing.B) {
 	); err != nil {
 		b.Fatalf("warm get offer cache: %v", err)
 	}
+
 	b.ResetTimer()
+
 	for b.Loop() {
 		if _, err := env.Service.Admin.GetOffer(
 			env.Context,
@@ -174,6 +189,7 @@ func benchmarkCPAAdminGetOfferCacheHit(b *testing.B) {
 func benchmarkCPAAdminListOffersCacheHit(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	seedCPACatalog(b, env, 100)
+
 	page := admin.Page{Limit: 100}
 	if _, err := env.Service.Admin.ListOffers(
 		env.Context,
@@ -182,7 +198,9 @@ func benchmarkCPAAdminListOffersCacheHit(b *testing.B) {
 	); err != nil {
 		b.Fatalf("warm list offers cache: %v", err)
 	}
+
 	b.ResetTimer()
+
 	for b.Loop() {
 		if _, err := env.Service.Admin.ListOffers(
 			env.Context,
@@ -197,6 +215,7 @@ func benchmarkCPAAdminListOffersCacheHit(b *testing.B) {
 func benchmarkCPAAdminUpsertOffer(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	b.ResetTimer()
+
 	for index := 0; b.Loop(); index++ {
 		id := fmt.Sprintf("upsert_%d", index)
 		if err := env.Service.Admin.UpsertOffer(
@@ -219,6 +238,7 @@ func benchmarkCPAAdminUpsertLocalization(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	upsertSharedOffer(b, env, "localization_offer", true)
 	b.ResetTimer()
+
 	for index := 0; b.Loop(); index++ {
 		if err := env.Service.Admin.UpsertLocalization(
 			env.Context,
@@ -239,6 +259,7 @@ func benchmarkCPAAdminUpsertReward(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	upsertSharedOffer(b, env, "reward_offer", true)
 	b.ResetTimer()
+
 	for index := 0; b.Loop(); index++ {
 		if err := env.Service.Admin.UpsertReward(
 			env.Context,
@@ -259,6 +280,7 @@ func benchmarkCPAAdminGetStats(b *testing.B) {
 	upsertSharedOffer(b, env, "stats_offer", true)
 	seedCPAAssignments(b, env, "stats_offer", 100)
 	b.ResetTimer()
+
 	for b.Loop() {
 		if _, err := env.Service.Admin.GetStats(
 			env.Context,
@@ -274,12 +296,15 @@ func benchmarkCPAAdminListAssignments(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	upsertSharedOffer(b, env, "assignments_offer", true)
 	seedCPAAssignments(b, env, "assignments_offer", 100)
+
 	params := admin.AssignmentListParams{
 		WorkspaceID: cpaTestWorkspaceID,
 		CPAID:       "assignments_offer",
 		Page:        admin.Page{Limit: 100},
 	}
+
 	b.ResetTimer()
+
 	for b.Loop() {
 		if _, err := env.Service.Admin.ListAssignments(
 			env.Context,
@@ -294,9 +319,12 @@ func benchmarkCPAAdminRefreshDailyStats(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	upsertSharedOffer(b, env, "daily_stats_offer", true)
 	seedCPAAssignments(b, env, "daily_stats_offer", 100)
+
 	from := time.Now().UTC().Add(-time.Hour)
 	until := from.Add(2 * time.Hour)
+
 	b.ResetTimer()
+
 	for b.Loop() {
 		if err := env.Service.Admin.RefreshDailyStats(
 			env.Context,
@@ -313,6 +341,7 @@ func benchmarkCPAAdminExport(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	seedCPACatalog(b, env, 100)
 	b.ResetTimer()
+
 	for b.Loop() {
 		if _, err := env.Service.Admin.Export(
 			env.Context,
@@ -327,6 +356,7 @@ func benchmarkCPAAdminExport(b *testing.B) {
 func benchmarkCPAAdminImport(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	seedCPACatalog(b, env, 100)
+
 	pkg, err := env.Service.Admin.Export(
 		env.Context,
 		cpaTestWorkspaceID,
@@ -335,7 +365,9 @@ func benchmarkCPAAdminImport(b *testing.B) {
 	if err != nil {
 		b.Fatalf("prepare import package: %v", err)
 	}
+
 	b.ResetTimer()
+
 	for index := 0; b.Loop(); index++ {
 		if _, err := env.Service.Admin.Import(
 			env.Context,
@@ -352,6 +384,7 @@ func benchmarkCPAAdminImport(b *testing.B) {
 
 func seedCPACatalog(tb testing.TB, env cpaTestEnvironment, count int) {
 	tb.Helper()
+
 	for index := 0; index < count; index++ {
 		id := fmt.Sprintf("catalog_%03d", index)
 		upsertSharedOffer(tb, env, id, true)
@@ -367,6 +400,7 @@ func seedCPAAssignments(
 	count int,
 ) {
 	tb.Helper()
+
 	for index := 0; index < count; index++ {
 		if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
 			Identity: cpaBenchmarkIdentity(index),

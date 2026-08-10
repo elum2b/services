@@ -23,12 +23,16 @@ func (r *Repository) PreviewImport(
 	if err := validateExportPackage(pkg); err != nil {
 		return ImportPreview{}, err
 	}
+
 	preview := ImportPreview{Format: pkg.Format, Service: pkg.Service}
+
 	preview.Counts = countPackage(pkg)
+
 	existing, err := r.importExistingKeys(ctx, workspaceID)
 	if err != nil {
 		return ImportPreview{}, err
 	}
+
 	seenSequences := make(map[string]struct{})
 	for _, sequence := range pkg.Sequences {
 		seenSequences[sequence.Key] = struct{}{}
@@ -39,6 +43,7 @@ func (r *Repository) PreviewImport(
 			)
 		}
 	}
+
 	for _, group := range pkg.Groups {
 		if existing.groups[group.Key] {
 			preview.Conflicts = append(
@@ -46,6 +51,7 @@ func (r *Repository) PreviewImport(
 				ImportConflict{Type: "group", Key: group.Key},
 			)
 		}
+
 		for _, config := range group.PartnerConfigs {
 			for _, secret := range []*ExportSecret{config.Secret, config.WebhookSecret} {
 				if secret != nil && !secretHasEmbeddedValue(secret) {
@@ -55,6 +61,7 @@ func (r *Repository) PreviewImport(
 					)
 				}
 			}
+
 			key := partnerConfigImportKey(
 				config.Provider,
 				group.Key,
@@ -67,6 +74,7 @@ func (r *Repository) PreviewImport(
 				)
 			}
 		}
+
 		for _, rule := range group.PartnerRewardRules {
 			key := partnerRewardImportKey(
 				rule.Provider,
@@ -81,7 +89,9 @@ func (r *Repository) PreviewImport(
 				)
 			}
 		}
+
 		positions := make(map[string]map[uint32]string)
+
 		for _, task := range group.Tasks {
 			if existing.tasks[task.Key] {
 				preview.Conflicts = append(
@@ -89,9 +99,11 @@ func (r *Repository) PreviewImport(
 					ImportConflict{Type: "task", Key: task.Key},
 				)
 			}
+
 			if task.SequenceKey == nil {
 				continue
 			}
+
 			if _, ok := seenSequences[*task.SequenceKey]; !ok &&
 				!existing.sequences[*task.SequenceKey] {
 				preview.Warnings = append(
@@ -99,10 +111,12 @@ func (r *Repository) PreviewImport(
 					"sequence is referenced but not present: "+*task.SequenceKey,
 				)
 			}
+
 			if task.SequencePosition != nil {
 				if positions[*task.SequenceKey] == nil {
 					positions[*task.SequenceKey] = make(map[uint32]string)
 				}
+
 				if prev := positions[*task.SequenceKey][*task.SequencePosition]; prev != "" {
 					preview.Warnings = append(
 						preview.Warnings,
@@ -115,10 +129,12 @@ func (r *Repository) PreviewImport(
 						),
 					)
 				}
+
 				positions[*task.SequenceKey][*task.SequencePosition] = task.Key
 			}
 		}
 	}
+
 	return preview, nil
 }
 
@@ -134,10 +150,12 @@ func (r *Repository) Import(
 	if err := validateExportPackage(req.Package); err != nil {
 		return ImportResult{}, err
 	}
+
 	strategy := req.ConflictStrategy
 	if strategy == "" {
 		strategy = ImportConflictFail
 	}
+
 	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
 		strategy != ImportConflictUpdate {
 		return ImportResult{}, fmt.Errorf(
@@ -145,10 +163,13 @@ func (r *Repository) Import(
 			strategy,
 		)
 	}
+
 	if err := requireImportSecrets(req.Package, req.Secrets); err != nil {
 		return ImportResult{}, err
 	}
+
 	result := ImportResult{}
+
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
@@ -158,6 +179,7 @@ func (r *Repository) Import(
 		if err != nil {
 			return err
 		}
+
 		if strategy == ImportConflictFail && len(preview.Conflicts) > 0 {
 			return fmt.Errorf(
 				"import conflicts found: %d",
@@ -177,6 +199,7 @@ func (r *Repository) Import(
 	if err != nil {
 		return ImportResult{}, err
 	}
+
 	return result, r.invalidateTaskCache(ctx, workspaceID)
 }
 
@@ -198,6 +221,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.replaceImportedGroupChildren(
 		ctx,
 		workspaceID,
@@ -207,6 +231,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.importGroupsBulk(
 		ctx,
 		workspaceID,
@@ -217,6 +242,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	taskIDs, err := r.importTasksBulk(
 		ctx,
 		workspaceID,
@@ -228,6 +254,7 @@ func (r *Repository) importBulk(
 	if err != nil {
 		return err
 	}
+
 	if err := r.replaceImportedTaskChildren(
 		ctx,
 		workspaceID,
@@ -238,6 +265,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.importTaskLocalizationsBulk(
 		ctx,
 		workspaceID,
@@ -249,6 +277,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.importRewardsBulk(
 		ctx,
 		workspaceID,
@@ -260,6 +289,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.importComplexConditionsBulk(
 		ctx,
 		workspaceID,
@@ -271,6 +301,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	if err := r.importPartnerConfigsBulk(
 		ctx,
 		workspaceID,
@@ -282,6 +313,7 @@ func (r *Repository) importBulk(
 	); err != nil {
 		return err
 	}
+
 	return r.importPartnerRewardRulesBulk(
 		ctx,
 		workspaceID,
@@ -309,6 +341,7 @@ func (r *Repository) replaceImportedGroupChildren(
 			groupKeys = append(groupKeys, group.Key)
 		}
 	}
+
 	if len(groupKeys) == 0 {
 		return nil
 	}
@@ -327,6 +360,7 @@ func (r *Repository) replaceImportedGroupChildren(
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -343,6 +377,7 @@ func (r *Repository) replaceImportedTaskChildren(
 	}
 
 	taskIDValues := make([]int64, 0)
+
 	for _, group := range groups {
 		for _, task := range group.Tasks {
 			if previewHasConflict(preview, "task", task.Key) {
@@ -354,6 +389,7 @@ func (r *Repository) replaceImportedTaskChildren(
 	if len(taskIDValues) == 0 {
 		return nil
 	}
+
 	for _, spec := range []struct {
 		table  string
 		column string
@@ -371,6 +407,7 @@ func (r *Repository) replaceImportedTaskChildren(
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -389,6 +426,7 @@ func (r *Repository) importSequencesBulk(
 			result.Skipped.Sequences++
 			continue
 		}
+
 		rows = append(
 			rows,
 			[]any{
@@ -400,6 +438,7 @@ func (r *Repository) importSequencesBulk(
 		)
 		result.Imported.Sequences++
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"task_sequence",
@@ -420,17 +459,20 @@ func (r *Repository) importGroupsBulk(
 ) error {
 	groupRows := make([][]any, 0, len(groups))
 	localizationRows := make([][]any, 0, len(groups)*2)
+
 	for _, group := range groups {
 		exists := previewHasConflict(preview, "group", group.Key)
 		if exists && strategy == ImportConflictSkip {
 			result.Skipped.Groups++
 			continue
 		}
+
 		groupRows = append(
 			groupRows,
 			[]any{workspaceID, group.Key, group.Position, group.IsActive},
 		)
 		result.Imported.Groups++
+
 		for locale, text := range group.Localization {
 			localizationRows = append(
 				localizationRows,
@@ -445,6 +487,7 @@ func (r *Repository) importGroupsBulk(
 			result.Imported.GroupLocalizations++
 		}
 	}
+
 	if err := r.execImportBulk(
 		ctx,
 		"task_group",
@@ -455,6 +498,7 @@ func (r *Repository) importGroupsBulk(
 	); err != nil {
 		return err
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"task_group_localization",
@@ -475,6 +519,7 @@ func (r *Repository) importTasksBulk(
 ) (map[string]uint64, error) {
 	rows := make([][]any, 0)
 	needed := make(map[string]struct{})
+
 	for _, group := range groups {
 		for _, task := range group.Tasks {
 			exists := previewHasConflict(preview, "task", task.Key)
@@ -482,6 +527,7 @@ func (r *Repository) importTasksBulk(
 				result.Skipped.Tasks++
 				continue
 			}
+
 			needed[task.Key] = struct{}{}
 			rows = append(rows, []any{
 				workspaceID,
@@ -512,6 +558,7 @@ func (r *Repository) importTasksBulk(
 			result.Imported.Tasks++
 		}
 	}
+
 	if err := r.execImportBulk(ctx, "task_definition",
 		[]string{
 			"workspace_id",
@@ -552,19 +599,24 @@ func (r *Repository) importTasksBulk(
 	); err != nil {
 		return nil, err
 	}
+
 	if len(needed) == 0 {
+		//nolint:nilnil // No referenced task IDs means no lookup result is required.
 		return nil, nil
 	}
+
 	taskRows, err := r.q.ExportListTasks(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
+
 	resultIDs := make(map[string]uint64, len(needed))
 	for _, task := range taskRows {
 		if _, ok := needed[task.Key]; ok {
 			resultIDs[task.Key] = uint64(task.ID)
 		}
 	}
+
 	return resultIDs, nil
 }
 
@@ -578,16 +630,19 @@ func (r *Repository) importTaskLocalizationsBulk(
 	result *ImportResult,
 ) error {
 	rows := make([][]any, 0)
+
 	for _, group := range groups {
 		for _, task := range group.Tasks {
 			if previewHasConflict(preview, "task", task.Key) &&
 				strategy == ImportConflictSkip {
 				continue
 			}
+
 			taskID, ok := taskIDs[task.Key]
 			if !ok {
 				continue
 			}
+
 			for locale, text := range task.Localization {
 				rows = append(
 					rows,
@@ -603,6 +658,7 @@ func (r *Repository) importTaskLocalizationsBulk(
 			}
 		}
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"task_localization",
@@ -623,16 +679,19 @@ func (r *Repository) importRewardsBulk(
 	result *ImportResult,
 ) error {
 	rows := make([][]any, 0)
+
 	for _, group := range groups {
 		for _, task := range group.Tasks {
 			if previewHasConflict(preview, "task", task.Key) &&
 				strategy == ImportConflictSkip {
 				continue
 			}
+
 			taskID, ok := taskIDs[task.Key]
 			if !ok {
 				continue
 			}
+
 			for _, reward := range task.Rewards {
 				rows = append(rows, []any{
 					workspaceID,
@@ -648,6 +707,7 @@ func (r *Repository) importRewardsBulk(
 			}
 		}
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"task_reward",
@@ -679,21 +739,25 @@ func (r *Repository) importComplexConditionsBulk(
 	result *ImportResult,
 ) error {
 	rows := make([][]any, 0)
+
 	for _, group := range groups {
 		for _, task := range group.Tasks {
 			if previewHasConflict(preview, "task", task.Key) &&
 				strategy == ImportConflictSkip {
 				continue
 			}
+
 			parentID, ok := taskIDs[task.Key]
 			if !ok {
 				continue
 			}
+
 			for _, condition := range task.Conditions {
 				conditionID, ok := taskIDs[condition.TaskKey]
 				if !ok {
 					continue
 				}
+
 				rows = append(rows, []any{
 					workspaceID,
 					parentID,
@@ -709,6 +773,7 @@ func (r *Repository) importComplexConditionsBulk(
 			}
 		}
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"task_complex_condition",
@@ -738,6 +803,7 @@ func (r *Repository) importPartnerConfigsBulk(
 	result *ImportResult,
 ) error {
 	rows := make([][]any, 0)
+
 	for _, group := range groups {
 		for _, config := range group.PartnerConfigs {
 			key := partnerConfigImportKey(
@@ -746,19 +812,24 @@ func (r *Repository) importPartnerConfigsBulk(
 				config.Platform,
 			)
 			exists := previewHasConflict(preview, "partner_config", key)
+
 			if exists && strategy == ImportConflictSkip {
 				result.Skipped.PartnerConfigs++
 				continue
 			}
+
 			secret := importSecretValue(config.Secret, secrets)
 			if secret.Valid {
 				encrypted, err := r.encryptPartnerSecret(secret.String)
 				if err != nil {
 					return err
 				}
+
 				secret.String = encrypted
 			}
+
 			webhookSecret := importSecretValue(config.WebhookSecret, secrets)
+
 			rows = append(rows, []any{
 				workspaceID,
 				config.Provider,
@@ -773,6 +844,7 @@ func (r *Repository) importPartnerConfigsBulk(
 			result.Imported.PartnerConfigs++
 		}
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"task_partner_config",
@@ -804,6 +876,7 @@ func (r *Repository) importPartnerRewardRulesBulk(
 	result *ImportResult,
 ) error {
 	rows := make([][]any, 0)
+
 	for _, group := range groups {
 		for _, rule := range group.PartnerRewardRules {
 			externalType := defaultString(rule.ExternalType, "*")
@@ -814,11 +887,14 @@ func (r *Repository) importPartnerRewardRulesBulk(
 				rule.Reward.Key,
 			)
 			exists := previewHasConflict(preview, "partner_reward_rule", key)
+
 			if exists && strategy == ImportConflictSkip {
 				result.Skipped.PartnerRewards++
 				continue
 			}
+
 			rewardType := defaultString(rule.Reward.Type, "quantity")
+
 			rows = append(rows, []any{
 				workspaceID,
 				rule.Provider,
@@ -837,6 +913,7 @@ func (r *Repository) importPartnerRewardRulesBulk(
 			result.Imported.PartnerRewards++
 		}
 	}
+
 	return r.execImportBulk(
 		ctx,
 		"task_partner_reward_rule",
@@ -872,6 +949,7 @@ func (r *Repository) execImportBulk(
 	if len(rows) == 0 {
 		return nil
 	}
+
 	return importexport.ForEachBatch(
 		len(rows),
 		len(columns),
@@ -883,6 +961,7 @@ func (r *Repository) execImportBulk(
 				rows[start:end],
 				importConflictClause(conflictUpdate, strategy),
 			)
+
 			return repositoryExec(ctx, r, func(ctx context.Context) error {
 				_, err := r.executor.ExecContext(ctx, query, args...)
 				return err
@@ -898,6 +977,7 @@ func importConflictClause(updateClause, strategy string) string {
 		if index < 0 {
 			return ""
 		}
+
 		return updateClause[:index] + " DO NOTHING"
 	case ImportConflictUpdate:
 		return updateClause
@@ -913,32 +993,41 @@ func compileImportBulkUpsert(
 	conflictUpdate string,
 ) (string, []any) {
 	var builder strings.Builder
+
 	builder.Grow(len(rows) * len(columns) * 4)
 	builder.WriteString("INSERT INTO ")
 	builder.WriteString(table)
 	builder.WriteString(" (")
 	builder.WriteString(strings.Join(columns, ", "))
 	builder.WriteString(") VALUES ")
+
 	args := make([]any, 0, len(rows)*len(columns))
 	for rowIndex, row := range rows {
 		if rowIndex > 0 {
 			builder.WriteString(", ")
 		}
+
 		builder.WriteByte('(')
+
 		for columnIndex := range columns {
 			if columnIndex > 0 {
 				builder.WriteString(", ")
 			}
+
 			builder.WriteByte('$')
-			builder.WriteString(fmt.Sprint(len(args) + columnIndex + 1))
+			fmt.Fprint(&builder, len(args)+columnIndex+1)
 		}
+
 		builder.WriteByte(')')
+
 		args = append(args, row...)
 	}
+
 	if conflictUpdate != "" {
 		builder.WriteByte(' ')
 		builder.WriteString(conflictUpdate)
 	}
+
 	return builder.String(), args
 }
 
@@ -946,6 +1035,7 @@ func defaultString(value, fallback string) string {
 	if value == "" {
 		return fallback
 	}
+
 	return value
 }
 
@@ -953,6 +1043,7 @@ func defaultUint32(value uint32, fallback uint32) uint32 {
 	if value == 0 {
 		return fallback
 	}
+
 	return value
 }
 
@@ -960,6 +1051,7 @@ func defaultJSON(value []byte, fallback string) string {
 	if len(value) == 0 {
 		return fallback
 	}
+
 	return string(value)
 }
 
@@ -1000,6 +1092,7 @@ func (r *Repository) importExistingKeys(
 		),
 		partnerRewards: make(map[string]bool),
 	}
+
 	groups, err := repositoryValue(
 		ctx,
 		r,
@@ -1010,9 +1103,11 @@ func (r *Repository) importExistingKeys(
 	if err != nil {
 		return out, err
 	}
+
 	for _, group := range groups {
 		out.groups[group.Key] = true
 	}
+
 	sequences, err := repositoryValue(
 		ctx,
 		r,
@@ -1023,9 +1118,11 @@ func (r *Repository) importExistingKeys(
 	if err != nil {
 		return out, err
 	}
+
 	for _, sequence := range sequences {
 		out.sequences[sequence.Key] = true
 	}
+
 	tasks, err := repositoryValue(
 		ctx,
 		r,
@@ -1036,9 +1133,11 @@ func (r *Repository) importExistingKeys(
 	if err != nil {
 		return out, err
 	}
+
 	for _, task := range tasks {
 		out.tasks[task.Key] = true
 	}
+
 	configs, err := repositoryValue(
 		ctx,
 		r,
@@ -1049,9 +1148,11 @@ func (r *Repository) importExistingKeys(
 	if err != nil {
 		return out, err
 	}
+
 	for _, config := range configs {
 		out.partnerConfigs[partnerConfigImportKey(config.Provider, config.GroupKey, config.Platform)] = true
 	}
+
 	rewards, err := repositoryValue(
 		ctx,
 		r,
@@ -1062,9 +1163,11 @@ func (r *Repository) importExistingKeys(
 	if err != nil {
 		return out, err
 	}
+
 	for _, reward := range rewards {
 		out.partnerRewards[partnerRewardImportKey(reward.Provider, reward.GroupKey, reward.ExternalType, reward.RewardKey)] = true
 	}
+
 	return out, nil
 }
 
@@ -1075,12 +1178,14 @@ func countPackage(pkg ExportPackage) ImportCounts {
 		out.Tasks += len(group.Tasks)
 		out.PartnerConfigs += len(group.PartnerConfigs)
 		out.PartnerRewards += len(group.PartnerRewardRules)
+
 		for _, task := range group.Tasks {
 			out.TaskLocalizations += len(task.Localization)
 			out.Rewards += len(task.Rewards)
 			out.Conditions += len(task.Conditions)
 		}
 	}
+
 	return out
 }
 
@@ -1088,9 +1193,11 @@ func validateExportPackage(pkg ExportPackage) error {
 	if pkg.Format != ExportFormat {
 		return fmt.Errorf("unsupported tasks export format: %s", pkg.Format)
 	}
+
 	if pkg.Service != "tasks" {
 		return fmt.Errorf("unsupported export service: %s", pkg.Service)
 	}
+
 	sequenceKeys := make(map[string]int, len(pkg.Sequences))
 	for index, sequence := range pkg.Sequences {
 		if strings.TrimSpace(sequence.Key) == "" {
@@ -1099,6 +1206,7 @@ func validateExportPackage(pkg ExportPackage) error {
 				index,
 			)
 		}
+
 		if previous, exists := sequenceKeys[sequence.Key]; exists {
 			return fmt.Errorf(
 				"tasks import sequences[%d].key duplicates sequences[%d].key",
@@ -1106,17 +1214,20 @@ func validateExportPackage(pkg ExportPackage) error {
 				previous,
 			)
 		}
+
 		sequenceKeys[sequence.Key] = index
 	}
 
 	groupKeys := make(map[string]int, len(pkg.Groups))
 	taskPaths := make(map[string]string)
 	conditionRefs := make(map[string][]string)
+
 	for groupIndex, group := range pkg.Groups {
 		groupPath := fmt.Sprintf("tasks import groups[%d]", groupIndex)
 		if strings.TrimSpace(group.Key) == "" {
 			return fmt.Errorf("%s.key is required", groupPath)
 		}
+
 		if previous, exists := groupKeys[group.Key]; exists {
 			return fmt.Errorf(
 				"%s.key duplicates groups[%d].key",
@@ -1124,6 +1235,7 @@ func validateExportPackage(pkg ExportPackage) error {
 				previous,
 			)
 		}
+
 		groupKeys[group.Key] = groupIndex
 
 		for locale, text := range group.Localization {
@@ -1145,6 +1257,7 @@ func validateExportPackage(pkg ExportPackage) error {
 					configIndex,
 				)
 			}
+
 			if err := target.Validate(config.Target); err != nil {
 				return fmt.Errorf(
 					"%s.partner_configs[%d].target: %w",
@@ -1153,6 +1266,7 @@ func validateExportPackage(pkg ExportPackage) error {
 					err,
 				)
 			}
+
 			if len(config.Settings) > 0 && !validJSONDocument(config.Settings) {
 				return fmt.Errorf(
 					"%s.partner_configs[%d].settings must be valid JSON",
@@ -1170,6 +1284,7 @@ func validateExportPackage(pkg ExportPackage) error {
 					ruleIndex,
 				)
 			}
+
 			if err := validateRewardDefinition(rule.Reward); err != nil {
 				return fmt.Errorf(
 					"%s.partner_reward_rules[%d].reward: %w",
@@ -1181,6 +1296,7 @@ func validateExportPackage(pkg ExportPackage) error {
 		}
 
 		sequencePositions := make(map[string]map[uint32]string)
+
 		for taskIndex, task := range group.Tasks {
 			taskPath := fmt.Sprintf("%s.tasks[%d]", groupPath, taskIndex)
 			if previous, exists := taskPaths[task.Key]; exists {
@@ -1190,6 +1306,7 @@ func validateExportPackage(pkg ExportPackage) error {
 					previous,
 				)
 			}
+
 			taskPaths[task.Key] = taskPath
 
 			params := normalizeSaveTaskParams(SaveTaskParams{
@@ -1228,6 +1345,7 @@ func validateExportPackage(pkg ExportPackage) error {
 						map[uint32]string,
 					)
 				}
+
 				if previous := sequencePositions[*task.SequenceKey][*task.SequencePosition]; previous != "" {
 					return fmt.Errorf(
 						"%s sequence position duplicates task %s",
@@ -1235,6 +1353,7 @@ func validateExportPackage(pkg ExportPackage) error {
 						previous,
 					)
 				}
+
 				sequencePositions[*task.SequenceKey][*task.SequencePosition] = task.Key
 			}
 
@@ -1258,6 +1377,7 @@ func validateExportPackage(pkg ExportPackage) error {
 						previous,
 					)
 				}
+
 				rewardKeys[reward.Key] = rewardIndex
 				if err := validateRewardDefinition(reward); err != nil {
 					return fmt.Errorf(
@@ -1277,6 +1397,7 @@ func validateExportPackage(pkg ExportPackage) error {
 					TaskKindComplex,
 				)
 			}
+
 			for conditionIndex, condition := range task.Conditions {
 				if strings.TrimSpace(condition.TaskKey) == "" ||
 					condition.TaskKey == task.Key {
@@ -1286,6 +1407,7 @@ func validateExportPackage(pkg ExportPackage) error {
 						conditionIndex,
 					)
 				}
+
 				if previous, exists := conditionKeys[condition.TaskKey]; exists {
 					return fmt.Errorf(
 						"%s.conditions[%d] duplicates conditions[%d]",
@@ -1294,6 +1416,7 @@ func validateExportPackage(pkg ExportPackage) error {
 						previous,
 					)
 				}
+
 				conditionKeys[condition.TaskKey] = conditionIndex
 				if condition.RequiredStatus != "" &&
 					condition.RequiredStatus != ComplexRequiredStatusReady &&
@@ -1304,6 +1427,7 @@ func validateExportPackage(pkg ExportPackage) error {
 						conditionIndex,
 					)
 				}
+
 				conditionRefs[task.Key] = append(
 					conditionRefs[task.Key],
 					condition.TaskKey,
@@ -1323,6 +1447,7 @@ func validateExportPackage(pkg ExportPackage) error {
 			}
 		}
 	}
+
 	if hasDirectedCycle(conditionRefs) {
 		return fmt.Errorf("tasks import complex conditions contain a cycle")
 	}
@@ -1337,12 +1462,15 @@ func requireImportSecrets(pkg ExportPackage, secrets map[string]string) error {
 				if secret == nil {
 					continue
 				}
+
 				if importSecretValue(secret, secrets).Valid {
 					continue
 				}
+
 				if secret.Key == "" {
 					return fmt.Errorf("required import secret is missing")
 				}
+
 				if secrets == nil || secrets[secret.Key] == "" {
 					return fmt.Errorf(
 						"required import secret is missing: %s",
@@ -1352,6 +1480,7 @@ func requireImportSecrets(pkg ExportPackage, secrets map[string]string) error {
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -1362,14 +1491,17 @@ func importSecretValue(
 	if secret == nil {
 		return sql.NullString{}
 	}
+
 	if secrets != nil && secret.Key != "" {
 		if value := secrets[secret.Key]; value != "" {
 			return sql.NullString{String: value, Valid: true}
 		}
 	}
+
 	if secret.Value != nil && *secret.Value != "" {
 		return sql.NullString{String: *secret.Value, Valid: true}
 	}
+
 	return sql.NullString{}
 }
 
@@ -1383,6 +1515,7 @@ func previewHasConflict(preview ImportPreview, kind, key string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -1396,5 +1529,6 @@ func partnerRewardImportKey(
 	if externalType == "" {
 		externalType = "*"
 	}
+
 	return provider + ":" + groupKey + ":" + externalType + ":" + rewardKey
 }

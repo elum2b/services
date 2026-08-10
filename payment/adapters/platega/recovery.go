@@ -25,6 +25,7 @@ func (a *Platega) resolveAttempt(
 	if err == nil {
 		return attempt, nil
 	}
+
 	if !errors.Is(err, sql.ErrNoRows) {
 		return repository.Attempt{}, err
 	}
@@ -40,21 +41,25 @@ func (a *Platega) resolveAttempt(
 			return repository.Attempt{}, err
 		}
 	}
+
 	if strings.TrimSpace(transaction.ID) != payload.ID ||
 		strings.TrimSpace(transaction.Payload) == "" {
 		return repository.Attempt{}, repository.ErrPaymentMismatch
 	}
+
 	amountMinor, err := rubMinorFromMajor(transaction.PaymentDetails.Amount)
 	if err != nil || amountMinor == 0 ||
 		strings.TrimSpace(transaction.PaymentDetails.Currency) == "" {
 		return repository.Attempt{}, repository.ErrPaymentMismatch
 	}
+
 	if strings.TrimSpace(payload.Amount.String()) != "" {
 		payloadAmountMinor, err := rubMinorFromMajor(payload.Amount)
 		if err != nil || payloadAmountMinor != amountMinor {
 			return repository.Attempt{}, repository.ErrPaymentMismatch
 		}
 	}
+
 	if payload.Currency != "" &&
 		payload.Currency != transaction.PaymentDetails.Currency {
 		return repository.Attempt{}, repository.ErrPaymentMismatch

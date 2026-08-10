@@ -12,6 +12,7 @@ func (a *Asset) ListUSDTPrices(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]USDTPriceModel, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, USDTPriceModel{
@@ -25,5 +26,6 @@ func (a *Asset) ListUSDTPrices(
 			UpdatedAt:          row.UpdatedAt,
 		})
 	}
+
 	return result, nil
 }

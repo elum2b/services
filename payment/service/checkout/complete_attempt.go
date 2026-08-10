@@ -12,6 +12,7 @@ func (a *Checkout) CompleteAttempt(
 ) (*CompleteAttemptResult, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	result, err := a.repository.CompleteAttempt(
@@ -28,6 +29,7 @@ func (a *Checkout) CompleteAttempt(
 	if err != nil {
 		return nil, err
 	}
+
 	return &CompleteAttemptResult{
 		OrderID:       result.OrderID,
 		AttemptID:     result.AttemptID,

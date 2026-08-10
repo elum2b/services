@@ -18,9 +18,12 @@ func (a *VKMA) HandleRequest(
 ) (any, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	params := request.Params
 	workspaceID := request.WorkspaceID
+
 	switch params.NotificationType {
 	case vkmashop.GetItem, vkmashop.GetItemTest:
 		return a.GetItemForWorkspace(ctx, workspaceID, params)

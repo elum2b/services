@@ -7,7 +7,6 @@ func (a *Admin) PreviewImport(
 	workspaceID string,
 	pkg ExportPackage,
 ) (ImportPreview, error) {
-
 	if a == nil || a.repository == nil {
 		return ImportPreview{}, ErrRepositoryNotConfigured
 	}
@@ -16,7 +15,6 @@ func (a *Admin) PreviewImport(
 	defer cancel()
 
 	return a.repository.PreviewImport(mergedCtx, workspaceID, pkg)
-
 }
 
 func (a *Admin) Import(
@@ -24,7 +22,6 @@ func (a *Admin) Import(
 	workspaceID string,
 	req ImportRequest,
 ) (ImportResult, error) {
-
 	if a == nil || a.repository == nil {
 		return ImportResult{}, ErrRepositoryNotConfigured
 	}
@@ -33,5 +30,4 @@ func (a *Admin) Import(
 	defer cancel()
 
 	return a.repository.Import(mergedCtx, workspaceID, req)
-
 }

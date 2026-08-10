@@ -38,17 +38,21 @@ func (r *Repository) Apply(
 		if err != nil {
 			return err
 		}
+
 		if len(rows) == 0 {
 			return nil
 		}
+
 		result, err = mapApplyBundle(rows)
 		if err != nil {
 			return err
 		}
+
 		if result.Redemption != nil {
 			result.Status = StatusAlreadyApplied
 			return nil
 		}
+
 		if !target.Match(result.Promo.Target, target.Context{
 			IsPremium:  identity.IsPremium,
 			Sex:        identity.Sex,
@@ -79,6 +83,7 @@ func (r *Repository) Apply(
 			if err != nil {
 				return err
 			}
+
 			created, err := txRepo.q.CreateRedemption(
 				ctx,
 				promosqlc.CreateRedemptionParams{
@@ -93,6 +98,7 @@ func (r *Repository) Apply(
 			if err != nil {
 				return err
 			}
+
 			redemption := Redemption{
 				ID:             uint64(created.ID),
 				WorkspaceID:    identity.WorkspaceID,
@@ -102,12 +108,15 @@ func (r *Repository) Apply(
 				PlatformUserID: identity.PlatformUserID,
 				RedeemedAt:     created.RedeemedAt,
 			}
+
 			result.Redemption = &redemption
 			result.Status = StatusSuccess
 			result.Promo.ActivationCount++
 		}
+
 		return nil
 	})
+
 	return result, err
 }
 
@@ -134,6 +143,7 @@ func mapApplyBundle(
 		},
 		Rewards: make([]Reward, 0, len(rows)),
 	}
+
 	if first.LocalizationLocale.Valid {
 		result.Localization = &Localization{
 			WorkspaceID: first.WorkspaceID,
@@ -143,6 +153,7 @@ func mapApplyBundle(
 			Description: first.LocalizationDescription.String,
 		}
 	}
+
 	if first.RedemptionID.Valid {
 		result.Redemption = &Redemption{
 			ID:             uint64(first.RedemptionID.Int64),
@@ -165,6 +176,7 @@ func mapApplyBundle(
 
 		return result, nil
 	}
+
 	for _, row := range rows {
 		if row.RewardID.Valid {
 			result.Rewards = append(result.Rewards, Reward{
@@ -176,6 +188,7 @@ func mapApplyBundle(
 			})
 		}
 	}
+
 	return result, nil
 }
 
@@ -183,6 +196,7 @@ func uint16FromNull(value sql.NullInt16) uint16 {
 	if !value.Valid || value.Int16 < 0 {
 		return 0
 	}
+
 	return uint16(value.Int16)
 }
 

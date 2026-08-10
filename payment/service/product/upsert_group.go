@@ -21,6 +21,7 @@ func (a *Product) UpsertGroup(
 ) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	return a.repository.UpsertProductGroup(

@@ -13,6 +13,7 @@ func (a *Asset) GetUSDTPrice(
 	if err != nil {
 		return nil, err
 	}
+
 	return &USDTPriceModel{
 		AssetCode:          row.AssetCode,
 		AssetTitle:         row.AssetTitle,

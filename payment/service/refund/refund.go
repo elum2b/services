@@ -76,6 +76,7 @@ func NewWithOptions(
 			rootCtx:    contextutil.Normalize(ctx),
 		}
 	}
+
 	return &Refund{
 		repository: repository.NewPaymentRepositoryWithOptions(db, options),
 		providers:  providers,
@@ -87,6 +88,7 @@ func (a *Refund) Close() error {
 	if a == nil || a.repository == nil {
 		return nil
 	}
+
 	return a.repository.Close()
 }
 

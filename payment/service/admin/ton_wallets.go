@@ -16,13 +16,16 @@ func (a *Admin) SaveTONWallet(
 ) error {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return err
 	}
+
 	network, err := paymentton.NormalizeNetwork(params.Network)
 	if err != nil {
 		return err
 	}
+
 	walletAddress, err := paymentton.NormalizeWalletAddress(
 		params.WalletAddress,
 		network,
@@ -30,9 +33,11 @@ func (a *Admin) SaveTONWallet(
 	if err != nil {
 		return err
 	}
+
 	if err := params.Manifest.Validate(); err != nil {
 		return err
 	}
+
 	return a.repository.UpsertTONWallet(
 		mergedCtx,
 		paymentsqlc.UpsertTONWalletParams{
@@ -65,6 +70,7 @@ func (a *Admin) DeleteTONWallet(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	return a.repository.DeleteTONWallet(mergedCtx, workspaceID)
 }
 
@@ -74,6 +80,7 @@ func (a *Admin) GetTONWallet(
 ) (TONWalletModel, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	return a.repository.AdminGetTONWallet(mergedCtx, workspaceID)
 }
 

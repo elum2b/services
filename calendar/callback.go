@@ -68,24 +68,32 @@ func (c *Calendar) OnCallback(
 	if handler == nil {
 		return ErrCallbackHandlerNil
 	}
+
 	if c == nil {
 		return ErrServiceNil
 	}
+
 	c.lifecycleMu.Lock()
+
 	if c.running {
 		c.lifecycleMu.Unlock()
+
 		return ErrCallbacksRegistrationClosed
 	}
+
 	if c.callbacks != nil && !c.client.IsUnavailable() {
 		c.lifecycleMu.Unlock()
+
 		return c.runCallback(ctx, handler, opts...)
 	}
+
 	c.callbacksToRun = append(c.callbacksToRun, callbackRegistration{
 		ctx:     ctx,
 		handler: handler,
 		options: append([]CallbackOption(nil), opts...),
 	})
 	c.lifecycleMu.Unlock()
+
 	return nil
 }
 
@@ -97,11 +105,16 @@ func (c *Calendar) runCallback(
 	if c == nil || c.callbacks == nil {
 		return ErrCallbacksNotConfigured
 	}
+
 	runCtx, cancel := c.bindContext(ctx)
+
 	defer cancel()
+
 	opts = append(opts, callbackutil.WithSourceService("calendar"))
+
 	return c.callbacks.On(runCtx, func(callbackCtx callbackutil.Context) error {
 		var payload RewardGrantedPayload
+
 		if err := json.Unmarshal(callbackCtx.Payload, &payload); err != nil {
 			return serviceerrors.Wrap(
 				serviceerrors.CodeInternalError,
@@ -109,6 +122,7 @@ func (c *Calendar) runCallback(
 				err,
 			)
 		}
+
 		return handler(Context{
 			Context: callbackCtx,
 			Payload: &services.RewardPayload{

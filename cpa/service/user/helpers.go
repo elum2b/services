@@ -25,6 +25,7 @@ func mapRewards(values []repository.Reward) []RewardModel {
 			Unit:     value.Unit,
 		})
 	}
+
 	return result
 }
 

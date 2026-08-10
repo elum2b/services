@@ -6,7 +6,6 @@ import (
 )
 
 func TestPostgresDSNUsesTLSForRemoteHosts(t *testing.T) {
-
 	dsn, err := PostgresDSN(PostgresParams{
 		User:     "user",
 		Password: "password",
@@ -16,14 +15,13 @@ func TestPostgresDSNUsesTLSForRemoteHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !strings.Contains(dsn, "sslmode=verify-full") {
 		t.Fatalf("remote PostgreSQL DSN must verify TLS: %q", dsn)
 	}
-
 }
 
 func TestPostgresDSNAllowsExplicitLocalDisable(t *testing.T) {
-
 	dsn, err := PostgresDSN(PostgresParams{
 		User:     "user",
 		Password: "password",
@@ -33,18 +31,16 @@ func TestPostgresDSNAllowsExplicitLocalDisable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !strings.Contains(dsn, "sslmode=disable") {
 		t.Fatalf("local PostgreSQL DSN = %q, want sslmode=disable", dsn)
 	}
-
 }
 
 func TestPostgresDSNRejectsUnknownSSLMode(t *testing.T) {
-
 	if _, err := PostgresDSN(
 		PostgresParams{Host: "db.example.com", SSLMode: "unsafe"},
 	); err == nil {
 		t.Fatal("unknown SSL mode was accepted")
 	}
-
 }

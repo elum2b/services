@@ -51,6 +51,7 @@ func (c *Client) WithQueryTimeout(timeout time.Duration) *Executor {
 // New creates Client from existing sql.DB and options.
 func New(db *sql.DB, opts ...Options) (*Client, error) {
 	opt := defaultOptions(opts...)
+
 	if db == nil {
 		return nil, ErrNilDB
 	}
@@ -61,7 +62,7 @@ func New(db *sql.DB, opts ...Options) (*Client, error) {
 		db.SetConnMaxLifetime(5 * time.Minute)
 	}
 
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(context.Background()); err != nil {
 		return nil, err
 	}
 
@@ -78,6 +79,7 @@ func New(db *sql.DB, opts ...Options) (*Client, error) {
 	} else {
 		core.codec = MsgpackCodec{}
 	}
+
 	if opt.Mutex != nil {
 		core.mutex = opt.Mutex
 	} else {
@@ -92,7 +94,6 @@ func (c *Client) IsUnavailable() bool { return c == nil || c.unavailable }
 // NewUnavailable creates a client whose operations consistently return a
 // structured not-ready error until the owning service adopts a live client.
 func NewUnavailable(opts ...Options) *Client {
-
 	opt := defaultOptions(opts...)
 	client := &Client{
 		db:           sql.OpenDB(unavailableConnector{}),
@@ -102,16 +103,19 @@ func NewUnavailable(opts ...Options) *Client {
 		CacheEnabled: opt.CacheEnabled,
 		unavailable:  true,
 	}
+
 	if opt.Codec != nil {
 		client.codec = opt.Codec
 	} else {
 		client.codec = MsgpackCodec{}
 	}
+
 	if opt.Mutex != nil {
 		client.mutex = opt.Mutex
 	} else {
 		client.mutex = NewMutex()
 	}
+
 	return client
 }
 
@@ -174,6 +178,7 @@ func (c *Client) ExecContext(
 ) (sql.Result, error) {
 	qctx, cancel := c.queryContext(ctx, 0)
 	defer cancel()
+
 	return c.db.ExecContext(qctx, query, args...)
 }
 
@@ -184,6 +189,7 @@ func (c *Client) PrepareContext(
 ) (*sql.Stmt, error) {
 	qctx, cancel := c.queryContext(ctx, 0)
 	defer cancel()
+
 	return c.db.PrepareContext(qctx, query)
 }
 
@@ -214,6 +220,7 @@ func (e *Executor) ExecContext(
 ) (sql.Result, error) {
 	qctx, cancel := e.client.queryContext(ctx, e.timeout)
 	defer cancel()
+
 	return e.client.db.ExecContext(qctx, query, args...)
 }
 
@@ -223,6 +230,7 @@ func (e *Executor) PrepareContext(
 ) (*sql.Stmt, error) {
 	qctx, cancel := e.client.queryContext(ctx, e.timeout)
 	defer cancel()
+
 	return e.client.db.PrepareContext(qctx, query)
 }
 
@@ -249,6 +257,7 @@ func (c *Client) DB() *sql.DB {
 	if c == nil {
 		return nil
 	}
+
 	return c.db
 }
 
@@ -257,13 +266,17 @@ func (c *Client) DeleteCache(key string) error {
 	if c == nil || key == "" {
 		return nil
 	}
+
 	if c.inMemory != nil {
 		c.inMemory.Delete(key)
 	}
+
 	c.l2Expiry.Delete(key)
+
 	if c.cache != nil {
 		return c.cache.Delete(key)
 	}
+
 	return nil
 }
 
@@ -272,20 +285,26 @@ func (c *Client) ResetCache() error {
 	if c == nil {
 		return nil
 	}
+
 	if c.inMemory != nil {
 		c.inMemory.Reset()
 	}
+
 	c.l2Expiry.Range(func(key, _ any) bool {
 		c.l2Expiry.Delete(key)
+
 		return true
 	})
 	c.cacheVersions.Range(func(key, _ any) bool {
 		c.cacheVersions.Delete(key)
+
 		return true
 	})
+
 	if c.cache != nil {
 		return c.cache.Reset()
 	}
+
 	return nil
 }
 
@@ -298,12 +317,15 @@ func (c *Client) Close() error {
 	if c.cache != nil {
 		_ = c.cache.Close()
 	}
+
 	if c.inMemory != nil {
 		c.inMemory.Close()
 	}
+
 	if c.db != nil {
 		return c.db.Close()
 	}
+
 	return nil
 }
 
@@ -314,9 +336,11 @@ func createContextWithTimeout(
 	if parent == nil {
 		parent = context.Background()
 	}
+
 	if timeout <= 0 {
 		timeout = defaultQueryTimeout
 	}
+
 	return context.WithTimeout(parent, timeout)
 }
 
@@ -327,15 +351,18 @@ func (c *Client) queryContext(
 	if timeout <= 0 && c != nil {
 		timeout = c.queryTimeout
 	}
+
 	return createContextWithTimeout(parent, timeout)
 }
 
 func (c *Client) getMutex() Mutex {
 	c.mx.Lock()
 	defer c.mx.Unlock()
+
 	if c.mutex == nil {
 		c.mutex = NewMutex()
 	}
+
 	return c.mutex
 }
 
@@ -343,6 +370,7 @@ func (c *Client) rememberL2Expiry(key string, ttl time.Duration) {
 	if c == nil || key == "" || ttl <= 0 {
 		return
 	}
+
 	c.l2Expiry.Store(key, time.Now().Add(ttl))
 }
 
@@ -353,6 +381,7 @@ func (c *Client) l2RemainingTTL(
 	if c == nil || key == "" {
 		return fallback
 	}
+
 	raw, ok := c.l2Expiry.Load(key)
 	if !ok {
 		return fallback
@@ -366,10 +395,13 @@ func (c *Client) l2RemainingTTL(
 	remaining := time.Until(expiresAt)
 	if remaining <= 0 {
 		c.l2Expiry.Delete(key)
+
 		return 0
 	}
+
 	if fallback > 0 && remaining > fallback {
 		return fallback
 	}
+
 	return remaining
 }

@@ -67,10 +67,10 @@ func newUser(
 	repo *repository.Repository,
 	options Options,
 ) *User {
-
 	rootCtx, rootCancel := context.WithCancel(contextutil.Normalize(ctx))
 	manager := options.Goroutines
 	ownsGoroutines := false
+
 	if manager == nil {
 		manager = goroutinemanager.New()
 		ownsGoroutines = true
@@ -96,12 +96,15 @@ func (u *User) Close() error {
 	if u == nil {
 		return nil
 	}
+
 	if u.rootCancel != nil {
 		u.rootCancel()
 	}
+
 	if u.ownsGoroutines && u.goroutines != nil {
 		u.goroutines.Close()
 	}
+
 	if u.repository == nil {
 		return nil
 	}
@@ -115,29 +118,23 @@ func (u *User) withContext(
 	if u == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}
-	return contextutil.Merge(u.rootCtx, ctx)
-}
 
-func clonePartnerProviders(
-	values map[string]PartnerProvider,
-) map[string]PartnerProvider {
-	result := make(map[string]PartnerProvider, len(values))
-	for key, value := range values {
-		result[key] = value
-	}
-	return result
+	return contextutil.Merge(u.rootCtx, ctx)
 }
 
 func (u *User) partnerProvider(provider string) PartnerProvider {
 	if u == nil {
 		return nil
 	}
+
 	if value := u.providers[provider]; value != nil {
 		return value
 	}
+
 	if u.runtime != nil {
 		return LuaProvider{Runtime: u.runtime, Provider: provider}
 	}
+
 	return nil
 }
 
@@ -148,9 +145,12 @@ func defaultPartnerProviders(
 	for key, value := range overrides {
 		if value == nil {
 			delete(result, key)
+
 			continue
 		}
+
 		result[key] = value
 	}
+
 	return result
 }

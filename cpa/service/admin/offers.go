@@ -28,7 +28,6 @@ func (a *Admin) UpsertOffer(
 	ctx context.Context,
 	params UpsertOfferParams,
 ) error {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -36,14 +35,12 @@ func (a *Admin) UpsertOffer(
 		mergedCtx,
 		repository.UpsertOfferParams(params),
 	)
-
 }
 
 func (a *Admin) GetOffer(
 	ctx context.Context,
 	workspaceID, cpaID string,
 ) (OfferModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
@@ -53,7 +50,6 @@ func (a *Admin) GetOffer(
 	}
 
 	return mapOffer(bundle.Offer, bundle.Localizations, bundle.Rewards), nil
-
 }
 
 func (a *Admin) ListOffers(
@@ -61,11 +57,11 @@ func (a *Admin) ListOffers(
 	workspaceID string,
 	page Page,
 ) ([]OfferModel, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
 	limit, offset := normalizePage(page)
+
 	bundles, err := a.repository.ListOfferBundles(
 		mergedCtx,
 		workspaceID,
@@ -85,17 +81,14 @@ func (a *Admin) ListOffers(
 	}
 
 	return result, nil
-
 }
 
 func (a *Admin) DeleteOffer(
 	ctx context.Context,
 	workspaceID, cpaID string,
 ) (int64, error) {
-
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
 	return a.repository.DeleteOffer(mergedCtx, workspaceID, cpaID)
-
 }

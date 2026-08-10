@@ -11,5 +11,6 @@ func (u *User) IsSubscriptionActive(
 	if u == nil || u.subscription == nil {
 		return false, ErrSubscriptionNotInitialized
 	}
+
 	return u.subscription.IsActive(ctx, params)
 }

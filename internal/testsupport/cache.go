@@ -27,8 +27,10 @@ func (c *Cache) GetWithTTL(key string) ([]byte, time.Duration, error) {
 	if !exists {
 		return nil, 0, nil
 	}
+
 	if !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt) {
 		delete(c.entries, key)
+
 		return nil, 0, nil
 	}
 
@@ -48,6 +50,7 @@ func (c *Cache) Set(key string, value []byte, expiration time.Duration) error {
 	if expiration > 0 {
 		entry.expiresAt = time.Now().Add(expiration)
 	}
+
 	c.entries[key] = entry
 
 	return nil

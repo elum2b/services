@@ -14,6 +14,7 @@ func (c *Client) GetPayment(
 	}
 
 	var result paymentAPIResponse
+
 	resp, err := c.rest.R().
 		SetContext(ctx).
 		SetResult(&result).
@@ -21,6 +22,7 @@ func (c *Client) GetPayment(
 	if err != nil {
 		return paymentAPIResponse{}, err
 	}
+
 	if resp.StatusCode() < http.StatusOK ||
 		resp.StatusCode() >= http.StatusMultipleChoices {
 		return paymentAPIResponse{}, wrapAPIError(
@@ -29,5 +31,6 @@ func (c *Client) GetPayment(
 			resp.String(),
 		)
 	}
+
 	return result, nil
 }

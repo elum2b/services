@@ -107,6 +107,7 @@ func New(db *sql.DB) *Store {
 
 func NewWithTable(db *sql.DB, tableName string) *Store {
 	tableName = normalizeTableName(tableName)
+
 	return &Store{
 		db:        db,
 		executor:  db,
@@ -119,6 +120,7 @@ func (s *Store) WithTx(tx *sql.Tx) *Store {
 	if s == nil {
 		return nil
 	}
+
 	return &Store{
 		db:        s.db,
 		executor:  tx,
@@ -137,10 +139,12 @@ func BootstrapTable(ctx context.Context, db *sql.DB, tableName string) error {
 	if db == nil {
 		return errors.New("callback: nil db")
 	}
+
 	tableName = normalizeTableName(tableName)
 	if isPostgresDB(db) {
 		return bootstrapPostgresTable(ctx, db, tableName)
 	}
+
 	return bootstrapMySQLTable(ctx, db, tableName)
 }
 
@@ -151,31 +155,38 @@ func (s *Store) CreateEvent(
 	if err := s.validate(); err != nil {
 		return 0, err
 	}
+
 	workspaceID, err := requireWorkspaceID(params.WorkspaceID)
 	if err != nil {
 		return 0, err
 	}
+
 	sourceService := params.SourceService
 	if sourceService == "" {
 		sourceService = DefaultSourceService
 	}
+
 	contentType := params.PayloadContentType
 	if contentType == "" {
 		contentType = JSONContentType
 	}
+
 	nextAttemptAt := params.NextAttemptAt
 	if nextAttemptAt.IsZero() {
 		nextAttemptAt = time.Now().UTC()
 	} else {
 		nextAttemptAt = nextAttemptAt.UTC()
 	}
+
 	idempotencyKey := strings.TrimSpace(params.IdempotencyKey)
 	if idempotencyKey == "" {
 		idempotencyKey = params.EventKey
 	}
+
 	if idempotencyKey == "" {
 		return 0, errors.New("callback: idempotency key is required")
 	}
+
 	if !s.postgres {
 		result, err := s.executor.ExecContext(
 			ctx,
@@ -197,10 +208,14 @@ ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`, s.table()),
 		if err != nil {
 			return 0, err
 		}
+
 		id, err := result.LastInsertId()
+
 		return uint64(id), err
 	}
+
 	var id int64
+
 	err = s.executor.QueryRowContext(
 		ctx,
 		fmt.Sprintf(`
@@ -220,6 +235,7 @@ RETURNING id`, s.table()),
 		contentType,
 		nextAttemptAt,
 	).Scan(&id)
+
 	return uint64(id), err
 }
 
@@ -231,20 +247,25 @@ func (s *Store) GetEvent(
 	if err := s.validate(); err != nil {
 		return Event{}, err
 	}
+
 	workspaceID, err := requireWorkspaceID(workspaceID)
 	if err != nil {
 		return Event{}, err
 	}
+
 	query := fmt.Sprintf(`
 SELECT %s FROM %s WHERE workspace_id = ? AND id = ? LIMIT 1`, eventColumns, s.table())
 	if s.postgres {
 		query = rewriteQuestionPlaceholders(query)
 	}
+
 	row := s.executor.QueryRowContext(ctx, query, workspaceID, int64(id))
+
 	value, err := scanEvent(row.Scan)
 	if err != nil {
 		return Event{}, err
 	}
+
 	return mapEvent(value), nil
 }
 
@@ -255,10 +276,12 @@ func (s *Store) AdminListEvents(
 	if err := s.validate(); err != nil {
 		return nil, err
 	}
+
 	workspaceID, err := requireWorkspaceID(params.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
+
 	limit, offset := normalizePage(params.Limit, params.Offset)
 	query := fmt.Sprintf(`
 SELECT %s FROM %s
@@ -268,9 +291,11 @@ WHERE workspace_id = ?
   AND (? = '' OR status = ?)
 ORDER BY created_at DESC, id DESC
 LIMIT ? OFFSET ?`, eventColumns, s.table())
+
 	if s.postgres {
 		query = rewriteQuestionPlaceholders(query)
 	}
+
 	rows, err := s.executor.QueryContext(ctx, query,
 		workspaceID,
 		params.SourceService, params.SourceService,
@@ -282,14 +307,18 @@ LIMIT ? OFFSET ?`, eventColumns, s.table())
 		return nil, err
 	}
 	defer rows.Close()
+
 	result := make([]Event, 0)
+
 	for rows.Next() {
 		value, err := scanEvent(rows.Scan)
 		if err != nil {
 			return nil, err
 		}
+
 		result = append(result, mapEvent(value))
 	}
+
 	return result, rows.Err()
 }
 
@@ -302,6 +331,7 @@ func (s *Store) AdminRetryEventNow(
 	if err != nil {
 		return 0, err
 	}
+
 	return s.execRows(ctx, `
 SET status = 'pending', next_attempt_at = NOW(), locked_by = NULL,
     locked_until = NULL, last_error = NULL, updated_at = NOW()
@@ -317,6 +347,7 @@ func (s *Store) AdminMarkEventOK(
 	if err != nil {
 		return 0, err
 	}
+
 	return s.execRows(ctx, `
 SET status = 'ok', delivered_at = NOW(), locked_by = NULL,
     locked_until = NULL, last_error = NULL, updated_at = NOW()
@@ -333,6 +364,7 @@ func (s *Store) AdminMarkEventReject(
 	if err != nil {
 		return 0, err
 	}
+
 	return s.execRows(ctx, `
 SET status = 'reject', rejected_at = NOW(), reject_reason = ?,
     locked_by = NULL, locked_until = NULL, updated_at = NOW()
@@ -347,6 +379,7 @@ func (s *Store) AdminResetExpiredProcessing(
 	if err != nil {
 		return 0, err
 	}
+
 	return s.execRows(ctx, `
 SET status = 'pending', locked_by = NULL, locked_until = NULL,
     next_attempt_at = NOW(), updated_at = NOW()
@@ -360,17 +393,21 @@ func (s *Store) LeaseEvents(
 	if err := s.validate(); err != nil {
 		return nil, err
 	}
+
 	workerID := normalizeWorkerID(params.WorkerID)
 	limit := params.Limit
+
 	if limit <= 0 {
 		limit = 1
 	}
+
 	leaseTimeout := params.LeaseTimeout
 	if leaseTimeout <= 0 {
 		leaseTimeout = time.Minute
 	}
 
 	var leased []storedEvent
+
 	if err := s.withTx(ctx, func(txStore *Store) error {
 		query := fmt.Sprintf(`
 SELECT %s FROM %s
@@ -384,25 +421,31 @@ FOR UPDATE SKIP LOCKED`, eventColumns, txStore.table())
 		if txStore.postgres {
 			query = rewriteQuestionPlaceholders(query)
 		}
+
 		rows, err := txStore.executor.QueryContext(ctx, query,
 			params.SourceService, params.SourceService, limit,
 		)
 		if err != nil {
 			return err
 		}
+
 		candidates := make([]storedEvent, 0, limit)
+
 		for rows.Next() {
 			row, err := scanEvent(rows.Scan)
 			if err != nil {
 				_ = rows.Close()
 				return err
 			}
+
 			candidates = append(candidates, row)
 		}
+
 		if err := rows.Err(); err != nil {
 			_ = rows.Close()
 			return err
 		}
+
 		if err := rows.Close(); err != nil {
 			return err
 		}
@@ -412,6 +455,7 @@ FOR UPDATE SKIP LOCKED`, eventColumns, txStore.table())
 			Time:  time.Now().UTC().Add(leaseTimeout),
 			Valid: true,
 		}
+
 		for _, row := range candidates {
 			affected, err := txStore.execRows(ctx, `
 SET status = 'processing', locked_by = ?, locked_until = ?, updated_at = NOW()
@@ -422,18 +466,22 @@ WHERE id = ? AND status IN ('pending', 'processing')
 			if err != nil {
 				return err
 			}
+
 			if affected == 0 {
 				continue
 			}
+
 			row.Status = StatusProcessing
 			row.LockedBy = lockedBy
 			row.LockedUntil = lockedUntil
 			leased = append(leased, row)
 		}
+
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+
 	return leased, nil
 }
 
@@ -444,6 +492,7 @@ SET status = 'ok', delivered_at = NOW(), locked_by = NULL,
 WHERE id = ? AND status = 'processing' AND locked_by = ?`,
 		int64(id), normalizeWorkerID(workerID),
 	)
+
 	return leasedResult(rows, err)
 }
 
@@ -459,6 +508,7 @@ SET status = 'reject', rejected_at = NOW(), reject_reason = ?,
 WHERE id = ? AND status = 'processing' AND locked_by = ?`,
 		nullableString(reason), int64(id), normalizeWorkerID(workerID),
 	)
+
 	return leasedResult(rows, err)
 }
 
@@ -469,6 +519,7 @@ func (s *Store) MarkFailed(ctx context.Context, params FailParams) error {
 	} else {
 		failedAt = failedAt.UTC()
 	}
+
 	rows, err := s.execRows(ctx, `
 SET status = 'pending', attempt_count = attempt_count + 1,
     next_attempt_at = ?, locked_by = NULL, locked_until = NULL,
@@ -477,6 +528,7 @@ WHERE id = ? AND status = 'processing' AND locked_by = ?`,
 		failedAt.Add(RetryDelay(params.Attempt)), nullableString(params.Error),
 		int64(params.ID), normalizeWorkerID(params.WorkerID),
 	)
+
 	return leasedResult(rows, err)
 }
 
@@ -503,6 +555,7 @@ func normalizeWorkerID(workerID string) string {
 	if workerID == "" {
 		return "default"
 	}
+
 	return workerID
 }
 
@@ -510,12 +563,15 @@ func normalizePage(limit int32, offset int32) (int32, int32) {
 	if limit <= 0 {
 		limit = 100
 	}
+
 	if limit > 1000 {
 		limit = 1000
 	}
+
 	if offset < 0 {
 		offset = 0
 	}
+
 	return limit, offset
 }
 
@@ -523,6 +579,7 @@ func requireWorkspaceID(value string) (string, error) {
 	if err := services.ValidateWorkspaceID(value); err != nil {
 		return "", err
 	}
+
 	return value, nil
 }
 
@@ -531,13 +588,16 @@ func (s *Store) withTx(ctx context.Context, fn func(*Store) error) error {
 	if err != nil {
 		return err
 	}
+
 	txStore := s.WithTx(tx)
 	if err := fn(txStore); err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			return fmt.Errorf("%w: rollback: %v", err, rollbackErr)
+			return fmt.Errorf("%w: rollback: %w", err, rollbackErr)
 		}
+
 		return err
 	}
+
 	return tx.Commit()
 }
 
@@ -549,14 +609,17 @@ func (s *Store) execRows(
 	if err := s.validate(); err != nil {
 		return 0, err
 	}
+
 	query := "UPDATE " + s.table() + " " + update
 	if s.postgres {
 		query = rewriteQuestionPlaceholders(query)
 	}
+
 	result, err := s.executor.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
+
 	return result.RowsAffected()
 }
 
@@ -564,9 +627,11 @@ func (s *Store) validate() error {
 	if s == nil || s.db == nil || s.executor == nil {
 		return ErrStoreNotConfigured
 	}
+
 	if !tableNameExpression.MatchString(s.tableName) {
 		return errors.New("callback: invalid table name")
 	}
+
 	return nil
 }
 
@@ -574,6 +639,7 @@ func (s *Store) table() string {
 	if s.postgres {
 		return quotePostgresIdentifier(s.tableName)
 	}
+
 	return quoteIdentifier(s.tableName)
 }
 
@@ -582,6 +648,7 @@ func normalizeTableName(value string) string {
 	if !tableNameExpression.MatchString(value) {
 		return DefaultTable
 	}
+
 	return value
 }
 
@@ -597,7 +664,9 @@ func isPostgresDB(db *sql.DB) bool {
 	if db == nil {
 		return false
 	}
+
 	driverName := fmt.Sprintf("%T", db.Driver())
+
 	return strings.Contains(driverName, "pgx") ||
 		strings.Contains(driverName, "pq") ||
 		strings.Contains(driverName, "stdlib")
@@ -605,17 +674,24 @@ func isPostgresDB(db *sql.DB) bool {
 
 func rewriteQuestionPlaceholders(query string) string {
 	var builder strings.Builder
+
 	builder.Grow(len(query) + 16)
+
 	index := 1
+
 	for _, r := range query {
 		if r == '?' {
 			builder.WriteByte('$')
-			builder.WriteString(fmt.Sprint(index))
+			fmt.Fprint(&builder, index)
+
 			index++
+
 			continue
 		}
+
 		builder.WriteRune(r)
 	}
+
 	return builder.String()
 }
 
@@ -651,6 +727,7 @@ CREATE TABLE IF NOT EXISTS %s (
     KEY callback_due_idx (status, next_attempt_at, locked_until, id),
     KEY callback_type_idx (event_type, status, created_at)
 )`, table)
+
 	if _, err := db.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf(
 			"callback schema statement failed for %s: %w",
@@ -658,6 +735,7 @@ CREATE TABLE IF NOT EXISTS %s (
 			err,
 		)
 	}
+
 	return nil
 }
 
@@ -692,6 +770,7 @@ CREATE TABLE IF NOT EXISTS %s (
     CONSTRAINT %s_event_key_uq UNIQUE (source_service, event_key),
     CONSTRAINT %s_idempotency_key_uq UNIQUE (idempotency_key)
 )`, table, tableName, tableName, tableName)
+
 	if _, err := db.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf(
 			"callback schema statement failed for %s: %w",
@@ -699,6 +778,7 @@ CREATE TABLE IF NOT EXISTS %s (
 			err,
 		)
 	}
+
 	if _, err := db.ExecContext(
 		ctx,
 		fmt.Sprintf(
@@ -712,6 +792,7 @@ CREATE TABLE IF NOT EXISTS %s (
 			err,
 		)
 	}
+
 	indexes := []string{
 		fmt.Sprintf(
 			`CREATE INDEX IF NOT EXISTS %s_due_idx ON %s (status, next_attempt_at, locked_until, id)`,
@@ -733,6 +814,7 @@ CREATE TABLE IF NOT EXISTS %s (
 			)
 		}
 	}
+
 	return nil
 }
 
@@ -744,9 +826,11 @@ func leasedResult(rows int64, err error) error {
 	if err != nil {
 		return err
 	}
+
 	if rows == 0 {
 		return ErrNotLeased
 	}
+
 	return nil
 }
 
@@ -764,6 +848,7 @@ type storedEvent struct {
 
 func scanEvent(scan scanFunc) (storedEvent, error) {
 	var value storedEvent
+
 	err := scan(
 		&value.ID,
 		&value.WorkspaceID,
@@ -788,6 +873,7 @@ func scanEvent(scan scanFunc) (storedEvent, error) {
 	if err != nil {
 		return storedEvent{}, err
 	}
+
 	return value, nil
 }
 
@@ -801,7 +887,7 @@ func mapEvent(value storedEvent) Event {
 		IdempotencyKey:     value.IdempotencyKey,
 		Payload:            value.Payload,
 		PayloadContentType: value.PayloadContentType,
-		Status:             string(value.Status),
+		Status:             value.Status,
 		AttemptCount:       uint32(value.AttemptCount),
 		NextAttemptAt:      value.NextAttemptAt,
 		LockedBy:           nullStringPtr(value.LockedBy),
@@ -819,6 +905,7 @@ func nullStringPtr(value sql.NullString) *string {
 	if !value.Valid {
 		return nil
 	}
+
 	return &value.String
 }
 
@@ -826,5 +913,6 @@ func nullTimePtr(value sql.NullTime) *time.Time {
 	if !value.Valid {
 		return nil
 	}
+
 	return &value.Time
 }

@@ -12,8 +12,11 @@ func (a *Admin) ListCallbackEvents(
 ) ([]callbackutil.Event, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	limit, offset := normalizePage(params.Page)
+
 	return a.callbacks.AdminListEvents(ctx, callbackutil.AdminListEventsParams{
 		WorkspaceID:   params.WorkspaceID,
 		SourceService: params.SourceService,
@@ -31,7 +34,9 @@ func (a *Admin) GetCallbackEvent(
 ) (callbackutil.Event, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.callbacks.GetEvent(ctx, workspaceID, id)
 }
 
@@ -42,7 +47,9 @@ func (a *Admin) RetryCallbackEventNow(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.callbacks.AdminRetryEventNow(ctx, workspaceID, id)
 }
 
@@ -53,7 +60,9 @@ func (a *Admin) MarkCallbackEventOK(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.callbacks.AdminMarkEventOK(ctx, workspaceID, id)
 }
 
@@ -65,7 +74,9 @@ func (a *Admin) MarkCallbackEventReject(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.callbacks.AdminMarkEventReject(ctx, workspaceID, id, reason)
 }
 
@@ -75,6 +86,8 @@ func (a *Admin) ResetExpiredCallbackProcessing(
 ) (int64, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.callbacks.AdminResetExpiredProcessing(ctx, workspaceID)
 }

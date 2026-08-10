@@ -91,6 +91,7 @@ func (s *Sub) JettonBody(
 	}
 
 	text := ""
+
 	if payload != nil {
 		sumType, err := payload.LoadUInt(32)
 		if err == nil && sumType == 0x00000000 {
@@ -102,6 +103,7 @@ func (s *Sub) JettonBody(
 					err,
 				)
 			}
+
 			text = value
 		} else if err != nil {
 			return nil, serviceerrors.Wrap(

@@ -18,7 +18,9 @@ func (a *Admin) ListCallbackEvents(
 ) ([]callbackutil.Event, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	limit, offset := normalizePage(params.Page)
+
 	return a.callbacks.AdminListEvents(
 		mergedCtx,
 		callbackutil.AdminListEventsParams{
@@ -39,6 +41,7 @@ func (a *Admin) GetCallbackEvent(
 ) (callbackutil.Event, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.callbacks.GetEvent(mergedCtx, workspaceID, id)
 }
 
@@ -49,6 +52,7 @@ func (a *Admin) RetryCallbackEventNow(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.callbacks.AdminRetryEventNow(mergedCtx, workspaceID, id)
 }
 
@@ -59,6 +63,7 @@ func (a *Admin) MarkCallbackEventOK(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.callbacks.AdminMarkEventOK(mergedCtx, workspaceID, id)
 }
 
@@ -70,6 +75,7 @@ func (a *Admin) MarkCallbackEventReject(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.callbacks.AdminMarkEventReject(mergedCtx, workspaceID, id, reason)
 }
 
@@ -79,5 +85,6 @@ func (a *Admin) ResetExpiredCallbackProcessing(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.callbacks.AdminResetExpiredProcessing(mergedCtx, workspaceID)
 }

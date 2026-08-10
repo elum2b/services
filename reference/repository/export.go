@@ -15,12 +15,17 @@ func (r *Repository) Export(
 	if err := requireWorkspace(workspaceID); err != nil {
 		return ExportPackage{}, err
 	}
+
 	now := req.Now
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	var items []refsqlc.ListExportItemsRow
-	var localizationRows []refsqlc.ReferenceLocalization
+
+	var (
+		items            []refsqlc.ListExportItemsRow
+		localizationRows []refsqlc.ReferenceLocalization
+	)
+
 	if err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if _, err := txRepo.executor.ExecContext(
 			ctx,
@@ -30,6 +35,7 @@ func (r *Repository) Export(
 		}
 
 		var err error
+
 		items, err = txRepo.q.ListExportItems(
 			ctx,
 			refsqlc.ListExportItemsParams{
@@ -45,10 +51,12 @@ func (r *Repository) Export(
 			ctx,
 			workspaceID,
 		)
+
 		return err
 	}); err != nil {
 		return ExportPackage{}, err
 	}
+
 	localizations := mapExportLocalizations(localizationRows)
 	out := ExportPackage{
 		Format:    ExportFormat,
@@ -56,6 +64,7 @@ func (r *Repository) Export(
 		CreatedAt: now.UTC(),
 		Items:     make([]ExportItem, 0, len(items)),
 	}
+
 	for _, item := range items {
 		value := ExportItem{
 			Key:          item.Key,
@@ -65,8 +74,10 @@ func (r *Repository) Export(
 			Deleted:      item.DeletedAt.Valid,
 			Localization: localizations[item.Key],
 		}
+
 		out.Items = append(out.Items, value)
 	}
+
 	return out, nil
 }
 
@@ -78,10 +89,12 @@ func mapExportLocalizations(
 		if result[row.ItemKey] == nil {
 			result[row.ItemKey] = make(map[string]ExportText)
 		}
+
 		result[row.ItemKey][row.Locale] = ExportText{
 			Title:       row.Title,
 			Description: row.Description,
 		}
 	}
+
 	return result
 }

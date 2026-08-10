@@ -16,23 +16,25 @@ func (a *Platega) CreatePayment(
 	ctx context.Context,
 	params CreatePaymentParams,
 ) (*CreatePaymentResponse, error) {
-
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
 	}
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	params.IdempotencyKey = strings.TrimSpace(params.IdempotencyKey)
 	if params.IdempotencyKey == "" {
 		return nil, ErrIdempotencyKeyRequired
 	}
+
 	client := NewClient(params.Credentials)
 	if err := client.requireCredentials(); err != nil {
 		return nil, err
 	}
+
 	fingerprint, err := plategaRequestFingerprint(params)
 	if err != nil {
 		return nil, err
@@ -62,6 +64,7 @@ func (a *Platega) CreatePayment(
 	if err != nil {
 		return nil, err
 	}
+
 	order := local.Order
 	if local.AlreadyExists {
 		if local.Attempt.Status == string(
@@ -69,6 +72,7 @@ func (a *Platega) CreatePayment(
 		) {
 			return nil, ErrTransactionStateUnknown
 		}
+
 		return plategaExistingPaymentResponse(local, params.PaymentMethod)
 	}
 
@@ -78,9 +82,11 @@ func (a *Platega) CreatePayment(
 	}
 
 	var method *PaymentMethod
+
 	if params.PaymentMethod != PaymentMethodAny {
 		method = &params.PaymentMethod
 	}
+
 	transaction, err := client.CreateTransaction(ctx, createTransactionRequest{
 		PaymentMethod: method,
 		PaymentDetails: paymentDetails{
@@ -101,14 +107,16 @@ func (a *Platega) CreatePayment(
 				ProviderCode,
 			); failErr != nil {
 				return nil, fmt.Errorf(
-					"%w: fail local attempt: %v",
+					"%w: fail local attempt: %w",
 					err,
 					failErr,
 				)
 			}
 		}
+
 		return nil, err
 	}
+
 	if transaction.TransactionID == "" {
 		return nil, ErrTransactionResponseEmpty
 	}
@@ -151,7 +159,6 @@ func (a *Platega) CreatePayment(
 		PaymentMethod:  params.PaymentMethod,
 		ProviderMethod: transaction.PaymentMethod,
 	}, nil
-
 }
 
 func plategaExistingPaymentResponse(
@@ -235,6 +242,7 @@ func plategaRequestFingerprint(params CreatePaymentParams) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return sha256Hex(raw), nil
 }
 
@@ -242,6 +250,7 @@ func plategaValueOrEmpty(value *string) string {
 	if value == nil {
 		return ""
 	}
+
 	return *value
 }
 
@@ -249,15 +258,14 @@ func (a *Platega) GetH2H(
 	ctx context.Context,
 	params GetH2HParams,
 ) (H2HResponse, error) {
-
 	if a == nil {
 		return H2HResponse{}, ErrNotInitialized
 	}
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	return NewClient(params.Credentials).GetH2H(ctx, params.TransactionID)
-
 }

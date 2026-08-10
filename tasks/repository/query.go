@@ -15,6 +15,7 @@ func repositoryQuery[T any](
 	if params.Timeout <= 0 && r != nil {
 		params.Timeout = r.queryTimeout
 	}
+
 	return sqlwrap.Query(ctx, r.db, params, loader)
 }
 

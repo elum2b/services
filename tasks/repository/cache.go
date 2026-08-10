@@ -138,10 +138,12 @@ func (r *Repository) invalidateTaskCache(
 	if r == nil || r.db == nil || workspaceID == "" {
 		return nil
 	}
+
 	if err := r.db.BumpCacheVersion(
 		taskCatalogCacheScope(workspaceID)...); err != nil {
 		r.reportCacheInvalidationError(err)
 	}
+
 	return nil
 }
 
@@ -149,10 +151,12 @@ func (r *Repository) bumpPartnerConfigCache(workspaceID string) error {
 	if r == nil || r.db == nil || workspaceID == "" {
 		return nil
 	}
+
 	if err := r.db.BumpCacheVersion(
 		partnerConfigCacheScope(workspaceID)...); err != nil {
 		r.reportCacheInvalidationError(err)
 	}
+
 	return nil
 }
 
@@ -160,9 +164,11 @@ func (r *Repository) bumpPartnerScriptCache() error {
 	if r == nil || r.db == nil {
 		return nil
 	}
+
 	if err := r.db.BumpCacheVersion(partnerScriptCacheScope()...); err != nil {
 		r.reportCacheInvalidationError(err)
 	}
+
 	return nil
 }
 

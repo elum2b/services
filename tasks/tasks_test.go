@@ -68,6 +68,7 @@ func TestTasksRecordRejectsAmountAboveBigInt(t *testing.T) {
 	defer db.Close()
 
 	var count int
+
 	if err := db.QueryRowContext(context.Background(), `
 		SELECT COUNT(*)
 		FROM task_progress_event
@@ -75,6 +76,7 @@ func TestTasksRecordRejectsAmountAboveBigInt(t *testing.T) {
 	`, workspaceID, "overflow-event").Scan(&count); err != nil {
 		t.Fatalf("count overflow events: %v", err)
 	}
+
 	if count != 0 {
 		t.Fatalf("overflow event count = %d, want 0", count)
 	}
@@ -131,6 +133,7 @@ func TestTasksRecordRejectsIntegrationAndCompositeActions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("record forbidden action %q: %v", actionKey, err)
 		}
+
 		if result.Status != repository.RecordStatusNoTasks ||
 			len(result.Tasks) != 0 {
 			t.Fatalf(
@@ -148,6 +151,7 @@ func TestTasksRecordRejectsIntegrationAndCompositeActions(t *testing.T) {
 	defer db.Close()
 
 	var progressCount int
+
 	if err := db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM task_progress
@@ -155,6 +159,7 @@ func TestTasksRecordRejectsIntegrationAndCompositeActions(t *testing.T) {
 	`, workspaceID, integrationTaskID, complexIDs.parentID).Scan(&progressCount); err != nil {
 		t.Fatalf("count protected progress: %v", err)
 	}
+
 	if progressCount != 0 {
 		t.Fatalf("protected task progress rows = %d, want 0", progressCount)
 	}
@@ -211,6 +216,7 @@ func TestTasksIdentityCollisionIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("record for %#v: %v", identity, err)
 		}
+
 		if recorded.Status != repository.RecordStatusRecorded ||
 			recorded.Consumed != 1 ||
 			len(recorded.Tasks) != 1 {
@@ -229,6 +235,7 @@ func TestTasksIdentityCollisionIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("claim for %#v: %v", identity, err)
 		}
+
 		if claimed.Status != repository.ClaimStatusClaimed {
 			t.Fatalf(
 				"identity %#v collided during claim: %+v",
@@ -248,6 +255,7 @@ func TestTasksIdentityCollisionIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("repeat record: %v", err)
 	}
+
 	if repeated.Status != repository.RecordStatusDuplicate {
 		t.Fatalf(
 			"same full identity record status=%q, want duplicate",
@@ -260,7 +268,9 @@ func TestTasksIdentityCollisionIsolation(t *testing.T) {
 		t.Fatalf("open tasks collision database: %v", err)
 	}
 	defer db.Close()
+
 	var progressCount, eventCount, callbackIdentityCount int
+
 	if err := db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM task_progress
@@ -269,6 +279,7 @@ func TestTasksIdentityCollisionIsolation(t *testing.T) {
 	`, workspaceID, "identity-collision").Scan(&progressCount); err != nil {
 		t.Fatalf("count collision progress: %v", err)
 	}
+
 	if err := db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM task_progress_event
@@ -276,6 +287,7 @@ func TestTasksIdentityCollisionIsolation(t *testing.T) {
 	`, workspaceID, "shared-external-event").Scan(&eventCount); err != nil {
 		t.Fatalf("count collision events: %v", err)
 	}
+
 	if err := db.QueryRowContext(ctx, `
 		SELECT COUNT(DISTINCT (
 			(convert_from(payload, 'UTF8')::jsonb)->>'app_id',
@@ -287,6 +299,7 @@ func TestTasksIdentityCollisionIsolation(t *testing.T) {
 	`, workspaceID, repository.CallbackEventClaimed).Scan(&callbackIdentityCount); err != nil {
 		t.Fatalf("count collision callback identities: %v", err)
 	}
+
 	if progressCount != len(identities) ||
 		eventCount != len(identities) ||
 		callbackIdentityCount != len(identities) {
@@ -304,6 +317,7 @@ func TestTasksAdminRejectsIncompatibleTaskAndActionKinds(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("task-action-compatibility")
+
 	if err := service.Admin.UpsertGroup(
 		ctx,
 		workspaceID,
@@ -350,6 +364,7 @@ func TestAdminValidateReward(t *testing.T) {
 	); err != nil {
 		t.Fatalf("default quantity reward: %v", err)
 	}
+
 	if err := service.Admin.UpsertReward(
 		context.Background(),
 		workspaceID,
@@ -361,6 +376,7 @@ func TestAdminValidateReward(t *testing.T) {
 	); err != nil {
 		t.Fatalf("duration reward: %v", err)
 	}
+
 	if err := service.Admin.UpsertReward(
 		context.Background(),
 		workspaceID,
@@ -380,6 +396,7 @@ func createRewardValidationTask(
 	workspaceID string,
 ) uint64 {
 	t.Helper()
+
 	if err := service.Admin.UpsertGroup(
 		context.Background(),
 		workspaceID,
@@ -389,6 +406,7 @@ func createRewardValidationTask(
 	); err != nil {
 		t.Fatalf("save reward validation group: %v", err)
 	}
+
 	taskID, err := service.Admin.SaveTask(
 		context.Background(),
 		admin.SaveTaskParams{
@@ -410,24 +428,29 @@ func createRewardValidationTask(
 	if err != nil {
 		t.Fatalf("save reward validation task: %v", err)
 	}
+
 	return taskID
 }
 
 func TestTasksAPIFlowRoundRobin(t *testing.T) {
 	flow := apiflow.New(apiflow.Options{RatePerSecond: 1000})
 	set := apiflow.TokenSet{Tokens: []string{"a", "b"}}
+
 	first, err := flow.Acquire(context.Background(), set)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	second, err := flow.Acquire(context.Background(), set)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	third, err := flow.Acquire(context.Background(), set)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if first != "a" || second != "b" || third != "a" {
 		t.Fatalf("unexpected order: %q %q %q", first, second, third)
 	}
@@ -436,18 +459,21 @@ func TestTasksAPIFlowRoundRobin(t *testing.T) {
 func TestTasksAPIFlowPerTokenRateLimit(t *testing.T) {
 	flow := apiflow.New(apiflow.Options{RatePerSecond: 30})
 	start := time.Now()
+
 	if _, err := flow.Acquire(
 		context.Background(),
 		apiflow.TokenSet{Tokens: []string{"a"}},
 	); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := flow.Acquire(
 		context.Background(),
 		apiflow.TokenSet{Tokens: []string{"a"}},
 	); err != nil {
 		t.Fatal(err)
 	}
+
 	if elapsed := time.Since(start); elapsed < 30*time.Millisecond {
 		t.Fatalf("expected second acquire to wait, elapsed %s", elapsed)
 	}
@@ -461,8 +487,11 @@ func TestTasksAPIFlowContextCanceled(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+
 	defer cancel()
+
 	if _, err := flow.Acquire(
 		ctx,
 		apiflow.TokenSet{Tokens: []string{"a"}},
@@ -473,14 +502,19 @@ func TestTasksAPIFlowContextCanceled(t *testing.T) {
 
 func TestTasksChannelSubscriptionCheckerTelegram(t *testing.T) {
 	mux := http.NewServeMux()
+
 	var mu sync.Mutex
+
 	usedTokens := make([]string, 0, 2)
+
 	mux.HandleFunc(
 		"/botbad/getChatMember",
 		func(w http.ResponseWriter, r *http.Request) {
 			mu.Lock()
+
 			usedTokens = append(usedTokens, "bad")
 			mu.Unlock()
+
 			_, _ = w.Write([]byte(`{"ok":true,"result":{"status":"member"}}`))
 		},
 	)
@@ -488,18 +522,24 @@ func TestTasksChannelSubscriptionCheckerTelegram(t *testing.T) {
 		"/botgood/getChatMember",
 		func(w http.ResponseWriter, r *http.Request) {
 			mu.Lock()
+
 			usedTokens = append(usedTokens, "good")
 			mu.Unlock()
+
 			if got := r.URL.Query().Get("chat_id"); got != "@channel" {
 				t.Fatalf("chat_id = %q", got)
 			}
+
 			if got := r.URL.Query().Get("user_id"); got != "1093776793" {
 				t.Fatalf("user_id = %q", got)
 			}
+
 			_, _ = w.Write([]byte(`{"ok":true,"result":{"status":"member"}}`))
 		},
 	)
+
 	server := httptest.NewServer(mux)
+
 	defer server.Close()
 
 	checker := integration.NewChannelSubscriptionChecker(
@@ -508,6 +548,7 @@ func TestTasksChannelSubscriptionCheckerTelegram(t *testing.T) {
 			TelegramBotAPIBaseURL: server.URL,
 		},
 	)
+
 	result, err := checker.CheckChannelSubscription(
 		context.Background(),
 		integration.ChannelSubscriptionCheckParams{
@@ -528,9 +569,11 @@ func TestTasksChannelSubscriptionCheckerTelegram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !result.Completed {
 		t.Fatalf("expected completed result: %+v", result)
 	}
+
 	result, err = checker.CheckChannelSubscription(
 		context.Background(),
 		integration.ChannelSubscriptionCheckParams{
@@ -551,11 +594,14 @@ func TestTasksChannelSubscriptionCheckerTelegram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !result.Completed {
 		t.Fatalf("expected completed result: %+v", result)
 	}
+
 	mu.Lock()
 	defer mu.Unlock()
+
 	if len(usedTokens) != 2 || usedTokens[0] != "bad" ||
 		usedTokens[1] != "good" {
 		t.Fatalf("unexpected token usage: %#v", usedTokens)
@@ -564,24 +610,33 @@ func TestTasksChannelSubscriptionCheckerTelegram(t *testing.T) {
 
 func TestTasksChannelSubscriptionCheckerVK(t *testing.T) {
 	mux := http.NewServeMux()
+
 	var mu sync.Mutex
+
 	usedTokens := make([]string, 0, 2)
+
 	mux.HandleFunc(
 		"/groups.isMember",
 		func(w http.ResponseWriter, r *http.Request) {
 			if got := r.URL.Query().Get("group_id"); got != "club123" {
 				t.Fatalf("group_id = %q", got)
 			}
+
 			if got := r.URL.Query().Get("user_id"); got != "42" {
 				t.Fatalf("user_id = %q", got)
 			}
+
 			mu.Lock()
+
 			usedTokens = append(usedTokens, r.URL.Query().Get("access_token"))
 			mu.Unlock()
+
 			_, _ = w.Write([]byte(`{"response":1}`))
 		},
 	)
+
 	server := httptest.NewServer(mux)
+
 	defer server.Close()
 
 	checker := integration.NewChannelSubscriptionChecker(
@@ -590,6 +645,7 @@ func TestTasksChannelSubscriptionCheckerVK(t *testing.T) {
 			VKAPIBaseURL: server.URL,
 		},
 	)
+
 	result, err := checker.CheckChannelSubscription(
 		context.Background(),
 		integration.ChannelSubscriptionCheckParams{
@@ -609,9 +665,11 @@ func TestTasksChannelSubscriptionCheckerVK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !result.Completed {
 		t.Fatalf("expected completed result: %+v", result)
 	}
+
 	result, err = checker.CheckChannelSubscription(
 		context.Background(),
 		integration.ChannelSubscriptionCheckParams{
@@ -631,11 +689,14 @@ func TestTasksChannelSubscriptionCheckerVK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !result.Completed {
 		t.Fatalf("expected completed result: %+v", result)
 	}
+
 	mu.Lock()
 	defer mu.Unlock()
+
 	if len(usedTokens) != 2 || usedTokens[0] != "vk-token-1" ||
 		usedTokens[1] != "vk-token-2" {
 		t.Fatalf("unexpected token usage: %#v", usedTokens)
@@ -644,20 +705,27 @@ func TestTasksChannelSubscriptionCheckerVK(t *testing.T) {
 
 func TestTasksChannelBoostCheckerTelegram(t *testing.T) {
 	mux := http.NewServeMux()
+
 	var mu sync.Mutex
+
 	usedTokens := make([]string, 0, 2)
+
 	mux.HandleFunc(
 		"/botone/getUserChatBoosts",
 		func(w http.ResponseWriter, r *http.Request) {
 			mu.Lock()
+
 			usedTokens = append(usedTokens, "one")
 			mu.Unlock()
+
 			if got := r.URL.Query().Get("chat_id"); got != "@boosted" {
 				t.Fatalf("chat_id = %q", got)
 			}
+
 			if got := r.URL.Query().Get("user_id"); got != "1093776793" {
 				t.Fatalf("user_id = %q", got)
 			}
+
 			_, _ = w.Write(
 				[]byte(`{"ok":true,"result":{"boosts":[{"boost_id":"b1"}]}}`),
 			)
@@ -667,14 +735,18 @@ func TestTasksChannelBoostCheckerTelegram(t *testing.T) {
 		"/bottwo/getUserChatBoosts",
 		func(w http.ResponseWriter, r *http.Request) {
 			mu.Lock()
+
 			usedTokens = append(usedTokens, "two")
 			mu.Unlock()
+
 			_, _ = w.Write(
 				[]byte(`{"ok":true,"result":{"boosts":[{"boost_id":"b2"}]}}`),
 			)
 		},
 	)
+
 	server := httptest.NewServer(mux)
+
 	defer server.Close()
 
 	checker := integration.NewChannelSubscriptionChecker(
@@ -697,19 +769,24 @@ func TestTasksChannelBoostCheckerTelegram(t *testing.T) {
 			}`),
 		},
 	}
+
 	first, err := checker.CheckChannelBoost(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	second, err := checker.CheckChannelBoost(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !first.Completed || !second.Completed {
 		t.Fatalf("expected completed boost results: %+v %+v", first, second)
 	}
+
 	mu.Lock()
 	defer mu.Unlock()
+
 	if len(usedTokens) != 2 || usedTokens[0] != "one" ||
 		usedTokens[1] != "two" {
 		t.Fatalf("unexpected token usage: %#v", usedTokens)
@@ -763,9 +840,11 @@ func TestTasksComplexConditionsOutOfOrderAndClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record first condition: %v", err)
 	}
+
 	if first.Status != repository.RecordStatusRecorded {
 		t.Fatalf("unexpected first record: %+v", first)
 	}
+
 	list, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -777,12 +856,14 @@ func TestTasksComplexConditionsOutOfOrderAndClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list after first: %v", err)
 	}
+
 	parent := findTask(t, list, "daily.combo")
 	if parent.Progress == nil ||
 		parent.Progress.Status != repository.StatusOpen ||
 		parent.Progress.Progress != 1 {
 		t.Fatalf("expected parent partial progress: %+v", parent.Progress)
 	}
+
 	if len(parent.Conditions) != 2 {
 		t.Fatalf("expected nested conditions: %+v", parent.Conditions)
 	}
@@ -798,9 +879,11 @@ func TestTasksComplexConditionsOutOfOrderAndClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record second condition: %v", err)
 	}
+
 	if second.Status != repository.RecordStatusRecorded {
 		t.Fatalf("unexpected second record: %+v", second)
 	}
+
 	list, err = service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -812,6 +895,7 @@ func TestTasksComplexConditionsOutOfOrderAndClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list after second: %v", err)
 	}
+
 	parent = findTask(t, list, "daily.combo")
 	if parent.ID != ids.parentID || parent.Progress == nil ||
 		parent.Progress.Status != repository.StatusReady ||
@@ -830,6 +914,7 @@ func TestTasksComplexConditionsOutOfOrderAndClaim(t *testing.T) {
 	if err != nil || claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim parent: %+v err=%v", claim, err)
 	}
+
 	if claim.Task == nil || len(claim.Task.Rewards) != 1 ||
 		claim.Task.Rewards[0].Quantity != 100 {
 		t.Fatalf("unexpected parent reward: %+v", claim.Task)
@@ -846,6 +931,7 @@ func TestTasksComplexParallelActionAndConditionReward(t *testing.T) {
 		PlatformID:     1,
 		PlatformUserID: "player",
 	}
+
 	if err := service.Admin.UpsertGroup(
 		ctx,
 		identity.WorkspaceID,
@@ -855,6 +941,7 @@ func TestTasksComplexParallelActionAndConditionReward(t *testing.T) {
 	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
+
 	standaloneID := saveTaskForComplexTest(
 		t,
 		service,
@@ -876,6 +963,7 @@ func TestTasksComplexParallelActionAndConditionReward(t *testing.T) {
 	); err != nil {
 		t.Fatalf("standalone reward: %v", err)
 	}
+
 	ids := createComplexTaskSet(
 		t,
 		service,
@@ -909,10 +997,12 @@ func TestTasksComplexParallelActionAndConditionReward(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record parallel action: %v", err)
 	}
+
 	if recorded.Status != repository.RecordStatusRecorded ||
 		len(recorded.Tasks) != 2 {
 		t.Fatalf("expected standalone and condition to progress: %+v", recorded)
 	}
+
 	list, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -924,17 +1014,21 @@ func TestTasksComplexParallelActionAndConditionReward(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
+
 	standalone := findTask(t, list, "standalone.send")
 	condition := findTask(t, list, "combo.condition.send")
 	parent := findTask(t, list, "combo.send")
+
 	if standalone.Progress == nil ||
 		standalone.Progress.Status != repository.StatusReady {
 		t.Fatalf("standalone must be ready: %+v", standalone.Progress)
 	}
+
 	if condition.Progress == nil ||
 		condition.Progress.Status != repository.StatusReady {
 		t.Fatalf("condition must be ready: %+v", condition.Progress)
 	}
+
 	if parent.Progress == nil ||
 		parent.Progress.Status != repository.StatusReady {
 		t.Fatalf("parent must be ready: %+v", parent.Progress)
@@ -951,6 +1045,7 @@ func TestTasksComplexParallelActionAndConditionReward(t *testing.T) {
 	if err != nil || conditionClaim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim condition: %+v err=%v", conditionClaim, err)
 	}
+
 	parentClaim, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity: user.Identity(
 			identity,
@@ -962,6 +1057,7 @@ func TestTasksComplexParallelActionAndConditionReward(t *testing.T) {
 	if err != nil || parentClaim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim parent: %+v err=%v", parentClaim, err)
 	}
+
 	if parentClaim.Task == nil || len(parentClaim.Task.Rewards) != 1 ||
 		parentClaim.Task.Rewards[0].Quantity != 50 {
 		t.Fatalf("unexpected parent claim reward: %+v", parentClaim.Task)
@@ -1009,6 +1105,7 @@ func TestTasksComplexTargetsAndResetWindows(t *testing.T) {
 	if err != nil || one.Status != repository.RecordStatusRecorded {
 		t.Fatalf("record first ad: %+v err=%v", one, err)
 	}
+
 	list, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -1020,6 +1117,7 @@ func TestTasksComplexTargetsAndResetWindows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list after one: %v", err)
 	}
+
 	parent := findTask(t, list, "daily.combo.window")
 	if parent.Progress != nil {
 		t.Fatalf(
@@ -1039,6 +1137,7 @@ func TestTasksComplexTargetsAndResetWindows(t *testing.T) {
 	if err != nil || two.Status != repository.RecordStatusRecorded {
 		t.Fatalf("record second ad: %+v err=%v", two, err)
 	}
+
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity: user.Identity(
 			identity,
@@ -1062,8 +1161,10 @@ func TestTasksComplexTargetsAndResetWindows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list day2: %v", err)
 	}
+
 	nextDayParent := findTask(t, nextDayList, "daily.combo.window")
 	nextDayCondition := findTask(t, nextDayList, "daily.watch_ads")
+
 	if nextDayParent.Progress != nil || nextDayCondition.Progress != nil {
 		t.Fatalf(
 			"daily window must reset parent=%+v condition=%+v",
@@ -1076,7 +1177,6 @@ func TestTasksComplexTargetsAndResetWindows(t *testing.T) {
 func TestTasksComplexOptionalConditionDoesNotInflateRequiredProgress(
 	t *testing.T,
 ) {
-
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	now := time.Date(2026, 7, 5, 14, 0, 0, 0, time.UTC)
@@ -1097,6 +1197,7 @@ func TestTasksComplexOptionalConditionDoesNotInflateRequiredProgress(
 	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
+
 	requiredID := saveTaskForComplexTest(
 		t,
 		service,
@@ -1185,10 +1286,12 @@ func TestTasksComplexOptionalConditionDoesNotInflateRequiredProgress(
 		parent.Conditions[0].ID != requiredID {
 		t.Fatalf("public required conditions are inconsistent: %+v", parent)
 	}
+
 	if parent.Progress == nil || parent.Progress.Progress != 1 ||
 		parent.Progress.Status != repository.StatusReady {
 		t.Fatalf("parent progress = %+v, want ready 1/1", parent.Progress)
 	}
+
 	if optional := findTask(
 		t,
 		list,
@@ -1199,11 +1302,9 @@ func TestTasksComplexOptionalConditionDoesNotInflateRequiredProgress(
 			optional,
 		)
 	}
-
 }
 
 func TestTasksComplexProgressPropagatesThroughDeepGraph(t *testing.T) {
-
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	now := time.Date(2026, 7, 5, 15, 0, 0, 0, time.UTC)
@@ -1224,6 +1325,7 @@ func TestTasksComplexProgressPropagatesThroughDeepGraph(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
+
 	leafID := saveTaskForComplexTest(
 		t,
 		service,
@@ -1238,7 +1340,9 @@ func TestTasksComplexProgressPropagatesThroughDeepGraph(t *testing.T) {
 	)
 
 	conditionID := leafID
+
 	var rootID uint64
+
 	for depth := 1; depth <= 9; depth++ {
 		parentID := saveTaskForComplexTest(
 			t,
@@ -1295,11 +1399,9 @@ func TestTasksComplexProgressPropagatesThroughDeepGraph(t *testing.T) {
 		root.Progress.Progress != 1 || root.Progress.Status != repository.StatusReady {
 		t.Fatalf("deep root was not refreshed: %+v", root)
 	}
-
 }
 
 func TestTasksRejectsUnsupportedComplexConfigurations(t *testing.T) {
-
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("complex-invalid-config")
@@ -1313,6 +1415,7 @@ func TestTasksRejectsUnsupportedComplexConfigurations(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
+
 	parentID := saveTaskForComplexTest(
 		t,
 		service,
@@ -1384,7 +1487,6 @@ func TestTasksRejectsUnsupportedComplexConfigurations(t *testing.T) {
 			t.Fatalf("unsupported auto task was accepted: %+v", task)
 		}
 	}
-
 }
 
 type complexTaskOptions struct {
@@ -1416,13 +1518,17 @@ func createComplexTaskSet(
 	options complexTaskOptions,
 ) complexTaskIDs {
 	t.Helper()
+
 	ctx := context.Background()
+
 	if options.ResetUnit == "" {
 		options.ResetUnit = repository.ResetNever
 	}
+
 	if options.StartPosition == 0 {
 		options.StartPosition = 1
 	}
+
 	if err := service.Admin.UpsertGroup(
 		ctx,
 		workspaceID,
@@ -1432,6 +1538,7 @@ func createComplexTaskSet(
 	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
+
 	parentID := saveTaskForComplexTest(
 		t,
 		service,
@@ -1456,6 +1563,7 @@ func createComplexTaskSet(
 	); err != nil {
 		t.Fatalf("parent reward: %v", err)
 	}
+
 	ids := complexTaskIDs{
 		parentID:     parentID,
 		conditionIDs: make([]uint64, 0, len(options.Conditions)),
@@ -1487,6 +1595,7 @@ func createComplexTaskSet(
 				t.Fatalf("condition reward %s: %v", condition.Key, err)
 			}
 		}
+
 		if err := service.Admin.UpsertComplexCondition(
 			ctx,
 			admin.SaveComplexConditionParams{
@@ -1500,8 +1609,10 @@ func createComplexTaskSet(
 		); err != nil {
 			t.Fatalf("complex condition %s: %v", condition.Key, err)
 		}
+
 		ids.conditionIDs = append(ids.conditionIDs, conditionID)
 	}
+
 	return ids
 }
 
@@ -1514,7 +1625,9 @@ func saveTaskForComplexTest(
 	position int32,
 ) uint64 {
 	t.Helper()
+
 	ctx := context.Background()
+
 	id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
 		WorkspaceID: workspaceID,
 		Key:         key,
@@ -1534,6 +1647,7 @@ func saveTaskForComplexTest(
 	if err != nil {
 		t.Fatalf("task %s: %v", key, err)
 	}
+
 	if err := service.Admin.UpsertTaskLocalization(
 		ctx,
 		workspaceID,
@@ -1544,6 +1658,7 @@ func saveTaskForComplexTest(
 	); err != nil {
 		t.Fatalf("localization %s: %v", key, err)
 	}
+
 	return id
 }
 
@@ -1554,9 +1669,11 @@ const (
 func TestExportSectionsDefaultsToFullCatalog(t *testing.T) {
 	manifest := (&repository.Repository{}).ExportManifest()
 	sections := make(map[string]bool, len(manifest.Sections))
+
 	for _, section := range manifest.Sections {
 		sections[section.Key] = section.DefaultEnabled
 	}
+
 	for _, key := range []string{
 		repository.ExportSectionGroups,
 		repository.ExportSectionTasks,
@@ -1577,6 +1694,7 @@ func TestExportSectionsDefaultsToFullCatalog(t *testing.T) {
 func TestValidateExportPackageRequiresSequencePair(t *testing.T) {
 	repo := newExportImportRepository(t)
 	sequenceKey := "chain"
+
 	if _, err := repo.PreviewImport(
 		context.Background(),
 		"validation",
@@ -1618,14 +1736,17 @@ func TestRequireImportSecrets(t *testing.T) {
 			},
 		}},
 	}
+
 	preview, err := repo.PreviewImport(context.Background(), workspaceID, pkg)
 	if err != nil {
 		t.Fatalf("preview secrets: %v", err)
 	}
+
 	if len(preview.RequiredSecrets) != 1 ||
 		preview.RequiredSecrets[0].Key != "tasks.partner.tgrass.daily.telegram.secret" {
 		t.Fatalf("bad required secrets: %+v", preview.RequiredSecrets)
 	}
+
 	_, err = repo.Import(
 		context.Background(),
 		workspaceID,
@@ -1642,6 +1763,7 @@ func TestRequireImportSecrets(t *testing.T) {
 	}
 
 	pkg.Groups[0].PartnerConfigs[0].Secret.Value = &embedded
+
 	preview, err = repo.PreviewImport(
 		context.Background(),
 		embeddedWorkspaceID,
@@ -1650,12 +1772,14 @@ func TestRequireImportSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preview embedded secrets: %v", err)
 	}
+
 	if len(preview.RequiredSecrets) != 0 {
 		t.Fatalf(
 			"embedded secret must not be required: %+v",
 			preview.RequiredSecrets,
 		)
 	}
+
 	_, err = repo.Import(
 		context.Background(),
 		embeddedWorkspaceID,
@@ -1667,6 +1791,7 @@ func TestRequireImportSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("embedded secret should satisfy import requirement: %v", err)
 	}
+
 	config, found, err := repo.GetPartnerConfig(
 		context.Background(),
 		embeddedWorkspaceID,
@@ -1690,6 +1815,7 @@ func TestExportImportFullCycle(t *testing.T) {
 	ctx := context.Background()
 	sourceWorkspace := testsupport.WorkspaceID("source")
 	targetWorkspace := testsupport.WorkspaceID("target")
+
 	seedExportSource(t, repo, sourceWorkspace)
 
 	pkg, err := repo.Export(
@@ -1702,18 +1828,22 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
+
 	if pkg.Format != repository.ExportFormat || pkg.Service != "tasks" ||
 		len(pkg.Groups) != 1 ||
 		len(pkg.Sequences) != 1 {
 		t.Fatalf("unexpected export package: %+v", pkg)
 	}
+
 	raw, err := json.Marshal(pkg)
 	if err != nil {
 		t.Fatalf("marshal package: %v", err)
 	}
+
 	if strings.Contains(string(raw), "source-token") {
 		t.Fatalf("export must not contain secret value: %s", raw)
 	}
+
 	withSecrets, err := repo.Export(
 		ctx,
 		sourceWorkspace,
@@ -1722,6 +1852,7 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export with secrets: %v", err)
 	}
+
 	if len(withSecrets.Groups) != 1 ||
 		len(withSecrets.Groups[0].PartnerConfigs) != 1 ||
 		withSecrets.Groups[0].PartnerConfigs[0].Secret == nil ||
@@ -1740,6 +1871,7 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preview import: %v", err)
 	}
+
 	if preview.Counts.Groups != 1 ||
 		preview.Counts.Sequences != 1 ||
 		preview.Counts.Tasks != 1 ||
@@ -1750,9 +1882,11 @@ func TestExportImportFullCycle(t *testing.T) {
 		preview.Counts.PartnerRewards != 1 {
 		t.Fatalf("bad preview counts: %+v", preview.Counts)
 	}
+
 	if len(preview.RequiredSecrets) != 2 {
 		t.Fatalf("required secrets = %+v, want 2", preview.RequiredSecrets)
 	}
+
 	if _, err := repo.Import(ctx, targetWorkspace, repository.ImportRequest{
 		Package:          pkg,
 		ConflictStrategy: repository.ImportConflictFail,
@@ -1761,6 +1895,7 @@ func TestExportImportFullCycle(t *testing.T) {
 	}
 
 	secrets := exportImportSecretMap(preview.RequiredSecrets, "target-token")
+
 	result, err := repo.Import(ctx, targetWorkspace, repository.ImportRequest{
 		Package:          pkg,
 		ConflictStrategy: repository.ImportConflictFail,
@@ -1769,6 +1904,7 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
+
 	if result.Imported.Tasks != 1 || result.Imported.Rewards != 1 ||
 		result.Imported.PartnerConfigs != 1 {
 		t.Fatalf("bad import result: %+v", result)
@@ -1782,7 +1918,9 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export imported workspace: %v", err)
 	}
+
 	assertImportedCatalog(t, imported)
+
 	config, found, err := repo.GetPartnerConfig(
 		ctx,
 		targetWorkspace,
@@ -1799,6 +1937,7 @@ func TestExportImportFullCycle(t *testing.T) {
 			err,
 		)
 	}
+
 	if config.WebhookSecret == nil || *config.WebhookSecret != "target-token" {
 		t.Fatalf("bad imported webhook secret: %+v", config)
 	}
@@ -1807,9 +1946,11 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("conflict preview: %v", err)
 	}
+
 	if len(conflictPreview.Conflicts) == 0 {
 		t.Fatal("preview after import must report conflicts")
 	}
+
 	if _, err := repo.Import(ctx, targetWorkspace, repository.ImportRequest{
 		Package:          pkg,
 		ConflictStrategy: repository.ImportConflictFail,
@@ -1817,6 +1958,7 @@ func TestExportImportFullCycle(t *testing.T) {
 	}); err == nil {
 		t.Fatal("fail_on_conflict must reject existing catalog")
 	}
+
 	skipped, err := repo.Import(ctx, targetWorkspace, repository.ImportRequest{
 		Package:          pkg,
 		ConflictStrategy: repository.ImportConflictSkip,
@@ -1825,6 +1967,7 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("skip existing import: %v", err)
 	}
+
 	if skipped.Skipped.Tasks != 1 || skipped.Skipped.Groups != 1 ||
 		skipped.Skipped.PartnerConfigs != 1 {
 		t.Fatalf("bad skipped result: %+v", skipped)
@@ -1835,10 +1978,12 @@ func TestExportImportFullCycle(t *testing.T) {
 		Description: "Обновленное описание",
 	}
 	pkg.Groups[0].Tasks[0].Rewards[0].Quantity = 777
+
 	updatedSecrets := exportImportSecretMap(
 		preview.RequiredSecrets,
 		"updated-token",
 	)
+
 	updated, err := repo.Import(ctx, targetWorkspace, repository.ImportRequest{
 		Package:          pkg,
 		ConflictStrategy: repository.ImportConflictUpdate,
@@ -1847,9 +1992,11 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update existing import: %v", err)
 	}
+
 	if updated.Imported.Tasks != 1 || updated.Imported.Rewards != 1 {
 		t.Fatalf("bad update result: %+v", updated)
 	}
+
 	afterUpdate, err := repo.Export(
 		ctx,
 		targetWorkspace,
@@ -1858,12 +2005,14 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export after update: %v", err)
 	}
+
 	if afterUpdate.Groups[0].Localization["ru"].Title != "Обновленные" {
 		t.Fatalf(
 			"group localization was not updated: %+v",
 			afterUpdate.Groups[0].Localization,
 		)
 	}
+
 	if afterUpdate.Groups[0].Tasks[0].Rewards[0].Quantity != 777 {
 		t.Fatalf(
 			"reward was not updated: %+v",
@@ -1877,12 +2026,14 @@ func TestExportImportFullCycle(t *testing.T) {
 	pkg.Groups[0].Tasks[0].Conditions = nil
 	pkg.Groups[0].PartnerConfigs = nil
 	pkg.Groups[0].PartnerRewardRules = nil
+
 	if _, err := repo.Import(ctx, targetWorkspace, repository.ImportRequest{
 		Package:          pkg,
 		ConflictStrategy: repository.ImportConflictUpdate,
 	}); err != nil {
 		t.Fatalf("replace imported task aggregate: %v", err)
 	}
+
 	replaced, err := repo.Export(
 		ctx,
 		targetWorkspace,
@@ -1891,6 +2042,7 @@ func TestExportImportFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export replaced task aggregate: %v", err)
 	}
+
 	if len(replaced.Groups) != 1 ||
 		len(replaced.Groups[0].Localization) != 0 ||
 		len(replaced.Groups[0].Tasks[0].Localization) != 0 ||
@@ -1919,20 +2071,25 @@ func TestExportSectionsAndInvalidImportFormats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("section export: %v", err)
 	}
+
 	if len(pkg.Sequences) != 0 {
 		t.Fatalf("sequences must be omitted: %+v", pkg.Sequences)
 	}
+
 	if len(pkg.Groups) != 1 || len(pkg.Groups[0].Tasks) != 1 {
 		t.Fatalf("tasks must be exported inside groups: %+v", pkg)
 	}
+
 	task := pkg.Groups[0].Tasks[0]
 	if task.SequenceKey != nil || task.SequencePosition != nil {
 		t.Fatalf("sequence fields must be omitted: %+v", task)
 	}
+
 	if len(task.Rewards) != 0 || len(task.Localization) != 0 ||
 		len(pkg.Groups[0].PartnerConfigs) != 0 {
 		t.Fatalf("disabled sections leaked into export: %+v", pkg.Groups[0])
 	}
+
 	if len(task.Target) != 0 || len(task.Integration.Payload) != 0 ||
 		task.Integration.Provider != nil {
 		t.Fatalf("target/integration must be omitted: %+v", task)
@@ -1945,6 +2102,7 @@ func TestExportSectionsAndInvalidImportFormats(t *testing.T) {
 	); err == nil {
 		t.Fatal("unsupported format must fail")
 	}
+
 	if _, err := repo.PreviewImport(
 		ctx,
 		workspaceID,
@@ -1955,6 +2113,7 @@ func TestExportSectionsAndInvalidImportFormats(t *testing.T) {
 	); err == nil {
 		t.Fatal("wrong service must fail")
 	}
+
 	position := uint32(1)
 	if _, err := repo.PreviewImport(ctx, workspaceID, repository.ExportPackage{
 		Format:  repository.ExportFormat,
@@ -1972,9 +2131,9 @@ func TestExportSectionsAndInvalidImportFormats(t *testing.T) {
 }
 
 func TestTasksImportRejectsConditionsOnNonComplexTask(t *testing.T) {
-
 	repo := newExportImportRepository(t)
 	parent := tasksImportTestTask("ordinary-parent")
+
 	parent.Conditions = []repository.ExportCondition{
 		{
 			TaskKey:        "ordinary-child",
@@ -1983,6 +2142,7 @@ func TestTasksImportRejectsConditionsOnNonComplexTask(t *testing.T) {
 			IsRequired:     true,
 		},
 	}
+
 	pkg := repository.ExportPackage{
 		Format:  repository.ExportFormat,
 		Service: "tasks",
@@ -2011,7 +2171,6 @@ func TestTasksImportRejectsConditionsOnNonComplexTask(t *testing.T) {
 		) {
 		t.Fatalf("non-complex conditions error = %v", err)
 	}
-
 }
 
 func TestImportDailyTasksExampleAndExport(t *testing.T) {
@@ -2025,14 +2184,18 @@ func TestImportDailyTasksExampleAndExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read daily example: %v", err)
 	}
+
 	var req repository.ImportRequest
+
 	if err := json.Unmarshal(raw, &req); err != nil {
 		t.Fatalf("unmarshal daily example: %v", err)
 	}
+
 	pkg := req.Package
 	if req.ConflictStrategy == "" {
 		t.Fatal("daily example import request must contain conflict_strategy")
 	}
+
 	if len(req.Secrets) != 0 {
 		t.Fatalf(
 			"daily example import request secrets = %d, want 0",
@@ -2044,6 +2207,7 @@ func TestImportDailyTasksExampleAndExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preview daily example: %v", err)
 	}
+
 	if preview.Counts.Groups != 2 ||
 		preview.Counts.Sequences != 0 ||
 		preview.Counts.Tasks != 25 ||
@@ -2055,11 +2219,14 @@ func TestImportDailyTasksExampleAndExport(t *testing.T) {
 		preview.Counts.PartnerRewards != 3 {
 		t.Fatalf("bad daily preview counts: %+v", preview.Counts)
 	}
+
 	if len(preview.Conflicts) != 0 || len(preview.Warnings) != 0 ||
 		len(preview.RequiredSecrets) != 6 {
 		t.Fatalf("daily preview should be clean: %+v", preview)
 	}
+
 	secrets := exportImportSecretMap(preview.RequiredSecrets, "example-secret")
+
 	result, err := repo.Import(ctx, workspaceID, repository.ImportRequest{
 		Package:          pkg,
 		ConflictStrategy: req.ConflictStrategy,
@@ -2068,6 +2235,7 @@ func TestImportDailyTasksExampleAndExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("import daily example: %v", err)
 	}
+
 	if result.Imported.Groups != 2 ||
 		result.Imported.Tasks != 25 ||
 		result.Imported.GroupLocalizations != 4 ||
@@ -2083,6 +2251,7 @@ func TestImportDailyTasksExampleAndExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export daily example: %v", err)
 	}
+
 	assertDailyExampleExport(t, pkg, exported)
 }
 
@@ -2092,6 +2261,7 @@ func seedExportSource(
 	workspaceID string,
 ) {
 	t.Helper()
+
 	ctx := context.Background()
 	if err := repo.UpsertGroup(
 		ctx,
@@ -2102,6 +2272,7 @@ func seedExportSource(
 	); err != nil {
 		t.Fatalf("upsert group: %v", err)
 	}
+
 	if err := repo.UpsertGroupLocalization(
 		ctx,
 		workspaceID,
@@ -2112,6 +2283,7 @@ func seedExportSource(
 	); err != nil {
 		t.Fatalf("upsert group ru localization: %v", err)
 	}
+
 	if err := repo.UpsertGroupLocalization(
 		ctx,
 		workspaceID,
@@ -2122,6 +2294,7 @@ func seedExportSource(
 	); err != nil {
 		t.Fatalf("upsert group en localization: %v", err)
 	}
+
 	if err := repo.UpsertSequence(
 		ctx,
 		workspaceID,
@@ -2131,8 +2304,10 @@ func seedExportSource(
 	); err != nil {
 		t.Fatalf("upsert sequence: %v", err)
 	}
+
 	position := uint32(1)
 	provider := "http"
+
 	taskID, err := repo.SaveTask(ctx, repository.SaveTaskParams{
 		WorkspaceID:      workspaceID,
 		Key:              "subscribe_tg",
@@ -2165,6 +2340,7 @@ func seedExportSource(
 	if err != nil {
 		t.Fatalf("save task: %v", err)
 	}
+
 	if err := repo.UpsertTaskLocalization(
 		ctx,
 		workspaceID,
@@ -2175,6 +2351,7 @@ func seedExportSource(
 	); err != nil {
 		t.Fatalf("upsert task ru localization: %v", err)
 	}
+
 	if err := repo.UpsertTaskLocalization(
 		ctx,
 		workspaceID,
@@ -2185,6 +2362,7 @@ func seedExportSource(
 	); err != nil {
 		t.Fatalf("upsert task en localization: %v", err)
 	}
+
 	if err := repo.UpsertReward(
 		ctx,
 		workspaceID,
@@ -2199,8 +2377,10 @@ func seedExportSource(
 	); err != nil {
 		t.Fatalf("upsert reward: %v", err)
 	}
+
 	secret := "source-token"
 	webhookSecret := "source-webhook-secret"
+
 	if err := repo.SavePartnerConfig(ctx, repository.SavePartnerConfigParams{
 		WorkspaceID:   workspaceID,
 		Provider:      "tgrass",
@@ -2214,6 +2394,7 @@ func seedExportSource(
 	}); err != nil {
 		t.Fatalf("save partner config: %v", err)
 	}
+
 	if err := repo.SavePartnerRewardRule(
 		ctx,
 		repository.SavePartnerRewardRuleParams{
@@ -2240,16 +2421,19 @@ func assertDailyExampleExport(
 	imported, exported repository.ExportPackage,
 ) {
 	t.Helper()
+
 	if exported.Format != repository.ExportFormat ||
 		exported.Service != "tasks" {
 		t.Fatalf("bad exported header: %+v", exported)
 	}
+
 	if len(exported.Sequences) != 0 {
 		t.Fatalf(
 			"daily tasks must be standalone, got sequences: %+v",
 			exported.Sequences,
 		)
 	}
+
 	if len(imported.Groups) != 2 || len(exported.Groups) != 2 {
 		t.Fatalf(
 			"bad group counts: imported=%d exported=%d",
@@ -2257,6 +2441,7 @@ func assertDailyExampleExport(
 			len(exported.Groups),
 		)
 	}
+
 	importedByGroup := make(
 		map[string]repository.ExportGroup,
 		len(imported.Groups),
@@ -2265,22 +2450,28 @@ func assertDailyExampleExport(
 		map[string]repository.ExportGroup,
 		len(exported.Groups),
 	)
+
 	for _, group := range imported.Groups {
 		importedByGroup[group.Key] = group
 	}
+
 	for _, group := range exported.Groups {
 		exportedByGroup[group.Key] = group
 	}
+
 	expectedGroup := importedByGroup["daily"]
 	actualGroup := exportedByGroup["daily"]
+
 	if actualGroup.Key != expectedGroup.Key ||
 		actualGroup.Localization["ru"].Title != "Ежедневные задания" ||
 		actualGroup.Localization["en"].Title != "Daily tasks" {
 		t.Fatalf("bad exported daily group: %+v", actualGroup)
 	}
+
 	if len(actualGroup.Tasks) != 20 {
 		t.Fatalf("exported tasks = %d, want 20", len(actualGroup.Tasks))
 	}
+
 	expectedByKey := make(
 		map[string]repository.ExportTask,
 		len(expectedGroup.Tasks),
@@ -2288,14 +2479,17 @@ func assertDailyExampleExport(
 	for _, task := range expectedGroup.Tasks {
 		expectedByKey[task.Key] = task
 	}
+
 	for _, task := range actualGroup.Tasks {
 		expected, ok := expectedByKey[task.Key]
 		if !ok {
 			t.Fatalf("unexpected exported task: %+v", task)
 		}
+
 		if task.SequenceKey != nil || task.SequencePosition != nil {
 			t.Fatalf("daily task must not be sequential: %+v", task)
 		}
+
 		if len(task.Target) != 0 {
 			t.Fatalf(
 				"daily task must not have target: key=%s target=%s",
@@ -2303,6 +2497,7 @@ func assertDailyExampleExport(
 				task.Target,
 			)
 		}
+
 		if task.Localization["ru"].Title != expected.Localization["ru"].Title ||
 			task.Localization["en"].Title != expected.Localization["en"].Title {
 			t.Fatalf(
@@ -2311,6 +2506,7 @@ func assertDailyExampleExport(
 				task.Localization,
 			)
 		}
+
 		if len(task.Rewards) != 1 || len(expected.Rewards) != 1 {
 			t.Fatalf(
 				"bad rewards for %s: actual=%+v expected=%+v",
@@ -2319,6 +2515,7 @@ func assertDailyExampleExport(
 				expected.Rewards,
 			)
 		}
+
 		if task.Rewards[0].Key != "stars" ||
 			task.Rewards[0].Type != "quantity" ||
 			task.Rewards[0].Quantity != expected.Rewards[0].Quantity ||
@@ -2330,6 +2527,7 @@ func assertDailyExampleExport(
 				expected.Rewards[0],
 			)
 		}
+
 		if task.Reset.Unit != repository.ResetDay || task.Reset.Every != 1 {
 			t.Fatalf(
 				"daily task must reset daily: key=%s reset=%+v",
@@ -2343,25 +2541,31 @@ func assertDailyExampleExport(
 	if complexGroup.Key != "complex" || len(complexGroup.Tasks) != 5 {
 		t.Fatalf("bad complex group: %+v", complexGroup)
 	}
+
 	var parent *repository.ExportTask
+
 	for index := range complexGroup.Tasks {
 		task := &complexGroup.Tasks[index]
 		if task.Key == "complex.bear_gift" {
 			parent = task
 		}
 	}
+
 	if parent == nil {
 		t.Fatal("complex parent task was not exported")
 	}
+
 	if parent.TaskKind != repository.TaskKindComplex ||
 		parent.ActionKind != repository.ActionKindComposite ||
 		len(parent.Conditions) != 4 {
 		t.Fatalf("bad complex parent task: %+v", parent)
 	}
+
 	if len(parent.Rewards) != 1 || parent.Rewards[0].Key != "gift.bear" ||
 		parent.Rewards[0].Quantity != 1 {
 		t.Fatalf("bad complex reward: %+v", parent.Rewards)
 	}
+
 	subscribeTask, ok := expectedByKey["daily.subscribe_channel"]
 	if !ok || len(subscribeTask.Integration.Payload) == 0 ||
 		subscribeTask.Integration.Provider == nil {
@@ -2374,30 +2578,37 @@ func assertDailyExampleExport(
 
 func assertImportedCatalog(t *testing.T, pkg repository.ExportPackage) {
 	t.Helper()
+
 	if len(pkg.Groups) != 1 || pkg.Groups[0].Key != "daily" {
 		t.Fatalf("bad imported groups: %+v", pkg.Groups)
 	}
+
 	group := pkg.Groups[0]
 	if group.Localization["ru"].Title != "Ежедневные" ||
 		group.Localization["en"].Title != "Daily" {
 		t.Fatalf("bad group localization: %+v", group.Localization)
 	}
+
 	if len(group.Tasks) != 1 || group.Tasks[0].Key != "subscribe_tg" {
 		t.Fatalf("bad imported tasks: %+v", group.Tasks)
 	}
+
 	task := group.Tasks[0]
 	if task.SequenceKey == nil || *task.SequenceKey != "daily_chain" ||
 		task.SequencePosition == nil ||
 		*task.SequencePosition != 1 {
 		t.Fatalf("bad task sequence fields: %+v", task)
 	}
+
 	if task.Localization["ru"].Title != "Подпишись" || len(task.Rewards) != 1 ||
 		task.Rewards[0].Quantity != 100 || task.Rewards[0].Scale != 2 {
 		t.Fatalf("bad task localized rewards: %+v", task)
 	}
+
 	if len(group.PartnerConfigs) != 1 || group.PartnerConfigs[0].Secret == nil {
 		t.Fatalf("bad partner configs: %+v", group.PartnerConfigs)
 	}
+
 	if len(group.PartnerRewardRules) != 1 ||
 		group.PartnerRewardRules[0].Reward.Quantity != 50 ||
 		group.PartnerRewardRules[0].Reward.Scale != 2 {
@@ -2407,19 +2618,25 @@ func assertImportedCatalog(t *testing.T, pkg repository.ExportPackage) {
 
 func newExportImportRepository(t *testing.T) *repository.Repository {
 	t.Helper()
+
 	ctx := context.Background()
+
 	adminDB, err := openExportImportPostgres("postgres")
 	if err != nil {
 		t.Fatalf("open admin postgres: %v", err)
 	}
+
 	if err := recreateTasksDatabase(ctx, adminDB, exportImportDB); err != nil {
 		t.Fatalf("recreate database: %v", err)
 	}
+
 	_ = adminDB.Close()
+
 	db, err := openExportImportPostgres(exportImportDB)
 	if err != nil {
 		t.Fatalf("open postgres: %v", err)
 	}
+
 	client, err := sqlwrap.New(
 		db,
 		sqlwrap.Options{
@@ -2431,16 +2648,19 @@ func newExportImportRepository(t *testing.T) *repository.Repository {
 	if err != nil {
 		t.Fatalf("sqlwrap: %v", err)
 	}
+
 	repo := repository.NewWithOptions(client, repository.Options{
 		SecretEncryptionKey: []byte("0123456789abcdef0123456789abcdef"),
 	})
 	if err := repo.Bootstrap(ctx); err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
+
 	t.Cleanup(func() {
 		_ = repo.Close()
 		_ = client.Close()
 	})
+
 	return repo
 }
 
@@ -2453,14 +2673,17 @@ func openExportImportPostgres(database string) (*sql.DB, error) {
 		pgPort,
 		database,
 	)
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Ping(); err != nil {
+
+	if err := db.PingContext(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+
 	return db, nil
 }
 
@@ -2472,19 +2695,23 @@ func exportImportSecretMap(
 ) map[string]string {
 	out := make(map[string]string, len(required))
 	webhookSecrets := 0
+
 	for _, secret := range required {
 		if strings.HasSuffix(secret.Key, ".webhook_secret") {
 			webhookSecrets++
 		}
 	}
+
 	for index, secret := range required {
 		secretValue := value
 		if webhookSecrets > 1 &&
 			strings.HasSuffix(secret.Key, ".webhook_secret") {
 			secretValue += "-" + strconv.Itoa(index+1)
 		}
+
 		out[secret.Key] = secretValue
 	}
+
 	return out
 }
 
@@ -2533,10 +2760,12 @@ func TestTasksIntegrationChannelSubscriptionClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
+
 	publicTask := findTask(t, list, "subscribe_telegram")
 	if publicTask.TaskKind != repository.TaskKindChannelSubscribe {
 		t.Fatalf("public task kind = %q", publicTask.TaskKind)
 	}
+
 	if string(publicTask.Payload) == "" ||
 		string(publicTask.Payload) == "null" {
 		t.Fatalf("public payload not returned: %s", publicTask.Payload)
@@ -2546,10 +2775,12 @@ func TestTasksIntegrationChannelSubscriptionClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("admin get task: %v", err)
 	}
+
 	if adminTask.IntegrationProvider == nil ||
 		*adminTask.IntegrationProvider != "telegram" {
 		t.Fatalf("admin provider = %+v", adminTask.IntegrationProvider)
 	}
+
 	if len(adminTask.IntegrationPayload) == 0 ||
 		string(adminTask.IntegrationPayload) == "null" {
 		t.Fatalf(
@@ -2571,10 +2802,12 @@ func TestTasksIntegrationChannelSubscriptionClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check channel: %v", err)
 	}
+
 	if result.Status != repository.StatusReady || !result.Completed ||
 		result.Task == nil {
 		t.Fatalf("unexpected channel result: %+v", result)
 	}
+
 	if checker.calls != 1 || checker.lastTask.IntegrationProvider == nil ||
 		*checker.lastTask.IntegrationProvider != "telegram" {
 		t.Fatalf(
@@ -2595,6 +2828,7 @@ func TestTasksIntegrationChannelSubscriptionClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claim reward: %v", err)
 	}
+
 	if claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("unexpected claim result: %+v", claim)
 	}
@@ -2612,6 +2846,7 @@ func TestTasksIntegrationChannelSubscriptionClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("confirm completion: %v", err)
 	}
+
 	if !confirmed.Completed || confirmed.Status != repository.StatusClaimed ||
 		confirmed.OperationID == nil ||
 		*confirmed.OperationID != "telegram-claim-1" {
@@ -2665,10 +2900,12 @@ func TestTasksIntegrationCheckDispatchesByActionKind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generic check: %v", err)
 	}
+
 	if result.Status != repository.StatusReady || !result.Completed ||
 		result.Task == nil {
 		t.Fatalf("unexpected generic result: %+v", result)
 	}
+
 	if checker.calls != 1 ||
 		checker.lastTask.ActionKind != repository.ActionKindChannelSubscribe {
 		t.Fatalf(
@@ -2718,9 +2955,11 @@ func TestTasksIntegrationCheckUsesStoredProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check with provider override: %v", err)
 	}
+
 	if result.Status != repository.StatusReady || !result.Completed {
 		t.Fatalf("stored provider result: %+v", result)
 	}
+
 	if storedChecker.calls != 1 || overrideChecker.calls != 0 {
 		t.Fatalf(
 			"checker calls stored=%d override=%d, want 1 and 0",
@@ -2779,10 +3018,12 @@ func TestTasksIntegrationChannelBoostClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check boost: %v", err)
 	}
+
 	if result.Status != repository.StatusReady || !result.Completed ||
 		result.Task == nil {
 		t.Fatalf("unexpected boost result: %+v", result)
 	}
+
 	if checker.calls != 1 ||
 		checker.lastTask.ActionKind != repository.ActionKindChannelBoost {
 		t.Fatalf(
@@ -2803,6 +3044,7 @@ func TestTasksIntegrationChannelBoostClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claim boost reward: %v", err)
 	}
+
 	if claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("unexpected boost claim result: %+v", claim)
 	}
@@ -2810,6 +3052,7 @@ func TestTasksIntegrationChannelBoostClaim(t *testing.T) {
 
 func TestTasksIntegrationExternalHTTPCheck(t *testing.T) {
 	var receivedToken string
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			receivedToken = r.Header.Get("X-Partner-Token")
@@ -2821,10 +3064,12 @@ func TestTasksIntegrationExternalHTTPCheck(t *testing.T) {
 					r.URL.RawQuery,
 				)
 			}
+
 			_ = json.NewEncoder(w).
 				Encode(map[string]any{"ok": true, "level": 5})
 		}),
 	)
+
 	defer server.Close()
 
 	service := newTasksTestService(t, Options{
@@ -2891,12 +3136,15 @@ func TestTasksIntegrationExternalHTTPCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check external: %v", err)
 	}
+
 	if result.Status != repository.StatusReady || !result.Completed {
 		t.Fatalf("unexpected external result: %+v", result)
 	}
+
 	if receivedToken != "secret-token" {
 		t.Fatalf("token header = %q", receivedToken)
 	}
+
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity: user.Identity(
 			identity,
@@ -2908,6 +3156,7 @@ func TestTasksIntegrationExternalHTTPCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claim external reward: %v", err)
 	}
+
 	if claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("unexpected external claim: %+v", claim)
 	}
@@ -2919,6 +3168,7 @@ func TestTasksIntegrationExternalHTTPCheckRejectsDifferentJSONType(
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+
 			_, _ = w.Write([]byte(`{"ok":"true"}`))
 		}),
 	)
@@ -2977,6 +3227,7 @@ func TestTasksIntegrationExternalHTTPCheckRejectsDifferentJSONType(
 	if err != nil {
 		t.Fatalf("check external task with mismatched JSON type: %v", err)
 	}
+
 	if result.Status != integration.StatusNotCompleted || result.Completed {
 		t.Fatalf(
 			"mismatched JSON type result = %+v, want not completed",
@@ -3026,9 +3277,11 @@ func TestTasksIntegrationNotCompleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check external not completed: %v", err)
 	}
+
 	if result.Status != integration.StatusNotCompleted || result.Completed {
 		t.Fatalf("unexpected not completed result: %+v", result)
 	}
+
 	confirmed, err := service.Integration.ConfirmCompletion(
 		ctx,
 		integration.ConfirmCompletionParams{
@@ -3042,6 +3295,7 @@ func TestTasksIntegrationNotCompleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("confirm after not completed: %v", err)
 	}
+
 	if confirmed.Completed || confirmed.Status != integration.StatusNotReady {
 		t.Fatalf("unexpected not completed confirmation: %+v", confirmed)
 	}
@@ -3054,6 +3308,7 @@ func TestTasksIntegrationChannelSubscriptionLivePlatforms(t *testing.T) {
 	tgToken := os.Getenv("TASKS_LIVE_TG_TOKEN")
 	tgChatID := os.Getenv("TASKS_LIVE_TG_CHAT_ID")
 	tgUserID := os.Getenv("TASKS_LIVE_TG_USER_ID")
+
 	if vkToken == "" || vkGroupID == "" || vkUserID == "" || tgToken == "" ||
 		tgChatID == "" ||
 		tgUserID == "" {
@@ -3131,6 +3386,7 @@ func TestTasksIntegrationChannelSubscriptionLivePlatforms(t *testing.T) {
 	); err != nil {
 		t.Fatalf("list active vk: %v", err)
 	}
+
 	if _, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -3156,6 +3412,7 @@ func TestTasksIntegrationChannelSubscriptionLivePlatforms(t *testing.T) {
 		tgTaskID,
 		"tg-live-claim",
 	)
+
 	tgBoostTaskID := createIntegrationTask(t, service, integrationTaskSeed{
 		WorkspaceID: workspaceID,
 		Key:         "live_tg_boost",
@@ -3191,7 +3448,9 @@ func checkAndClaimLiveChannelTask(
 	operationID string,
 ) {
 	t.Helper()
+
 	ctx := context.Background()
+
 	result, err := service.Integration.CheckChannelSubscription(
 		ctx,
 		integration.CheckChannelSubscriptionParams{
@@ -3205,9 +3464,11 @@ func checkAndClaimLiveChannelTask(
 	if err != nil {
 		t.Fatalf("check %s: %v", operationID, err)
 	}
+
 	if result.Status != repository.StatusReady || !result.Completed {
 		t.Fatalf("unexpected check %s: %+v", operationID, result)
 	}
+
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity: user.Identity(
 			identity,
@@ -3219,6 +3480,7 @@ func checkAndClaimLiveChannelTask(
 	if err != nil {
 		t.Fatalf("claim %s: %v", operationID, err)
 	}
+
 	if claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("unexpected claim %s: %+v", operationID, claim)
 	}
@@ -3232,7 +3494,9 @@ func checkAndClaimLiveChannelBoostTask(
 	operationID string,
 ) {
 	t.Helper()
+
 	ctx := context.Background()
+
 	result, err := service.Integration.CheckChannelBoost(
 		ctx,
 		integration.CheckChannelBoostParams{
@@ -3246,9 +3510,11 @@ func checkAndClaimLiveChannelBoostTask(
 	if err != nil {
 		t.Fatalf("check %s: %v", operationID, err)
 	}
+
 	if result.Status != repository.StatusReady || !result.Completed {
 		t.Fatalf("unexpected check %s: %+v", operationID, result)
 	}
+
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity: user.Identity(
 			identity,
@@ -3260,6 +3526,7 @@ func checkAndClaimLiveChannelBoostTask(
 	if err != nil {
 		t.Fatalf("claim %s: %v", operationID, err)
 	}
+
 	if claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("unexpected claim %s: %+v", operationID, claim)
 	}
@@ -3282,6 +3549,7 @@ func createIntegrationTask(
 	seed integrationTaskSeed,
 ) uint64 {
 	t.Helper()
+
 	ctx := context.Background()
 	if err := service.Admin.UpsertGroup(
 		ctx,
@@ -3292,8 +3560,10 @@ func createIntegrationTask(
 	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
+
 	publicPayload := mustJSON(t, seed.PublicPayload)
 	privatePayload := mustJSON(t, seed.PrivatePayload)
+
 	id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
 		WorkspaceID:         seed.WorkspaceID,
 		Key:                 seed.Key,
@@ -3315,6 +3585,7 @@ func createIntegrationTask(
 	if err != nil {
 		t.Fatalf("integration task: %v", err)
 	}
+
 	if err := service.Admin.UpsertReward(
 		ctx,
 		seed.WorkspaceID,
@@ -3324,18 +3595,22 @@ func createIntegrationTask(
 	); err != nil {
 		t.Fatalf("reward: %v", err)
 	}
+
 	return id
 }
 
 func mustJSON(t testing.TB, value any) json.RawMessage {
 	t.Helper()
+
 	if value == nil {
 		return nil
 	}
+
 	raw, err := json.Marshal(value)
 	if err != nil {
 		t.Fatalf("marshal json: %v", err)
 	}
+
 	return raw
 }
 
@@ -3350,7 +3625,9 @@ func (f *fakeChannelChecker) CheckChannelSubscription(
 	params integration.ChannelSubscriptionCheckParams,
 ) (integration.CheckResult, error) {
 	f.calls++
+
 	f.lastTask = params.Task
+
 	return integration.CheckResult{
 		Completed: f.completed,
 		Payload:   json.RawMessage(`{"source":"fake_channel"}`),
@@ -3368,7 +3645,9 @@ func (f *fakeChannelBoostChecker) CheckChannelBoost(
 	params integration.ChannelBoostCheckParams,
 ) (integration.CheckResult, error) {
 	f.calls++
+
 	f.lastTask = params.Task
+
 	return integration.CheckResult{
 		Completed: f.completed,
 		Payload:   json.RawMessage(`{"source":"fake_channel_boost"}`),
@@ -3391,11 +3670,14 @@ func (f *fakeExternalChecker) CheckExternalTask(
 
 func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
 	_ = newTasksTestService(t)
+
 	ctx := context.Background()
+
 	db, err := openTasksPostgres(tasksTestDB)
 	if err != nil {
 		t.Fatalf("open tasks database: %v", err)
 	}
+
 	client, err := sqlwrap.New(db, sqlwrap.Options{
 		CacheEnabled:  true,
 		CacheSize:     100,
@@ -3403,11 +3685,14 @@ func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
 	})
 	if err != nil {
 		_ = db.Close()
+
 		t.Fatalf("create sql client: %v", err)
 	}
+
 	repo := repository.NewWithOptions(client, repository.Options{
 		SecretEncryptionKey: []byte("0123456789abcdef0123456789abcdef"),
 	})
+
 	t.Cleanup(func() {
 		_ = repo.Close()
 		_ = client.Close()
@@ -3440,6 +3725,7 @@ func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
 		PrivatePayload: json.RawMessage(`{}`),
 		Now:            time.Now().UTC(),
 	}
+
 	if _, _, err := repo.CreatePartnerIssue(ctx, params); err == nil {
 		t.Fatal(
 			"create partner issue succeeded while stats write was forced to fail",
@@ -3451,14 +3737,17 @@ func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
 		"task_partner_stats_event": 0,
 	} {
 		var count int
+
 		query := fmt.Sprintf(
 			"SELECT COUNT(*) FROM %s WHERE workspace_id = $1",
 			table,
 		)
+
 		if err := db.QueryRowContext(ctx, query, workspaceID).
 			Scan(&count); err != nil {
 			t.Fatalf("count %s: %v", table, err)
 		}
+
 		if count != expected {
 			t.Fatalf(
 				"%s rows = %d, want %d after rollback",
@@ -3480,6 +3769,7 @@ func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("retry partner issue: %v", err)
 	}
+
 	if issue.ID == 0 || !inserted {
 		t.Fatalf(
 			"retry partner issue result: issue=%+v inserted=%t",
@@ -3489,6 +3779,7 @@ func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
 	}
 
 	var issuedCount int64
+
 	if err := db.QueryRowContext(ctx, `
 		SELECT issued_count
 		FROM task_partner_stats_daily
@@ -3496,6 +3787,7 @@ func TestTasksPartnerIssueAndIssuedStatsAreAtomic(t *testing.T) {
 	`, workspaceID, params.Provider, params.GroupKey).Scan(&issuedCount); err != nil {
 		t.Fatalf("read issued stats: %v", err)
 	}
+
 	if issuedCount != 1 {
 		t.Fatalf("issued count = %d, want 1", issuedCount)
 	}
@@ -3542,6 +3834,7 @@ func TestTasksPartnerCallbackRevokesBeforeClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("revoke callback: %v", err)
 	}
+
 	if revoked.Status != repository.PartnerIssueStatusRevoked {
 		t.Fatalf("revoke status = %q", revoked.Status)
 	}
@@ -3552,6 +3845,7 @@ func TestTasksPartnerCallbackRevokesBeforeClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claim revoked: %v", err)
 	}
+
 	if claim.Status != repository.ClaimStatusNotReady || claim.Task == nil ||
 		claim.Task.Progress == nil || claim.Task.Progress.Status != repository.PartnerIssueStatusRevoked {
 		t.Fatalf("unexpected revoked claim: %+v", claim)
@@ -3577,9 +3871,11 @@ func TestTasksPartnerCallbackRevokesBeforeClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("duplicate revoke callback: %v", err)
 	}
+
 	if again.Status != repository.PartnerIssueStatusRevoked {
 		t.Fatalf("duplicate revoke status = %q", again.Status)
 	}
+
 	stats = partnerDailyStats(t, service, identity.WorkspaceID)
 	if stats.RevokedCount != 1 || stats.RevokedAfterClaimCount != 0 {
 		t.Fatalf("duplicate revoke changed stats: %+v", stats)
@@ -3611,12 +3907,14 @@ func TestTasksPartnerCallbackRevokesAfterClaimAndEmitsCallback(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list partner: items=%+v err=%v", items, err)
 	}
+
 	check, err := service.User.CheckPartner(ctx, user.PartnerCheckParams{
 		Identity: identity, IssueRef: items[0].Key, Now: now.Add(time.Minute),
 	})
 	if err != nil || !check.Completed {
 		t.Fatalf("check partner: %+v err=%v", check, err)
 	}
+
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity:    identity,
 		TaskRef:     items[0].Key,
@@ -3642,6 +3940,7 @@ func TestTasksPartnerCallbackRevokesAfterClaimAndEmitsCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("revoke callback: %v", err)
 	}
+
 	if revoked.Status != repository.PartnerIssueStatusRevokedAfterClaim {
 		t.Fatalf("revoke status = %q", revoked.Status)
 	}
@@ -3653,14 +3952,18 @@ func TestTasksPartnerCallbackRevokesAfterClaimAndEmitsCallback(t *testing.T) {
 
 	workerCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+
 	seenRevoked := false
+
 	err = service.OnCallback(workerCtx, func(callbackCtx Context) error {
 		if callbackCtx.Claimed != nil {
 			return callbackCtx.Successful()
 		}
+
 		if callbackCtx.Revoked == nil {
 			return errors.New("expected revoked callback")
 		}
+
 		if callbackCtx.Revoked.TaskKey != items[0].Key ||
 			callbackCtx.Revoked.OperationID != "claim-before-revoke" ||
 			len(
@@ -3668,11 +3971,15 @@ func TestTasksPartnerCallbackRevokesAfterClaimAndEmitsCallback(t *testing.T) {
 			) != 1 || callbackCtx.Revoked.Rewards[0].Key != "stars" {
 			return errors.New("bad revoked callback payload")
 		}
+
 		seenRevoked = true
+
 		if err := callbackCtx.Successful(); err != nil {
 			return err
 		}
+
 		cancel()
+
 		return nil
 	},
 		WithCallbackWorkerID("tasks-complex-test-worker"),
@@ -3680,9 +3987,11 @@ func TestTasksPartnerCallbackRevokesAfterClaimAndEmitsCallback(t *testing.T) {
 		WithCallbackLeaseTimeout(time.Second),
 		WithCallbackIdleDelay(10*time.Millisecond),
 	)
+
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("callback: %v", err)
 	}
+
 	if !seenRevoked {
 		t.Fatal("revoked callback was not delivered")
 	}
@@ -3738,6 +4047,7 @@ func TestTasksPartnerCallbackRejectsIssueFromAnotherScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cross-scope callback: %v", err)
 	}
+
 	if result.Status != repository.ClaimStatusNotFound {
 		t.Fatalf("cross-scope callback status = %q", result.Status)
 	}
@@ -3751,6 +4061,7 @@ func TestTasksPartnerCallbackRejectsIssueFromAnotherScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claim untouched issue: %v", err)
 	}
+
 	if claim.Status != repository.ClaimStatusNotReady {
 		t.Fatalf("cross-scope callback changed issue: %+v", claim)
 	}
@@ -3774,6 +4085,7 @@ func TestTasksPartnerCallbackRequiresApplicationScopeWhenAmbiguous(
 		PlatformUserID: "same-user",
 	}
 	secondIdentity := firstIdentity
+
 	secondIdentity.AppID = 2
 
 	firstItems, err := service.User.ListPartner(ctx, user.PartnerListParams{
@@ -3786,6 +4098,7 @@ func TestTasksPartnerCallbackRequiresApplicationScopeWhenAmbiguous(
 	if err != nil || len(firstItems) != 1 {
 		t.Fatalf("list first application: items=%+v err=%v", firstItems, err)
 	}
+
 	secondItems, err := service.User.ListPartner(ctx, user.PartnerListParams{
 		Identity: secondIdentity,
 		Provider: "fake",
@@ -3813,6 +4126,7 @@ func TestTasksPartnerCallbackRequiresApplicationScopeWhenAmbiguous(
 	if err != nil {
 		t.Fatalf("ambiguous callback: %v", err)
 	}
+
 	if ambiguous.Status != internalapi.PartnerCallbackStatusAmbiguous ||
 		ambiguous.Issue != nil {
 		t.Fatalf("ambiguous callback result = %+v", ambiguous)
@@ -3834,6 +4148,7 @@ func TestTasksPartnerCallbackRequiresApplicationScopeWhenAmbiguous(
 		if err != nil {
 			t.Fatalf("claim untouched issue: %v", err)
 		}
+
 		if claim.Status != repository.ClaimStatusNotReady {
 			t.Fatalf("ambiguous callback changed issue: %+v", claim)
 		}
@@ -3858,6 +4173,7 @@ func TestTasksPartnerCallbackRequiresApplicationScopeWhenAmbiguous(
 		completed.Status != repository.PartnerIssueStatusCompleted {
 		t.Fatalf("scoped callback: result=%+v err=%v", completed, err)
 	}
+
 	if completed.Issue == nil || completed.Issue.AppID != firstIdentity.AppID {
 		t.Fatalf("scoped callback selected wrong issue: %+v", completed)
 	}
@@ -3884,6 +4200,7 @@ func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(
 			"deadline",
 			groupKey,
 		)
+
 		identity := user.Identity{
 			WorkspaceID:    workspaceID,
 			AppID:          1,
@@ -3898,9 +4215,11 @@ func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(
 			Platform: "telegram",
 			Now:      base,
 		})
+
 		if err != nil || len(items) != 1 {
 			t.Fatalf("list %s issue: items=%+v err=%v", groupKey, items, err)
 		}
+
 		return identity, items[0]
 	}
 
@@ -3918,6 +4237,7 @@ func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(
 				Now:         base.Add(2 * time.Minute),
 			},
 		)
+
 		if err != nil || result.Status != repository.PartnerIssueStatusExpired {
 			t.Fatalf("late callback result=%+v err=%v", result, err)
 		}
@@ -3951,6 +4271,7 @@ func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(
 				Now:         base.Add(30 * time.Second),
 			},
 		)
+
 		if err != nil ||
 			result.Status != repository.PartnerIssueStatusCompleted {
 			t.Fatalf("on-time callback result=%+v err=%v", result, err)
@@ -3978,6 +4299,7 @@ func TestTasksPartnerIssueExpirationRespectsLimitedAndUnlimitedTasks(
 			IssueRef: task.Key,
 			Now:      base.Add(365 * 24 * time.Hour),
 		})
+
 		if err != nil || !check.Completed ||
 			check.Status != user.PartnerStatusReady {
 			t.Fatalf("unlimited check=%+v err=%v", check, err)
@@ -4018,6 +4340,7 @@ func TestTasksPartnerIssueKeepsRewardSnapshot(t *testing.T) {
 	if err != nil || len(issued) != 1 || len(issued[0].Rewards) != 1 {
 		t.Fatalf("issue partner task: tasks=%+v err=%v", issued, err)
 	}
+
 	if issued[0].Rewards[0].Quantity != 25 {
 		t.Fatalf(
 			"issued reward quantity = %d, want 25",
@@ -4054,6 +4377,7 @@ func TestTasksPartnerIssueKeepsRewardSnapshot(t *testing.T) {
 	if err != nil || len(listed) != 1 || len(listed[0].Rewards) != 1 {
 		t.Fatalf("list issued partner task: tasks=%+v err=%v", listed, err)
 	}
+
 	if listed[0].Rewards[0].Quantity != 25 {
 		t.Fatalf(
 			"listed reward quantity = %d, want issued snapshot 25",
@@ -4070,6 +4394,7 @@ func TestTasksPartnerIssueKeepsRewardSnapshot(t *testing.T) {
 		len(checked.Task.Rewards) != 1 {
 		t.Fatalf("check partner task: result=%+v err=%v", checked, err)
 	}
+
 	if checked.Task.Rewards[0].Quantity != 25 {
 		t.Fatalf(
 			"checked reward quantity = %d, want issued snapshot 25",
@@ -4087,6 +4412,7 @@ func TestTasksPartnerIssueKeepsRewardSnapshot(t *testing.T) {
 		claimed.Task == nil || len(claimed.Task.Rewards) != 1 {
 		t.Fatalf("claim partner task: result=%+v err=%v", claimed, err)
 	}
+
 	if claimed.Task.Rewards[0].Quantity != 25 {
 		t.Fatalf(
 			"claimed reward quantity = %d, want issued snapshot 25",
@@ -4113,6 +4439,7 @@ func TestTasksLimitedPartnerIssueCanBeReissuedInNextWindow(t *testing.T) {
 		"window",
 		"daily",
 	)
+
 	identity := user.Identity{
 		WorkspaceID:    workspaceID,
 		AppID:          1,
@@ -4150,6 +4477,7 @@ func TestTasksLimitedPartnerIssueCanBeReissuedInNextWindow(t *testing.T) {
 
 	provider.expiresAt = base.Add(3 * time.Minute)
 	provider.windowKey = "window-2"
+
 	second, err := service.User.ListPartner(ctx, user.PartnerListParams{
 		Identity: identity,
 		Provider: "window",
@@ -4157,12 +4485,15 @@ func TestTasksLimitedPartnerIssueCanBeReissuedInNextWindow(t *testing.T) {
 		Platform: "telegram",
 		Now:      base.Add(2 * time.Minute),
 	})
+
 	if err != nil || len(second) != 1 {
 		t.Fatalf("list second window: tasks=%+v err=%v", second, err)
 	}
+
 	if second[0].Key == first[0].Key {
 		t.Fatalf("next window reused expired issue %q", first[0].Key)
 	}
+
 	if second[0].Progress == nil ||
 		second[0].Progress.Status != repository.StatusOpen {
 		t.Fatalf("second window task is not open: %+v", second[0])
@@ -4228,8 +4559,10 @@ func (p deadlinePartnerProvider) ListPartnerTasks(
 	params user.PartnerListProviderParams,
 ) ([]user.PartnerExternalTask, error) {
 	var expiresAt *time.Time
+
 	if params.Config.GroupKey != "unlimited" {
 		deadline := p.base.Add(time.Minute)
+
 		expiresAt = &deadline
 	}
 
@@ -4306,7 +4639,6 @@ func (p *controlledStartPartnerProvider) ListPartnerTasks(
 	context.Context,
 	user.PartnerListProviderParams,
 ) ([]user.PartnerExternalTask, error) {
-
 	return []user.PartnerExternalTask{
 		{
 			ExternalID:     "controlled-offer",
@@ -4316,38 +4648,37 @@ func (p *controlledStartPartnerProvider) ListPartnerTasks(
 			StartMode:      repository.StartModeRequired,
 		},
 	}, nil
-
 }
 
 func (*controlledStartPartnerProvider) CheckPartnerTask(
 	context.Context,
 	user.PartnerCheckProviderParams,
 ) (user.PartnerCheckResult, error) {
-
 	return user.PartnerCheckResult{
 		Completed: true,
 		Status:    repository.PartnerIssueStatusCompleted,
 	}, nil
-
 }
 
 func (p *controlledStartPartnerProvider) StartPartnerTask(
 	ctx context.Context,
 	params user.PartnerStartProviderParams,
 ) (user.PartnerStartResult, error) {
-
 	p.calls.Add(1)
+
 	if p.entered != nil {
 		select {
 		case p.entered <- struct{}{}:
 		default:
 		}
 	}
+
 	if p.onStart != nil {
 		if err := p.onStart(params); err != nil {
 			return user.PartnerStartResult{}, err
 		}
 	}
+
 	if p.release != nil {
 		select {
 		case <-ctx.Done():
@@ -4362,13 +4693,11 @@ func (p *controlledStartPartnerProvider) StartPartnerTask(
 		ActionURL:       p.actionURL,
 		ExternalClickID: p.externalClickID,
 	}, nil
-
 }
 
 func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(
 	t *testing.T,
 ) {
-
 	release := make(chan struct{})
 	provider := &controlledStartPartnerProvider{
 		entered:         make(chan struct{}, 2),
@@ -4382,10 +4711,12 @@ func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(
 		},
 	}
 	nodeA := newTasksTestService(t, options)
+
 	db, err := openTasksPostgres(tasksTestDB)
 	if err != nil {
 		t.Fatalf("open second tasks node database: %v", err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
 
 	nodeB, err := NewWithDatabase(
@@ -4396,6 +4727,7 @@ func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(
 	if err != nil {
 		t.Fatalf("create second tasks node: %v", err)
 	}
+
 	t.Cleanup(func() { _ = nodeB.Close() })
 
 	ctx := context.Background()
@@ -4413,6 +4745,7 @@ func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(
 		"controlled",
 		"daily",
 	)
+
 	items, err := nodeA.User.ListPartner(ctx, user.PartnerListParams{
 		Identity: identity,
 		Provider: "controlled",
@@ -4427,17 +4760,22 @@ func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(
 	results := make([]user.PartnerStartOutput, 2)
 	errorsByNode := make([]error, 2)
 	startGate := make(chan struct{})
-	var ready sync.WaitGroup
-	var started sync.WaitGroup
+
+	var (
+		ready   sync.WaitGroup
+		started sync.WaitGroup
+	)
+
 	ready.Add(2)
 	started.Add(2)
+
 	for index, node := range []*Tasks{nodeA, nodeB} {
-		index := index
-		node := node
 		go func() {
 			defer started.Done()
+
 			ready.Done()
 			<-startGate
+
 			results[index], errorsByNode[index] = node.User.StartPartner(
 				ctx,
 				user.PartnerStartParams{
@@ -4448,6 +4786,7 @@ func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(
 			)
 		}()
 	}
+
 	ready.Wait()
 	close(startGate)
 
@@ -4456,10 +4795,13 @@ func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(
 	case <-time.After(time.Second):
 		t.Fatal("partner provider start was not called")
 	}
+
 	time.Sleep(100 * time.Millisecond)
+
 	if calls := provider.calls.Load(); calls != 1 {
 		t.Fatalf("provider calls while lease is held = %d, want 1", calls)
 	}
+
 	close(release)
 	started.Wait()
 
@@ -4467,11 +4809,13 @@ func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(
 		if errorsByNode[index] != nil {
 			t.Fatalf("node %d start error: %v", index, errorsByNode[index])
 		}
+
 		if !results[index].Started ||
 			results[index].ActionURL != provider.actionURL {
 			t.Fatalf("node %d start result: %+v", index, results[index])
 		}
 	}
+
 	if calls := provider.calls.Load(); calls != 1 {
 		t.Fatalf("provider calls after concurrent start = %d, want 1", calls)
 	}
@@ -4484,20 +4828,20 @@ func TestTasksPartnerStartUsesDistributedLeaseAndPersistsActionURL(
 	if err != nil {
 		t.Fatalf("replay partner start: %v", err)
 	}
+
 	if !replayed.Started || replayed.ActionURL != provider.actionURL {
 		t.Fatalf(
 			"replayed start did not use persisted action URL: %+v",
 			replayed,
 		)
 	}
+
 	if calls := provider.calls.Load(); calls != 1 {
 		t.Fatalf("provider calls after replay = %d, want 1", calls)
 	}
-
 }
 
 func TestTasksPartnerStartReleasesLeaseAfterRequestCancellation(t *testing.T) {
-
 	release := make(chan struct{})
 	provider := &controlledStartPartnerProvider{
 		entered:         make(chan struct{}, 2),
@@ -4524,6 +4868,7 @@ func TestTasksPartnerStartReleasesLeaseAfterRequestCancellation(t *testing.T) {
 		"controlled",
 		"daily",
 	)
+
 	items, err := service.User.ListPartner(
 		context.Background(),
 		user.PartnerListParams{
@@ -4539,6 +4884,7 @@ func TestTasksPartnerStartReleasesLeaseAfterRequestCancellation(t *testing.T) {
 
 	firstCtx, cancelFirst := context.WithCancel(context.Background())
 	firstDone := make(chan error, 1)
+
 	go func() {
 		_, startErr := service.User.StartPartner(
 			firstCtx,
@@ -4555,13 +4901,16 @@ func TestTasksPartnerStartReleasesLeaseAfterRequestCancellation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("first partner start did not reach provider")
 	}
+
 	cancelFirst()
+
 	if err := <-firstDone; !errors.Is(err, context.Canceled) {
 		t.Fatalf(
 			"canceled partner start error = %v, want context.Canceled",
 			err,
 		)
 	}
+
 	close(release)
 
 	retryCtx, cancelRetry := context.WithTimeout(
@@ -4569,6 +4918,7 @@ func TestTasksPartnerStartReleasesLeaseAfterRequestCancellation(t *testing.T) {
 		500*time.Millisecond,
 	)
 	defer cancelRetry()
+
 	retried, err := service.User.StartPartner(retryCtx, user.PartnerStartParams{
 		Identity: identity,
 		IssueRef: items[0].Key,
@@ -4576,17 +4926,17 @@ func TestTasksPartnerStartReleasesLeaseAfterRequestCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("retry partner start after cancellation: %v", err)
 	}
+
 	if !retried.Started || retried.ActionURL != provider.actionURL {
 		t.Fatalf("retry partner start result: %+v", retried)
 	}
+
 	if calls := provider.calls.Load(); calls != 2 {
 		t.Fatalf("provider calls after canceled retry = %d, want 2", calls)
 	}
-
 }
 
 func TestTasksStandaloneUserCloseCancelsPartnerStart(t *testing.T) {
-
 	release := make(chan struct{})
 	provider := &controlledStartPartnerProvider{
 		entered:         make(chan struct{}, 1),
@@ -4613,6 +4963,7 @@ func TestTasksStandaloneUserCloseCancelsPartnerStart(t *testing.T) {
 		"controlled",
 		"daily",
 	)
+
 	items, err := service.User.ListPartner(
 		context.Background(),
 		user.PartnerListParams{
@@ -4630,11 +4981,14 @@ func TestTasksStandaloneUserCloseCancelsPartnerStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open standalone user database: %v", err)
 	}
+
 	client, err := sqlwrap.New(db)
 	if err != nil {
 		_ = db.Close()
+
 		t.Fatalf("create standalone user client: %v", err)
 	}
+
 	standalone := user.NewWithServiceOptions(
 		context.Background(),
 		client,
@@ -4644,14 +4998,17 @@ func TestTasksStandaloneUserCloseCancelsPartnerStart(t *testing.T) {
 			},
 		},
 	)
+
 	t.Cleanup(func() {
 		close(release)
+
 		_ = standalone.Close()
 		_ = client.Close()
 		_ = db.Close()
 	})
 
 	startDone := make(chan error, 1)
+
 	go func() {
 		_, err := standalone.StartPartner(
 			context.Background(),
@@ -4691,11 +5048,9 @@ func TestTasksStandaloneUserCloseCancelsPartnerStart(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("partner start did not stop after standalone user close")
 	}
-
 }
 
 func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
-
 	release := make(chan struct{})
 	provider := &controlledStartPartnerProvider{
 		entered:         make(chan struct{}, 2),
@@ -4710,10 +5065,12 @@ func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
 		},
 	}
 	nodeA := newTasksTestService(t, options)
+
 	db, err := openTasksPostgres(tasksTestDB)
 	if err != nil {
 		t.Fatalf("open second tasks node database: %v", err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
 
 	nodeB, err := NewWithDatabase(
@@ -4724,6 +5081,7 @@ func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create second tasks node: %v", err)
 	}
+
 	t.Cleanup(func() { _ = nodeB.Close() })
 
 	identity := user.Identity{
@@ -4740,6 +5098,7 @@ func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
 		"controlled",
 		"daily",
 	)
+
 	items, err := nodeA.User.ListPartner(
 		context.Background(),
 		user.PartnerListParams{
@@ -4764,8 +5123,10 @@ func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
 			},
 		)
 		results <- result
+
 		errorsByNode <- startErr
 	}
+
 	go start(nodeA)
 
 	select {
@@ -4773,9 +5134,13 @@ func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("long partner start did not reach provider")
 	}
+
 	time.Sleep(3 * options.PartnerStartLeaseDuration)
+
 	go start(nodeB)
+
 	time.Sleep(options.PartnerStartLeaseDuration)
+
 	if calls := provider.calls.Load(); calls != 1 {
 		t.Fatalf(
 			"provider calls after original lease duration = %d, want 1",
@@ -4784,28 +5149,29 @@ func TestTasksPartnerStartRenewsLeaseDuringLongProviderCall(t *testing.T) {
 	}
 
 	close(release)
+
 	for range 2 {
 		if err := <-errorsByNode; err != nil {
 			t.Fatalf("partner start with renewed lease: %v", err)
 		}
+
 		if result := <-results; !result.Started ||
 			result.ActionURL != provider.actionURL {
 			t.Fatalf("partner start with renewed lease result: %+v", result)
 		}
 	}
+
 	if calls := provider.calls.Load(); calls != 1 {
 		t.Fatalf(
 			"provider calls after renewed lease completion = %d, want 1",
 			calls,
 		)
 	}
-
 }
 
 func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(
 	t *testing.T,
 ) {
-
 	provider := &controlledStartPartnerProvider{
 		externalClickID: "state-click",
 		actionURL:       "https://partner.example/state",
@@ -4831,6 +5197,7 @@ func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(
 		"controlled",
 		"daily",
 	)
+
 	prestartItems, err := service.User.ListPartner(ctx, user.PartnerListParams{
 		Identity: prestartIdentity,
 		Provider: "controlled",
@@ -4856,6 +5223,7 @@ func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(
 	if err != nil {
 		t.Fatalf("prestart callback: %v", err)
 	}
+
 	if prestartCallback.Status != repository.PartnerIssueStatusIssued {
 		t.Fatalf(
 			"prestart callback status = %q, want issued",
@@ -4877,6 +5245,7 @@ func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(
 		"controlled",
 		"daily",
 	)
+
 	revokedItems, err := service.User.ListPartner(ctx, user.PartnerListParams{
 		Identity: revokedIdentity,
 		Provider: "controlled",
@@ -4886,6 +5255,7 @@ func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(
 	if err != nil || len(revokedItems) != 1 {
 		t.Fatalf("list revoked issue: items=%+v err=%v", revokedItems, err)
 	}
+
 	if _, err := service.Internal.OnPartnerCallback(
 		ctx,
 		internalapi.PartnerCallbackParams{
@@ -4909,20 +5279,20 @@ func TestTasksRequiredPartnerCallbackNeedsStartAndRevokedIssueCannotStart(
 	if err != nil {
 		t.Fatalf("start revoked issue: %v", err)
 	}
+
 	if startResult.Status != repository.PartnerIssueStatusRevoked ||
 		startResult.Started {
 		t.Fatalf("revoked start result: %+v", startResult)
 	}
+
 	if calls := provider.calls.Load(); calls != 0 {
 		t.Fatalf("provider calls for rejected states = %d, want 0", calls)
 	}
-
 }
 
 func TestTasksPartnerCallbackDuringStartCompletesAndPersistsStart(
 	t *testing.T,
 ) {
-
 	provider := &controlledStartPartnerProvider{
 		externalClickID: "early-callback-click",
 		actionURL:       "https://partner.example/early-callback",
@@ -4946,6 +5316,7 @@ func TestTasksPartnerCallbackDuringStartCompletesAndPersistsStart(
 		"controlled",
 		"daily",
 	)
+
 	items, err := service.User.ListPartner(
 		context.Background(),
 		user.PartnerListParams{
@@ -4975,6 +5346,7 @@ func TestTasksPartnerCallbackDuringStartCompletesAndPersistsStart(
 		if err != nil {
 			return err
 		}
+
 		if callback.Status != repository.PartnerIssueStatusCompleted {
 			return fmt.Errorf("early callback status = %q", callback.Status)
 		}
@@ -4993,15 +5365,14 @@ func TestTasksPartnerCallbackDuringStartCompletesAndPersistsStart(
 	if err != nil {
 		t.Fatalf("start with early callback: %v", err)
 	}
+
 	if started.Status != user.PartnerStatusReady || !started.Started ||
 		started.ActionURL != provider.actionURL {
 		t.Fatalf("start with early callback result: %+v", started)
 	}
-
 }
 
 func TestTasksPartnerClickIDIsScopedByProvider(t *testing.T) {
-
 	firstProvider := &controlledStartPartnerProvider{
 		externalClickID: "shared-provider-click",
 		actionURL:       "https://first.example/action",
@@ -5032,6 +5403,7 @@ func TestTasksPartnerClickIDIsScopedByProvider(t *testing.T) {
 			provider,
 			"daily",
 		)
+
 		items, err := service.User.ListPartner(
 			context.Background(),
 			user.PartnerListParams{
@@ -5044,6 +5416,7 @@ func TestTasksPartnerClickIDIsScopedByProvider(t *testing.T) {
 		if err != nil || len(items) != 1 {
 			t.Fatalf("list %s issue: items=%+v err=%v", provider, items, err)
 		}
+
 		if _, err := service.User.StartPartner(
 			context.Background(),
 			user.PartnerStartParams{
@@ -5063,6 +5436,7 @@ func TestTasksPartnerClickIDIsScopedByProvider(t *testing.T) {
 	defer db.Close()
 
 	var count int
+
 	if err := db.QueryRowContext(context.Background(), `
 SELECT COUNT(*)
 FROM task_partner_issue
@@ -5071,14 +5445,15 @@ WHERE workspace_id = $1
 `, identity.WorkspaceID, "shared-provider-click").Scan(&count); err != nil {
 		t.Fatalf("count provider-scoped clicks: %v", err)
 	}
+
 	if count != 2 {
 		t.Fatalf("provider-scoped click rows = %d, want 2", count)
 	}
-
 }
 
 func newPartnerCallbackTestService(t testing.TB) *Tasks {
 	t.Helper()
+
 	return newTasksTestService(t, Options{
 		PartnerProviders: map[string]user.PartnerProvider{
 			"fake": fakePartnerProvider{},
@@ -5109,6 +5484,7 @@ func createPartnerConfigAndRewardForProvider(
 	groupKey string,
 ) {
 	t.Helper()
+
 	if err := service.Admin.SavePartnerConfig(
 		context.Background(),
 		admin.PartnerConfigModel{
@@ -5123,6 +5499,7 @@ func createPartnerConfigAndRewardForProvider(
 	); err != nil {
 		t.Fatalf("save partner config: %v", err)
 	}
+
 	if err := service.Admin.SavePartnerRewardRule(
 		context.Background(),
 		admin.SavePartnerRewardRuleParams{
@@ -5149,7 +5526,9 @@ func partnerDailyStats(
 	workspaceID string,
 ) admin.PartnerDailyStatsModel {
 	t.Helper()
+
 	now := time.Now()
+
 	stats, err := service.Admin.ListPartnerDailyStats(
 		context.Background(),
 		workspaceID,
@@ -5161,6 +5540,7 @@ func partnerDailyStats(
 	if err != nil {
 		t.Fatalf("list partner stats: %v", err)
 	}
+
 	if len(stats) != 1 {
 		result := admin.PartnerDailyStatsModel{
 			Provider:     "fake",
@@ -5180,8 +5560,10 @@ func partnerDailyStats(
 			result.UniqueCompletedUsers += item.UniqueCompletedUsers
 			result.UniqueClaimers += item.UniqueClaimers
 		}
+
 		return result
 	}
+
 	return stats[0]
 }
 
@@ -5193,14 +5575,17 @@ func assertPartnerRequestIdentity(
 	platformUserID string,
 ) {
 	t.Helper()
+
 	var body struct {
 		AppID          int64  `json:"app_id"`
 		PlatformID     int64  `json:"platform_id"`
 		PlatformUserID string `json:"platform_user_id"`
 	}
+
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		t.Fatalf("decode partner identity body: %v", err)
 	}
+
 	if body.AppID != appID ||
 		body.PlatformID != platformID ||
 		body.PlatformUserID != platformUserID {
@@ -5220,7 +5605,9 @@ func TestTgrassProviderListAndCheck(t *testing.T) {
 		if got := r.Header.Get("Auth"); got != "token" {
 			t.Fatalf("Auth header = %q", got)
 		}
+
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 		_, _ = w.Write([]byte(`{
 			"status":"ok",
 			"offers":[{"name":"Tech","link":"https://t.me/tech","subscribed":false,"type":"channel","channel_id":"-100","offer_id":1054}]
@@ -5228,9 +5615,12 @@ func TestTgrassProviderListAndCheck(t *testing.T) {
 	})
 	mux.HandleFunc("/check", func(w http.ResponseWriter, r *http.Request) {
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 		_, _ = w.Write([]byte(`{"status":"subscribed","is_fake":false}`))
 	})
+
 	server := httptest.NewServer(mux)
+
 	defer server.Close()
 
 	secret := "token"
@@ -5254,14 +5644,17 @@ func TestTgrassProviderListAndCheck(t *testing.T) {
 		Locale: "ru",
 		Limit:  1,
 	}
+
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(tasks) != 1 || tasks[0].ExternalID != "1054" ||
 		tasks[0].ExternalType != "channel" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
+
 	check, err := provider.CheckPartnerTask(
 		context.Background(),
 		user.PartnerCheckProviderParams{
@@ -5275,6 +5668,7 @@ func TestTgrassProviderListAndCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !check.Completed || check.Status != "subscribed" {
 		t.Fatalf("unexpected check: %+v", check)
 	}
@@ -5286,7 +5680,9 @@ func TestTgrassLuaProviderListAndCheck(t *testing.T) {
 		if got := r.Header.Get("Auth"); got != "token" {
 			t.Fatalf("Auth header = %q", got)
 		}
+
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 		_, _ = w.Write([]byte(`{
 			"status":"ok",
 			"offers":[{"name":"Tech","link":"https://t.me/tech","subscribed":false,"type":"channel","channel_id":"-100","offer_id":1054}]
@@ -5294,9 +5690,12 @@ func TestTgrassLuaProviderListAndCheck(t *testing.T) {
 	})
 	mux.HandleFunc("/check", func(w http.ResponseWriter, r *http.Request) {
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 		_, _ = w.Write([]byte(`{"status":"subscribed","is_fake":false}`))
 	})
+
 	server := httptest.NewServer(mux)
+
 	defer server.Close()
 
 	secret := "token"
@@ -5305,7 +5704,9 @@ func TestTgrassLuaProviderListAndCheck(t *testing.T) {
 		"tgrass",
 		taskruntime.TgrassScript,
 	)
+
 	defer closeRuntime()
+
 	params := user.PartnerListProviderParams{
 		Identity: user.Identity{
 			WorkspaceID: testsupport.WorkspaceID(
@@ -5326,14 +5727,17 @@ func TestTgrassLuaProviderListAndCheck(t *testing.T) {
 		Locale: "ru",
 		Limit:  1,
 	}
+
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(tasks) != 1 || tasks[0].ExternalID != "1054" ||
 		tasks[0].ExternalType != "channel" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
+
 	check, err := provider.CheckPartnerTask(
 		context.Background(),
 		user.PartnerCheckProviderParams{
@@ -5347,6 +5751,7 @@ func TestTgrassLuaProviderListAndCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !check.Completed || check.Status != "subscribed" {
 		t.Fatalf("unexpected check: %+v", check)
 	}
@@ -5358,6 +5763,7 @@ func TestSubGramProviderListAndCheck(t *testing.T) {
 		"/get-sponsors",
 		func(w http.ResponseWriter, r *http.Request) {
 			assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 			_, _ = w.Write([]byte(`{
 			"status":"warning",
 			"additional":{"sponsors":[{"ads_id":"42","link":"https://t.me/s","resource_id":"-100","type":"channel","status":"unsubscribed","available_now":true,"button_text":"Join"}]}
@@ -5368,13 +5774,16 @@ func TestSubGramProviderListAndCheck(t *testing.T) {
 		"/get-user-subscriptions",
 		func(w http.ResponseWriter, r *http.Request) {
 			assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 			_, _ = w.Write([]byte(`{
 			"status":"ok",
 			"additional":{"sponsors":[{"link":"https://t.me/s","status":"subscribed"}]}
 		}`))
 		},
 	)
+
 	server := httptest.NewServer(mux)
+
 	defer server.Close()
 
 	secret := "token"
@@ -5396,13 +5805,16 @@ func TestSubGramProviderListAndCheck(t *testing.T) {
 		},
 		Locale: "ru",
 	}
+
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(tasks) != 1 || tasks[0].ExternalID != "42:-100" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
+
 	check, err := provider.CheckPartnerTask(
 		context.Background(),
 		user.PartnerCheckProviderParams{
@@ -5416,6 +5828,7 @@ func TestSubGramProviderListAndCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !check.Completed || check.Status != "subscribed" {
 		t.Fatalf("unexpected check: %+v", check)
 	}
@@ -5429,7 +5842,9 @@ func TestSubGramLuaProviderListAndCheck(t *testing.T) {
 			if got := r.Header.Get("Auth"); got != "token" {
 				t.Fatalf("Auth header = %q", got)
 			}
+
 			assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 			_, _ = w.Write([]byte(`{
 			"status":"warning",
 			"additional":{"sponsors":[{"ads_id":"42","link":"https://t.me/s","resource_id":"-100","type":"channel","status":"unsubscribed","available_now":true,"button_text":"Join"}]}
@@ -5440,13 +5855,16 @@ func TestSubGramLuaProviderListAndCheck(t *testing.T) {
 		"/get-user-subscriptions",
 		func(w http.ResponseWriter, r *http.Request) {
 			assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 			_, _ = w.Write([]byte(`{
 			"status":"ok",
 			"additional":{"sponsors":[{"link":"https://t.me/s","status":"subscribed"}]}
 		}`))
 		},
 	)
+
 	server := httptest.NewServer(mux)
+
 	defer server.Close()
 
 	secret := "token"
@@ -5455,7 +5873,9 @@ func TestSubGramLuaProviderListAndCheck(t *testing.T) {
 		"subgram",
 		taskruntime.SubGramScript,
 	)
+
 	defer closeRuntime()
+
 	params := user.PartnerListProviderParams{
 		Identity: user.Identity{
 			WorkspaceID: testsupport.WorkspaceID(
@@ -5475,13 +5895,16 @@ func TestSubGramLuaProviderListAndCheck(t *testing.T) {
 		},
 		Locale: "ru",
 	}
+
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(tasks) != 1 || tasks[0].ExternalID != "42:-100" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
+
 	check, err := provider.CheckPartnerTask(
 		context.Background(),
 		user.PartnerCheckProviderParams{
@@ -5495,6 +5918,7 @@ func TestSubGramLuaProviderListAndCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !check.Completed || check.Status != "subscribed" {
 		t.Fatalf("unexpected check: %+v", check)
 	}
@@ -5504,6 +5928,7 @@ func TestFlyerProviderListAndCheck(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/get_tasks", func(w http.ResponseWriter, r *http.Request) {
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 		_, _ = w.Write(
 			[]byte(
 				`{"tasks":[{"signature":"sig","task_type":"subscribe channel","link":"https://t.me/c","title":"Channel"}]}`,
@@ -5512,9 +5937,12 @@ func TestFlyerProviderListAndCheck(t *testing.T) {
 	})
 	mux.HandleFunc("/check_task", func(w http.ResponseWriter, r *http.Request) {
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 		_, _ = w.Write([]byte(`{"status":"completed"}`))
 	})
+
 	server := httptest.NewServer(mux)
+
 	defer server.Close()
 
 	secret := "key"
@@ -5536,13 +5964,16 @@ func TestFlyerProviderListAndCheck(t *testing.T) {
 		},
 		Locale: "ru",
 	}
+
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(tasks) != 1 || tasks[0].ExternalID != "sig" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
+
 	check, err := provider.CheckPartnerTask(
 		context.Background(),
 		user.PartnerCheckProviderParams{
@@ -5556,6 +5987,7 @@ func TestFlyerProviderListAndCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !check.Completed || check.Status != "completed" {
 		t.Fatalf("unexpected check: %+v", check)
 	}
@@ -5565,6 +5997,7 @@ func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/get_tasks", func(w http.ResponseWriter, r *http.Request) {
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 		_, _ = w.Write(
 			[]byte(
 				`{"tasks":[{"signature":"sig","task_type":"subscribe channel","link":"https://t.me/c","title":"Channel"}]}`,
@@ -5573,9 +6006,12 @@ func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 	})
 	mux.HandleFunc("/check_task", func(w http.ResponseWriter, r *http.Request) {
 		assertPartnerRequestIdentity(t, r, 77, 88, "123")
+
 		_, _ = w.Write([]byte(`{"status":"completed"}`))
 	})
+
 	server := httptest.NewServer(mux)
+
 	defer server.Close()
 
 	secret := "key"
@@ -5584,7 +6020,9 @@ func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 		"flyer",
 		taskruntime.FlyerScript,
 	)
+
 	defer closeRuntime()
+
 	params := user.PartnerListProviderParams{
 		Identity: user.Identity{
 			WorkspaceID: testsupport.WorkspaceID(
@@ -5603,13 +6041,16 @@ func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 		},
 		Locale: "ru",
 	}
+
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(tasks) != 1 || tasks[0].ExternalID != "sig" {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
+
 	check, err := provider.CheckPartnerTask(
 		context.Background(),
 		user.PartnerCheckProviderParams{
@@ -5623,6 +6064,7 @@ func TestFlyerLuaProviderListAndCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !check.Completed || check.Status != "completed" {
 		t.Fatalf("unexpected check: %+v", check)
 	}
@@ -5634,6 +6076,7 @@ func newLuaProviderForScript(
 	source string,
 ) (user.LuaProvider, func()) {
 	t.Helper()
+
 	manager := taskruntime.New(context.Background(), taskruntime.Options{
 		AllowPrivateHTTP: true,
 		ScriptLoader: func(context.Context, string) (taskruntime.Script, bool, error) {
@@ -5644,6 +6087,7 @@ func newLuaProviderForScript(
 			}, true, nil
 		},
 	})
+
 	return user.LuaProvider{Runtime: manager, Provider: provider}, func() {
 		if err := manager.Close(); err != nil {
 			t.Fatalf("close lua runtime: %v", err)
@@ -5653,13 +6097,16 @@ func newLuaProviderForScript(
 
 func TestTasksIsReady(t *testing.T) {
 	var nilService *Tasks
+
 	if nilService.IsReady() {
 		t.Fatal("nil tasks must not be ready")
 	}
+
 	service := New()
 	if service.IsReady() {
 		t.Fatal("uninitialized tasks must not be ready")
 	}
+
 	if _, err := service.User.ListActive(
 		context.Background(),
 		user.ListActiveParams{
@@ -5676,13 +6123,16 @@ func TestTasksIsReady(t *testing.T) {
 	) {
 		t.Fatalf("unready tasks user error = %v", err)
 	}
+
 	initialized := newTasksTestService(t)
 	if !initialized.IsReady() {
 		t.Fatal("initialized tasks must be ready")
 	}
+
 	if err := initialized.Close(); err != nil {
 		t.Fatalf("close initialized tasks: %v", err)
 	}
+
 	if initialized.IsReady() {
 		t.Fatal("closed tasks must not be ready")
 	}
@@ -5690,6 +6140,7 @@ func TestTasksIsReady(t *testing.T) {
 
 func TestTasksRunBlocksUntilContextCanceled(t *testing.T) {
 	newTasksTestService(t)
+
 	params := DatabaseParams{
 		User:     pgUser,
 		Password: pgPassword,
@@ -5701,11 +6152,13 @@ func TestTasksRunBlocksUntilContextCanceled(t *testing.T) {
 	service := New()
 	runCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+
 	go func() {
 		done <- service.Run(runCtx, params)
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
+
 	for !service.IsReady() {
 		select {
 		case err := <-done:
@@ -5713,10 +6166,12 @@ func TestTasksRunBlocksUntilContextCanceled(t *testing.T) {
 			t.Fatalf("Run returned before readiness: %v", err)
 		default:
 		}
+
 		if time.Now().After(deadline) {
 			cancel()
 			t.Fatal("tasks service did not become ready")
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
 
@@ -5732,6 +6187,7 @@ func TestTasksRunBlocksUntilContextCanceled(t *testing.T) {
 	}
 
 	cancel()
+
 	select {
 	case err := <-done:
 		if err != nil {
@@ -5743,7 +6199,6 @@ func TestTasksRunBlocksUntilContextCanceled(t *testing.T) {
 }
 
 func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
-
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("admin-catalog-surface")
@@ -5769,6 +6224,7 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 		conditions[0].ConditionTaskID != ids.conditionIDs[0] {
 		t.Fatalf("list complex conditions: values=%+v err=%v", conditions, err)
 	}
+
 	if changed, err := service.Admin.DeleteReward(
 		ctx,
 		workspaceID,
@@ -5780,6 +6236,7 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 
 	secret := "partner-secret"
 	webhookSecret := "partner-webhook-secret"
+
 	if err := service.Admin.SavePartnerConfig(ctx, admin.PartnerConfigModel{
 		WorkspaceID:   workspaceID,
 		Provider:      "admin-provider",
@@ -5794,6 +6251,7 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("save partner config: %v", err)
 	}
+
 	configs, err := service.Admin.ListPartnerConfigs(ctx, workspaceID)
 	if err != nil || len(configs) != 1 ||
 		configs[0].Provider != "admin-provider" ||
@@ -5801,6 +6259,7 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 		*configs[0].Secret != secret {
 		t.Fatalf("list partner configs: values=%+v err=%v", configs, err)
 	}
+
 	if err := service.Admin.SavePartnerRewardRule(
 		ctx,
 		admin.SavePartnerRewardRuleParams{
@@ -5826,6 +6285,7 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 		len(manifest.Sections) == 0 {
 		t.Fatalf("export manifest: value=%+v err=%v", manifest, err)
 	}
+
 	pkg, err := service.Admin.Export(ctx, workspaceID, admin.ExportRequest{
 		IncludeSecrets: true,
 	})
@@ -5834,6 +6294,7 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 		len(pkg.Groups[0].PartnerRewardRules) != 1 {
 		t.Fatalf("export package: value=%+v err=%v", pkg, err)
 	}
+
 	preview, err := service.Admin.PreviewImport(ctx, workspaceID, pkg)
 	if err != nil || preview.Counts.Tasks != 2 || len(preview.Conflicts) == 0 {
 		t.Fatalf("preview import: value=%+v err=%v", preview, err)
@@ -5849,6 +6310,7 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 	); err != nil || changed != 1 {
 		t.Fatalf("delete partner reward: changed=%d err=%v", changed, err)
 	}
+
 	if changed, err := service.Admin.DeleteComplexCondition(
 		ctx,
 		workspaceID,
@@ -5857,6 +6319,7 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 	); err != nil || changed != 1 {
 		t.Fatalf("delete complex condition: changed=%d err=%v", changed, err)
 	}
+
 	conditions, err = service.Admin.ListComplexConditions(ctx, workspaceID)
 	if err != nil || len(conditions) != 0 {
 		t.Fatalf(
@@ -5875,6 +6338,7 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 	if err := service.Internal.SavePartnerScript(ctx, script); err != nil {
 		t.Fatalf("save partner script: %v", err)
 	}
+
 	loadedScript, found, err := service.Internal.GetPartnerScript(
 		ctx,
 		script.Provider,
@@ -5888,14 +6352,17 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 			err,
 		)
 	}
+
 	scripts, err := service.Internal.ListPartnerScripts(ctx, 1, 0)
 	if err != nil || len(scripts) != 1 ||
 		scripts[0].Provider != script.Provider {
 		t.Fatalf("list partner scripts: values=%+v err=%v", scripts, err)
 	}
+
 	if _, err := service.Internal.ListPartnerScripts(ctx, 1, -1); err == nil {
 		t.Fatal("expected negative partner script offset to be rejected")
 	}
+
 	if _, found, err := service.Internal.GetPartnerScript(
 		ctx,
 		"missing-provider",
@@ -5903,11 +6370,9 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 		found {
 		t.Fatalf("missing partner script: found=%v err=%v", found, err)
 	}
-
 }
 
 func TestTasksHTTPCheckerChannelSubscriptionContract(t *testing.T) {
-
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 			if request.URL.Query().Get("user") != "channel-user" {
@@ -5916,7 +6381,9 @@ func TestTasksHTTPCheckerChannelSubscriptionContract(t *testing.T) {
 					request.URL.Query().Get("user"),
 				)
 			}
+
 			w.Header().Set("Content-Type", "application/json")
+
 			_ = json.NewEncoder(w).Encode(map[string]any{"subscribed": true})
 		}),
 	)
@@ -5959,14 +6426,13 @@ func TestTasksHTTPCheckerChannelSubscriptionContract(t *testing.T) {
 			Provider: "http",
 		},
 	)
+
 	if err != nil || !result.Completed || result.Reason != "" {
 		t.Fatalf("channel subscription check: result=%+v err=%v", result, err)
 	}
-
 }
 
 func TestTasksChannelCheckerRejectsOversizedResponse(t *testing.T) {
-
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(strings.Repeat("x", 1<<20+1)))
@@ -5988,6 +6454,7 @@ func TestTasksChannelCheckerRejectsOversizedResponse(t *testing.T) {
 			TelegramBotAPIBaseURL: server.URL,
 		},
 	)
+
 	_, err = checker.CheckChannelSubscription(
 		context.Background(),
 		integration.ChannelSubscriptionCheckParams{
@@ -6006,7 +6473,6 @@ func TestTasksChannelCheckerRejectsOversizedResponse(t *testing.T) {
 	if err == nil {
 		t.Fatal("oversized channel response was accepted")
 	}
-
 }
 
 func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
@@ -6015,19 +6481,24 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 		Options{Cache: cache, CacheL2Delay: time.Minute},
 	)
 	nodeA := newTasksTestService(t, options)
+
 	db, err := openTasksPostgres(tasksTestDB)
 	if err != nil {
 		t.Fatalf("open second tasks node database: %v", err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
+
 	nodeB, err := NewWithDatabase(context.Background(), db, options)
 	if err != nil {
 		t.Fatalf("create second tasks node: %v", err)
 	}
+
 	t.Cleanup(func() { _ = nodeB.Close() })
 
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("cache-workspace")
+
 	if err := nodeA.Admin.UpsertGroup(
 		ctx,
 		workspaceID,
@@ -6037,6 +6508,7 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create cached task group: %v", err)
 	}
+
 	taskID, err := nodeA.Admin.SaveTask(ctx, admin.SaveTaskParams{
 		WorkspaceID: workspaceID,
 		Key:         "cached-task",
@@ -6054,6 +6526,7 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create cached task: %v", err)
 	}
+
 	if err := nodeA.Admin.UpsertTaskLocalization(
 		ctx,
 		workspaceID,
@@ -6064,6 +6537,7 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create cached task localization: %v", err)
 	}
+
 	secret := "old-secret"
 	if err := nodeA.Admin.SavePartnerConfig(ctx, admin.PartnerConfigModel{
 		WorkspaceID: workspaceID,
@@ -6075,6 +6549,7 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create cached partner config: %v", err)
 	}
+
 	assertTasksCacheRead(t, nodeB, "Old title", "old-secret")
 
 	if err := nodeA.Admin.UpsertTaskLocalization(
@@ -6087,6 +6562,7 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update cached task localization: %v", err)
 	}
+
 	secret = "new-secret"
 	if err := nodeA.Admin.SavePartnerConfig(ctx, admin.PartnerConfigModel{
 		WorkspaceID: workspaceID,
@@ -6098,13 +6574,17 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("update cached partner config: %v", err)
 	}
+
 	assertTasksCacheRead(t, nodeB, "New title", "new-secret")
 }
 
 func TestTasksImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 	service := newTasksTestService(t)
+
 	const taskCount = 4001
+
 	values := make([]repository.ExportTask, 0, taskCount)
+
 	for index := 0; index < taskCount; index++ {
 		values = append(values, repository.ExportTask{
 			Key:         fmt.Sprintf("large.task.%05d", index),
@@ -6122,6 +6602,7 @@ func TestTasksImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 			IsActive:  true,
 		})
 	}
+
 	result, err := service.Admin.Import(
 		context.Background(),
 		testsupport.WorkspaceID("large-workspace"),
@@ -6139,6 +6620,7 @@ func TestTasksImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("import large tasks package: %v", err)
 	}
+
 	if result.Imported.Tasks != taskCount {
 		t.Fatalf(
 			"imported tasks = %d, want %d",
@@ -6150,13 +6632,17 @@ func TestTasksImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 
 func TestTasksImportSerializesWithAdminWrite(t *testing.T) {
 	service := newTasksTestService(t)
+
 	db, err := openTasksPostgres(tasksTestDB)
 	if err != nil {
 		t.Fatalf("open tasks lock database: %v", err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
+
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("concurrent-workspace")
+
 	if err := service.Admin.UpsertGroup(
 		ctx,
 		workspaceID,
@@ -6171,7 +6657,9 @@ func TestTasksImportSerializesWithAdminWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin tasks lock transaction: %v", err)
 	}
+
 	t.Cleanup(func() { _ = transaction.Rollback() })
+
 	if _, err := transaction.ExecContext(
 		ctx,
 		"SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
@@ -6181,6 +6669,7 @@ func TestTasksImportSerializesWithAdminWrite(t *testing.T) {
 	}
 
 	importResult := make(chan error, 1)
+
 	go func() {
 		_, err := service.Admin.Import(ctx, workspaceID, admin.ImportRequest{
 			Package: admin.ExportPackage{
@@ -6200,9 +6689,11 @@ func TestTasksImportSerializesWithAdminWrite(t *testing.T) {
 		})
 		importResult <- err
 	}()
+
 	waitForTasksWorkspaceLock(t, db, 1)
 
 	adminResult := make(chan error, 1)
+
 	go func() {
 		_, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
 			WorkspaceID: workspaceID,
@@ -6220,14 +6711,17 @@ func TestTasksImportSerializesWithAdminWrite(t *testing.T) {
 		})
 		adminResult <- err
 	}()
+
 	waitForTasksWorkspaceLock(t, db, 2)
 
 	if err := transaction.Commit(); err != nil {
 		t.Fatalf("release tasks workspace lock: %v", err)
 	}
+
 	if err := <-importResult; err != nil {
 		t.Fatalf("concurrent tasks import: %v", err)
 	}
+
 	if err := <-adminResult; err != nil {
 		t.Fatalf("concurrent tasks admin write: %v", err)
 	}
@@ -6262,8 +6756,10 @@ func waitForTasksWorkspaceLock(t *testing.T, db interface {
 	t.Helper()
 
 	deadline := time.Now().Add(3 * time.Second)
+
 	for {
 		var waiting int
+
 		if err := db.QueryRowContext(context.Background(), `
 SELECT COUNT(*)
 FROM pg_stat_activity
@@ -6272,9 +6768,11 @@ WHERE datname = current_database()
   AND query LIKE '%pg_advisory_xact_lock%'`).Scan(&waiting); err != nil {
 			t.Fatalf("inspect tasks lock waiters: %v", err)
 		}
+
 		if waiting >= minimum {
 			return
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatalf(
 				"tasks lock waiters = %d, want at least %d",
@@ -6294,6 +6792,7 @@ func assertTasksCacheRead(
 	secret string,
 ) {
 	t.Helper()
+
 	ctx := context.Background()
 	values, err := service.User.ListActive(ctx, user.ListActiveParams{
 		Identity: services.Identity{
@@ -6304,6 +6803,7 @@ func assertTasksCacheRead(
 		},
 		Locale: "ru",
 	})
+
 	if err != nil || len(values) != 1 || len(values[0].Tasks) != 1 ||
 		values[0].Tasks[0].Title != title {
 		t.Fatalf(
@@ -6312,6 +6812,7 @@ func assertTasksCacheRead(
 			err,
 		)
 	}
+
 	config, found, err := service.Admin.GetPartnerConfig(
 		ctx,
 		testsupport.WorkspaceID("cache-workspace"),
@@ -6331,16 +6832,21 @@ func assertTasksCacheRead(
 }
 
 func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
-	var generatedClickID string
-	var startRequests int
+	var (
+		generatedClickID string
+		startRequests    int
+	)
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/v1/partner/offers":
 				if r.Header.Get("X-Api-Key") != "secret" {
 					http.Error(w, "bad key", http.StatusForbidden)
+
 					return
 				}
+
 				_, _ = w.Write(
 					[]byte(
 						`{"offers":[{"id":1,"title":"Offer","steps":[{"id":3,"title":"Registration","description":"Create account"}]}]}`,
@@ -6348,15 +6854,20 @@ func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
 				)
 			case "/v1/partner/click/generate":
 				startRequests++
+
 				var body struct {
 					StepID  int64  `json:"step_id"`
 					ClickID string `json:"click_id"`
 				}
+
 				_ = json.NewDecoder(r.Body).Decode(&body)
+
 				if body.StepID != 3 || body.ClickID == "" {
 					http.Error(w, "bad click", http.StatusBadRequest)
+
 					return
 				}
+
 				generatedClickID = body.ClickID
 				_, _ = w.Write(
 					[]byte(
@@ -6368,6 +6879,7 @@ func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
 			}
 		}),
 	)
+
 	defer server.Close()
 
 	service := newTasksTestService(t, Options{
@@ -6406,13 +6918,16 @@ func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list getbonus: items=%+v err=%v", items, err)
 	}
+
 	if items[0].Payload == nil ||
 		!strings.Contains(string(items[0].Payload), "Registration") {
 		t.Fatalf("bad getbonus payload: %s", string(items[0].Payload))
 	}
+
 	if items[0].StartMode != repository.StartModeRequired {
 		t.Fatalf("getbonus must require start: %+v", items[0])
 	}
+
 	notStarted, err := service.User.CheckPartner(
 		context.Background(),
 		user.PartnerCheckParams{
@@ -6432,6 +6947,7 @@ func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start getbonus: %v", err)
 	}
+
 	if !started.Started ||
 		started.ActionURL != "https://advertiser.example/register" ||
 		generatedClickID == "" {
@@ -6449,6 +6965,7 @@ func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("repeat getbonus start: %v", err)
 	}
+
 	if !startedAgain.Started || startedAgain.ActionURL != started.ActionURL {
 		t.Fatalf(
 			"repeat start result = %+v, want original %+v",
@@ -6456,6 +6973,7 @@ func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
 			started,
 		)
 	}
+
 	if startRequests != 1 {
 		t.Fatalf("getbonus start requests = %d, want 1", startRequests)
 	}
@@ -6489,6 +7007,7 @@ func TestTasksRuntimeGetBonusFullFlow(t *testing.T) {
 
 func TestTasksRuntimeGetBonusUnifiedWebhook(t *testing.T) {
 	var generatedClickID string
+
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
@@ -6502,6 +7021,7 @@ func TestTasksRuntimeGetBonusUnifiedWebhook(t *testing.T) {
 				var body struct {
 					ClickID string `json:"click_id"`
 				}
+
 				_ = json.NewDecoder(r.Body).Decode(&body)
 				generatedClickID = body.ClickID
 				_, _ = w.Write(
@@ -6514,6 +7034,7 @@ func TestTasksRuntimeGetBonusUnifiedWebhook(t *testing.T) {
 			}
 		}),
 	)
+
 	defer server.Close()
 
 	service := newTasksTestService(t, Options{
@@ -6538,6 +7059,7 @@ func TestTasksRuntimeGetBonusUnifiedWebhook(t *testing.T) {
 		"getbonus",
 		server.URL,
 	)
+
 	items, err := service.User.ListPartner(
 		context.Background(),
 		user.PartnerListParams{
@@ -6551,6 +7073,7 @@ func TestTasksRuntimeGetBonusUnifiedWebhook(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list getbonus: items=%+v err=%v", items, err)
 	}
+
 	if _, err = service.User.StartPartner(
 		context.Background(),
 		user.PartnerStartParams{
@@ -6559,6 +7082,7 @@ func TestTasksRuntimeGetBonusUnifiedWebhook(t *testing.T) {
 	); err != nil {
 		t.Fatalf("start getbonus: %v", err)
 	}
+
 	rejected, err := service.Internal.HandlePartnerWebhook(
 		context.Background(),
 		internalapi.PartnerWebhookParams{
@@ -6625,6 +7149,7 @@ func TestTasksRuntimeTgrassUnifiedWebhookRevoke(t *testing.T) {
 		}),
 	)
 	defer server.Close()
+
 	service := newTasksTestService(t, Options{
 		Runtime: taskruntime.Options{
 			Timeout:          time.Second,
@@ -6647,6 +7172,7 @@ func TestTasksRuntimeTgrassUnifiedWebhookRevoke(t *testing.T) {
 		"tgrass",
 		server.URL,
 	)
+
 	items, err := service.User.ListPartner(
 		context.Background(),
 		user.PartnerListParams{
@@ -6660,6 +7186,7 @@ func TestTasksRuntimeTgrassUnifiedWebhookRevoke(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list tgrass: items=%+v err=%v", items, err)
 	}
+
 	revoked, err := service.Internal.HandlePartnerWebhook(
 		context.Background(),
 		internalapi.PartnerWebhookParams{
@@ -6674,6 +7201,7 @@ func TestTasksRuntimeTgrassUnifiedWebhookRevoke(t *testing.T) {
 	if err != nil || revoked.Status != repository.PartnerIssueStatusRevoked {
 		t.Fatalf("handle tgrass webhook: %+v err=%v", revoked, err)
 	}
+
 	check, err := service.User.CheckPartner(
 		context.Background(),
 		user.PartnerCheckParams{
@@ -6688,6 +7216,7 @@ func TestTasksRuntimeTgrassUnifiedWebhookRevoke(t *testing.T) {
 			err,
 		)
 	}
+
 	claim, err := service.User.Claim(context.Background(), user.ClaimParams{
 		Identity:    identity,
 		TaskRef:     items[0].Key,
@@ -6714,6 +7243,7 @@ func TestTasksRuntimeSubGramBatchWebhookComplete(t *testing.T) {
 		}),
 	)
 	defer server.Close()
+
 	service := newTasksTestService(t, Options{
 		Runtime: taskruntime.Options{
 			Timeout:          time.Second,
@@ -6736,6 +7266,7 @@ func TestTasksRuntimeSubGramBatchWebhookComplete(t *testing.T) {
 		"subgram",
 		server.URL,
 	)
+
 	items, err := service.User.ListPartner(
 		context.Background(),
 		user.PartnerListParams{
@@ -6749,6 +7280,7 @@ func TestTasksRuntimeSubGramBatchWebhookComplete(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list subgram: items=%+v err=%v", items, err)
 	}
+
 	completed, err := service.Internal.HandlePartnerWebhook(
 		context.Background(),
 		internalapi.PartnerWebhookParams{
@@ -6773,24 +7305,29 @@ func TestTasksRuntimeDoesNotRestoreReplacedStatePool(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			close(requestStarted)
 			<-releaseRequest
+
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		}),
 	)
+
 	defer server.Close()
 
-	const oldSource = `
+	const (
+		oldSource = `
 function list(event)
     http.request({ method = "GET", url = event.config.url })
     return { ok = true, version = "old" }
 end
 `
-	const newSource = `
+		newSource = `
 function list(event)
     return { ok = true, version = "new" }
 end
 `
+	)
 
 	var scriptMu sync.RWMutex
+
 	currentScript := taskruntime.Script{
 		Provider: "pool-test",
 		Source:   oldSource,
@@ -6808,6 +7345,7 @@ end
 			return currentScript, true, nil
 		},
 	})
+
 	defer func() {
 		if err := manager.Close(); err != nil {
 			t.Fatalf("close runtime: %v", err)
@@ -6822,6 +7360,7 @@ end
 	}
 
 	callDone := make(chan error, 1)
+
 	go func() {
 		_, err := manager.Handle(
 			context.Background(),
@@ -6841,6 +7380,7 @@ end
 	}
 
 	scriptMu.Lock()
+
 	currentScript = taskruntime.Script{
 		Provider: "pool-test",
 		Source:   newSource,
@@ -6854,7 +7394,9 @@ end
 	); err != nil {
 		t.Fatalf("warm new provider: %v", err)
 	}
+
 	close(releaseRequest)
+
 	if err := <-callDone; err != nil {
 		t.Fatalf("finish old runtime call: %v", err)
 	}
@@ -6890,6 +7432,7 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 		BaseURL: "https://tgrass.local",
 	}
 	luaProviders := map[string]user.LuaProvider{}
+
 	for name, options := range map[string]taskruntime.Options{
 		"lua_no_pool": {
 			Timeout:       time.Second,
@@ -6916,8 +7459,11 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 				Version:  "bench",
 			}, true, nil
 		}
+
 		manager := taskruntime.New(context.Background(), options)
+
 		defer func() { _ = manager.Close() }()
+
 		luaProviders[name] = user.LuaProvider{
 			Runtime:  manager,
 			Provider: "tgrass",
@@ -6938,6 +7484,7 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 			if err != nil || len(items) != 1 {
 				b.Fatalf("go list: items=%+v err=%v", items, err)
 			}
+
 			_, err = goProvider.CheckPartnerTask(
 				context.Background(),
 				user.PartnerCheckProviderParams{
@@ -6954,8 +7501,8 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 			}
 		}
 	})
+
 	for name, provider := range luaProviders {
-		provider := provider
 		b.Run(name+"_list_check", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				items, err := provider.ListPartnerTasks(
@@ -6970,6 +7517,7 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 				if err != nil || len(items) != 1 {
 					b.Fatalf("%s list: items=%+v err=%v", name, items, err)
 				}
+
 				_, err = provider.CheckPartnerTask(
 					context.Background(),
 					user.PartnerCheckProviderParams{
@@ -6987,6 +7535,7 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 			}
 		})
 	}
+
 	b.Run("go_list_check_parallel", func(b *testing.B) {
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
@@ -7002,6 +7551,7 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 				if err != nil || len(items) != 1 {
 					b.Fatalf("go list: items=%+v err=%v", items, err)
 				}
+
 				_, err = goProvider.CheckPartnerTask(
 					context.Background(),
 					user.PartnerCheckProviderParams{
@@ -7019,8 +7569,8 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 			}
 		})
 	})
+
 	for name, provider := range luaProviders {
-		provider := provider
 		b.Run(name+"_list_check_parallel", func(b *testing.B) {
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
@@ -7036,6 +7586,7 @@ func BenchmarkTasksRuntimeTgrassProvider(b *testing.B) {
 					if err != nil || len(items) != 1 {
 						b.Fatalf("%s list: items=%+v err=%v", name, items, err)
 					}
+
 					_, err = provider.CheckPartnerTask(
 						context.Background(),
 						user.PartnerCheckProviderParams{
@@ -7064,6 +7615,7 @@ func BenchmarkTasksRuntimePartnerServiceMethods(b *testing.B) {
 		},
 	})
 	ctx := context.Background()
+
 	saveRuntimePartnerConfig(
 		b,
 		service,
@@ -7098,11 +7650,14 @@ func BenchmarkTasksRuntimePartnerServiceMethods(b *testing.B) {
 	b.Run("User.CheckPartner/tgrass_success", func(b *testing.B) {
 		for range b.N {
 			b.StopTimer()
+
 			identity, issueRef := benchmarkTgrassIssue(b, service, ctx)
 			b.StartTimer()
+
 			_, err := service.User.CheckPartner(ctx, user.PartnerCheckParams{
 				Identity: identity, IssueRef: issueRef, Now: time.Now(),
 			})
+
 			b.StopTimer()
 			benchError(b, err)
 		}
@@ -7110,8 +7665,10 @@ func BenchmarkTasksRuntimePartnerServiceMethods(b *testing.B) {
 	b.Run("Internal.HandlePartnerWebhook/tgrass_revoke", func(b *testing.B) {
 		for range b.N {
 			b.StopTimer()
+
 			identity, _ := benchmarkTgrassIssue(b, service, ctx)
 			b.StartTimer()
+
 			_, err := service.Internal.HandlePartnerWebhook(
 				ctx,
 				internalapi.PartnerWebhookParams{
@@ -7125,6 +7682,7 @@ func BenchmarkTasksRuntimePartnerServiceMethods(b *testing.B) {
 					Now: time.Now(),
 				},
 			)
+
 			b.StopTimer()
 			benchError(b, err)
 		}
@@ -7137,6 +7695,7 @@ func benchmarkTgrassIssue(
 	ctx context.Context,
 ) (user.Identity, string) {
 	b.Helper()
+
 	id := tasksBenchmarkUserID.Add(1)
 	identity := user.Identity{
 		WorkspaceID: testsupport.WorkspaceID(
@@ -7156,9 +7715,11 @@ func benchmarkTgrassIssue(
 		Now:      time.Now(),
 	})
 	benchError(b, err)
+
 	if len(items) != 1 {
 		b.Fatalf("seed tgrass issue: items=%+v", items)
 	}
+
 	return identity, items[0].Key
 }
 
@@ -7172,6 +7733,7 @@ func (staticTgrassTransport) RoundTrip(
 	r *http.Request,
 ) (*http.Response, error) {
 	var body string
+
 	switch r.URL.Path {
 	case "/offers":
 		body = `{"status":"ok","offers":[{"link":"https://t.me/example","subscribed":false,"type":"channel","channel_id":"-100","offer_id":42,"name":"Example"}]}`
@@ -7180,6 +7742,7 @@ func (staticTgrassTransport) RoundTrip(
 	default:
 		body = `{}`
 	}
+
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     make(http.Header),
@@ -7194,7 +7757,9 @@ func saveRuntimePartnerConfig(
 	workspaceID, provider, baseURL string,
 ) {
 	t.Helper()
+
 	source := taskruntime.TgrassScript
+
 	switch provider {
 	case "getbonus":
 		source = taskruntime.GetBonusScript
@@ -7203,6 +7768,7 @@ func saveRuntimePartnerConfig(
 	case "flyer":
 		source = taskruntime.FlyerScript
 	}
+
 	if err := service.Internal.SavePartnerScript(
 		context.Background(),
 		internalapi.PartnerScriptModel{
@@ -7214,9 +7780,11 @@ func saveRuntimePartnerConfig(
 	); err != nil {
 		t.Fatalf("save runtime partner script: %v", err)
 	}
+
 	secret := "secret"
 	webhookSecret := "webhook-secret-" + provider
 	settings := json.RawMessage(`{"base_url":"` + baseURL + `"}`)
+
 	if err := service.Admin.SavePartnerConfig(
 		context.Background(),
 		admin.PartnerConfigModel{
@@ -7233,6 +7801,7 @@ func saveRuntimePartnerConfig(
 	); err != nil {
 		t.Fatalf("save runtime partner config: %v", err)
 	}
+
 	if err := service.Admin.SavePartnerRewardRule(
 		context.Background(),
 		admin.SavePartnerRewardRuleParams{
@@ -7260,6 +7829,7 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	now := time.Now().UTC()
 
 	createEarnChain(t, service, workspaceID, repository.ClaimModeManual)
+
 	autoTaskID := createStatsAutoTask(t, service, workspaceID)
 	identity := internalapi.Identity{
 		WorkspaceID:    workspaceID,
@@ -7275,9 +7845,11 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record manual progress: %v", err)
 	}
+
 	if manual.Consumed != 1000 || len(manual.Tasks) != 1 {
 		t.Fatalf("unexpected manual record result: %+v", manual)
 	}
+
 	manualTaskID := manual.Tasks[0].Task.ID
 	claim, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity: user.Identity(identity),
@@ -7287,6 +7859,7 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 		OperationID: "stats-manual-claim",
 		Now:         now,
 	})
+
 	if err != nil || claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim manual task: %+v err=%v", claim, err)
 	}
@@ -7298,10 +7871,12 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record auto progress: %v", err)
 	}
+
 	if len(auto.Tasks) != 1 || !auto.Tasks[0].Claimed ||
 		auto.Tasks[0].Task.ID != autoTaskID {
 		t.Fatalf("unexpected auto record result: %+v", auto)
 	}
+
 	duplicate, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity: identity, ActionKey: "stats_auto", Amount: 500,
 		Source: "stats", ExternalEventKey: "stats-auto", Now: now,
@@ -7314,6 +7889,7 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get stats: %v", err)
 	}
+
 	if stats.TasksTotal != 3 || stats.ActiveTasks != 3 ||
 		stats.VisibleTasks != 3 ||
 		stats.ProgressTotal != 2 ||
@@ -7333,6 +7909,7 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get single task stats: %v", err)
 	}
+
 	if taskStats.ProgressTotal != 1 || taskStats.ProgressAmount != 1000 ||
 		taskStats.ReadyCount != 1 || taskStats.ClaimedCount != 1 ||
 		taskStats.ManualClaimedCount != 1 || taskStats.AutoClaimedCount != 0 {
@@ -7348,6 +7925,7 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	); err != nil {
 		t.Fatalf("refresh daily stats: %v", err)
 	}
+
 	daily, err := service.Admin.ListDailyStats(
 		ctx,
 		workspaceID,
@@ -7358,10 +7936,12 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list daily stats: %v", err)
 	}
+
 	if len(daily) != 1 || daily[0].ProgressAmount != 1000 ||
 		daily[0].ReadyCount != 1 || daily[0].ClaimedCount != 1 {
 		t.Fatalf("unexpected daily task stats: %+v", daily)
 	}
+
 	overview, err := service.Admin.ListDailyOverview(
 		ctx,
 		workspaceID,
@@ -7371,6 +7951,7 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list daily overview: %v", err)
 	}
+
 	if len(overview) != 1 || overview[0].TasksTotal != 3 ||
 		overview[0].ProgressAmount != 1500 || overview[0].ClaimedCount != 2 ||
 		overview[0].ManualClaimedCount != 1 || overview[0].AutoClaimedCount != 1 ||
@@ -7384,6 +7965,7 @@ func BenchmarkTasksAdminStats(b *testing.B) {
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("stats-benchmark")
 	now := time.Now().UTC()
+
 	createEarnChain(b, service, workspaceID, repository.ClaimModeManual)
 
 	identity := internalapi.Identity{
@@ -7397,7 +7979,9 @@ func BenchmarkTasksAdminStats(b *testing.B) {
 		Source: "bench", ExternalEventKey: "stats-benchmark", Now: now,
 	})
 	benchError(b, err)
+
 	taskID := recorded.Tasks[0].Task.ID
+
 	_, err = service.User.Claim(ctx, user.ClaimParams{
 		Identity: user.Identity(identity), TaskRef: fmt.Sprint(taskID),
 		OperationID: "stats-benchmark-claim", Now: now,
@@ -7461,6 +8045,7 @@ func createStatsAutoTask(
 	workspaceID string,
 ) uint64 {
 	t.Helper()
+
 	id, err := service.Admin.SaveTask(
 		context.Background(),
 		admin.SaveTaskParams{
@@ -7481,12 +8066,14 @@ func createStatsAutoTask(
 	if err != nil {
 		t.Fatalf("create stats auto task: %v", err)
 	}
+
 	if err := service.Admin.UpsertReward(
 		context.Background(), workspaceID, id,
 		admin.RewardModel{Key: "coin", Quantity: 1}, 1,
 	); err != nil {
 		t.Fatalf("create stats auto reward: %v", err)
 	}
+
 	return id
 }
 
@@ -7524,10 +8111,12 @@ func TestTasksManualSequenceCarryAndCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record: %v", err)
 	}
+
 	if recorded.Consumed != 1000 || recorded.Remaining != 500 ||
 		len(recorded.Tasks) != 1 {
 		t.Fatalf("manual sequence must stop at ready task: %+v", recorded)
 	}
+
 	list, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -7539,13 +8128,16 @@ func TestTasksManualSequenceCarryAndCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
+
 	first := findTask(t, list, "earn_1")
 	second := findTask(t, list, "earn_2")
+
 	if first.Progress == nil ||
 		first.Progress.Status != repository.StatusReady ||
 		first.Progress.Progress != 1000 {
 		t.Fatalf("unexpected first progress: %+v", first.Progress)
 	}
+
 	if second.Progress != nil {
 		t.Fatalf(
 			"second task must not receive carry before manual claim: %+v",
@@ -7563,6 +8155,7 @@ func TestTasksManualSequenceCarryAndCallback(t *testing.T) {
 	if err != nil || claim.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim: %+v err=%v", claim, err)
 	}
+
 	again, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity: identity, ActionKey: "earn_coin", Amount: 500,
 		Source: "game", ExternalEventKey: "earn-2", Now: time.Now(),
@@ -7570,6 +8163,7 @@ func TestTasksManualSequenceCarryAndCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record second carry: %v", err)
 	}
+
 	if again.Consumed != 500 || again.Remaining != 0 || len(again.Tasks) != 1 ||
 		again.Tasks[0].Task.Key != "earn_2" {
 		t.Fatalf("unexpected second progress: %+v", again)
@@ -7577,6 +8171,7 @@ func TestTasksManualSequenceCarryAndCallback(t *testing.T) {
 
 	workerCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+
 	err = service.OnCallback(workerCtx, func(callbackCtx Context) error {
 		if callbackCtx.Claimed == nil ||
 			callbackCtx.Claimed.TaskKey != "earn_1" ||
@@ -7584,10 +8179,13 @@ func TestTasksManualSequenceCarryAndCallback(t *testing.T) {
 			callbackCtx.Claimed.Rewards[0].Key != "coin" {
 			return errors.New("bad callback payload")
 		}
+
 		if err := callbackCtx.Successful(); err != nil {
 			return err
 		}
+
 		cancel()
+
 		return nil
 	},
 		WithCallbackWorkerID("tasks-test-worker"),
@@ -7610,6 +8208,7 @@ func TestTasksAutoClaimAndIdempotency(t *testing.T) {
 		PlatformUserID: "auto",
 	}
 	createEarnChain(t, service, identity.WorkspaceID, repository.ClaimModeAuto)
+
 	first, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity: identity, ActionKey: "earn_coin", Amount: 1500,
 		Source: "game", ExternalEventKey: "auto-1",
@@ -7617,12 +8216,14 @@ func TestTasksAutoClaimAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("auto record: %v", err)
 	}
+
 	if first.Consumed != 1000 || first.Remaining != 500 ||
 		len(first.Tasks) != 1 ||
 		!first.Tasks[0].Claimed ||
 		first.Tasks[0].Task.Key != "earn_1" {
 		t.Fatalf("unexpected auto result: %+v", first)
 	}
+
 	duplicate, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity: identity, ActionKey: "earn_coin", Amount: 1500,
 		Source: "game", ExternalEventKey: "auto-1",
@@ -7630,10 +8231,12 @@ func TestTasksAutoClaimAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("duplicate record: %v", err)
 	}
+
 	if duplicate.Status != repository.RecordStatusDuplicate ||
 		duplicate.Consumed != 0 {
 		t.Fatalf("unexpected duplicate: %+v", duplicate)
 	}
+
 	callbacks := countTaskCallbacks(t, tasksTestDB)
 	if callbacks != 1 {
 		t.Fatalf("auto claim callbacks = %d, want 1", callbacks)
@@ -7641,7 +8244,6 @@ func TestTasksAutoClaimAndIdempotency(t *testing.T) {
 }
 
 func TestTasksAutoClaimUsesTaskScopedOperationIDs(t *testing.T) {
-
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("workspace-auto-operation-ids")
@@ -7661,6 +8263,7 @@ func TestTasksAutoClaimUsesTaskScopedOperationIDs(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
+
 	for position, key := range []string{"auto_first", "auto_second"} {
 		if _, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
 			WorkspaceID: workspaceID,
@@ -7690,6 +8293,7 @@ func TestTasksAutoClaimUsesTaskScopedOperationIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record shared event: %v", err)
 	}
+
 	if len(recorded.Tasks) != 2 || !recorded.Tasks[0].Claimed ||
 		!recorded.Tasks[1].Claimed {
 		t.Fatalf("unexpected auto claim result: %+v", recorded)
@@ -7699,6 +8303,7 @@ func TestTasksAutoClaimUsesTaskScopedOperationIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open callback database: %v", err)
 	}
+
 	defer func() { _ = db.Close() }()
 
 	rows, err := db.QueryContext(
@@ -7708,24 +8313,31 @@ func TestTasksAutoClaimUsesTaskScopedOperationIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("select callbacks: %v", err)
 	}
+
 	defer func() { _ = rows.Close() }()
 
 	operationIDs := make(map[string]struct{})
+
 	for rows.Next() {
 		var raw []byte
+
 		if err := rows.Scan(&raw); err != nil {
 			t.Fatalf("scan callback: %v", err)
 		}
 
 		var payload repository.CallbackPayload
+
 		if err := json.Unmarshal(raw, &payload); err != nil {
 			t.Fatalf("decode callback: %v", err)
 		}
+
 		operationIDs[payload.OperationID] = struct{}{}
 	}
+
 	if err := rows.Err(); err != nil {
 		t.Fatalf("iterate callbacks: %v", err)
 	}
+
 	if len(operationIDs) != 2 {
 		t.Fatalf(
 			"unique operation ids = %d, want 2: %+v",
@@ -7733,7 +8345,6 @@ func TestTasksAutoClaimUsesTaskScopedOperationIDs(t *testing.T) {
 			operationIDs,
 		)
 	}
-
 }
 
 func TestTasksStartModeRequiredBlocksRecordUntilStart(t *testing.T) {
@@ -7746,6 +8357,7 @@ func TestTasksStartModeRequiredBlocksRecordUntilStart(t *testing.T) {
 		PlatformID:     2,
 		PlatformUserID: "starter",
 	}
+
 	if err := service.Admin.UpsertGroup(
 		ctx,
 		workspaceID,
@@ -7755,6 +8367,7 @@ func TestTasksStartModeRequiredBlocksRecordUntilStart(t *testing.T) {
 	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
+
 	id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
 		WorkspaceID: workspaceID,
 		Key:         "start_required",
@@ -7773,6 +8386,7 @@ func TestTasksStartModeRequiredBlocksRecordUntilStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("task: %v", err)
 	}
+
 	if err := service.Admin.UpsertReward(
 		ctx,
 		workspaceID,
@@ -7782,6 +8396,7 @@ func TestTasksStartModeRequiredBlocksRecordUntilStart(t *testing.T) {
 	); err != nil {
 		t.Fatalf("reward: %v", err)
 	}
+
 	before, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity: internalapi.Identity(
 			identity,
@@ -7793,10 +8408,12 @@ func TestTasksStartModeRequiredBlocksRecordUntilStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record before start: %v", err)
 	}
+
 	if before.Status != repository.RecordStatusNoTasks ||
 		len(before.Tasks) != 0 {
 		t.Fatalf("record before start must be ignored: %+v", before)
 	}
+
 	started, err := service.User.StartTask(
 		ctx,
 		user.StartTaskParams{Identity: identity, TaskRef: "start_required"},
@@ -7805,6 +8422,7 @@ func TestTasksStartModeRequiredBlocksRecordUntilStart(t *testing.T) {
 		started.Status != repository.StartStatusStarted {
 		t.Fatalf("start: %+v err=%v", started, err)
 	}
+
 	after, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity: internalapi.Identity(
 			identity,
@@ -7816,11 +8434,13 @@ func TestTasksStartModeRequiredBlocksRecordUntilStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record after start: %v", err)
 	}
+
 	if after.Status != repository.RecordStatusRecorded ||
 		len(after.Tasks) != 1 ||
 		after.Tasks[0].After != 1 {
 		t.Fatalf("record after start: %+v", after)
 	}
+
 	claim, err := service.User.Claim(
 		ctx,
 		user.ClaimParams{
@@ -7855,6 +8475,7 @@ func TestTasksStartTaskLocksProgressBeforeSequenceState(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
+
 	if err := service.Admin.UpsertSequence(
 		ctx,
 		workspaceID,
@@ -7867,6 +8488,7 @@ func TestTasksStartTaskLocksProgressBeforeSequenceState(t *testing.T) {
 
 	positions := []uint32{1, 2}
 	taskIDs := make([]uint64, 0, len(positions))
+
 	for _, position := range positions {
 		taskID, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
 			WorkspaceID:      workspaceID,
@@ -7888,6 +8510,7 @@ func TestTasksStartTaskLocksProgressBeforeSequenceState(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create sequence task %d: %v", position, err)
 		}
+
 		taskIDs = append(taskIDs, taskID)
 	}
 
@@ -7897,6 +8520,7 @@ func TestTasksStartTaskLocksProgressBeforeSequenceState(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("start first sequence task: %v", err)
 	}
+
 	if _, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity:  internalapi.Identity(identity),
 		ActionKey: "start-lock-action-1",
@@ -7904,6 +8528,7 @@ func TestTasksStartTaskLocksProgressBeforeSequenceState(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("complete first sequence task: %v", err)
 	}
+
 	if _, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity:    identity,
 		TaskRef:     fmt.Sprint(taskIDs[0]),
@@ -7911,6 +8536,7 @@ func TestTasksStartTaskLocksProgressBeforeSequenceState(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("claim first sequence task: %v", err)
 	}
+
 	if _, err := service.User.StartTask(ctx, user.StartTaskParams{
 		Identity: identity,
 		TaskRef:  fmt.Sprint(taskIDs[1]),
@@ -7943,6 +8569,7 @@ FOR UPDATE`, workspaceID, taskIDs[1], identity.AppID, identity.PlatformID, ident
 	}
 
 	startResult := make(chan error, 1)
+
 	go func() {
 		_, err := service.User.StartTask(ctx, user.StartTaskParams{
 			Identity: identity,
@@ -7968,13 +8595,13 @@ FOR UPDATE`, workspaceID, sequenceKey, identity.AppID, identity.PlatformID, iden
 	if err := transaction.Commit(); err != nil {
 		t.Fatalf("release competing locks: %v", err)
 	}
+
 	if err := <-startResult; err != nil {
 		t.Fatalf("start task after releasing progress: %v", err)
 	}
 }
 
 func TestTasksSequenceSkipsDeactivatedCurrentTask(t *testing.T) {
-
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("sequence-skip-deactivated")
@@ -7995,6 +8622,7 @@ func TestTasksSequenceSkipsDeactivatedCurrentTask(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
+
 	if err := service.Admin.UpsertSequence(
 		ctx,
 		workspaceID,
@@ -8024,10 +8652,12 @@ func TestTasksSequenceSkipsDeactivatedCurrentTask(t *testing.T) {
 			IsVisible:        true,
 			IsActive:         true,
 		})
+
 		id, err := service.Admin.SaveTask(ctx, params[len(params)-1])
 		if err != nil {
 			t.Fatalf("create sequence task %d: %v", position, err)
 		}
+
 		params[len(params)-1].ID = id
 	}
 
@@ -8056,12 +8686,12 @@ func TestTasksSequenceSkipsDeactivatedCurrentTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record task after deactivated step: %v", err)
 	}
+
 	if result.Status != repository.RecordStatusRecorded ||
 		len(result.Tasks) != 1 ||
 		result.Tasks[0].Task.ID != params[2].ID {
 		t.Fatalf("deactivated step was not skipped: %+v", result)
 	}
-
 }
 
 func TestTasksRecordDoesNotLockUnrelatedComplexParentProgress(t *testing.T) {
@@ -8124,6 +8754,7 @@ func TestTasksRecordDoesNotLockUnrelatedComplexParentProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create complex child: %v", err)
 	}
+
 	if err := service.Admin.UpsertComplexCondition(
 		ctx,
 		admin.SaveComplexConditionParams{
@@ -8172,6 +8803,7 @@ FOR UPDATE`, workspaceID, childID, identity.AppID, identity.PlatformID, identity
 	}
 
 	recordResult := make(chan error, 1)
+
 	go func() {
 		_, err := service.Internal.Record(ctx, internalapi.RecordParams{
 			Identity:  internalapi.Identity(identity),
@@ -8201,6 +8833,7 @@ FOR UPDATE`, workspaceID, parentID, identity.AppID, identity.PlatformID, identit
 	if err := transaction.Commit(); err != nil {
 		t.Fatalf("release competing locks: %v", err)
 	}
+
 	if err := <-recordResult; err != nil {
 		t.Fatalf("record after releasing child progress: %v", err)
 	}
@@ -8210,8 +8843,10 @@ func waitForTasksBlockedQuery(t *testing.T, db *sql.DB, relation string) {
 	t.Helper()
 
 	deadline := time.Now().Add(3 * time.Second)
+
 	for {
 		var waiting int
+
 		if err := db.QueryRowContext(context.Background(), `
 SELECT COUNT(*)
 FROM pg_stat_activity
@@ -8220,9 +8855,11 @@ WHERE datname = current_database()
   AND query LIKE '%' || $1 || '%'`, relation).Scan(&waiting); err != nil {
 			t.Fatalf("inspect blocked tasks query: %v", err)
 		}
+
 		if waiting > 0 {
 			return
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatalf("no blocked tasks query for relation %s", relation)
 		}
@@ -8275,12 +8912,14 @@ func TestTasksRecordBroadcastsToIndependentActiveBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("broadcast record: %v", err)
 	}
+
 	if recorded.Status != repository.RecordStatusRecorded ||
 		recorded.Consumed != 1700 ||
 		recorded.Remaining != 500 ||
 		len(recorded.Tasks) != 3 {
 		t.Fatalf("unexpected broadcast result: %+v", recorded)
 	}
+
 	list, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -8292,6 +8931,7 @@ func TestTasksRecordBroadcastsToIndependentActiveBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
+
 	for _, item := range []struct {
 		key      string
 		progress uint64
@@ -8326,6 +8966,7 @@ func TestTasksRecordDoesNotSkipDifferentActiveActionInSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first coin record: %v", err)
 	}
+
 	if first.Consumed != 1000 || len(first.Tasks) != 1 ||
 		first.Tasks[0].Task.Key != "coin_1" ||
 		!first.Tasks[0].Claimed {
@@ -8339,6 +8980,7 @@ func TestTasksRecordDoesNotSkipDifferentActiveActionInSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second coin record: %v", err)
 	}
+
 	if second.Status != repository.RecordStatusNoTasks ||
 		len(second.Tasks) != 0 {
 		t.Fatalf(
@@ -8346,6 +8988,7 @@ func TestTasksRecordDoesNotSkipDifferentActiveActionInSequence(t *testing.T) {
 			second,
 		)
 	}
+
 	list, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -8357,12 +9000,14 @@ func TestTasksRecordDoesNotSkipDifferentActiveActionInSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
+
 	if crystal := findTask(t, list, "crystal_1"); crystal.Progress != nil {
 		t.Fatalf(
 			"crystal task must not get coin progress: %+v",
 			crystal.Progress,
 		)
 	}
+
 	if coin := findTask(t, list, "coin_2"); coin.Progress != nil {
 		t.Fatalf(
 			"later coin task must not be reached before crystal is done: %+v",
@@ -8393,6 +9038,7 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unknown claim: %v", err)
 	}
+
 	if unknown.Status != repository.ClaimStatusNotFound {
 		t.Fatalf("unknown claim status = %q", unknown.Status)
 	}
@@ -8408,7 +9054,9 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
+
 	first := findTask(t, list, "earn_1")
+
 	notReady, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity:    identity,
 		TaskRef:     fmt.Sprintf("%d", first.ID),
@@ -8417,6 +9065,7 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("not ready claim: %v", err)
 	}
+
 	if notReady.Status != repository.ClaimStatusNotReady {
 		t.Fatalf("not ready claim status = %q", notReady.Status)
 	}
@@ -8435,6 +9084,7 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("other workspace list: %v", err)
 	}
+
 	if len(otherWorkspace) != 0 {
 		t.Fatalf("workspace isolation failed: %+v", otherWorkspace)
 	}
@@ -8450,6 +9100,7 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record ready: %v", err)
 	}
+
 	claimed, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity:    identity,
 		TaskRef:     fmt.Sprintf("%d", first.ID),
@@ -8458,6 +9109,7 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 	if err != nil || claimed.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim once: %+v err=%v", claimed, err)
 	}
+
 	repeated, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity:    identity,
 		TaskRef:     fmt.Sprintf("%d", first.ID),
@@ -8466,10 +9118,12 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 	if err != nil || repeated.Status != repository.ClaimStatusAlreadyDone {
 		t.Fatalf("repeated claim: %+v err=%v", repeated, err)
 	}
+
 	callbacks := countTaskCallbacks(t, tasksTestDB)
 	if callbacks != 1 {
 		t.Fatalf("manual repeated claim callbacks = %d, want 1", callbacks)
 	}
+
 	if _, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity:    identity,
 		TaskRef:     fmt.Sprintf("%d", first.ID),
@@ -8483,7 +9137,6 @@ func TestTasksInvalidUsageIsolationAndRepeatedClaim(t *testing.T) {
 }
 
 func TestTasksPartnerClaimOperationIDIsImmutable(t *testing.T) {
-
 	service := newPartnerCallbackTestService(t)
 	identity := user.Identity{
 		WorkspaceID: testsupport.WorkspaceID(
@@ -8495,6 +9148,7 @@ func TestTasksPartnerClaimOperationIDIsImmutable(t *testing.T) {
 		PlatformUserID: "partner-operation-user",
 	}
 	createPartnerConfigAndReward(t, service, identity.WorkspaceID)
+
 	items, err := service.User.ListPartner(
 		context.Background(),
 		user.PartnerListParams{
@@ -8507,6 +9161,7 @@ func TestTasksPartnerClaimOperationIDIsImmutable(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list partner task: items=%+v err=%v", items, err)
 	}
+
 	if _, err := service.Internal.OnPartnerCallback(
 		context.Background(),
 		internalapi.PartnerCallbackParams{
@@ -8549,11 +9204,9 @@ func TestTasksPartnerClaimOperationIDIsImmutable(t *testing.T) {
 			err,
 		)
 	}
-
 }
 
 func TestTasksClaimOperationIDCannotRewardTwoTasks(t *testing.T) {
-
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	identity := user.Identity{
@@ -8594,11 +9247,13 @@ func TestTasksClaimOperationIDCannotRewardTwoTasks(t *testing.T) {
 	}
 
 	const operationID = "single-reward-operation"
+
 	first, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity:    identity,
 		TaskRef:     "operation-first",
 		OperationID: operationID,
 	})
+
 	if err != nil || first.Status != repository.ClaimStatusClaimed {
 		t.Fatalf("claim first task: result=%+v err=%v", first, err)
 	}
@@ -8622,6 +9277,7 @@ func TestTasksClaimOperationIDCannotRewardTwoTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list tasks after operation conflict: %v", err)
 	}
+
 	second := findTask(t, list, "operation-second")
 	if second.Progress == nil ||
 		second.Progress.Status != repository.StatusReady {
@@ -8637,11 +9293,9 @@ func TestTasksClaimOperationIDCannotRewardTwoTasks(t *testing.T) {
 	}); !errors.Is(err, repository.ErrOperationIDRequired) {
 		t.Fatalf("empty operation error = %v, want ErrOperationIDRequired", err)
 	}
-
 }
 
 func TestTasksClaimOperationIDIsSharedByTaskAndPartnerRewards(t *testing.T) {
-
 	service := newPartnerCallbackTestService(t)
 	ctx := context.Background()
 	identity := user.Identity{
@@ -8660,6 +9314,7 @@ func TestTasksClaimOperationIDIsSharedByTaskAndPartnerRewards(t *testing.T) {
 		1,
 		1,
 	)
+
 	if _, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity:         internalapi.Identity(identity),
 		ActionKey:        "ordinary.reward",
@@ -8671,6 +9326,7 @@ func TestTasksClaimOperationIDIsSharedByTaskAndPartnerRewards(t *testing.T) {
 	}
 
 	const operationID = "task-and-partner-operation"
+
 	if result, err := service.User.Claim(ctx, user.ClaimParams{
 		Identity:    identity,
 		TaskRef:     "ordinary-reward",
@@ -8680,6 +9336,7 @@ func TestTasksClaimOperationIDIsSharedByTaskAndPartnerRewards(t *testing.T) {
 	}
 
 	createPartnerConfigAndReward(t, service, identity.WorkspaceID)
+
 	items, err := service.User.ListPartner(ctx, user.PartnerListParams{
 		Identity: identity,
 		Provider: "fake",
@@ -8689,6 +9346,7 @@ func TestTasksClaimOperationIDIsSharedByTaskAndPartnerRewards(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list partner reward: items=%+v err=%v", items, err)
 	}
+
 	if _, err := service.Internal.OnPartnerCallback(
 		ctx,
 		internalapi.PartnerCallbackParams{
@@ -8714,7 +9372,6 @@ func TestTasksClaimOperationIDIsSharedByTaskAndPartnerRewards(t *testing.T) {
 			err,
 		)
 	}
-
 }
 
 func TestTasksConcurrentRecordSameUser(t *testing.T) {
@@ -8734,12 +9391,15 @@ func TestTasksConcurrentRecordSameUser(t *testing.T) {
 	)
 
 	var wg sync.WaitGroup
+
 	errs := make(chan error, 2)
+
 	for i := 0; i < 2; i++ {
-		i := i
 		wg.Add(1)
+
 		go func() {
 			defer wg.Done()
+
 			_, err := service.Internal.Record(ctx, internalapi.RecordParams{
 				Identity: identity, ActionKey: "earn_coin", Amount: 600,
 				Source: "game", ExternalEventKey: fmt.Sprintf("race-%d", i),
@@ -8747,13 +9407,16 @@ func TestTasksConcurrentRecordSameUser(t *testing.T) {
 			errs <- err
 		}()
 	}
+
 	wg.Wait()
 	close(errs)
+
 	for err := range errs {
 		if err != nil {
 			t.Fatalf("concurrent record: %v", err)
 		}
 	}
+
 	list, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -8765,18 +9428,22 @@ func TestTasksConcurrentRecordSameUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list after concurrent record: %v", err)
 	}
+
 	first := findTask(t, list, "earn_1")
 	second := findTask(t, list, "earn_2")
+
 	if first.Progress == nil || first.Progress.Progress != 1000 ||
 		first.Progress.Status != repository.StatusReady {
 		t.Fatalf("first progress after concurrent record: %+v", first.Progress)
 	}
+
 	if second.Progress != nil {
 		t.Fatalf(
 			"manual ready task must block carry under concurrency: %+v",
 			second.Progress,
 		)
 	}
+
 	callbacks := countTaskCallbacks(t, tasksTestDB)
 	if callbacks != 0 {
 		t.Fatalf("callbacks before manual claim = %d, want 0", callbacks)
@@ -8822,6 +9489,7 @@ func TestTasksRecordUsesDeltaAndPreservesRewardSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
+
 	if err := service.Admin.UpsertReward(
 		ctx,
 		workspaceID,
@@ -8852,6 +9520,7 @@ func TestTasksRecordUsesDeltaAndPreservesRewardSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatalf("list after event %d: %v", event, err)
 		}
+
 		progress := findTask(t, groups, "delta_snapshot").Progress
 		if progress == nil || progress.Progress != uint64(event) ||
 			progress.Status != repository.StatusOpen {
@@ -8887,6 +9556,7 @@ func TestTasksRecordUsesDeltaAndPreservesRewardSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claim task: %v", err)
 	}
+
 	if len(claimed.Task.Rewards) != 1 ||
 		claimed.Task.Rewards[0].Quantity != 10 {
 		t.Fatalf(
@@ -8900,6 +9570,7 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	service := newTasksTestService(t)
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("workspace-cache")
+
 	if err := service.Admin.UpsertGroup(
 		ctx,
 		workspaceID,
@@ -8909,6 +9580,7 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
+
 	if err := service.Admin.UpsertGroupLocalization(
 		ctx,
 		workspaceID,
@@ -8919,6 +9591,7 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	); err != nil {
 		t.Fatalf("group localization: %v", err)
 	}
+
 	id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
 		WorkspaceID: workspaceID,
 		Key:         "cached_task",
@@ -8936,6 +9609,7 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("task: %v", err)
 	}
+
 	if err := service.Admin.UpsertTaskLocalization(
 		ctx,
 		workspaceID,
@@ -8953,6 +9627,7 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 		PlatformID:     1,
 		PlatformUserID: "cache-user",
 	}
+
 	list, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -8964,9 +9639,11 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first list: %v", err)
 	}
+
 	if got := findTask(t, list, "cached_task").Title; got != "Old title" {
 		t.Fatalf("initial title = %q", got)
 	}
+
 	if len(list) != 1 || list[0].Key != "main" ||
 		list[0].Title != "Old group" ||
 		list[0].Description != "Old group description" {
@@ -8983,6 +9660,7 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	); err != nil {
 		t.Fatalf("group localization update: %v", err)
 	}
+
 	if err := service.Admin.UpsertTaskLocalization(
 		ctx,
 		workspaceID,
@@ -8993,6 +9671,7 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	); err != nil {
 		t.Fatalf("localization update: %v", err)
 	}
+
 	if err := service.Admin.UpsertReward(
 		ctx,
 		workspaceID,
@@ -9002,6 +9681,7 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	); err != nil {
 		t.Fatalf("reward update: %v", err)
 	}
+
 	list, err = service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -9013,14 +9693,17 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second list: %v", err)
 	}
+
 	task := findTask(t, list, "cached_task")
 	if task.Title != "New title" {
 		t.Fatalf("updated title = %q", task.Title)
 	}
+
 	if len(task.Rewards) != 1 || task.Rewards[0].Key != "coin" ||
 		task.Rewards[0].Quantity != 7 {
 		t.Fatalf("updated rewards = %+v", task.Rewards)
 	}
+
 	if len(list) != 1 || list[0].Title != "New group" ||
 		list[0].Description != "New group description" {
 		t.Fatalf("updated group = %+v", list)
@@ -9029,6 +9712,7 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	if _, err := service.Admin.DeleteTask(ctx, workspaceID, id); err != nil {
 		t.Fatalf("delete task: %v", err)
 	}
+
 	list, err = service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -9040,6 +9724,7 @@ func TestTasksListActiveCatalogCacheInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("third list: %v", err)
 	}
+
 	for _, group := range list {
 		for _, task := range group.Tasks {
 			if task.Key == "cached_task" {
@@ -9069,6 +9754,7 @@ func TestTasksListActiveFiltersByGroup(t *testing.T) {
 		1,
 		1,
 	)
+
 	if err := service.Admin.UpsertGroup(
 		ctx,
 		workspaceID,
@@ -9078,6 +9764,7 @@ func TestTasksListActiveFiltersByGroup(t *testing.T) {
 	); err != nil {
 		t.Fatalf("bonus group: %v", err)
 	}
+
 	if err := service.Admin.UpsertGroupLocalization(
 		ctx,
 		workspaceID,
@@ -9088,6 +9775,7 @@ func TestTasksListActiveFiltersByGroup(t *testing.T) {
 	); err != nil {
 		t.Fatalf("bonus group localization: %v", err)
 	}
+
 	bonusID, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
 		WorkspaceID: workspaceID,
 		Key:         "bonus_task",
@@ -9105,6 +9793,7 @@ func TestTasksListActiveFiltersByGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bonus task: %v", err)
 	}
+
 	if err := service.Admin.UpsertTaskLocalization(
 		ctx,
 		workspaceID,
@@ -9127,9 +9816,11 @@ func TestTasksListActiveFiltersByGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list all: %v", err)
 	}
+
 	if len(all) != 2 {
 		t.Fatalf("all groups = %+v", all)
 	}
+
 	bonus, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -9142,12 +9833,14 @@ func TestTasksListActiveFiltersByGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list bonus: %v", err)
 	}
+
 	if len(bonus) != 1 || bonus[0].Key != "bonus" ||
 		bonus[0].Title != "Бонусные" ||
 		len(bonus[0].Tasks) != 1 ||
 		bonus[0].Tasks[0].Key != "bonus_task" {
 		t.Fatalf("filtered bonus groups = %+v", bonus)
 	}
+
 	missing, err := service.User.ListActive(
 		ctx,
 		user.ListActiveParams{
@@ -9160,6 +9853,7 @@ func TestTasksListActiveFiltersByGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list missing: %v", err)
 	}
+
 	if len(missing) != 0 {
 		t.Fatalf("missing group returned tasks: %+v", missing)
 	}
@@ -9175,6 +9869,7 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 		PlatformID:     1,
 		PlatformUserID: "player",
 	}
+
 	if err := service.Admin.UpsertGroup(
 		ctx,
 		workspaceID,
@@ -9192,6 +9887,7 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("missing record: %v", err)
 	}
+
 	if missing.Status != repository.RecordStatusNoTasks {
 		t.Fatalf("missing status = %s", missing.Status)
 	}
@@ -9213,6 +9909,7 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("task: %v", err)
 	}
+
 	if err := service.Admin.UpsertReward(
 		ctx,
 		workspaceID,
@@ -9230,6 +9927,7 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record after create: %v", err)
 	}
+
 	if recorded.Status != repository.RecordStatusRecorded {
 		t.Fatalf("recorded status = %s", recorded.Status)
 	}
@@ -9244,6 +9942,7 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claim old reward: %v", err)
 	}
+
 	if len(claimed.Task.Rewards) != 1 || claimed.Task.Rewards[0].Quantity != 1 {
 		t.Fatalf("old claim rewards = %+v", claimed.Task.Rewards)
 	}
@@ -9263,12 +9962,14 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 	); err != nil {
 		t.Fatalf("reward update: %v", err)
 	}
+
 	if _, err := service.Internal.Record(ctx, internalapi.RecordParams{
 		Identity: secondIdentity, ActionKey: "cached_action", Amount: 1,
 		Source: "game", ExternalEventKey: "record-after-reward-update",
 	}); err != nil {
 		t.Fatalf("record after reward update: %v", err)
 	}
+
 	claimed, err = service.User.Claim(ctx, user.ClaimParams{
 		Identity: user.Identity(
 			secondIdentity,
@@ -9279,6 +9980,7 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claim new reward: %v", err)
 	}
+
 	if len(claimed.Task.Rewards) != 1 || claimed.Task.Rewards[0].Quantity != 7 {
 		t.Fatalf("new claim rewards = %+v", claimed.Task.Rewards)
 	}
@@ -9286,30 +9988,37 @@ func TestTasksRecordAndClaimCatalogCacheInvalidation(t *testing.T) {
 
 func TestTasksQueryTimeout(t *testing.T) {
 	ctx := context.Background()
+
 	adminDB, err := openTasksPostgres("postgres")
 	if err != nil {
 		t.Fatalf("open admin postgres: %v", err)
 	}
+
 	if err := recreateTasksDatabase(ctx, adminDB, tasksTimeoutDB); err != nil {
 		t.Fatalf("drop database: %v", err)
 	}
+
 	_ = adminDB.Close()
 
 	db, err := openTasksPostgres(tasksTimeoutDB)
 	if err != nil {
 		t.Fatalf("open timeout db: %v", err)
 	}
+
 	client, err := sqlwrap.New(db)
 	if err != nil {
 		t.Fatalf("create timeout sql client: %v", err)
 	}
+
 	service, err := NewWithDatabase(ctx, db, tasksTestOptions(Options{}))
 	if err != nil {
 		t.Fatalf("create tasks service: %v", err)
 	}
+
 	if err := service.Admin.Bootstrap(ctx); err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
+
 	timeoutService, err := NewWithDatabase(
 		ctx,
 		db,
@@ -9318,6 +10027,7 @@ func TestTasksQueryTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create timeout tasks service: %v", err)
 	}
+
 	t.Cleanup(func() {
 		_ = timeoutService.Close()
 		_ = service.Close()
@@ -9342,6 +10052,7 @@ func createEarnChain(
 	workspaceID, claimMode string,
 ) {
 	t.Helper()
+
 	ctx := context.Background()
 	if err := service.Admin.UpsertGroup(
 		ctx,
@@ -9352,6 +10063,7 @@ func createEarnChain(
 	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
+
 	if err := service.Admin.UpsertSequence(
 		ctx,
 		workspaceID,
@@ -9361,8 +10073,10 @@ func createEarnChain(
 	); err != nil {
 		t.Fatalf("sequence: %v", err)
 	}
+
 	for i := 1; i <= 2; i++ {
 		pos := uint32(i)
+
 		id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
 			WorkspaceID:      workspaceID,
 			Key:              fmt.Sprintf("earn_%d", i),
@@ -9382,6 +10096,7 @@ func createEarnChain(
 		if err != nil {
 			t.Fatalf("task %d: %v", i, err)
 		}
+
 		if err := service.Admin.UpsertTaskLocalization(
 			ctx,
 			workspaceID,
@@ -9392,6 +10107,7 @@ func createEarnChain(
 		); err != nil {
 			t.Fatalf("localization: %v", err)
 		}
+
 		if err := service.Admin.UpsertReward(
 			ctx,
 			workspaceID,
@@ -9412,6 +10128,7 @@ func createStandaloneTask(
 	position int32,
 ) {
 	t.Helper()
+
 	ctx := context.Background()
 	if err := service.Admin.UpsertGroup(
 		ctx,
@@ -9422,6 +10139,7 @@ func createStandaloneTask(
 	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
+
 	id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
 		WorkspaceID: workspaceID, Key: key, GroupKey: "main",
 		ActionKey: actionKey, ActionKind: repository.ActionKindAmountAction,
@@ -9432,6 +10150,7 @@ func createStandaloneTask(
 	if err != nil {
 		t.Fatalf("standalone task %s: %v", key, err)
 	}
+
 	if err := service.Admin.UpsertTaskLocalization(
 		ctx,
 		workspaceID,
@@ -9446,6 +10165,7 @@ func createStandaloneTask(
 
 func createMixedActionChain(t testing.TB, service *Tasks, workspaceID string) {
 	t.Helper()
+
 	ctx := context.Background()
 	if err := service.Admin.UpsertGroup(
 		ctx,
@@ -9456,6 +10176,7 @@ func createMixedActionChain(t testing.TB, service *Tasks, workspaceID string) {
 	); err != nil {
 		t.Fatalf("group: %v", err)
 	}
+
 	if err := service.Admin.UpsertSequence(
 		ctx,
 		workspaceID,
@@ -9465,6 +10186,7 @@ func createMixedActionChain(t testing.TB, service *Tasks, workspaceID string) {
 	); err != nil {
 		t.Fatalf("sequence: %v", err)
 	}
+
 	definitions := []struct {
 		key       string
 		actionKey string
@@ -9492,6 +10214,7 @@ func createMixedActionChain(t testing.TB, service *Tasks, workspaceID string) {
 	}
 	for _, definition := range definitions {
 		pos := definition.position
+
 		id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
 			WorkspaceID:      workspaceID,
 			Key:              definition.key,
@@ -9511,6 +10234,7 @@ func createMixedActionChain(t testing.TB, service *Tasks, workspaceID string) {
 		if err != nil {
 			t.Fatalf("mixed task %s: %v", definition.key, err)
 		}
+
 		if err := service.Admin.UpsertTaskLocalization(
 			ctx,
 			workspaceID,
@@ -9521,6 +10245,7 @@ func createMixedActionChain(t testing.TB, service *Tasks, workspaceID string) {
 		); err != nil {
 			t.Fatalf("mixed localization %s: %v", definition.key, err)
 		}
+
 		if err := service.Admin.UpsertReward(
 			ctx,
 			workspaceID,
@@ -9539,6 +10264,7 @@ func findTask(
 	key string,
 ) user.TaskModel {
 	t.Helper()
+
 	for _, group := range list {
 		for _, task := range group.Tasks {
 			if task.Key == key {
@@ -9546,7 +10272,9 @@ func findTask(
 			}
 		}
 	}
+
 	t.Fatalf("task %q not found in %+v", key, list)
+
 	return user.TaskModel{}
 }
 
@@ -9554,19 +10282,25 @@ func strPtr(value string) *string { return &value }
 
 func newTasksTestService(t testing.TB, options ...Options) *Tasks {
 	t.Helper()
+
 	ctx := context.Background()
+
 	adminDB, err := openTasksPostgres("postgres")
 	if err != nil {
 		t.Fatalf("open admin postgres: %v", err)
 	}
+
 	if err := recreateTasksDatabase(ctx, adminDB, tasksTestDB); err != nil {
 		t.Fatalf("recreate database: %v", err)
 	}
+
 	_ = adminDB.Close()
+
 	db, err := openTasksPostgres(tasksTestDB)
 	if err != nil {
 		t.Fatalf("open app postgres: %v", err)
 	}
+
 	client, err := sqlwrap.New(db, sqlwrap.Options{
 		CacheEnabled:  true,
 		CacheSize:     10000,
@@ -9575,21 +10309,26 @@ func newTasksTestService(t testing.TB, options ...Options) *Tasks {
 	if err != nil {
 		t.Fatalf("create sql client: %v", err)
 	}
+
 	serviceOptions := tasksTestOptions(Options{})
 	if len(options) > 0 {
 		serviceOptions = tasksTestOptions(options[0])
 	}
+
 	service, err := NewWithDatabase(ctx, db, serviceOptions)
 	if err != nil {
 		t.Fatalf("create tasks service: %v", err)
 	}
+
 	if err := service.Admin.Bootstrap(ctx); err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
+
 	t.Cleanup(func() {
 		_ = service.Close()
 		_ = client.Close()
 	})
+
 	return service
 }
 
@@ -9597,24 +10336,28 @@ func tasksTestOptions(options Options) Options {
 	if len(options.SecretEncryptionKey) == 0 {
 		options.SecretEncryptionKey = []byte("0123456789abcdef0123456789abcdef")
 	}
+
 	options.CacheEnabled = true
 	if options.CacheSize == 0 {
 		options.CacheSize = 10000
 	}
+
 	if options.CacheTTLCheck == 0 {
 		options.CacheTTLCheck = time.Minute
 	}
+
 	if options.CacheL1Delay == 0 {
 		options.CacheL1Delay = time.Minute
 	}
+
 	return options
 }
 
 func TestTasksPartnerSecretIsEncryptedAtRest(t *testing.T) {
-
 	service := newTasksTestService(t)
 	workspaceID := testsupport.WorkspaceID("partner-secret-encryption")
 	secret := "partner-api-secret"
+
 	if err := service.Admin.SavePartnerConfig(
 		context.Background(),
 		admin.PartnerConfigModel{
@@ -9630,6 +10373,7 @@ func TestTasksPartnerSecretIsEncryptedAtRest(t *testing.T) {
 	}
 
 	var stored string
+
 	if err := service.client.DB().QueryRowContext(context.Background(), `
 SELECT secret FROM task_partner_config
 WHERE workspace_id = $1 AND provider = $2 AND group_key = $3 AND platform = $4`,
@@ -9637,6 +10381,7 @@ WHERE workspace_id = $1 AND provider = $2 AND group_key = $3 AND platform = $4`,
 		Scan(&stored); err != nil {
 		t.Fatalf("read stored secret: %v", err)
 	}
+
 	if stored == secret || !strings.HasPrefix(stored, "v1:") {
 		t.Fatalf("partner secret stored insecurely: %q", stored)
 	}
@@ -9657,12 +10402,11 @@ WHERE workspace_id = $1 AND provider = $2 AND group_key = $3 AND platform = $4`,
 			err,
 		)
 	}
-
 }
 
 func TestTasksPartnerWebhookRejectsOversizedBody(t *testing.T) {
-
 	service := newPartnerCallbackTestService(t)
+
 	_, err := service.Internal.HandlePartnerWebhook(
 		context.Background(),
 		internalapi.PartnerWebhookParams{
@@ -9673,7 +10417,6 @@ func TestTasksPartnerWebhookRejectsOversizedBody(t *testing.T) {
 	if err == nil {
 		t.Fatal("oversized partner webhook body was accepted")
 	}
-
 }
 
 func TestPartnerIssueIsScopedByApplication(t *testing.T) {
@@ -9689,6 +10432,7 @@ func TestPartnerIssueIsScopedByApplication(t *testing.T) {
 		PlatformUserID: "same-user",
 	}
 	secondIdentity := firstIdentity
+
 	secondIdentity.AppID = 2
 
 	first, err := service.User.ListPartner(
@@ -9703,6 +10447,7 @@ func TestPartnerIssueIsScopedByApplication(t *testing.T) {
 	if err != nil || len(first) != 1 {
 		t.Fatalf("first app partner list: %+v err=%v", first, err)
 	}
+
 	second, err := service.User.ListPartner(
 		context.Background(),
 		user.PartnerListParams{
@@ -9715,6 +10460,7 @@ func TestPartnerIssueIsScopedByApplication(t *testing.T) {
 	if err != nil || len(second) != 1 {
 		t.Fatalf("second app partner list: %+v err=%v", second, err)
 	}
+
 	if first[0].Key == second[0].Key {
 		t.Fatalf("two apps received the same partner issue: %s", first[0].Key)
 	}
@@ -9744,14 +10490,17 @@ func openTasksPostgres(database string) (*sql.DB, error) {
 		pgPort,
 		database,
 	)
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Ping(); err != nil {
+
+	if err := db.PingContext(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+
 	return db, nil
 }
 
@@ -9767,40 +10516,53 @@ func recreateTasksDatabase(
 	); err != nil {
 		return err
 	}
+
 	if _, err := adminDB.ExecContext(
 		ctx,
 		fmt.Sprintf("DROP DATABASE IF EXISTS %s", database),
 	); err != nil {
 		return err
 	}
+
 	_, err := adminDB.ExecContext(
 		ctx,
 		fmt.Sprintf("CREATE DATABASE %s", database),
 	)
+
 	return err
 }
 
 func countTaskCallbacks(t testing.TB, database string) int {
 	t.Helper()
+
 	db, err := openTasksPostgres(database)
 	if err != nil {
 		t.Fatalf("open callback db: %v", err)
 	}
+
 	defer func() { _ = db.Close() }()
+
 	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM tasks_clb_event WHERE source_service = 'tasks'").
+
+	if err := db.QueryRowContext(
+		t.Context(),
+		"SELECT COUNT(*) FROM tasks_clb_event WHERE source_service = 'tasks'",
+	).
 		Scan(&count); err != nil {
 		t.Fatalf("count callbacks: %v", err)
 	}
+
 	return count
 }
 
 func TestTgrassProviderLiveManual(t *testing.T) {
 	token := os.Getenv("TGRASS_TOKEN")
 	userID := os.Getenv("TGRASS_USER_ID")
+
 	if token == "" || userID == "" {
 		t.Skip("set TGRASS_TOKEN and TGRASS_USER_ID to run live Tgrass check")
 	}
+
 	provider := user.TgrassProvider{Timeout: 15 * time.Second}
 	params := user.PartnerListProviderParams{
 		Identity: user.Identity{
@@ -9819,27 +10581,32 @@ func TestTgrassProviderLiveManual(t *testing.T) {
 		Limit:  1,
 		Now:    time.Now().UTC(),
 	}
+
 	tasks, err := provider.ListPartnerTasks(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(tasks) == 0 {
 		offerID := os.Getenv("TGRASS_OFFER_ID")
 		if offerID == "" {
 			t.Skip("Tgrass returned no available tasks")
 		}
+
 		tasks = []user.PartnerExternalTask{{
 			ExternalID:     offerID,
 			ExternalType:   "channel",
 			PrivatePayload: []byte(`{"offer_id":` + offerID + `}`),
 		}}
 	}
+
 	t.Logf(
 		"external_id=%s external_type=%s public_payload=%s",
 		tasks[0].ExternalID,
 		tasks[0].ExternalType,
 		string(tasks[0].PublicPayload),
 	)
+
 	check, err := provider.CheckPartnerTask(
 		context.Background(),
 		user.PartnerCheckProviderParams{
@@ -9856,6 +10623,7 @@ func TestTgrassProviderLiveManual(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Logf(
 		"check completed=%t status=%s payload=%s",
 		check.Completed,

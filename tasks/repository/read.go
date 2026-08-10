@@ -24,6 +24,7 @@ func (r *Repository) ListActive(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
 	catalog, err := r.listActiveCatalog(
 		ctx,
 		identity.WorkspaceID,
@@ -33,6 +34,7 @@ func (r *Repository) ListActive(
 	if err != nil {
 		return nil, err
 	}
+
 	tasks := make([]ActiveTask, 0, len(catalog))
 	for _, task := range catalog {
 		if activeTaskVisibleAt(task, now) &&
@@ -42,6 +44,7 @@ func (r *Repository) ListActive(
 			tasks = append(tasks, task)
 		}
 	}
+
 	progressRows, err := repositoryValue[[]tasksqlc.TaskProgress](
 		ctx,
 		r,
@@ -62,15 +65,18 @@ func (r *Repository) ListActive(
 	if err != nil {
 		return nil, err
 	}
+
 	progressByTask := make(map[uint64]ActiveProgress, len(progressRows))
 	for _, row := range progressRows {
 		progressByTask[uint64(row.TaskID)] = mapActiveProgress(row)
 	}
+
 	for index := range tasks {
 		if progress, ok := progressByTask[tasks[index].ID]; ok {
 			tasks[index].Progress = &progress
 		}
 	}
+
 	if err := r.attachComplexConditions(
 		ctx,
 		identity.WorkspaceID,
@@ -78,6 +84,7 @@ func (r *Repository) ListActive(
 	); err != nil {
 		return nil, err
 	}
+
 	return tasks, nil
 }
 
@@ -89,18 +96,23 @@ func (r *Repository) attachComplexConditions(
 	if len(tasks) == 0 {
 		return nil
 	}
+
 	taskByID := make(map[uint64]int, len(tasks))
 	hasComplex := false
+
 	for index, task := range tasks {
 		taskByID[task.ID] = index
 		if task.TaskKind == TaskKindComplex {
 			hasComplex = true
 		}
 	}
+
 	if !hasComplex {
 		return nil
 	}
+
 	key := activeComplexConditionsCacheKey(workspaceID)
+
 	rows, err := repositoryQuery(ctx, r, sqlwrap.Params{
 		Key:               key,
 		CacheL1Delay:      r.cacheL1Delay,
@@ -112,26 +124,32 @@ func (r *Repository) attachComplexConditions(
 	if err != nil {
 		return err
 	}
+
 	for _, row := range rows {
 		parentIndex, parentOK := taskByID[uint64(row.ParentTaskID)]
 		childIndex, childOK := taskByID[uint64(row.ConditionTaskID)]
+
 		if !parentOK || !childOK ||
 			tasks[parentIndex].TaskKind != TaskKindComplex {
 			continue
 		}
+
 		child := tasks[childIndex]
+
 		child.Conditions = nil
 		tasks[parentIndex].Conditions = append(
 			tasks[parentIndex].Conditions,
 			child,
 		)
 	}
+
 	for index := range tasks {
 		if tasks[index].TaskKind == TaskKindComplex &&
 			len(tasks[index].Conditions) > 0 {
 			tasks[index].TargetCount = uint64(len(tasks[index].Conditions))
 		}
 	}
+
 	return nil
 }
 
@@ -140,6 +158,7 @@ func (r *Repository) listActiveCatalog(
 	workspaceID, locale, groupKey string,
 ) ([]ActiveTask, error) {
 	key := activeCatalogCacheKey(workspaceID, locale, groupKey)
+
 	out, err := repositoryQuery(ctx, r, sqlwrap.Params{
 		Key:               key,
 		CacheL1Delay:      r.cacheL1Delay,
@@ -159,11 +178,13 @@ func (r *Repository) listActiveCatalog(
 		if err != nil {
 			return nil, err
 		}
+
 		return activeTasksFromTasks(mapActiveBundles(rows)), nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return out, nil
 }
 
@@ -194,8 +215,10 @@ func activeTasksFromTasks(tasks []Task) []ActiveTask {
 			out.Title = task.Localization.Title
 			out.Description = task.Localization.Description
 		}
+
 		result = append(result, out)
 	}
+
 	return result
 }
 

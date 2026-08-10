@@ -17,7 +17,9 @@ func (a *VKMA) RefundOrderForWorkspace(
 ) (*ChargeableResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	providerPaymentID := strconv.Itoa(params.OrderID)
 
 	result, err := a.repository.ApplyProviderRefund(

@@ -146,7 +146,7 @@ type transactionStatusResponse struct {
 	PaymentDetails    paymentDetails `json:"paymentDetails"`
 	MerchantName      string         `json:"merchantName"`
 	MerchantID        string         `json:"mechantId"`
-	Commission        float64        `json:"comission"`
+	Commission        float64        `json:"commission"`
 	PaymentMethod     string         `json:"paymentMethod"`
 	ExpiresIn         string         `json:"expiresIn"`
 	ReturnURL         string         `json:"return"`

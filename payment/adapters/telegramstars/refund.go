@@ -14,6 +14,7 @@ func (a *TelegramStars) Execute(
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 	if err := NewClient(
 		params.Credentials,
@@ -23,5 +24,6 @@ func (a *TelegramStars) Execute(
 	}); err != nil {
 		return RefundResult{}, err
 	}
+
 	return RefundResult{Status: "succeeded"}, nil
 }

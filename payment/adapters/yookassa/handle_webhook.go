@@ -13,13 +13,13 @@ func (a *YooKassa) HandleWebhook(
 	ctx context.Context,
 	request WebhookRequest,
 ) (*WebhookResult, error) {
-
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
 	}
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	if !request.SignatureValid {
@@ -27,6 +27,7 @@ func (a *YooKassa) HandleWebhook(
 	}
 
 	var webhook webhookPayload
+
 	if err := json.Unmarshal(request.Raw, &webhook); err != nil {
 		return nil, err
 	}
@@ -38,7 +39,6 @@ func (a *YooKassa) HandleWebhook(
 		request.Raw,
 		request.SignatureValid,
 	)
-
 }
 
 func (a *YooKassa) handlePayload(
@@ -48,9 +48,9 @@ func (a *YooKassa) handlePayload(
 	raw []byte,
 	signatureValid bool,
 ) (*WebhookResult, error) {
-
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	if webhook.Object.ID == "" {
@@ -83,6 +83,7 @@ func (a *YooKassa) handlePayload(
 			SignatureValid:    utils.Ref(signatureValid),
 		},
 	)
+
 	if err != nil && !isDuplicateEntry(err) {
 		return nil, err
 	}
@@ -106,6 +107,7 @@ func (a *YooKassa) handlePayload(
 				Status:            repository.ProviderAttemptTerminalCanceled,
 			},
 		)
+
 		return result, err
 	}
 
@@ -139,13 +141,14 @@ func (a *YooKassa) handlePayload(
 	result.FulfilledID = uint64Ptr(completed.FulfillmentID)
 
 	return result, nil
-
 }
 
 func uint64Ptr(value *int64) *uint64 {
 	if value == nil {
 		return nil
 	}
+
 	v := uint64(*value)
+
 	return utils.Ref(v)
 }

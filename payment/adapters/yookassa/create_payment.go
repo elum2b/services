@@ -18,23 +18,25 @@ func (a *YooKassa) CreatePayment(
 	ctx context.Context,
 	params CreatePaymentParams,
 ) (*CreatePaymentResponse, error) {
-
 	if a == nil || a.repository == nil {
 		return nil, ErrNotInitialized
 	}
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	params.IdempotencyKey = strings.TrimSpace(params.IdempotencyKey)
 	if params.IdempotencyKey == "" {
 		return nil, ErrIdempotencyKeyRequired
 	}
+
 	client := NewClient(params.Credentials)
 	if err := client.requireCredentials(); err != nil {
 		return nil, err
 	}
+
 	fingerprint, err := yookassaRequestFingerprint(params)
 	if err != nil {
 		return nil, err
@@ -64,6 +66,7 @@ func (a *YooKassa) CreatePayment(
 	if err != nil {
 		return nil, err
 	}
+
 	order := local.Order
 	if local.AlreadyExists &&
 		local.Attempt.Status != string(
@@ -71,6 +74,7 @@ func (a *YooKassa) CreatePayment(
 		) {
 		return yookassaExistingPaymentResponse(local, params.PaymentMethodType)
 	}
+
 	if local.AlreadyExists &&
 		time.Since(local.Attempt.CreatedAt) >= yookassaIdempotencyTTL {
 		return nil, ErrPaymentAttemptState
@@ -80,6 +84,7 @@ func (a *YooKassa) CreatePayment(
 	if description == "" {
 		description = fmt.Sprintf("Payment order %s", order.PublicID)
 	}
+
 	capture := true
 	if params.Capture != nil {
 		capture = *params.Capture
@@ -114,14 +119,16 @@ func (a *YooKassa) CreatePayment(
 				ProviderCode,
 			); failErr != nil {
 				return nil, fmt.Errorf(
-					"%w: fail local attempt: %v",
+					"%w: fail local attempt: %w",
 					err,
 					failErr,
 				)
 			}
 		}
+
 		return nil, err
 	}
+
 	if payment.ID == "" {
 		return nil, ErrCreatePaymentEmptyID
 	}
@@ -154,7 +161,6 @@ func (a *YooKassa) CreatePayment(
 		AssetCode:         attempt.AssetCode,
 		PaymentMethodType: params.PaymentMethodType,
 	}, nil
-
 }
 
 func yookassaExistingPaymentResponse(
@@ -216,6 +222,7 @@ func yookassaRequestFingerprint(params CreatePaymentParams) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return sha256Hex(raw), nil
 }
 
@@ -223,5 +230,6 @@ func valueOrEmpty(value *string) string {
 	if value == nil {
 		return ""
 	}
+
 	return *value
 }

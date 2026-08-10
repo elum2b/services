@@ -38,30 +38,39 @@ func Wrap(code, message string, err error) *Error {
 	if err == nil {
 		return New(code, message)
 	}
+
 	var coded Coded
+
 	if errors.As(err, &coded) && coded.Code() == code &&
 		coded.Message() == message {
+		//nolint:errorlint // Only a direct *Error may retain its identity; wrappers stay intact.
 		if structured, ok := err.(*Error); ok {
 			return structured
 		}
+
 		return &Error{code: code, message: message, err: err}
 	}
+
 	return &Error{code: code, message: message, err: err}
 }
 
 func CodeOf(err error) string {
 	var coded Coded
+
 	if errors.As(err, &coded) {
 		return coded.Code()
 	}
+
 	return ""
 }
 
 func MessageOf(err error) string {
 	var coded Coded
+
 	if errors.As(err, &coded) {
 		return coded.Message()
 	}
+
 	return ""
 }
 
@@ -70,11 +79,13 @@ func PublicMessage(err error) string {
 	if message := MessageOf(err); message != "" {
 		return message
 	}
+
 	return "internal error"
 }
 
 func IsStructured(err error) bool {
 	var coded Coded
+
 	return errors.As(err, &coded)
 }
 
@@ -82,9 +93,11 @@ func Normalize(err error, code, message string) error {
 	if err == nil {
 		return nil
 	}
+
 	if IsStructured(err) {
 		return err
 	}
+
 	return Wrap(code, message, err)
 }
 
@@ -92,9 +105,11 @@ func (e *Error) Error() string {
 	if e == nil {
 		return ""
 	}
+
 	if e.message != "" {
 		return e.message
 	}
+
 	return "internal error"
 }
 
@@ -102,6 +117,7 @@ func (e *Error) Code() string {
 	if e == nil {
 		return ""
 	}
+
 	return e.code
 }
 
@@ -109,6 +125,7 @@ func (e *Error) Message() string {
 	if e == nil {
 		return ""
 	}
+
 	return e.message
 }
 
@@ -116,6 +133,7 @@ func (e *Error) Unwrap() error {
 	if e == nil {
 		return nil
 	}
+
 	return e.err
 }
 
@@ -123,10 +141,13 @@ func (e *Error) Is(target error) bool {
 	if e == nil || target == nil {
 		return false
 	}
+
 	var coded Coded
+
 	if errors.As(target, &coded) {
 		return e.code != "" && e.code == coded.Code()
 	}
+
 	return false
 }
 

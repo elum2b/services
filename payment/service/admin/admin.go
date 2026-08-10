@@ -55,13 +55,17 @@ func (a *Admin) Close() error {
 	if a == nil {
 		return nil
 	}
+
 	var err error
+
 	if a.repository != nil {
 		err = errors.Join(err, a.repository.Close())
 	}
+
 	if a.callbacks != nil {
 		err = errors.Join(err, a.callbacks.Close())
 	}
+
 	return err
 }
 

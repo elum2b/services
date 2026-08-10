@@ -25,19 +25,23 @@ func (a *Payment) startPriceUpdater() {
 	if a == nil || a.pricing == nil || a.rootCtx == nil {
 		return
 	}
+
 	if a.pricingHTTPClient == nil {
 		a.pricingHTTPClient = &http.Client{
 			Timeout: defaultPriceUpdateHTTPTimeout,
 		}
 	}
+
 	if a.pricingInterval <= 0 {
 		a.pricingInterval = defaultPriceUpdateInterval
 	}
+
 	if strings.TrimSpace(a.pricingBaseURL) == "" {
 		a.pricingBaseURL = defaultDexScreenerBaseURL
 	}
 
 	workerID := newPriceUpdaterWorkerID()
+
 	a.goroutines.GoRestart(
 		a.rootCtx,
 		"payment.price_updater",
@@ -62,6 +66,7 @@ func (a *Payment) priceUpdaterLoop(workerID string) {
 				!errors.Is(err, context.DeadlineExceeded) {
 				log.Printf("payment price updater: %v", err)
 			}
+
 			timer.Reset(a.pricingInterval)
 		}
 	}
@@ -74,6 +79,7 @@ func (a *Payment) runDuePriceUpdates(
 	if _, err := a.pricing.SyncAutomaticAssetRates(ctx); err != nil {
 		return err
 	}
+
 	updates, err := a.pricing.ClaimDueAssetRateUpdates(
 		ctx,
 		workerID,
@@ -83,6 +89,7 @@ func (a *Payment) runDuePriceUpdates(
 	if err != nil {
 		return err
 	}
+
 	groups := groupDuePriceUpdates(updates)
 	for _, group := range groups {
 		if err := a.updateDexScreenerGroup(ctx, workerID, group); err != nil {
@@ -90,6 +97,7 @@ func (a *Payment) runDuePriceUpdates(
 				errors.Is(err, context.DeadlineExceeded) {
 				return err
 			}
+
 			log.Printf(
 				"payment price updater source=%s chain=%s: %v",
 				group.source,
@@ -98,6 +106,7 @@ func (a *Payment) runDuePriceUpdates(
 			)
 		}
 	}
+
 	return nil
 }
 
@@ -112,19 +121,24 @@ func groupDuePriceUpdates(
 ) []duePriceUpdateGroup {
 	index := make(map[string]int)
 	groups := make([]duePriceUpdateGroup, 0)
+
 	for _, update := range updates {
 		key := update.Source + "\x00" + update.SourceChainID
 		position, ok := index[key]
+
 		if !ok {
 			position = len(groups)
 			index[key] = position
+
 			groups = append(groups, duePriceUpdateGroup{
 				source:  update.Source,
 				chainID: update.SourceChainID,
 			})
 		}
+
 		groups[position].updates = append(groups[position].updates, update)
 	}
+
 	return groups
 }
 
@@ -139,9 +153,11 @@ func (a *Payment) updateDexScreenerGroup(
 	}
 
 	var groupErrors []error
+
 	for start := 0; start < len(group.updates); start += 30 {
 		end := min(start+30, len(group.updates))
 		batch := group.updates[start:end]
+
 		prices, err := fetchDexScreenerPrices(
 			ctx,
 			a.pricingHTTPClient,
@@ -159,8 +175,10 @@ func (a *Payment) updateDexScreenerGroup(
 			); failErr != nil {
 				groupErrors = append(groupErrors, failErr)
 			}
+
 			continue
 		}
+
 		for _, update := range batch {
 			price, ok := prices[update.AssetCode]
 			if !ok {
@@ -169,7 +187,9 @@ func (a *Payment) updateDexScreenerGroup(
 					update.AssetCode,
 					update.SourceTokenAddress,
 				)
+
 				groupErrors = append(groupErrors, updateErr)
+
 				if err := a.pricing.FailAssetRateAutoUpdate(
 					ctx,
 					workerID,
@@ -178,8 +198,10 @@ func (a *Payment) updateDexScreenerGroup(
 				); err != nil {
 					groupErrors = append(groupErrors, err)
 				}
+
 				continue
 			}
+
 			_, updateErr := a.pricing.UpdateAssetRate(
 				ctx,
 				repository.AssetRateUpdateParams{
@@ -200,8 +222,10 @@ func (a *Payment) updateDexScreenerGroup(
 				); err != nil {
 					groupErrors = append(groupErrors, err)
 				}
+
 				continue
 			}
+
 			if err := a.pricing.CompleteAssetRateAutoUpdate(
 				ctx,
 				workerID,
@@ -211,6 +235,7 @@ func (a *Payment) updateDexScreenerGroup(
 			}
 		}
 	}
+
 	return errors.Join(groupErrors...)
 }
 
@@ -221,30 +246,23 @@ func (a *Payment) failPriceUpdateGroup(
 	updateErr error,
 ) error {
 	var result error
+
 	for _, update := range updates {
 		result = errors.Join(
 			result,
 			a.pricing.FailAssetRateAutoUpdate(ctx, workerID, update, updateErr),
 		)
 	}
-	return result
-}
 
-func waitContext(ctx context.Context, delay time.Duration) bool {
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-timer.C:
-		return true
-	}
+	return result
 }
 
 func newPriceUpdaterWorkerID() string {
 	var random [8]byte
+
 	if _, err := rand.Read(random[:]); err == nil {
 		return "payment-price-" + hex.EncodeToString(random[:])
 	}
+
 	return fmt.Sprintf("payment-price-%d", time.Now().UnixNano())
 }

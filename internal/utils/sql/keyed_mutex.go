@@ -31,6 +31,7 @@ func NewMutex() *KeyedMutex {
 
 func (k *KeyedMutex) Lock(key string) error {
 	k.mu.Lock()
+
 	e, exists := k.m[key]
 	if !exists {
 		e = k.pool.Get().(*entry)
@@ -39,27 +40,35 @@ func (k *KeyedMutex) Lock(key string) error {
 	} else {
 		e.refs++
 	}
+
 	k.mu.Unlock()
 
 	e.m.Lock()
+
 	return nil
 }
 
 func (k *KeyedMutex) Unlock(key string) error {
 	k.mu.Lock()
+
 	e, exists := k.m[key]
 	if !exists {
 		k.mu.Unlock()
+
 		return errors.New("keyedmutex: unlock of unlocked key")
 	}
 
 	e.m.Unlock()
+
 	e.refs--
 	if e.refs <= 0 {
 		delete(k.m, key)
+
 		e.refs = 0
 		k.pool.Put(e)
 	}
+
 	k.mu.Unlock()
+
 	return nil
 }

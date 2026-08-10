@@ -1,8 +1,6 @@
 package admin
 
 import (
-	"database/sql"
-
 	services "github.com/elum2b/services"
 	"github.com/elum2b/services/payment/repository"
 )
@@ -12,21 +10,17 @@ func normalizePage(params PageParams) (int32, int32) {
 	if limit <= 0 {
 		limit = 100
 	}
+
 	if limit > 1000 {
 		limit = 1000
 	}
+
 	offset := params.Offset
 	if offset < 0 {
 		offset = 0
 	}
-	return limit, offset
-}
 
-func nullString(value *string) sql.NullString {
-	if value == nil {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: *value, Valid: true}
+	return limit, offset
 }
 
 func validateOptionalIdentityFilter(
@@ -38,6 +32,7 @@ func validateOptionalIdentityFilter(
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if appID < 0 || platformID < 0 ||
 		(platformUserID != "" && (appID <= 0 || platformID <= 0)) {
 		return repository.ErrPaymentReportInvalid

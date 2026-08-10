@@ -59,6 +59,7 @@ func (p SubGramProvider) ListPartnerTasks(
 			maxSponsors = parsed
 		}
 	}
+
 	body := map[string]any{
 		"chat_id": partnerInt64String(
 			firstNonEmpty(
@@ -78,27 +79,33 @@ func (p SubGramProvider) ListPartnerTasks(
 		"get_links":    1,
 	}
 	addPartnerIdentity(body, params.Identity)
+
 	if value := partnerString(params.Variables, "first_name"); value != "" {
 		body["first_name"] = value
 	}
+
 	if value := firstNonEmpty(
 		partnerString(params.Variables, "username"),
 		partnerString(params.Variables, "tg_login"),
 	); value != "" {
 		body["username"] = value
 	}
+
 	var response subGramSponsorsResponse
+
 	if err := p.client().postJSON(ctx, "/get-sponsors", map[string]string{
 		"Auth": partnerSecret(params.Config.Secret),
 	}, body, &response); err != nil {
 		return nil, err
 	}
+
 	result := make([]PartnerExternalTask, 0, len(response.Additional.Sponsors))
 	for _, sponsor := range response.Additional.Sponsors {
 		if sponsor.Link == "" || !sponsor.AvailableNow ||
 			sponsor.Status == "subscribed" {
 			continue
 		}
+
 		externalType := firstNonEmpty(sponsor.Type, "resource")
 		adsID := stringifyPartnerID(sponsor.AdsID)
 		externalID := adsID + ":" + sponsor.ResourceID
@@ -117,11 +124,13 @@ func (p SubGramProvider) ListPartnerTasks(
 			"resource_id": sponsor.ResourceID,
 			"link":        sponsor.Link,
 		})
+
 		result = append(result, PartnerExternalTask{
 			ExternalID: externalID, ExternalType: externalType,
 			PublicPayload: publicPayload, PrivatePayload: privatePayload,
 		})
 	}
+
 	return result, nil
 }
 
@@ -133,6 +142,7 @@ func (p SubGramProvider) CheckPartnerTask(
 		AdsID string `json:"ads_id"`
 		Link  string `json:"link"`
 	}
+
 	if err := json.Unmarshal(
 		params.Issue.PrivatePayload,
 		&private,
@@ -142,34 +152,44 @@ func (p SubGramProvider) CheckPartnerTask(
 			err,
 		)
 	}
+
 	body := map[string]any{
 		"user_id": partnerInt64String(params.Identity.PlatformUserID),
 	}
 	addPartnerIdentity(body, params.Identity)
+
 	if private.Link != "" {
 		body["links"] = []string{private.Link}
 	}
+
 	if private.AdsID != "" {
 		if parsed, err := strconv.ParseInt(private.AdsID, 10, 64); err == nil {
 			body["ads_ids"] = []int64{parsed}
 		}
 	}
+
 	var response subGramSubscriptionsResponse
+
 	if err := p.client().
 		postJSON(ctx, "/get-user-subscriptions", map[string]string{
 			"Auth": partnerSecret(params.Config.Secret),
 		}, body, &response); err != nil {
 		return PartnerCheckResult{}, err
 	}
+
 	status := "not_found"
+
 	for _, sponsor := range response.Additional.Sponsors {
 		if private.Link != "" && sponsor.Link != "" &&
 			sponsor.Link != private.Link {
 			continue
 		}
+
 		status = sponsor.Status
+
 		break
 	}
+
 	allowNotgetted := partnerConfigSetting(
 		params.Config.Settings,
 		"allow_notgetted",
@@ -180,6 +200,7 @@ func (p SubGramProvider) CheckPartnerTask(
 	payload := partnerMarshal(map[string]any{
 		"provider": "subgram", "status": status, "completed": completed,
 	})
+
 	return PartnerCheckResult{
 		Completed: completed,
 		Status:    status,
@@ -192,6 +213,7 @@ func (p SubGramProvider) client() partnerHTTPClient {
 	if baseURL == "" {
 		baseURL = defaultSubGramBaseURL
 	}
+
 	return partnerHTTPClient{
 		client:  p.Client,
 		timeout: p.Timeout,
@@ -233,6 +255,7 @@ func firstNonEmpty(values ...string) string {
 			return value
 		}
 	}
+
 	return ""
 }
 

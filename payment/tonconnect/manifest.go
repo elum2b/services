@@ -50,15 +50,19 @@ func (m Manifest) Validate() error {
 	if !validHTTPSURL(m.URL) || strings.HasSuffix(m.URL, "/") {
 		return ErrManifestURLInvalid
 	}
+
 	if m.Name == "" || utf8.RuneCountInString(m.Name) > maxNameLength {
 		return ErrManifestNameInvalid
 	}
+
 	if !validHTTPSURL(m.IconURL) {
 		return ErrManifestIconURLInvalid
 	}
+
 	if m.TermsOfUseURL != nil && !validHTTPSURL(*m.TermsOfUseURL) {
 		return ErrManifestTermsOfUseURLInvalid
 	}
+
 	if m.PrivacyPolicyURL != nil && !validHTTPSURL(*m.PrivacyPolicyURL) {
 		return ErrManifestPrivacyPolicyURLInvalid
 	}
@@ -70,6 +74,7 @@ func validHTTPSURL(value string) bool {
 	if value == "" || utf8.RuneCountInString(value) > maxURLLength {
 		return false
 	}
+
 	parsed, err := url.ParseRequestURI(value)
 	if err != nil {
 		return false

@@ -54,6 +54,7 @@ func (i *Internal) Close() error {
 	if i == nil || i.repository == nil {
 		return nil
 	}
+
 	return i.repository.Close()
 }
 
@@ -63,5 +64,6 @@ func (i *Internal) withContext(
 	if i == nil {
 		return contextutil.Merge(context.Background(), ctx)
 	}
+
 	return contextutil.Merge(i.rootCtx, ctx)
 }

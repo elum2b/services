@@ -14,6 +14,7 @@ func (r *Repository) ListOperations(
 	limit, offset int32,
 ) ([]Operation, error) {
 	limit, offset = normalizePage(limit, offset)
+
 	rows, err := r.q.AdminListOperations(
 		ctx,
 		calendarsqlc.AdminListOperationsParams{
@@ -26,6 +27,7 @@ func (r *Repository) ListOperations(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]Operation, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, Operation{
@@ -45,6 +47,7 @@ func (r *Repository) ListOperations(
 			OccurredAt:      row.OccurredAt,
 		})
 	}
+
 	return result, nil
 }
 
@@ -64,6 +67,7 @@ func (r *Repository) GetOperation(
 	if err != nil {
 		return Operation{}, err
 	}
+
 	return Operation{
 		ID: uint64(row.ID),
 		Identity: Identity{
@@ -98,6 +102,7 @@ func (r *Repository) GetStats(
 	if err != nil {
 		return Stats{}, err
 	}
+
 	return Stats{
 		OperationCount: uint64(
 			row.OperationCount,
@@ -124,6 +129,7 @@ func (r *Repository) ListDailyStats(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]DailyStats, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, DailyStats{
@@ -135,6 +141,7 @@ func (r *Repository) ListDailyStats(
 			UniqueUsers: uint64(row.UniqueUsers),
 		})
 	}
+
 	return result, nil
 }
 
@@ -146,6 +153,7 @@ func (r *Repository) RefreshDailyStats(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if from.IsZero() || until.IsZero() || from.After(until) {
 		return fmt.Errorf("calendar stats workspace or date range is invalid")
 	}

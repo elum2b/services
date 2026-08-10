@@ -15,6 +15,7 @@ func (c *Client) CreatePayment(
 	}
 
 	var result paymentAPIResponse
+
 	resp, err := c.rest.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
@@ -25,6 +26,7 @@ func (c *Client) CreatePayment(
 	if err != nil {
 		return paymentAPIResponse{}, err
 	}
+
 	if resp.StatusCode() < http.StatusOK ||
 		resp.StatusCode() >= http.StatusMultipleChoices {
 		return paymentAPIResponse{}, wrapAPIError(
@@ -33,5 +35,6 @@ func (c *Client) CreatePayment(
 			resp.String(),
 		)
 	}
+
 	return result, nil
 }

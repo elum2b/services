@@ -50,6 +50,7 @@ func TestBatchSize(t *testing.T) {
 
 func TestForEachBatch(t *testing.T) {
 	var got [][2]int
+
 	err := ForEachBatch(
 		2501,
 		12,
@@ -62,6 +63,7 @@ func TestForEachBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("iterate batches: %v", err)
 	}
+
 	want := [][2]int{{0, 1000}, {1000, 2000}, {2000, 2501}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ranges = %v, want %v", got, want)
@@ -78,6 +80,7 @@ func TestForEachBatchStopsOnError(t *testing.T) {
 			return want
 		},
 	)
+
 	if !errors.Is(err, want) {
 		t.Fatalf("ForEachBatch() error = %v, want %v", err, want)
 	}

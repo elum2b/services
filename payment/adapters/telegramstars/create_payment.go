@@ -22,16 +22,19 @@ func (a *TelegramStars) CreatePayment(
 
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
 
 	params.IdempotencyKey = strings.TrimSpace(params.IdempotencyKey)
 	if params.IdempotencyKey == "" {
 		return nil, ErrIdempotencyKeyRequired
 	}
+
 	client := NewClient(params.Credentials)
 	if err := client.requireCredentials(); err != nil {
 		return nil, err
 	}
+
 	fingerprint, err := telegramStarsRequestFingerprint(params)
 	if err != nil {
 		return nil, err
@@ -61,6 +64,7 @@ func (a *TelegramStars) CreatePayment(
 	if err != nil {
 		return nil, err
 	}
+
 	order := local.Order
 	if local.AlreadyExists &&
 		local.Attempt.Status != string(
@@ -97,14 +101,16 @@ func (a *TelegramStars) CreatePayment(
 				ProviderCode,
 			); failErr != nil {
 				return nil, fmt.Errorf(
-					"%w: fail local attempt: %v",
+					"%w: fail local attempt: %w",
 					err,
 					failErr,
 				)
 			}
 		}
+
 		return nil, err
 	}
+
 	if strings.TrimSpace(invoiceLink) == "" {
 		if failErr := a.repository.FailProviderAttempt(
 			ctx,
@@ -113,11 +119,12 @@ func (a *TelegramStars) CreatePayment(
 			ProviderCode,
 		); failErr != nil {
 			return nil, fmt.Errorf(
-				"%w: fail local attempt: %v",
+				"%w: fail local attempt: %w",
 				ErrCreateInvoiceLinkEmpty,
 				failErr,
 			)
 		}
+
 		return nil, ErrCreateInvoiceLinkEmpty
 	}
 

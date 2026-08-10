@@ -29,6 +29,7 @@ func (r *Repository) invalidateCalendarCache(workspaceID string) {
 	if r == nil || r.db == nil || workspaceID == "" {
 		return
 	}
+
 	err := errors.Join(
 		r.db.BumpCacheVersion(
 			calendarCacheScope(calendarCacheAdminCalendar, workspaceID)...),
@@ -55,8 +56,10 @@ func (r *Repository) reportCacheInvalidationError(err error) {
 	if err == nil || r == nil || r.onCacheInvalidationError == nil {
 		return
 	}
+
 	defer func() {
 		_ = recover()
 	}()
+
 	r.onCacheInvalidationError(err)
 }

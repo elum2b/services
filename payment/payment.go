@@ -97,6 +97,7 @@ func NewWithDatabase(
 			err,
 		)
 	}
+
 	return newAPI(ctx, client, false, options), nil
 }
 
@@ -104,31 +105,40 @@ func (a *Payment) Run(ctx context.Context, params DatabaseParams) error {
 	if a == nil {
 		return ErrServiceNil
 	}
+
 	a.lifecycleMu.Lock()
+
 	if a.running {
 		a.lifecycleMu.Unlock()
+
 		return ErrServiceRunning
 	}
+
 	a.running = true
+
 	registrations := append([]callbackRegistration(nil), a.callbacksToRun...)
 	a.lifecycleMu.Unlock()
 
 	running, err := open(ctx, params)
 	if err != nil {
 		a.lifecycleMu.Lock()
+
 		a.running = false
 		a.lifecycleMu.Unlock()
+
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			return nil
 		}
+
 		return wrapLifecycleError(err)
 	}
+
 	a.adopt(running)
+
 	defer a.Close()
 
 	errCh := make(chan error, len(registrations))
 	for _, registration := range registrations {
-		registration := registration
 		a.goroutines.Go("payment.callback", func() {
 			errCh <- a.runCallback(registration.ctx, registration.handler, registration.options...)
 		})
@@ -141,6 +151,7 @@ func (a *Payment) Run(ctx context.Context, params DatabaseParams) error {
 		if errors.Is(err, context.Canceled) && a.rootCtx.Err() != nil {
 			return nil
 		}
+
 		return wrapLifecycleError(err)
 	}
 }
@@ -149,9 +160,11 @@ func open(ctx context.Context, params DatabaseParams) (*Payment, error) {
 	if params.User == "" {
 		return nil, ErrDatabaseUserRequired
 	}
+
 	if params.Database == "" {
 		return nil, ErrDatabaseNameRequired
 	}
+
 	db, err := openPostgres(ctx, params)
 	if err != nil {
 		return nil, serviceerrors.Wrap(
@@ -160,15 +173,18 @@ func open(ctx context.Context, params DatabaseParams) (*Payment, error) {
 			err,
 		)
 	}
+
 	client, err := sqlwrap.New(db, toSQLWrapOptions(params.Options))
 	if err != nil {
 		_ = db.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"payment sql client initialization failed",
 			err,
 		)
 	}
+
 	bootstrap := repository.NewPaymentRepositoryWithOptions(
 		client,
 		repository.Options{
@@ -181,20 +197,24 @@ func open(ctx context.Context, params DatabaseParams) (*Payment, error) {
 	if err := bootstrap.Bootstrap(ctx); err != nil {
 		_ = bootstrap.Close()
 		_ = client.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"payment bootstrap failed",
 			err,
 		)
 	}
+
 	if err := bootstrap.Close(); err != nil {
 		_ = client.Close()
+
 		return nil, serviceerrors.Wrap(
 			serviceerrors.CodeInternalError,
 			"payment bootstrap shutdown failed",
 			err,
 		)
 	}
+
 	return newAPI(ctx, client, true, params.Options), nil
 }
 
@@ -203,10 +223,12 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 	if host == "" {
 		host = "localhost"
 	}
+
 	port := params.Port
 	if port == 0 {
 		port = 5432
 	}
+
 	dsn, err := sqlwrap.PostgresDSN(sqlwrap.PostgresParams{
 		User:        params.User,
 		Password:    params.Password,
@@ -219,20 +241,24 @@ func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
+
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+
 	return db, nil
 }
 
 func (a *Payment) adopt(running *Payment) {
 	a.lifecycleMu.Lock()
 	defer a.lifecycleMu.Unlock()
+
 	a.Admin = running.Admin
 	a.Operational = running.Operational
 	a.User = running.User
@@ -355,18 +381,23 @@ func newAPI(
 		plategaReconcileBatch:        options.PlategaReconcileBatch,
 		goroutines:                   goroutinemanager.New(),
 	}
+
 	if !options.DisablePriceUpdater {
 		payments.startPriceUpdater()
 	}
+
 	if !options.DisableOrderExpiration {
 		payments.startOrderExpirationWorker()
 	}
+
 	if !options.DisablePlategaReconcile {
 		payments.startPlategaReconciliationWorker()
 	}
+
 	if !db.IsUnavailable() {
 		tonAPI.StartManagedSubscribers(rootCtx, options.TONWalletSyncInterval)
 	}
+
 	return payments
 }
 
@@ -374,60 +405,79 @@ func (a *Payment) Close() error {
 	if a == nil {
 		return nil
 	}
+
 	if a.rootCancel != nil {
 		a.rootCancel()
 	}
+
 	if a.goroutines != nil {
 		a.goroutines.Close()
 	}
+
 	var err error
+
 	if a.Adapters != nil {
 		if a.Adapters.TON != nil {
 			err = errors.Join(err, a.Adapters.TON.Close())
 		}
+
 		if a.Adapters.TelegramStars != nil {
 			err = errors.Join(err, a.Adapters.TelegramStars.Close())
 		}
+
 		if a.Adapters.Platega != nil {
 			err = errors.Join(err, a.Adapters.Platega.Close())
 		}
+
 		if a.Adapters.VKMA != nil {
 			err = errors.Join(err, a.Adapters.VKMA.Close())
 		}
+
 		if a.Adapters.YooKassa != nil {
 			err = errors.Join(err, a.Adapters.YooKassa.Close())
 		}
 	}
+
 	if a.pricing != nil {
 		err = errors.Join(err, a.pricing.Close())
 	}
+
 	if a.product != nil {
 		err = errors.Join(err, a.product.Close())
 	}
+
 	if a.Admin != nil {
 		err = errors.Join(err, a.Admin.Close())
 	}
+
 	if a.Operational != nil {
 		err = errors.Join(err, a.Operational.Close())
 	}
+
 	if a.asset != nil {
 		err = errors.Join(err, a.asset.Close())
 	}
+
 	if a.checkout != nil {
 		err = errors.Join(err, a.checkout.Close())
 	}
+
 	if a.refund != nil {
 		err = errors.Join(err, a.refund.Close())
 	}
+
 	if a.subscription != nil {
 		err = errors.Join(err, a.subscription.Close())
 	}
+
 	if a.callbacks != nil {
 		err = errors.Join(err, a.callbacks.Close())
 	}
+
 	if a.ownsClient && a.client != nil {
 		err = errors.Join(err, a.client.Close())
 	}
+
 	return err
 }
 
@@ -436,8 +486,10 @@ func (a *Payment) IsReady() bool {
 	if a == nil {
 		return false
 	}
+
 	a.lifecycleMu.Lock()
 	defer a.lifecycleMu.Unlock()
+
 	return a.rootCtx != nil && a.rootCtx.Err() == nil &&
 		!a.client.IsUnavailable() &&
 		a.Admin != nil &&
@@ -452,6 +504,7 @@ func (a *Payment) bindContext(
 	if a == nil {
 		return mergeContexts(context.Background(), ctx)
 	}
+
 	return mergeContexts(a.rootCtx, ctx)
 }
 
@@ -467,13 +520,16 @@ func refundProviders(
 			if !ok {
 				return refund.ProviderRefundResult{}, ErrTelegramStarsRefundCredentialsRequired
 			}
+
 			if params.AmountMinor != params.Attempt.AmountMinor {
 				return refund.ProviderRefundResult{}, ErrTelegramStarsFullRefundOnly
 			}
+
 			if params.Attempt.ProviderChargeID == nil ||
 				*params.Attempt.ProviderChargeID == "" {
 				return refund.ProviderRefundResult{}, ErrTelegramStarsChargeIDRequired
 			}
+
 			platformUserID := params.Order.PlatformUserID
 			if params.Order.PayerPlatformUserID != nil {
 				platformUserID = *params.Order.PayerPlatformUserID
@@ -487,6 +543,7 @@ func refundProviders(
 					err,
 				)
 			}
+
 			result, err := telegramStarsAPI.Execute(
 				ctx,
 				telegramstars.RefundParams{
@@ -498,6 +555,7 @@ func refundProviders(
 			if err != nil {
 				return refund.ProviderRefundResult{}, err
 			}
+
 			return refund.ProviderRefundResult{
 				ProviderRefundID: result.ProviderRefundID,
 				Status:           result.Status,
@@ -508,10 +566,12 @@ func refundProviders(
 			if !ok {
 				return refund.ProviderRefundResult{}, ErrYooKassaRefundCredentialsRequired
 			}
+
 			if params.Attempt.ProviderPaymentID == nil ||
 				*params.Attempt.ProviderPaymentID == "" {
 				return refund.ProviderRefundResult{}, ErrYooKassaPaymentIDRequired
 			}
+
 			result, err := yooKassaAPI.Execute(ctx, yookassa.RefundParams{
 				Credentials: credentials,
 				PaymentID:   *params.Attempt.ProviderPaymentID,
@@ -526,6 +586,7 @@ func refundProviders(
 			if err != nil {
 				return refund.ProviderRefundResult{}, err
 			}
+
 			return refund.ProviderRefundResult{
 				ProviderRefundID: result.ProviderRefundID,
 				Status:           result.Status,
@@ -536,9 +597,11 @@ func refundProviders(
 			if !ok {
 				return refund.ProviderRefundResult{}, ErrPlategaRefundParamsRequired
 			}
+
 			if params.Attempt.ProviderPaymentID != nil {
 				providerParams.TransactionID = *params.Attempt.ProviderPaymentID
 			}
+
 			providerParams.AmountMinor = params.AmountMinor
 			providerParams.AssetCode = params.Attempt.AssetCode
 			providerParams.Reason = params.Reason
@@ -546,6 +609,7 @@ func refundProviders(
 				"payment-refund-%d",
 				params.RefundID,
 			)
+
 			result, err := plategaAPI.Execute(ctx, platega.RefundParams{
 				Executor:       providerParams.Executor,
 				TransactionID:  providerParams.TransactionID,
@@ -554,6 +618,7 @@ func refundProviders(
 				Reason:         providerParams.Reason,
 				IdempotencyKey: providerParams.IdempotencyKey,
 			})
+
 			return refund.ProviderRefundResult{
 				ProviderRefundID: result.ProviderRefundID,
 				Status:           result.Status,
@@ -564,6 +629,7 @@ func refundProviders(
 			if !ok {
 				return refund.ProviderRefundResult{}, ErrTONRefundParamsRequired
 			}
+
 			providerParams.AssetCode = params.Attempt.AssetCode
 			providerParams.AmountMinor = params.AmountMinor
 			providerParams.Comment = params.Reason
@@ -571,7 +637,9 @@ func refundProviders(
 				"payment-refund-%d",
 				params.RefundID,
 			)
+
 			result, err := tonAPI.Execute(ctx, providerParams)
+
 			return refund.ProviderRefundResult{
 				ProviderRefundID: result.ProviderRefundID,
 				Status:           result.Status,

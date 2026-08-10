@@ -20,6 +20,7 @@ func (r *Repository) UpsertGroup(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if strings.TrimSpace(key) == "" {
 		return fmt.Errorf("tasks group workspace_id and key are required")
 	}
@@ -52,6 +53,7 @@ func (r *Repository) UpsertGroupLocalization(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if strings.TrimSpace(key) == "" ||
 		strings.TrimSpace(locale) == "" || strings.TrimSpace(title) == "" {
 		return fmt.Errorf(
@@ -90,6 +92,7 @@ func (r *Repository) UpsertSequence(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if strings.TrimSpace(key) == "" {
 		return fmt.Errorf("tasks sequence workspace_id and key are required")
 	}
@@ -122,6 +125,7 @@ func (r *Repository) GetGroup(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return Group{}, err
 	}
+
 	row, err := r.q.AdminGetGroup(
 		ctx,
 		tasksqlc.AdminGetGroupParams{WorkspaceID: workspaceID, Key: key},
@@ -129,6 +133,7 @@ func (r *Repository) GetGroup(
 	if err != nil {
 		return Group{}, err
 	}
+
 	return mapGroup(row), nil
 }
 
@@ -139,14 +144,17 @@ func (r *Repository) ListGroups(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return nil, err
 	}
+
 	rows, err := r.q.AdminListGroups(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]Group, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, mapGroup(row))
 	}
+
 	return result, nil
 }
 
@@ -155,11 +163,13 @@ func (r *Repository) DeleteGroup(
 	workspaceID, key string,
 ) (int64, error) {
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(tx *Repository) error {
 			var err error
+
 			rows, err = tx.q.AdminSoftDeleteGroup(
 				ctx,
 				tasksqlc.AdminSoftDeleteGroupParams{
@@ -167,12 +177,15 @@ func (r *Repository) DeleteGroup(
 					Key:         key,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	return rows, r.invalidateTaskCache(ctx, workspaceID)
 }
 
@@ -183,6 +196,7 @@ func (r *Repository) GetSequence(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return Sequence{}, err
 	}
+
 	row, err := r.q.AdminGetSequence(
 		ctx,
 		tasksqlc.AdminGetSequenceParams{WorkspaceID: workspaceID, Key: key},
@@ -190,6 +204,7 @@ func (r *Repository) GetSequence(
 	if err != nil {
 		return Sequence{}, err
 	}
+
 	return mapGroup(tasksqlc.TaskGroup(row)), nil
 }
 
@@ -200,14 +215,17 @@ func (r *Repository) ListSequences(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return nil, err
 	}
+
 	rows, err := r.q.AdminListSequences(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]Sequence, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, mapGroup(tasksqlc.TaskGroup(row)))
 	}
+
 	return result, nil
 }
 
@@ -216,11 +234,13 @@ func (r *Repository) DeleteSequence(
 	workspaceID, key string,
 ) (int64, error) {
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(tx *Repository) error {
 			var err error
+
 			rows, err = tx.q.AdminSoftDeleteSequence(
 				ctx,
 				tasksqlc.AdminSoftDeleteSequenceParams{
@@ -228,12 +248,15 @@ func (r *Repository) DeleteSequence(
 					Key:         key,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	return rows, r.invalidateTaskCache(ctx, workspaceID)
 }
 
@@ -255,13 +278,16 @@ func (r *Repository) SaveTask(
 	if err := validateSaveTask(params); err != nil {
 		return 0, err
 	}
+
 	if params.ID == 0 {
 		var id int64
+
 		err := r.withWorkspaceMutation(
 			ctx,
 			params.WorkspaceID,
 			func(txRepo *Repository) error {
 				var err error
+
 				id, err = txRepo.q.AdminCreateTask(
 					ctx,
 					tasksqlc.AdminCreateTaskParams{
@@ -301,6 +327,7 @@ func (r *Repository) SaveTask(
 						EndAt: nullTime(params.EndAt),
 					},
 				)
+
 				return err
 			},
 		)
@@ -350,6 +377,7 @@ func (r *Repository) SaveTask(
 					ID:          int64(params.ID),
 				},
 			)
+
 			return err
 		},
 	)
@@ -368,16 +396,19 @@ func (r *Repository) DeleteTask(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return 0, err
 	}
+
 	if id == 0 || id > math.MaxInt64 {
 		return 0, fmt.Errorf("tasks delete task scope or id is invalid")
 	}
 
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminDeleteTask(
 				ctx,
 				tasksqlc.AdminDeleteTaskParams{
@@ -385,12 +416,14 @@ func (r *Repository) DeleteTask(
 					ID:          int64(id),
 				},
 			)
+
 			return err
 		},
 	)
 	if err != nil {
 		return 0, err
 	}
+
 	if rows > 0 {
 		return rows, r.invalidateTaskCache(ctx, workspaceID)
 	}
@@ -406,11 +439,13 @@ func (r *Repository) GetTask(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return Task{}, err
 	}
+
 	if id == 0 || id > math.MaxInt64 {
 		return Task{}, fmt.Errorf("tasks get task scope or id is invalid")
 	}
 
 	key := adminGetTaskCacheKey(workspaceID, id)
+
 	out, err := repositoryQuery[Task](ctx, r, sqlwrap.Params{
 		Key:               key,
 		CacheL1Delay:      r.cacheL1Delay,
@@ -424,11 +459,13 @@ func (r *Repository) GetTask(
 		if err != nil {
 			return Task{}, err
 		}
+
 		return mapTask(row), nil
 	})
 	if err != nil {
 		return Task{}, err
 	}
+
 	return out, nil
 }
 
@@ -442,7 +479,9 @@ func (r *Repository) ListTasks(
 	}
 
 	limit, offset = normalizePage(limit, offset)
+
 	key := adminListTasksCacheKey(workspaceID, groupKey, limit, offset)
+
 	out, err := repositoryQuery[[]Task](ctx, r, sqlwrap.Params{
 		Key:               key,
 		CacheL1Delay:      r.cacheL1Delay,
@@ -450,6 +489,7 @@ func (r *Repository) ListTasks(
 		CacheVersionScope: taskCatalogCacheScope(workspaceID),
 	}, func(ctx context.Context) ([]Task, error) {
 		var result []Task
+
 		if groupKey != "" {
 			rows, err := r.q.AdminListTasksByGroup(
 				ctx,
@@ -463,27 +503,33 @@ func (r *Repository) ListTasks(
 			if err != nil {
 				return nil, err
 			}
+
 			result = make([]Task, 0, len(rows))
 			for _, row := range rows {
-				result = append(result, mapTask(tasksqlc.TaskDefinition(row)))
+				result = append(result, mapTask(row))
 			}
+
 			return result, nil
 		}
+
 		rows, err := r.q.AdminListTasks(ctx, tasksqlc.AdminListTasksParams{
 			WorkspaceID: workspaceID, Limit: limit, Offset: offset,
 		})
 		if err != nil {
 			return nil, err
 		}
+
 		result = make([]Task, 0, len(rows))
 		for _, row := range rows {
-			result = append(result, mapTask(tasksqlc.TaskDefinition(row)))
+			result = append(result, mapTask(row))
 		}
+
 		return result, nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return out, nil
 }
 
@@ -496,6 +542,7 @@ func (r *Repository) UpsertTaskLocalization(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if taskID == 0 || taskID > math.MaxInt64 ||
 		strings.TrimSpace(locale) == "" || strings.TrimSpace(title) == "" {
 		return fmt.Errorf(
@@ -540,6 +587,7 @@ func (r *Repository) GetGroupLocalization(
 	if err != nil {
 		return Localization{}, err
 	}
+
 	return Localization{
 		Locale:      row.Locale,
 		Title:       row.Title,
@@ -561,6 +609,7 @@ func (r *Repository) ListGroupLocalizations(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]Localization, 0, len(rows))
 	for _, row := range rows {
 		result = append(
@@ -572,6 +621,7 @@ func (r *Repository) ListGroupLocalizations(
 			},
 		)
 	}
+
 	return result, nil
 }
 
@@ -580,11 +630,13 @@ func (r *Repository) DeleteGroupLocalization(
 	workspaceID, key, locale string,
 ) (int64, error) {
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(tx *Repository) error {
 			var err error
+
 			rows, err = tx.q.AdminDeleteGroupLocalization(
 				ctx,
 				tasksqlc.AdminDeleteGroupLocalizationParams{
@@ -593,12 +645,15 @@ func (r *Repository) DeleteGroupLocalization(
 					Locale:      locale,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	return rows, r.invalidateTaskCache(ctx, workspaceID)
 }
 
@@ -619,6 +674,7 @@ func (r *Repository) GetTaskLocalization(
 	if err != nil {
 		return Localization{}, err
 	}
+
 	return Localization{
 		Locale:      row.Locale,
 		Title:       row.Title,
@@ -641,6 +697,7 @@ func (r *Repository) ListTaskLocalizations(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]Localization, 0, len(rows))
 	for _, row := range rows {
 		result = append(
@@ -652,6 +709,7 @@ func (r *Repository) ListTaskLocalizations(
 			},
 		)
 	}
+
 	return result, nil
 }
 
@@ -662,11 +720,13 @@ func (r *Repository) DeleteTaskLocalization(
 	locale string,
 ) (int64, error) {
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(tx *Repository) error {
 			var err error
+
 			rows, err = tx.q.AdminDeleteTaskLocalization(
 				ctx,
 				tasksqlc.AdminDeleteTaskLocalizationParams{
@@ -675,12 +735,15 @@ func (r *Repository) DeleteTaskLocalization(
 					Locale:      locale,
 				},
 			)
+
 			return err
 		},
 	)
+
 	if err != nil || rows == 0 {
 		return rows, err
 	}
+
 	return rows, r.invalidateTaskCache(ctx, workspaceID)
 }
 
@@ -701,6 +764,7 @@ func (r *Repository) GetReward(
 	if err != nil {
 		return Reward{}, err
 	}
+
 	return mapTaskReward(row), nil
 }
 
@@ -719,10 +783,12 @@ func (r *Repository) ListRewards(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]Reward, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, mapTaskReward(row))
 	}
+
 	return result, nil
 }
 
@@ -742,6 +808,7 @@ func (r *Repository) GetComplexCondition(
 	if err != nil {
 		return ComplexCondition{}, err
 	}
+
 	return ComplexCondition{
 		WorkspaceID:     row.WorkspaceID,
 		ParentTaskID:    uint64(row.ParentTaskID),
@@ -771,9 +838,11 @@ func (r *Repository) UpsertReward(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if taskID == 0 || taskID > math.MaxInt64 {
 		return fmt.Errorf("tasks reward scope is invalid")
 	}
+
 	if err := validateRewardDefinition(ExportReward{
 		Key:      reward.Key,
 		Type:     reward.Type,
@@ -822,17 +891,20 @@ func (r *Repository) DeleteReward(
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return 0, err
 	}
+
 	if taskID == 0 || taskID > math.MaxInt64 ||
 		strings.TrimSpace(key) == "" {
 		return 0, fmt.Errorf("tasks delete reward scope is invalid")
 	}
 
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminDeleteReward(
 				ctx,
 				tasksqlc.AdminDeleteRewardParams{
@@ -841,12 +913,14 @@ func (r *Repository) DeleteReward(
 					RewardKey:   key,
 				},
 			)
+
 			return err
 		},
 	)
 	if err != nil {
 		return 0, err
 	}
+
 	if rows > 0 {
 		return rows, r.invalidateTaskCache(ctx, workspaceID)
 	}
@@ -881,6 +955,7 @@ func (r *Repository) UpsertComplexCondition(
 		if err != nil {
 			return err
 		}
+
 		if parent.DeletedAt.Valid || parent.TaskKind != TaskKindComplex {
 			return fmt.Errorf(
 				"tasks complex condition parent must be a complex task",
@@ -897,6 +972,7 @@ func (r *Repository) UpsertComplexCondition(
 		if err != nil {
 			return err
 		}
+
 		if condition.DeletedAt.Valid {
 			return fmt.Errorf("tasks complex condition task is deleted")
 		}
@@ -911,21 +987,26 @@ func (r *Repository) UpsertComplexCondition(
 
 		graph := make(map[uint64][]uint64)
 		candidateExists := false
+
 		for _, row := range rows {
 			parentID := uint64(row.ParentTaskID)
 			conditionID := uint64(row.ConditionTaskID)
+
 			graph[parentID] = append(graph[parentID], conditionID)
+
 			if parentID == params.ParentTaskID &&
 				conditionID == params.ConditionTaskID {
 				candidateExists = true
 			}
 		}
+
 		if !candidateExists {
 			graph[params.ParentTaskID] = append(
 				graph[params.ParentTaskID],
 				params.ConditionTaskID,
 			)
 		}
+
 		if hasDirectedCycle(graph) {
 			return fmt.Errorf("tasks complex condition creates a cycle")
 		}
@@ -965,11 +1046,13 @@ func (r *Repository) DeleteComplexCondition(
 	}
 
 	var rows int64
+
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
 		func(txRepo *Repository) error {
 			var err error
+
 			rows, err = txRepo.q.AdminDeleteComplexCondition(
 				ctx,
 				tasksqlc.AdminDeleteComplexConditionParams{
@@ -978,12 +1061,14 @@ func (r *Repository) DeleteComplexCondition(
 					ConditionTaskID: int64(conditionTaskID),
 				},
 			)
+
 			return err
 		},
 	)
 	if err != nil {
 		return 0, err
 	}
+
 	if rows > 0 {
 		return rows, r.invalidateTaskCache(ctx, workspaceID)
 	}
@@ -1009,6 +1094,7 @@ func (r *Repository) ListComplexConditions(
 	if err != nil {
 		return nil, err
 	}
+
 	out := make([]ComplexCondition, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, ComplexCondition{
@@ -1020,9 +1106,6 @@ func (r *Repository) ListComplexConditions(
 			IsRequired:      row.IsRequired,
 		})
 	}
-	return out, nil
-}
 
-func sqlNullString(value string) sql.NullString {
-	return sql.NullString{String: value, Valid: value != ""}
+	return out, nil
 }

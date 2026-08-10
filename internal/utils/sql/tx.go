@@ -17,9 +17,11 @@ func WithTx[Q any](
 	if db == nil {
 		return ErrNilDB
 	}
+
 	if newQueries == nil {
 		return fmt.Errorf("sqlcwrap: newQueries is nil")
 	}
+
 	if clb == nil {
 		return fmt.Errorf("sqlcwrap: callback is nil")
 	}
@@ -34,8 +36,10 @@ func WithTx[Q any](
 	defer func() {
 		if p := recover(); p != nil {
 			_ = tx.Rollback()
+
 			panic(p)
 		}
+
 		if txErr != nil {
 			_ = tx.Rollback()
 		}
@@ -61,9 +65,11 @@ func (c *Client) InTx(
 	if c == nil {
 		return ErrNilDB
 	}
+
 	if c.db == nil {
 		return ErrNilDB
 	}
+
 	if clb == nil {
 		return fmt.Errorf("sqlcwrap: callback is nil")
 	}
@@ -77,11 +83,14 @@ func (c *Client) InTx(
 	}
 
 	var txErr error
+
 	defer func() {
 		if p := recover(); p != nil {
 			_ = tx.Rollback()
+
 			panic(p)
 		}
+
 		if txErr != nil {
 			_ = tx.Rollback()
 		}

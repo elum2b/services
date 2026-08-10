@@ -16,6 +16,7 @@ var itemKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,127}$`)
 func (a *Admin) CreateItem(ctx context.Context, params SaveItemParams) error {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	params.Key = normalizeKey(params.Key)
 	if err := validateItem(
 		params.WorkspaceID,
@@ -25,6 +26,7 @@ func (a *Admin) CreateItem(ctx context.Context, params SaveItemParams) error {
 	); err != nil {
 		return err
 	}
+
 	return a.repository.CreateItem(mergedCtx, repository.SaveItemParams(params))
 }
 
@@ -34,16 +36,20 @@ func (a *Admin) UpdateItem(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	params.Key = normalizeKey(params.Key)
 	if err := services.ValidateWorkspaceID(params.WorkspaceID); err != nil {
 		return 0, err
 	}
+
 	if !itemKeyPattern.MatchString(params.Key) {
 		return 0, ErrItemScopeInvalid
 	}
+
 	if len(params.Payload) == 0 || !json.Valid(params.Payload) {
 		return 0, ErrItemPayloadInvalid
 	}
+
 	return a.repository.UpdateItem(mergedCtx, repository.SaveItemParams{
 		WorkspaceID: params.WorkspaceID, Key: params.Key,
 		Payload: params.Payload, IsActive: params.IsActive,
@@ -56,9 +62,11 @@ func (a *Admin) DangerousChangeType(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if params.Confirmation != DangerousTypeConfirmation {
 		return 0, ErrTypeChangeNotConfirmed
 	}
+
 	params.Key = normalizeKey(params.Key)
 	if err := validateIdentity(
 		params.WorkspaceID,
@@ -67,9 +75,11 @@ func (a *Admin) DangerousChangeType(
 	); err != nil {
 		return 0, err
 	}
+
 	if !validType(params.NewType) {
 		return 0, ErrItemTypeInvalid
 	}
+
 	return a.repository.DangerousChangeType(
 		mergedCtx,
 		repository.DangerousChangeTypeParams{
@@ -85,6 +95,7 @@ func (a *Admin) GetItem(
 ) (ItemModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	item, err := a.repository.AdminGetItem(
 		mergedCtx,
 		workspaceID,
@@ -93,6 +104,7 @@ func (a *Admin) GetItem(
 	if err != nil {
 		return ItemModel{}, err
 	}
+
 	return mapItem(item), nil
 }
 
@@ -102,10 +114,13 @@ func (a *Admin) ListItems(
 ) ([]ItemModel, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	if params.Type != "" && !validType(params.Type) {
 		return nil, ErrItemTypeFilterInvalid
 	}
+
 	limit, offset := normalizePage(params.Page)
+
 	items, err := a.repository.AdminListItems(
 		mergedCtx,
 		repository.ListItemsParams{
@@ -116,10 +131,12 @@ func (a *Admin) ListItems(
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]ItemModel, 0, len(items))
 	for _, item := range items {
 		result = append(result, mapItem(item))
 	}
+
 	return result, nil
 }
 
@@ -129,6 +146,7 @@ func (a *Admin) SoftDeleteItem(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.SoftDeleteItem(
 		mergedCtx,
 		workspaceID,
@@ -143,6 +161,7 @@ func (a *Admin) RestoreItem(
 ) (int64, error) {
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
+
 	return a.repository.RestoreItem(
 		mergedCtx,
 		workspaceID,
@@ -158,9 +177,11 @@ func validateItem(
 	if err := validateIdentity(workspaceID, key, itemType); err != nil {
 		return err
 	}
+
 	if len(payload) == 0 || !json.Valid(payload) {
 		return ErrItemPayloadInvalid
 	}
+
 	return nil
 }
 
@@ -168,12 +189,15 @@ func validateIdentity(workspaceID, key, itemType string) error {
 	if err := services.ValidateWorkspaceID(workspaceID); err != nil {
 		return err
 	}
+
 	if !itemKeyPattern.MatchString(key) {
 		return ErrItemScopeInvalid
 	}
+
 	if !validType(itemType) {
 		return ErrItemTypeInvalid
 	}
+
 	return nil
 }
 
@@ -206,5 +230,6 @@ func mapItem(item repository.Item) ItemModel {
 			UpdatedAt:   localization.UpdatedAt,
 		})
 	}
+
 	return result
 }

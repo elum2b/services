@@ -16,7 +16,9 @@ func (a *VKMA) GetItemForWorkspace(
 ) (*ItemResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.getProduct(ctx, workspaceID, params)
 }
 
@@ -27,7 +29,9 @@ func (a *VKMA) GetSubscriptionForWorkspace(
 ) (*ItemResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	return a.getProduct(ctx, workspaceID, params)
 }
 
@@ -38,7 +42,9 @@ func (a *VKMA) getProduct(
 ) (*ItemResponse, error) {
 	mergedCtx, paymentRequestCancel := a.withContext(ctx)
 	defer paymentRequestCancel()
+
 	ctx = mergedCtx
+
 	product, err := a.repository.GetProduct(ctx, repository.ProductGetParams{
 		WorkspaceID:    workspaceID,
 		AppID:          int64(params.AppID),
