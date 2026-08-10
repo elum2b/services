@@ -1,6 +1,7 @@
 -- name: CreateEvent :one
 INSERT INTO clb_event (
     workspace_id,
+    routing_key,
     source_service,
     event_type,
     event_key,
@@ -9,7 +10,7 @@ INSERT INTO clb_event (
     payload_content_type,
     next_attempt_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (idempotency_key) DO UPDATE SET
     idempotency_key = EXCLUDED.idempotency_key
 RETURNING id;
@@ -18,6 +19,7 @@ RETURNING id;
 SELECT
     id,
     workspace_id,
+    routing_key,
     source_service,
     event_type,
     event_key,
@@ -44,6 +46,7 @@ LIMIT 1;
 SELECT
     id,
     workspace_id,
+    routing_key,
     source_service,
     event_type,
     event_key,
@@ -121,6 +124,7 @@ WHERE id = $3
 SELECT
     id,
     workspace_id,
+    routing_key,
     source_service,
     event_type,
     event_key,

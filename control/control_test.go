@@ -456,6 +456,225 @@ func TestApplicationAuthenticationRejectsExpiredAndInvalidConfiguration(
 	}
 }
 
+func TestApplicationDeliveryIsIsolatedValidatedCachedAndAudited(t *testing.T) {
+	service := newControlTestService(t)
+	ctx := context.Background()
+	owner := initializeControl(t, service, "owner")
+	first := createWorkspace(t, service, owner.Account.ID, "first-delivery")
+
+	limitRequest, err := service.Admin.RequestWorkspaceLimit(
+		ctx,
+		owner.Account.ID,
+		2,
+		"delivery isolation test",
+	)
+	if err != nil {
+		t.Fatalf("request workspace limit: %v", err)
+	}
+
+	if _, err := service.Admin.ResolveLimitRequest(
+		ctx,
+		admin.ResolveLimitRequestParams{
+			ActorID:       owner.Account.ID,
+			RequestID:     limitRequest.ID,
+			Approved:      true,
+			ApprovedLimit: 2,
+		},
+	); err != nil {
+		t.Fatalf("approve workspace limit: %v", err)
+	}
+
+	second := createWorkspace(t, service, owner.Account.ID, "second-delivery")
+
+	const (
+		appID      = int64(3001)
+		platformID = int64(2)
+	)
+
+	for _, workspaceID := range []string{first.ID, second.ID} {
+		if _, err := service.Admin.UpsertApplicationPlatform(
+			ctx,
+			admin.UpsertApplicationPlatformParams{
+				ActorID:              owner.Account.ID,
+				WorkspaceID:          workspaceID,
+				AppID:                appID,
+				PlatformID:           platformID,
+				Provider:             admin.ApplicationProviderTMA,
+				Secret:               "application-secret",
+				MaxAuthenticationAge: time.Hour,
+				IsEnabled:            true,
+			},
+		); err != nil {
+			t.Fatalf("upsert application platform %q: %v", workspaceID, err)
+		}
+	}
+
+	firstSecret := strings.Repeat("a", 32)
+	secondSecret := strings.Repeat("b", 256)
+
+	for _, value := range []struct {
+		workspaceID string
+		url         string
+		secret      string
+	}{
+		{first.ID, "https://first.example/callback", firstSecret},
+		{second.ID, "https://second.example/callback", secondSecret},
+	} {
+		if _, err := service.Admin.UpsertApplicationDelivery(
+			ctx,
+			admin.UpsertApplicationDeliveryParams{
+				ActorID:     owner.Account.ID,
+				WorkspaceID: value.workspaceID,
+				AppID:       appID,
+				PlatformID:  platformID,
+				URL:         value.url,
+				Secret:      value.secret,
+				IsEnabled:   true,
+			},
+		); err != nil {
+			t.Fatalf("upsert delivery %q: %v", value.workspaceID, err)
+		}
+	}
+
+	firstEndpoint, err := service.Internal.GetApplicationDeliveryEndpoint(
+		ctx,
+		internalapi.ApplicationDeliveryRequest{
+			WorkspaceID: first.ID,
+			AppID:       appID,
+			PlatformID:  platformID,
+		},
+	)
+	if err != nil || firstEndpoint.Secret != firstSecret ||
+		firstEndpoint.URL != "https://first.example/callback" ||
+		!firstEndpoint.IsEnabled {
+		t.Fatalf("first endpoint = %#v, error = %v", firstEndpoint, err)
+	}
+
+	secondEndpoint, err := service.Internal.GetApplicationDeliveryEndpoint(
+		ctx,
+		internalapi.ApplicationDeliveryRequest{
+			WorkspaceID: second.ID,
+			AppID:       appID,
+			PlatformID:  platformID,
+		},
+	)
+	if err != nil || secondEndpoint.Secret != secondSecret ||
+		secondEndpoint.URL != "https://second.example/callback" {
+		t.Fatalf("second endpoint = %#v, error = %v", secondEndpoint, err)
+	}
+
+	rotatedSecret := strings.Repeat("c", 32)
+	if _, err := service.Admin.UpsertApplicationDelivery(
+		ctx,
+		admin.UpsertApplicationDeliveryParams{
+			ActorID:     owner.Account.ID,
+			WorkspaceID: first.ID,
+			AppID:       appID,
+			PlatformID:  platformID,
+			URL:         "https://first.example/callback-v2",
+			Secret:      rotatedSecret,
+			IsEnabled:   true,
+		},
+	); err != nil {
+		t.Fatalf("rotate delivery endpoint: %v", err)
+	}
+
+	rotatedEndpoint, err := service.Internal.GetApplicationDeliveryEndpoint(
+		ctx,
+		internalapi.ApplicationDeliveryRequest{
+			WorkspaceID: first.ID,
+			AppID:       appID,
+			PlatformID:  platformID,
+		},
+	)
+	if err != nil || rotatedEndpoint.Secret != rotatedSecret ||
+		rotatedEndpoint.URL != "https://first.example/callback-v2" {
+		t.Fatalf("rotated endpoint = %#v, error = %v", rotatedEndpoint, err)
+	}
+
+	items, err := service.Admin.ListApplicationDeliveries(
+		ctx,
+		admin.ListApplicationDeliveriesParams{
+			ActorID:     owner.Account.ID,
+			WorkspaceID: first.ID,
+		},
+	)
+	if err != nil || len(items) != 1 || items[0].AppID != appID {
+		t.Fatalf("delivery list = %#v, error = %v", items, err)
+	}
+
+	for _, invalid := range []admin.UpsertApplicationDeliveryParams{
+		{
+			ActorID: owner.Account.ID, WorkspaceID: first.ID,
+			AppID: appID, PlatformID: platformID,
+			URL: "https://first.example/callback", Secret: strings.Repeat("x", 31),
+		},
+		{
+			ActorID: owner.Account.ID, WorkspaceID: first.ID,
+			AppID: appID, PlatformID: platformID,
+			URL: "https://first.example/callback", Secret: strings.Repeat("x", 257),
+		},
+		{
+			ActorID: owner.Account.ID, WorkspaceID: first.ID,
+			AppID: appID, PlatformID: platformID,
+			URL: "http://127.0.0.1/callback", Secret: firstSecret,
+		},
+		{
+			ActorID: owner.Account.ID, WorkspaceID: " " + first.ID,
+			AppID: appID, PlatformID: platformID,
+			URL: "https://first.example/callback", Secret: firstSecret,
+		},
+	} {
+		if _, err := service.Admin.UpsertApplicationDelivery(
+			ctx,
+			invalid,
+		); !errors.Is(err, repository.ErrInvalidArgument) {
+			t.Fatalf("invalid delivery error = %v", err)
+		}
+	}
+
+	affected, err := service.Admin.DeleteApplicationDelivery(
+		ctx,
+		admin.DeleteApplicationDeliveryParams{
+			ActorID:     owner.Account.ID,
+			WorkspaceID: first.ID,
+			AppID:       appID,
+			PlatformID:  platformID,
+		},
+	)
+	if err != nil || affected != 1 {
+		t.Fatalf("delete delivery affected = %d, error = %v", affected, err)
+	}
+
+	if _, err := service.Internal.GetApplicationDeliveryEndpoint(
+		ctx,
+		internalapi.ApplicationDeliveryRequest{
+			WorkspaceID: first.ID,
+			AppID:       appID,
+			PlatformID:  platformID,
+		},
+	); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("deleted cached endpoint error = %v", err)
+	}
+
+	audit, err := service.Admin.ListWorkspaceAudit(
+		ctx,
+		first.ID,
+		admin.Page{Limit: 100},
+	)
+	if err != nil {
+		t.Fatalf("list delivery audit: %v", err)
+	}
+
+	if !auditContainsTarget(
+		audit,
+		"control.workspace.update",
+		"3001:2",
+	) {
+		t.Fatal("application delivery mutation audit is missing")
+	}
+}
+
 func TestControlWorkspaceLimitCountsOwnershipOnly(t *testing.T) {
 	service := newControlTestService(t)
 	ctx := context.Background()

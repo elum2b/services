@@ -1,10 +1,6 @@
 package internalapi
 
-import (
-	"context"
-
-	"github.com/elum2b/services/control/repository"
-)
+import "context"
 
 type ApplicationDeliveryRequest struct {
 	WorkspaceID string
@@ -40,5 +36,3 @@ func (i *Internal) GetApplicationDeliveryEndpoint(
 		IsEnabled: value.IsEnabled,
 	}, nil
 }
-
-var _ = repository.ApplicationDeliveryEndpoint{}

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	json "github.com/goccy/go-json"
+
 	services "github.com/elum2b/services"
 	callbacksqlc "github.com/elum2b/services/internal/utils/callback/sqlc"
 )
@@ -56,10 +58,11 @@ type CreateParams struct {
 }
 
 type LeaseParams struct {
-	SourceService string
-	WorkerID      string
-	Limit         int32
-	LeaseTimeout  time.Duration
+	SourceService       string
+	WorkerID            string
+	Limit               int32
+	LeaseTimeout        time.Duration
+	ExcludedRoutingKeys []string
 }
 
 type FailParams struct {
@@ -183,6 +186,8 @@ func (s *Store) CreateEvent(
 		idempotencyKey = params.EventKey
 	}
 
+	routingKey := callbackRoutingKey(workspaceID, params.Payload)
+
 	if idempotencyKey == "" {
 		return 0, errors.New("callback: idempotency key is required")
 	}
@@ -192,11 +197,12 @@ func (s *Store) CreateEvent(
 			ctx,
 			fmt.Sprintf(`
 INSERT INTO %s (
-    workspace_id, source_service, event_type, event_key, idempotency_key,
+    workspace_id, routing_key, source_service, event_type, event_key, idempotency_key,
     payload, payload_content_type, next_attempt_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`, s.table()),
 			workspaceID,
+			routingKey,
 			sourceService,
 			params.EventType,
 			params.EventKey,
@@ -220,13 +226,14 @@ ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`, s.table()),
 		ctx,
 		fmt.Sprintf(`
 INSERT INTO %s (
-    workspace_id, source_service, event_type, event_key, idempotency_key,
+    workspace_id, routing_key, source_service, event_type, event_key, idempotency_key,
     payload, payload_content_type, next_attempt_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (idempotency_key) DO UPDATE SET
     idempotency_key = EXCLUDED.idempotency_key
 RETURNING id`, s.table()),
 		workspaceID,
+		routingKey,
 		sourceService,
 		params.EventType,
 		params.EventKey,
@@ -237,6 +244,25 @@ RETURNING id`, s.table()),
 	).Scan(&id)
 
 	return uint64(id), err
+}
+
+func callbackRoutingKey(workspaceID string, payload []byte) string {
+	var identity struct {
+		AppID      int64 `json:"app_id"`
+		PlatformID int64 `json:"platform_id"`
+	}
+
+	if err := json.Unmarshal(payload, &identity); err != nil ||
+		identity.AppID <= 0 || identity.PlatformID <= 0 {
+		return workspaceID
+	}
+
+	return fmt.Sprintf(
+		"%s:%d:%d",
+		workspaceID,
+		identity.AppID,
+		identity.PlatformID,
+	)
 }
 
 func (s *Store) GetEvent(
@@ -414,17 +440,36 @@ SELECT %s FROM %s
 WHERE (? = '' OR source_service = ?)
   AND status IN ('pending', 'processing')
   AND next_attempt_at <= NOW()
-  AND (locked_until IS NULL OR locked_until <= NOW())
+  AND (locked_until IS NULL OR locked_until <= NOW())`,
+			eventColumns,
+			txStore.table(),
+		)
+		arguments := []any{params.SourceService, params.SourceService}
+
+		if len(params.ExcludedRoutingKeys) > 0 {
+			placeholders := make([]string, len(params.ExcludedRoutingKeys))
+			for index, routingKey := range params.ExcludedRoutingKeys {
+				placeholders[index] = "?"
+
+				arguments = append(arguments, routingKey)
+			}
+
+			query += "\n  AND routing_key NOT IN (" +
+				strings.Join(placeholders, ", ") + ")"
+		}
+
+		query += `
 ORDER BY next_attempt_at, id
 LIMIT ?
-FOR UPDATE SKIP LOCKED`, eventColumns, txStore.table())
+FOR UPDATE SKIP LOCKED`
+
+		arguments = append(arguments, limit)
+
 		if txStore.postgres {
 			query = rewriteQuestionPlaceholders(query)
 		}
 
-		rows, err := txStore.executor.QueryContext(ctx, query,
-			params.SourceService, params.SourceService, limit,
-		)
+		rows, err := txStore.executor.QueryContext(ctx, query, arguments...)
 		if err != nil {
 			return err
 		}
@@ -591,14 +636,23 @@ func (s *Store) withTx(ctx context.Context, fn func(*Store) error) error {
 
 	txStore := s.WithTx(tx)
 	if err := fn(txStore); err != nil {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil &&
+			!errors.Is(rollbackErr, sql.ErrTxDone) {
 			return fmt.Errorf("%w: rollback: %w", err, rollbackErr)
 		}
 
 		return err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		if ctx.Err() != nil && errors.Is(err, sql.ErrTxDone) {
+			return ctx.Err()
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func (s *Store) execRows(
@@ -705,6 +759,7 @@ func bootstrapMySQLTable(
 CREATE TABLE IF NOT EXISTS %s (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     workspace_id VARCHAR(36) NOT NULL,
+    routing_key VARCHAR(96) NOT NULL,
     source_service VARCHAR(64) NOT NULL,
     event_type VARCHAR(128) NOT NULL,
     event_key VARCHAR(128) NOT NULL,
@@ -749,6 +804,7 @@ func bootstrapPostgresTable(
 CREATE TABLE IF NOT EXISTS %s (
     id BIGSERIAL PRIMARY KEY,
     workspace_id VARCHAR(36) NOT NULL,
+    routing_key VARCHAR(96) NOT NULL,
     source_service VARCHAR(64) NOT NULL,
     event_type VARCHAR(128) NOT NULL,
     event_key VARCHAR(128) NOT NULL,
@@ -779,18 +835,24 @@ CREATE TABLE IF NOT EXISTS %s (
 		)
 	}
 
-	if _, err := db.ExecContext(
-		ctx,
-		fmt.Sprintf(
-			`ALTER TABLE %s ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(36) NOT NULL DEFAULT ''`,
-			table,
-		),
-	); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(
+		`ALTER TABLE %s ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(36) NOT NULL DEFAULT ''`,
+		table,
+	)); err != nil {
 		return fmt.Errorf(
 			"callback workspace migration failed for %s: %w",
 			tableName,
 			err,
 		)
+	}
+
+	if err := migratePostgresRoutingKeys(
+		ctx,
+		db,
+		table,
+		tableName,
+	); err != nil {
+		return err
 	}
 
 	indexes := []string{
@@ -801,6 +863,11 @@ CREATE TABLE IF NOT EXISTS %s (
 		),
 		fmt.Sprintf(
 			`CREATE INDEX IF NOT EXISTS %s_workspace_type_idx ON %s (workspace_id, event_type, status, created_at)`,
+			tableName,
+			table,
+		),
+		fmt.Sprintf(
+			`CREATE INDEX IF NOT EXISTS %s_route_due_idx ON %s (routing_key, status, next_attempt_at, locked_until, id)`,
 			tableName,
 			table,
 		),
@@ -816,6 +883,101 @@ CREATE TABLE IF NOT EXISTS %s (
 	}
 
 	return nil
+}
+
+func migratePostgresRoutingKeys(
+	ctx context.Context,
+	db *sql.DB,
+	table string,
+	tableName string,
+) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return callbackRoutingMigrationError(tableName, err)
+	}
+
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf(
+		`ALTER TABLE %s ADD COLUMN IF NOT EXISTS routing_key VARCHAR(96)`,
+		table,
+	)); err != nil {
+		return callbackRoutingMigrationError(tableName, err)
+	}
+
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(
+		`SELECT id, workspace_id, payload FROM %s WHERE routing_key IS NULL OR routing_key = ''`,
+		table,
+	))
+	if err != nil {
+		return callbackRoutingMigrationError(tableName, err)
+	}
+
+	type routeBackfill struct {
+		id          int64
+		workspaceID string
+		payload     []byte
+	}
+
+	backfills := make([]routeBackfill, 0)
+
+	for rows.Next() {
+		var backfill routeBackfill
+
+		if err := rows.Scan(
+			&backfill.id,
+			&backfill.workspaceID,
+			&backfill.payload,
+		); err != nil {
+			_ = rows.Close()
+
+			return callbackRoutingMigrationError(tableName, err)
+		}
+
+		backfills = append(backfills, backfill)
+	}
+
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+
+		return callbackRoutingMigrationError(tableName, err)
+	}
+
+	if err := rows.Close(); err != nil {
+		return callbackRoutingMigrationError(tableName, err)
+	}
+
+	for _, backfill := range backfills {
+		if _, err := tx.ExecContext(
+			ctx,
+			fmt.Sprintf(`UPDATE %s SET routing_key = $1 WHERE id = $2`, table),
+			callbackRoutingKey(backfill.workspaceID, backfill.payload),
+			backfill.id,
+		); err != nil {
+			return callbackRoutingMigrationError(tableName, err)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf(
+		`ALTER TABLE %s ALTER COLUMN routing_key SET NOT NULL`,
+		table,
+	)); err != nil {
+		return callbackRoutingMigrationError(tableName, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return callbackRoutingMigrationError(tableName, err)
+	}
+
+	return nil
+}
+
+func callbackRoutingMigrationError(tableName string, err error) error {
+	return fmt.Errorf(
+		"callback routing migration failed for %s: %w",
+		tableName,
+		err,
+	)
 }
 
 func nullableString(value string) sql.NullString {
@@ -835,7 +997,7 @@ func leasedResult(rows int64, err error) error {
 }
 
 const eventColumns = `
-id, workspace_id, source_service, event_type, event_key, idempotency_key,
+id, workspace_id, routing_key, source_service, event_type, event_key, idempotency_key,
 payload, payload_content_type, status, attempt_count, next_attempt_at,
 locked_by, locked_until, delivered_at, rejected_at, last_error,
 reject_reason, created_at, updated_at`
@@ -852,6 +1014,7 @@ func scanEvent(scan scanFunc) (storedEvent, error) {
 	err := scan(
 		&value.ID,
 		&value.WorkspaceID,
+		&value.RoutingKey,
 		&value.SourceService,
 		&value.EventType,
 		&value.EventKey,

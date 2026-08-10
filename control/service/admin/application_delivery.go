@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"strings"
 
 	"github.com/elum2b/services/control/repository"
 )
@@ -10,7 +11,14 @@ func (a *Admin) UpsertApplicationDelivery(
 	ctx context.Context,
 	params UpsertApplicationDeliveryParams,
 ) (ApplicationDeliveryModel, error) {
-	mergedCtx, cancel := a.withContext(ctx)
+	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
+		Scope:       repository.ScopeWorkspace,
+		WorkspaceID: params.WorkspaceID,
+		ActorID:     strings.TrimSpace(params.ActorID),
+		MethodKey:   "control.workspace.update",
+		TargetType:  "application_delivery",
+		TargetID:    applicationTargetID(params.AppID, params.PlatformID),
+	})
 	defer cancel()
 
 	value, err := a.repository.UpsertApplicationDelivery(
@@ -57,7 +65,14 @@ func (a *Admin) DeleteApplicationDelivery(
 	ctx context.Context,
 	params DeleteApplicationDeliveryParams,
 ) (int64, error) {
-	mergedCtx, cancel := a.withContext(ctx)
+	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
+		Scope:       repository.ScopeWorkspace,
+		WorkspaceID: params.WorkspaceID,
+		ActorID:     strings.TrimSpace(params.ActorID),
+		MethodKey:   "control.workspace.update",
+		TargetType:  "application_delivery",
+		TargetID:    applicationTargetID(params.AppID, params.PlatformID),
+	})
 	defer cancel()
 
 	return a.repository.DeleteApplicationDelivery(

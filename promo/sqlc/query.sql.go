@@ -580,6 +580,7 @@ created_event AS (
 created_callback AS (
     INSERT INTO promo_clb_event (
         workspace_id,
+        routing_key,
         source_service,
         event_type,
         event_key,
@@ -590,6 +591,7 @@ created_callback AS (
     )
     SELECT
         i.workspace_id,
+        i.workspace_id || ':' || i.app_id::text || ':' || i.platform_id::text,
         'promo',
         'promo.applied',
         'promo.applied:' || i.id::text,

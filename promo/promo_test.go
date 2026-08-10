@@ -13,6 +13,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/elum2b/services/internal/testsupport"
+	callbackutil "github.com/elum2b/services/internal/utils/callback"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/promo/repository"
 	"github.com/elum2b/services/promo/service/admin"
@@ -54,6 +55,239 @@ func TestIsReady(t *testing.T) {
 
 	if service.IsReady() {
 		t.Fatal("closed promo must not be ready")
+	}
+}
+
+func TestCallbackWorkerDoesNotLeaseFifthRouteEvent(t *testing.T) {
+	_ = newPromoTestService(t)
+
+	db, err := openPromoPostgres(promoTestDB)
+	if err != nil {
+		t.Fatalf("open callback test database: %v", err)
+	}
+
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	store := callbackutil.NewWithTable(db, callbackutil.PromoTable)
+	workspaceID := testsupport.WorkspaceID("callback-route-capacity")
+	payload := []byte(`{"app_id":77,"platform_id":88}`)
+	releaseByID := make(map[uint64]chan struct{}, 6)
+	firstRouteIDs := make([]uint64, 0, 5)
+
+	for index := range 5 {
+		eventKey := fmt.Sprintf("callback.capacity:%d", index)
+
+		id, err := store.CreateEvent(ctx, callbackutil.CreateParams{
+			WorkspaceID:    workspaceID,
+			SourceService:  "promo",
+			EventType:      "promo.capacity_test",
+			EventKey:       eventKey,
+			IdempotencyKey: eventKey,
+			Payload:        payload,
+		})
+		if err != nil {
+			t.Fatalf("create callback event %d: %v", index, err)
+		}
+
+		firstRouteIDs = append(firstRouteIDs, id)
+		releaseByID[id] = make(chan struct{}, 1)
+	}
+
+	otherEventKey := "callback.capacity:other-route"
+
+	otherRouteID, err := store.CreateEvent(ctx, callbackutil.CreateParams{
+		WorkspaceID:    workspaceID,
+		SourceService:  "promo",
+		EventType:      "promo.capacity_test",
+		EventKey:       otherEventKey,
+		IdempotencyKey: otherEventKey,
+		Payload:        []byte(`{"app_id":99,"platform_id":88}`),
+	})
+	if err != nil {
+		t.Fatalf("create other-route callback event: %v", err)
+	}
+
+	releaseByID[otherRouteID] = make(chan struct{}, 1)
+
+	fifthRouteID := firstRouteIDs[4]
+
+	workerCtx, cancel := context.WithCancel(ctx)
+	started := make(chan uint64, 6)
+	workerDone := make(chan error, 1)
+
+	go func() {
+		workerDone <- store.On(
+			workerCtx,
+			func(callbackCtx callbackutil.Context) error {
+				started <- callbackCtx.EventID
+
+				select {
+				case <-releaseByID[callbackCtx.EventID]:
+					return callbackCtx.Successful()
+				case <-callbackCtx.Done():
+					return callbackCtx.Err()
+				}
+			},
+			callbackutil.WithSourceService("promo"),
+			callbackutil.WithIdleDelay(10*time.Millisecond),
+		)
+	}()
+
+	t.Cleanup(func() {
+		for _, release := range releaseByID {
+			select {
+			case release <- struct{}{}:
+			default:
+			}
+		}
+
+		cancel()
+		<-workerDone
+	})
+
+	startedIDs := make(map[uint64]struct{}, 5)
+
+	for index := range 5 {
+		select {
+		case id := <-started:
+			startedIDs[id] = struct{}{}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("callback %d did not start", index+1)
+		}
+	}
+
+	if _, ok := startedIDs[otherRouteID]; !ok {
+		t.Fatal("other route was blocked by the saturated route")
+	}
+
+	if _, ok := startedIDs[fifthRouteID]; ok {
+		t.Fatal("fifth callback started before a route slot was released")
+	}
+
+	select {
+	case id := <-started:
+		t.Fatalf(
+			"fifth callback %d started before a route slot was released",
+			id,
+		)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	var pendingCount, processingCount, pendingAttempts, pendingLocks int
+
+	if err := db.QueryRowContext(ctx, `
+SELECT
+    COUNT(*) FILTER (WHERE status = 'pending'),
+    COUNT(*) FILTER (WHERE status = 'processing'),
+    COALESCE(SUM(attempt_count) FILTER (WHERE status = 'pending'), 0),
+    COUNT(locked_until) FILTER (WHERE status = 'pending')
+FROM promo_clb_event
+WHERE workspace_id = $1 AND event_type = 'promo.capacity_test'`,
+		workspaceID,
+	).Scan(
+		&pendingCount,
+		&processingCount,
+		&pendingAttempts,
+		&pendingLocks,
+	); err != nil {
+		t.Fatalf("read callback lease state: %v", err)
+	}
+
+	if pendingCount != 1 || processingCount != 5 ||
+		pendingAttempts != 0 || pendingLocks != 0 {
+		t.Fatalf(
+			"callback state pending=%d processing=%d attempts=%d locks=%d",
+			pendingCount,
+			processingCount,
+			pendingAttempts,
+			pendingLocks,
+		)
+	}
+
+	releaseByID[firstRouteIDs[0]] <- struct{}{}
+
+	select {
+	case id := <-started:
+		if id != fifthRouteID {
+			t.Fatalf("callback %d started instead of fifth route event", id)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("fifth callback did not start after a route slot was released")
+	}
+}
+
+func TestCallbackBootstrapBackfillsRoutingKey(t *testing.T) {
+	_ = newPromoTestService(t)
+
+	db, err := openPromoPostgres(promoTestDB)
+	if err != nil {
+		t.Fatalf("open callback migration database: %v", err)
+	}
+
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	if _, err := db.ExecContext(
+		ctx,
+		"DROP INDEX IF EXISTS promo_clb_event_route_due_idx",
+	); err != nil {
+		t.Fatalf("drop routing index: %v", err)
+	}
+
+	if _, err := db.ExecContext(
+		ctx,
+		"ALTER TABLE promo_clb_event DROP COLUMN routing_key",
+	); err != nil {
+		t.Fatalf("drop routing key: %v", err)
+	}
+
+	workspaceID := testsupport.WorkspaceID("callback-routing-migration")
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO promo_clb_event (
+    workspace_id,
+    source_service,
+    event_type,
+    event_key,
+    idempotency_key,
+    payload
+) VALUES ($1, 'promo', 'promo.migration_test', $2, $2, $3)`,
+		workspaceID,
+		"promo.migration_test:1",
+		[]byte(`{"app_id":17,"platform_id":19}`),
+	); err != nil {
+		t.Fatalf("insert legacy callback: %v", err)
+	}
+
+	if err := callbackutil.BootstrapTable(
+		ctx,
+		db,
+		callbackutil.PromoTable,
+	); err != nil {
+		t.Fatalf("migrate callback routing key: %v", err)
+	}
+
+	var routingKey, nullable string
+
+	if err := db.QueryRowContext(ctx, `
+SELECT routing_key
+FROM promo_clb_event
+WHERE event_key = 'promo.migration_test:1'`).Scan(&routingKey); err != nil {
+		t.Fatalf("read migrated routing key: %v", err)
+	}
+
+	if err := db.QueryRowContext(ctx, `
+SELECT is_nullable
+FROM information_schema.columns
+WHERE table_schema = current_schema()
+  AND table_name = 'promo_clb_event'
+  AND column_name = 'routing_key'`).Scan(&nullable); err != nil {
+		t.Fatalf("read routing key nullability: %v", err)
+	}
+
+	want := workspaceID + ":17:19"
+	if routingKey != want || nullable != "NO" {
+		t.Fatalf("routing key = %q, nullable = %q", routingKey, nullable)
 	}
 }
 

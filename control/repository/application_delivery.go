@@ -14,6 +14,11 @@ import (
 
 const applicationDeliveryCacheTTL = time.Hour
 
+const (
+	applicationDeliverySecretMinBytes = 32
+	applicationDeliverySecretMaxBytes = 256
+)
+
 type ApplicationDeliveryInput struct {
 	WorkspaceID string
 	AppID       int64
@@ -28,9 +33,7 @@ func (r *Repository) UpsertApplicationDelivery(
 	actorID string,
 	value ApplicationDeliveryInput,
 ) (ApplicationDelivery, error) {
-	value.WorkspaceID = normalizeID(value.WorkspaceID)
 	value.URL = strings.TrimSpace(value.URL)
-	value.Secret = strings.TrimSpace(value.Secret)
 
 	if err := validateApplicationDeliveryInput(value); err != nil {
 		return ApplicationDelivery{}, err
@@ -78,13 +81,11 @@ func (r *Repository) UpsertApplicationDelivery(
 		return ApplicationDelivery{}, err
 	}
 
-	if err := r.bumpApplicationDeliveryCacheVersion(
+	r.bumpApplicationDeliveryCacheVersion(
 		value.WorkspaceID,
 		value.AppID,
 		value.PlatformID,
-	); err != nil {
-		return ApplicationDelivery{}, err
-	}
+	)
 
 	return result, nil
 }
@@ -93,7 +94,6 @@ func (r *Repository) ListApplicationDeliveries(
 	ctx context.Context,
 	actorID, workspaceID string,
 ) ([]ApplicationDelivery, error) {
-	workspaceID = normalizeID(workspaceID)
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return nil, err
 	}
@@ -125,7 +125,6 @@ func (r *Repository) DeleteApplicationDelivery(
 	actorID, workspaceID string,
 	appID, platformID int64,
 ) (int64, error) {
-	workspaceID = normalizeID(workspaceID)
 	if err := validateApplicationKey(
 		workspaceID,
 		appID,
@@ -165,13 +164,11 @@ func (r *Repository) DeleteApplicationDelivery(
 		return 0, err
 	}
 
-	if err := r.bumpApplicationDeliveryCacheVersion(
+	r.bumpApplicationDeliveryCacheVersion(
 		workspaceID,
 		appID,
 		platformID,
-	); err != nil {
-		return affected, err
-	}
+	)
 
 	return affected, nil
 }
@@ -181,7 +178,6 @@ func (r *Repository) GetApplicationDeliveryEndpoint(
 	workspaceID string,
 	appID, platformID int64,
 ) (ApplicationDeliveryEndpoint, error) {
-	workspaceID = normalizeID(workspaceID)
 	if err := validateApplicationKey(
 		workspaceID,
 		appID,
@@ -245,16 +241,31 @@ func validateApplicationDeliveryInput(value ApplicationDeliveryInput) error {
 		return err
 	}
 
-	parsed, err := url.Parse(value.URL)
-	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" ||
-		parsed.User != nil {
+	if len(value.URL) > 2048 {
 		return fmt.Errorf(
-			"control application delivery URL must be an absolute HTTPS URL without credentials",
+			"%w: application delivery URL is too long",
+			ErrInvalidArgument,
 		)
 	}
 
-	if value.Secret == "" {
-		return fmt.Errorf("control application delivery secret is required")
+	parsed, err := url.Parse(value.URL)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" ||
+		parsed.User != nil || parsed.Fragment != "" || parsed.Opaque != "" {
+		return fmt.Errorf(
+			"%w: application delivery URL must be an absolute HTTPS URL without credentials or fragment",
+			ErrInvalidArgument,
+		)
+	}
+
+	secretLength := len([]byte(value.Secret))
+	if secretLength < applicationDeliverySecretMinBytes ||
+		secretLength > applicationDeliverySecretMaxBytes {
+		return fmt.Errorf(
+			"%w: application delivery secret must contain from %d to %d bytes",
+			ErrInvalidArgument,
+			applicationDeliverySecretMinBytes,
+			applicationDeliverySecretMaxBytes,
+		)
 	}
 
 	return nil
@@ -276,9 +287,10 @@ func applicationDeliveryCacheScope(
 func (r *Repository) bumpApplicationDeliveryCacheVersion(
 	workspaceID string,
 	appID, platformID int64,
-) error {
-	return r.db.BumpCacheVersion(
-		applicationDeliveryCacheScope(workspaceID, appID, platformID)...)
+) {
+	r.bumpCacheVersion(
+		applicationDeliveryCacheScope(workspaceID, appID, platformID)...,
+	)
 }
 
 func mapApplicationDelivery(

@@ -15,6 +15,7 @@ const adminListEvents = `-- name: AdminListEvents :many
 SELECT
     id,
     workspace_id,
+    routing_key,
     source_service,
     event_type,
     event_key,
@@ -75,6 +76,7 @@ func (q *Queries) AdminListEvents(ctx context.Context, arg AdminListEventsParams
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
+			&i.RoutingKey,
 			&i.SourceService,
 			&i.EventType,
 			&i.EventKey,
@@ -209,6 +211,7 @@ func (q *Queries) AdminRetryEventNow(ctx context.Context, arg AdminRetryEventNow
 const createEvent = `-- name: CreateEvent :one
 INSERT INTO clb_event (
     workspace_id,
+    routing_key,
     source_service,
     event_type,
     event_key,
@@ -217,7 +220,7 @@ INSERT INTO clb_event (
     payload_content_type,
     next_attempt_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (idempotency_key) DO UPDATE SET
     idempotency_key = EXCLUDED.idempotency_key
 RETURNING id
@@ -225,6 +228,7 @@ RETURNING id
 
 type CreateEventParams struct {
 	WorkspaceID        string    `json:"workspace_id"`
+	RoutingKey         string    `json:"routing_key"`
 	SourceService      string    `json:"source_service"`
 	EventType          string    `json:"event_type"`
 	EventKey           string    `json:"event_key"`
@@ -237,6 +241,7 @@ type CreateEventParams struct {
 func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (int64, error) {
 	row := q.queryRow(ctx, q.createEventStmt, createEvent,
 		arg.WorkspaceID,
+		arg.RoutingKey,
 		arg.SourceService,
 		arg.EventType,
 		arg.EventKey,
@@ -254,6 +259,7 @@ const getEvent = `-- name: GetEvent :one
 SELECT
     id,
     workspace_id,
+    routing_key,
     source_service,
     event_type,
     event_key,
@@ -288,6 +294,7 @@ func (q *Queries) GetEvent(ctx context.Context, arg GetEventParams) (ClbEvent, e
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
+		&i.RoutingKey,
 		&i.SourceService,
 		&i.EventType,
 		&i.EventKey,
@@ -313,6 +320,7 @@ const listDueEventsForUpdate = `-- name: ListDueEventsForUpdate :many
 SELECT
     id,
     workspace_id,
+    routing_key,
     source_service,
     event_type,
     event_key,
@@ -358,6 +366,7 @@ func (q *Queries) ListDueEventsForUpdate(ctx context.Context, arg ListDueEventsF
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
+			&i.RoutingKey,
 			&i.SourceService,
 			&i.EventType,
 			&i.EventKey,

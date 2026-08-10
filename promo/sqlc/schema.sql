@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS promo_stats_daily (
 CREATE TABLE IF NOT EXISTS promo_clb_event (
     id BIGSERIAL PRIMARY KEY,
     workspace_id VARCHAR(36) NOT NULL,
+    routing_key VARCHAR(96) NOT NULL,
     source_service VARCHAR(64) NOT NULL,
     event_type VARCHAR(128) NOT NULL,
     event_key VARCHAR(128) NOT NULL,
@@ -154,6 +155,9 @@ ALTER TABLE promo_clb_event
 
 CREATE INDEX IF NOT EXISTS promo_clb_event_due_idx
     ON promo_clb_event (status, next_attempt_at, locked_until, id);
+
+CREATE INDEX IF NOT EXISTS promo_clb_event_route_due_idx
+    ON promo_clb_event (routing_key, status, next_attempt_at, locked_until, id);
 
 CREATE INDEX IF NOT EXISTS promo_clb_event_type_idx
     ON promo_clb_event (workspace_id, event_type, status, created_at);

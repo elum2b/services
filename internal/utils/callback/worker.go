@@ -4,16 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"sync"
 	"time"
 
 	serviceerrors "github.com/elum2b/services/errors"
 )
 
 const (
-	defaultWorkerID     = "callback-worker"
-	defaultBatchSize    = int32(10)
-	defaultLeaseTimeout = time.Minute
-	defaultIdleDelay    = time.Second
+	defaultWorkerID      = "callback-worker"
+	defaultBatchSize     = int32(10)
+	maxRouteConcurrency  = int32(4)
+	maxWorkerConcurrency = int32(256)
+	defaultLeaseTimeout  = time.Minute
+	defaultIdleDelay     = time.Second
 )
 
 var (
@@ -97,23 +101,59 @@ func (s *Store) On(ctx context.Context, handler Handler, opts ...Option) error {
 		}
 	}
 
+	// Lease one event at a time so the scheduler can reserve its route before
+	// another event for the same route is considered. WithBatchSize remains a
+	// compatibility option, but route-aware leasing deliberately caps it at one.
+	leaseLimit := options.batchSize
+	if leaseLimit <= 0 || leaseLimit > 1 {
+		leaseLimit = 1
+	}
+
+	scheduler := newRouteScheduler()
+	completions := make(chan callbackCompletion, maxWorkerConcurrency)
+
+	var waitGroup sync.WaitGroup
+
+	defer waitGroup.Wait()
+
 	for {
+		if err := drainCallbackCompletions(scheduler, completions); err != nil {
+			return err
+		}
+
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 
+		if scheduler.total >= maxWorkerConcurrency {
+			completion := <-completions
+			scheduler.release(completion.route)
+
+			if completion.err != nil {
+				return completion.err
+			}
+
+			continue
+		}
+
 		events, err := s.LeaseEvents(ctx, LeaseParams{
-			SourceService: options.sourceService,
-			WorkerID:      options.workerID,
-			Limit:         options.batchSize,
-			LeaseTimeout:  options.leaseTimeout,
+			SourceService:       options.sourceService,
+			WorkerID:            options.workerID,
+			Limit:               leaseLimit,
+			LeaseTimeout:        options.leaseTimeout,
+			ExcludedRoutingKeys: scheduler.saturatedRoutes(),
 		})
 		if err != nil {
 			return err
 		}
 
 		if len(events) == 0 {
-			if err := sleepContext(ctx, options.idleDelay); err != nil {
+			if err := waitForCallbackWork(
+				ctx,
+				options.idleDelay,
+				scheduler,
+				completions,
+			); err != nil {
 				return err
 			}
 
@@ -121,14 +161,28 @@ func (s *Store) On(ctx context.Context, handler Handler, opts ...Option) error {
 		}
 
 		for _, event := range events {
-			if err := s.handleEvent(
-				ctx,
-				event,
-				options.workerID,
-				handler,
-			); err != nil {
-				return err
+			route := callbackRouteKey(event)
+			if !scheduler.acquire(route) {
+				return errors.New(
+					"callback: leased an event for a saturated route",
+				)
 			}
+
+			waitGroup.Add(1)
+
+			go func() {
+				defer waitGroup.Done()
+
+				completions <- callbackCompletion{
+					route: route,
+					err: s.handleEvent(
+						ctx,
+						event,
+						options.workerID,
+						handler,
+					),
+				}
+			}()
 		}
 	}
 }
@@ -241,18 +295,107 @@ func defaultOptions() options {
 	}
 }
 
-func sleepContext(ctx context.Context, delay time.Duration) error {
+func callbackRouteKey(event storedEvent) string {
+	if event.RoutingKey != "" {
+		return event.RoutingKey
+	}
+
+	return event.WorkspaceID
+}
+
+type callbackCompletion struct {
+	route string
+	err   error
+}
+
+type routeScheduler struct {
+	active map[string]int32
+	total  int32
+}
+
+func newRouteScheduler() *routeScheduler {
+	return &routeScheduler{active: make(map[string]int32)}
+}
+
+func (s *routeScheduler) acquire(route string) bool {
+	if s.active[route] >= maxRouteConcurrency ||
+		s.total >= maxWorkerConcurrency {
+		return false
+	}
+
+	s.active[route]++
+
+	s.total++
+
+	return true
+}
+
+func (s *routeScheduler) release(route string) {
+	if s.active[route] <= 0 {
+		return
+	}
+
+	s.active[route]--
+
+	s.total--
+
+	if s.active[route] == 0 {
+		delete(s.active, route)
+	}
+}
+
+func (s *routeScheduler) saturatedRoutes() []string {
+	routes := make([]string, 0, len(s.active))
+
+	for route, active := range s.active {
+		if active >= maxRouteConcurrency {
+			routes = append(routes, route)
+		}
+	}
+
+	sort.Strings(routes)
+
+	return routes
+}
+
+func drainCallbackCompletions(
+	scheduler *routeScheduler,
+	completions <-chan callbackCompletion,
+) error {
+	for {
+		select {
+		case completion := <-completions:
+			scheduler.release(completion.route)
+
+			if completion.err != nil {
+				return completion.err
+			}
+		default:
+			return nil
+		}
+	}
+}
+
+func waitForCallbackWork(
+	ctx context.Context,
+	delay time.Duration,
+	scheduler *routeScheduler,
+	completions <-chan callbackCompletion,
+) error {
 	if delay <= 0 {
 		delay = defaultIdleDelay
 	}
 
 	timer := time.NewTimer(delay)
-
 	defer timer.Stop()
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
+	case completion := <-completions:
+		scheduler.release(completion.route)
+
+		return completion.err
 	case <-timer.C:
 		return nil
 	}
