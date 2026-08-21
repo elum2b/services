@@ -78,6 +78,36 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.resolveItemBundlesStmt, err = db.PrepareContext(ctx, resolveItemBundles); err != nil {
 		return nil, fmt.Errorf("error preparing query ResolveItemBundles: %w", err)
 	}
+	if q.resourceAttachStmt, err = db.PrepareContext(ctx, resourceAttach); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceAttach: %w", err)
+	}
+	if q.resourceCreateStmt, err = db.PrepareContext(ctx, resourceCreate); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceCreate: %w", err)
+	}
+	if q.resourceDetachStmt, err = db.PrepareContext(ctx, resourceDetach); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceDetach: %w", err)
+	}
+	if q.resourceGetStmt, err = db.PrepareContext(ctx, resourceGet); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceGet: %w", err)
+	}
+	if q.resourceListStmt, err = db.PrepareContext(ctx, resourceList); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceList: %w", err)
+	}
+	if q.resourceListActiveForItemsStmt, err = db.PrepareContext(ctx, resourceListActiveForItems); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceListActiveForItems: %w", err)
+	}
+	if q.resourceListItemResourcesStmt, err = db.PrepareContext(ctx, resourceListItemResources); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceListItemResources: %w", err)
+	}
+	if q.resourceRestoreStmt, err = db.PrepareContext(ctx, resourceRestore); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceRestore: %w", err)
+	}
+	if q.resourceSoftDeleteStmt, err = db.PrepareContext(ctx, resourceSoftDelete); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceSoftDelete: %w", err)
+	}
+	if q.resourceUpdateStmt, err = db.PrepareContext(ctx, resourceUpdate); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceUpdate: %w", err)
+	}
 	return &q, nil
 }
 
@@ -173,6 +203,56 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing resolveItemBundlesStmt: %w", cerr)
 		}
 	}
+	if q.resourceAttachStmt != nil {
+		if cerr := q.resourceAttachStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceAttachStmt: %w", cerr)
+		}
+	}
+	if q.resourceCreateStmt != nil {
+		if cerr := q.resourceCreateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceCreateStmt: %w", cerr)
+		}
+	}
+	if q.resourceDetachStmt != nil {
+		if cerr := q.resourceDetachStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceDetachStmt: %w", cerr)
+		}
+	}
+	if q.resourceGetStmt != nil {
+		if cerr := q.resourceGetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceGetStmt: %w", cerr)
+		}
+	}
+	if q.resourceListStmt != nil {
+		if cerr := q.resourceListStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceListStmt: %w", cerr)
+		}
+	}
+	if q.resourceListActiveForItemsStmt != nil {
+		if cerr := q.resourceListActiveForItemsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceListActiveForItemsStmt: %w", cerr)
+		}
+	}
+	if q.resourceListItemResourcesStmt != nil {
+		if cerr := q.resourceListItemResourcesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceListItemResourcesStmt: %w", cerr)
+		}
+	}
+	if q.resourceRestoreStmt != nil {
+		if cerr := q.resourceRestoreStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceRestoreStmt: %w", cerr)
+		}
+	}
+	if q.resourceSoftDeleteStmt != nil {
+		if cerr := q.resourceSoftDeleteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceSoftDeleteStmt: %w", cerr)
+		}
+	}
+	if q.resourceUpdateStmt != nil {
+		if cerr := q.resourceUpdateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceUpdateStmt: %w", cerr)
+		}
+	}
 	return err
 }
 
@@ -210,49 +290,69 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                           DBTX
-	tx                           *sql.Tx
-	adminCreateItemStmt          *sql.Stmt
-	adminDangerousChangeTypeStmt *sql.Stmt
-	adminDeleteLocalizationStmt  *sql.Stmt
-	adminGetItemBundleStmt       *sql.Stmt
-	adminGetLocalizationStmt     *sql.Stmt
-	adminGetStatsStmt            *sql.Stmt
-	adminListItemsStmt           *sql.Stmt
-	adminListLocalizationsStmt   *sql.Stmt
-	adminRestoreItemStmt         *sql.Stmt
-	adminSoftDeleteItemStmt      *sql.Stmt
-	adminUpdateItemStmt          *sql.Stmt
-	adminUpsertLocalizationStmt  *sql.Stmt
-	getItemBundleStmt            *sql.Stmt
-	listExportItemsStmt          *sql.Stmt
-	listExportLocalizationsStmt  *sql.Stmt
-	listImportItemKeysStmt       *sql.Stmt
-	listItemBundlesStmt          *sql.Stmt
-	resolveItemBundlesStmt       *sql.Stmt
+	db                             DBTX
+	tx                             *sql.Tx
+	adminCreateItemStmt            *sql.Stmt
+	adminDangerousChangeTypeStmt   *sql.Stmt
+	adminDeleteLocalizationStmt    *sql.Stmt
+	adminGetItemBundleStmt         *sql.Stmt
+	adminGetLocalizationStmt       *sql.Stmt
+	adminGetStatsStmt              *sql.Stmt
+	adminListItemsStmt             *sql.Stmt
+	adminListLocalizationsStmt     *sql.Stmt
+	adminRestoreItemStmt           *sql.Stmt
+	adminSoftDeleteItemStmt        *sql.Stmt
+	adminUpdateItemStmt            *sql.Stmt
+	adminUpsertLocalizationStmt    *sql.Stmt
+	getItemBundleStmt              *sql.Stmt
+	listExportItemsStmt            *sql.Stmt
+	listExportLocalizationsStmt    *sql.Stmt
+	listImportItemKeysStmt         *sql.Stmt
+	listItemBundlesStmt            *sql.Stmt
+	resolveItemBundlesStmt         *sql.Stmt
+	resourceAttachStmt             *sql.Stmt
+	resourceCreateStmt             *sql.Stmt
+	resourceDetachStmt             *sql.Stmt
+	resourceGetStmt                *sql.Stmt
+	resourceListStmt               *sql.Stmt
+	resourceListActiveForItemsStmt *sql.Stmt
+	resourceListItemResourcesStmt  *sql.Stmt
+	resourceRestoreStmt            *sql.Stmt
+	resourceSoftDeleteStmt         *sql.Stmt
+	resourceUpdateStmt             *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                           tx,
-		tx:                           tx,
-		adminCreateItemStmt:          q.adminCreateItemStmt,
-		adminDangerousChangeTypeStmt: q.adminDangerousChangeTypeStmt,
-		adminDeleteLocalizationStmt:  q.adminDeleteLocalizationStmt,
-		adminGetItemBundleStmt:       q.adminGetItemBundleStmt,
-		adminGetLocalizationStmt:     q.adminGetLocalizationStmt,
-		adminGetStatsStmt:            q.adminGetStatsStmt,
-		adminListItemsStmt:           q.adminListItemsStmt,
-		adminListLocalizationsStmt:   q.adminListLocalizationsStmt,
-		adminRestoreItemStmt:         q.adminRestoreItemStmt,
-		adminSoftDeleteItemStmt:      q.adminSoftDeleteItemStmt,
-		adminUpdateItemStmt:          q.adminUpdateItemStmt,
-		adminUpsertLocalizationStmt:  q.adminUpsertLocalizationStmt,
-		getItemBundleStmt:            q.getItemBundleStmt,
-		listExportItemsStmt:          q.listExportItemsStmt,
-		listExportLocalizationsStmt:  q.listExportLocalizationsStmt,
-		listImportItemKeysStmt:       q.listImportItemKeysStmt,
-		listItemBundlesStmt:          q.listItemBundlesStmt,
-		resolveItemBundlesStmt:       q.resolveItemBundlesStmt,
+		db:                             tx,
+		tx:                             tx,
+		adminCreateItemStmt:            q.adminCreateItemStmt,
+		adminDangerousChangeTypeStmt:   q.adminDangerousChangeTypeStmt,
+		adminDeleteLocalizationStmt:    q.adminDeleteLocalizationStmt,
+		adminGetItemBundleStmt:         q.adminGetItemBundleStmt,
+		adminGetLocalizationStmt:       q.adminGetLocalizationStmt,
+		adminGetStatsStmt:              q.adminGetStatsStmt,
+		adminListItemsStmt:             q.adminListItemsStmt,
+		adminListLocalizationsStmt:     q.adminListLocalizationsStmt,
+		adminRestoreItemStmt:           q.adminRestoreItemStmt,
+		adminSoftDeleteItemStmt:        q.adminSoftDeleteItemStmt,
+		adminUpdateItemStmt:            q.adminUpdateItemStmt,
+		adminUpsertLocalizationStmt:    q.adminUpsertLocalizationStmt,
+		getItemBundleStmt:              q.getItemBundleStmt,
+		listExportItemsStmt:            q.listExportItemsStmt,
+		listExportLocalizationsStmt:    q.listExportLocalizationsStmt,
+		listImportItemKeysStmt:         q.listImportItemKeysStmt,
+		listItemBundlesStmt:            q.listItemBundlesStmt,
+		resolveItemBundlesStmt:         q.resolveItemBundlesStmt,
+		resourceAttachStmt:             q.resourceAttachStmt,
+		resourceCreateStmt:             q.resourceCreateStmt,
+		resourceDetachStmt:             q.resourceDetachStmt,
+		resourceGetStmt:                q.resourceGetStmt,
+		resourceListStmt:               q.resourceListStmt,
+		resourceListActiveForItemsStmt: q.resourceListActiveForItemsStmt,
+		resourceListItemResourcesStmt:  q.resourceListItemResourcesStmt,
+		resourceRestoreStmt:            q.resourceRestoreStmt,
+		resourceSoftDeleteStmt:         q.resourceSoftDeleteStmt,
+		resourceUpdateStmt:             q.resourceUpdateStmt,
 	}
 }

@@ -843,3 +843,462 @@ func (q *Queries) ResolveItemBundles(ctx context.Context, arg ResolveItemBundles
 	}
 	return items, nil
 }
+
+const resourceAttach = `-- name: ResourceAttach :exec
+INSERT INTO reference_item_resource (workspace_id, item_key, resource_key, position)
+SELECT $1, $2, $3, $4
+WHERE EXISTS (SELECT 1 FROM reference_item WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL)
+  AND EXISTS (SELECT 1 FROM reference_resource WHERE workspace_id = $1 AND key = $3 AND deleted_at IS NULL)
+ON CONFLICT (workspace_id, item_key, resource_key) DO UPDATE SET position = EXCLUDED.position
+`
+
+type ResourceAttachParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	ItemKey     string `json:"item_key"`
+	ResourceKey string `json:"resource_key"`
+	Position    int32  `json:"position"`
+}
+
+func (q *Queries) ResourceAttach(ctx context.Context, arg ResourceAttachParams) error {
+	_, err := q.exec(ctx, q.resourceAttachStmt, resourceAttach,
+		arg.WorkspaceID,
+		arg.ItemKey,
+		arg.ResourceKey,
+		arg.Position,
+	)
+	return err
+}
+
+const resourceCreate = `-- name: ResourceCreate :exec
+INSERT INTO reference_resource (
+    workspace_id, key, resource_type, payload, is_active, format, content_type,
+    source_size, source_sha256, width, height, original_ref, preview_61_ref,
+    preview_128_ref, preview_256_ref, preview_512_ref, placeholder_ref
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+`
+
+type ResourceCreateParams struct {
+	WorkspaceID    string          `json:"workspace_id"`
+	Key            string          `json:"key"`
+	ResourceType   string          `json:"resource_type"`
+	Payload        json.RawMessage `json:"payload"`
+	IsActive       bool            `json:"is_active"`
+	Format         string          `json:"format"`
+	ContentType    string          `json:"content_type"`
+	SourceSize     int64           `json:"source_size"`
+	SourceSha256   string          `json:"source_sha256"`
+	Width          int32           `json:"width"`
+	Height         int32           `json:"height"`
+	OriginalRef    string          `json:"original_ref"`
+	Preview61Ref   string          `json:"preview_61_ref"`
+	Preview128Ref  string          `json:"preview_128_ref"`
+	Preview256Ref  string          `json:"preview_256_ref"`
+	Preview512Ref  string          `json:"preview_512_ref"`
+	PlaceholderRef string          `json:"placeholder_ref"`
+}
+
+func (q *Queries) ResourceCreate(ctx context.Context, arg ResourceCreateParams) error {
+	_, err := q.exec(ctx, q.resourceCreateStmt, resourceCreate,
+		arg.WorkspaceID,
+		arg.Key,
+		arg.ResourceType,
+		arg.Payload,
+		arg.IsActive,
+		arg.Format,
+		arg.ContentType,
+		arg.SourceSize,
+		arg.SourceSha256,
+		arg.Width,
+		arg.Height,
+		arg.OriginalRef,
+		arg.Preview61Ref,
+		arg.Preview128Ref,
+		arg.Preview256Ref,
+		arg.Preview512Ref,
+		arg.PlaceholderRef,
+	)
+	return err
+}
+
+const resourceDetach = `-- name: ResourceDetach :execrows
+DELETE FROM reference_item_resource
+WHERE workspace_id = $1 AND item_key = $2 AND resource_key = $3
+`
+
+type ResourceDetachParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	ItemKey     string `json:"item_key"`
+	ResourceKey string `json:"resource_key"`
+}
+
+func (q *Queries) ResourceDetach(ctx context.Context, arg ResourceDetachParams) (int64, error) {
+	result, err := q.exec(ctx, q.resourceDetachStmt, resourceDetach, arg.WorkspaceID, arg.ItemKey, arg.ResourceKey)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const resourceGet = `-- name: ResourceGet :one
+SELECT workspace_id, key, resource_type, payload, is_active, deleted_at, format, content_type, source_size, source_sha256, width, height, original_ref, preview_61_ref, preview_128_ref, preview_256_ref, preview_512_ref, placeholder_ref, created_at, updated_at FROM reference_resource
+WHERE workspace_id = $1 AND key = $2
+`
+
+type ResourceGetParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	Key         string `json:"key"`
+}
+
+func (q *Queries) ResourceGet(ctx context.Context, arg ResourceGetParams) (ReferenceResource, error) {
+	row := q.queryRow(ctx, q.resourceGetStmt, resourceGet, arg.WorkspaceID, arg.Key)
+	var i ReferenceResource
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.Key,
+		&i.ResourceType,
+		&i.Payload,
+		&i.IsActive,
+		&i.DeletedAt,
+		&i.Format,
+		&i.ContentType,
+		&i.SourceSize,
+		&i.SourceSha256,
+		&i.Width,
+		&i.Height,
+		&i.OriginalRef,
+		&i.Preview61Ref,
+		&i.Preview128Ref,
+		&i.Preview256Ref,
+		&i.Preview512Ref,
+		&i.PlaceholderRef,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const resourceList = `-- name: ResourceList :many
+SELECT workspace_id, key, resource_type, payload, is_active, deleted_at, format, content_type, source_size, source_sha256, width, height, original_ref, preview_61_ref, preview_128_ref, preview_256_ref, preview_512_ref, placeholder_ref, created_at, updated_at FROM reference_resource
+WHERE workspace_id = $1 AND ($2 = FALSE OR deleted_at IS NULL)
+ORDER BY key LIMIT $3 OFFSET $4
+`
+
+type ResourceListParams struct {
+	WorkspaceID string      `json:"workspace_id"`
+	Column2     interface{} `json:"column_2"`
+	Limit       int32       `json:"limit"`
+	Offset      int32       `json:"offset"`
+}
+
+func (q *Queries) ResourceList(ctx context.Context, arg ResourceListParams) ([]ReferenceResource, error) {
+	rows, err := q.query(ctx, q.resourceListStmt, resourceList,
+		arg.WorkspaceID,
+		arg.Column2,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReferenceResource
+	for rows.Next() {
+		var i ReferenceResource
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.Key,
+			&i.ResourceType,
+			&i.Payload,
+			&i.IsActive,
+			&i.DeletedAt,
+			&i.Format,
+			&i.ContentType,
+			&i.SourceSize,
+			&i.SourceSha256,
+			&i.Width,
+			&i.Height,
+			&i.OriginalRef,
+			&i.Preview61Ref,
+			&i.Preview128Ref,
+			&i.Preview256Ref,
+			&i.Preview512Ref,
+			&i.PlaceholderRef,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const resourceListActiveForItems = `-- name: ResourceListActiveForItems :many
+SELECT r.workspace_id, r.key, r.resource_type, r.payload, r.is_active, r.deleted_at, r.format, r.content_type, r.source_size, r.source_sha256, r.width, r.height, r.original_ref, r.preview_61_ref, r.preview_128_ref, r.preview_256_ref, r.preview_512_ref, r.placeholder_ref, r.created_at, r.updated_at, ir.item_key, ir.position
+FROM reference_item_resource ir
+JOIN reference_resource r ON r.workspace_id = ir.workspace_id AND r.key = ir.resource_key
+WHERE ir.workspace_id = $1 AND ir.item_key = ANY($2::text[])
+  AND r.deleted_at IS NULL AND r.is_active = TRUE
+ORDER BY ir.item_key, ir.position
+`
+
+type ResourceListActiveForItemsParams struct {
+	WorkspaceID string   `json:"workspace_id"`
+	Column2     []string `json:"column_2"`
+}
+
+type ResourceListActiveForItemsRow struct {
+	WorkspaceID    string          `json:"workspace_id"`
+	Key            string          `json:"key"`
+	ResourceType   string          `json:"resource_type"`
+	Payload        json.RawMessage `json:"payload"`
+	IsActive       bool            `json:"is_active"`
+	DeletedAt      sql.NullTime    `json:"deleted_at"`
+	Format         string          `json:"format"`
+	ContentType    string          `json:"content_type"`
+	SourceSize     int64           `json:"source_size"`
+	SourceSha256   string          `json:"source_sha256"`
+	Width          int32           `json:"width"`
+	Height         int32           `json:"height"`
+	OriginalRef    string          `json:"original_ref"`
+	Preview61Ref   string          `json:"preview_61_ref"`
+	Preview128Ref  string          `json:"preview_128_ref"`
+	Preview256Ref  string          `json:"preview_256_ref"`
+	Preview512Ref  string          `json:"preview_512_ref"`
+	PlaceholderRef string          `json:"placeholder_ref"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+	ItemKey        string          `json:"item_key"`
+	Position       int32           `json:"position"`
+}
+
+func (q *Queries) ResourceListActiveForItems(ctx context.Context, arg ResourceListActiveForItemsParams) ([]ResourceListActiveForItemsRow, error) {
+	rows, err := q.query(ctx, q.resourceListActiveForItemsStmt, resourceListActiveForItems, arg.WorkspaceID, pq.Array(arg.Column2))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ResourceListActiveForItemsRow
+	for rows.Next() {
+		var i ResourceListActiveForItemsRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.Key,
+			&i.ResourceType,
+			&i.Payload,
+			&i.IsActive,
+			&i.DeletedAt,
+			&i.Format,
+			&i.ContentType,
+			&i.SourceSize,
+			&i.SourceSha256,
+			&i.Width,
+			&i.Height,
+			&i.OriginalRef,
+			&i.Preview61Ref,
+			&i.Preview128Ref,
+			&i.Preview256Ref,
+			&i.Preview512Ref,
+			&i.PlaceholderRef,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ItemKey,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const resourceListItemResources = `-- name: ResourceListItemResources :many
+SELECT r.workspace_id, r.key, r.resource_type, r.payload, r.is_active, r.deleted_at, r.format, r.content_type, r.source_size, r.source_sha256, r.width, r.height, r.original_ref, r.preview_61_ref, r.preview_128_ref, r.preview_256_ref, r.preview_512_ref, r.placeholder_ref, r.created_at, r.updated_at, ir.item_key, ir.position
+FROM reference_item_resource ir
+JOIN reference_resource r ON r.workspace_id = ir.workspace_id AND r.key = ir.resource_key
+WHERE ir.workspace_id = $1 AND ir.item_key = $2
+ORDER BY ir.position
+`
+
+type ResourceListItemResourcesParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	ItemKey     string `json:"item_key"`
+}
+
+type ResourceListItemResourcesRow struct {
+	WorkspaceID    string          `json:"workspace_id"`
+	Key            string          `json:"key"`
+	ResourceType   string          `json:"resource_type"`
+	Payload        json.RawMessage `json:"payload"`
+	IsActive       bool            `json:"is_active"`
+	DeletedAt      sql.NullTime    `json:"deleted_at"`
+	Format         string          `json:"format"`
+	ContentType    string          `json:"content_type"`
+	SourceSize     int64           `json:"source_size"`
+	SourceSha256   string          `json:"source_sha256"`
+	Width          int32           `json:"width"`
+	Height         int32           `json:"height"`
+	OriginalRef    string          `json:"original_ref"`
+	Preview61Ref   string          `json:"preview_61_ref"`
+	Preview128Ref  string          `json:"preview_128_ref"`
+	Preview256Ref  string          `json:"preview_256_ref"`
+	Preview512Ref  string          `json:"preview_512_ref"`
+	PlaceholderRef string          `json:"placeholder_ref"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+	ItemKey        string          `json:"item_key"`
+	Position       int32           `json:"position"`
+}
+
+func (q *Queries) ResourceListItemResources(ctx context.Context, arg ResourceListItemResourcesParams) ([]ResourceListItemResourcesRow, error) {
+	rows, err := q.query(ctx, q.resourceListItemResourcesStmt, resourceListItemResources, arg.WorkspaceID, arg.ItemKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ResourceListItemResourcesRow
+	for rows.Next() {
+		var i ResourceListItemResourcesRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.Key,
+			&i.ResourceType,
+			&i.Payload,
+			&i.IsActive,
+			&i.DeletedAt,
+			&i.Format,
+			&i.ContentType,
+			&i.SourceSize,
+			&i.SourceSha256,
+			&i.Width,
+			&i.Height,
+			&i.OriginalRef,
+			&i.Preview61Ref,
+			&i.Preview128Ref,
+			&i.Preview256Ref,
+			&i.Preview512Ref,
+			&i.PlaceholderRef,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ItemKey,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const resourceRestore = `-- name: ResourceRestore :execrows
+UPDATE reference_resource
+SET is_active = $1, deleted_at = NULL, updated_at = now()
+WHERE workspace_id = $2 AND key = $3 AND deleted_at IS NOT NULL
+`
+
+type ResourceRestoreParams struct {
+	IsActive    bool   `json:"is_active"`
+	WorkspaceID string `json:"workspace_id"`
+	Key         string `json:"key"`
+}
+
+func (q *Queries) ResourceRestore(ctx context.Context, arg ResourceRestoreParams) (int64, error) {
+	result, err := q.exec(ctx, q.resourceRestoreStmt, resourceRestore, arg.IsActive, arg.WorkspaceID, arg.Key)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const resourceSoftDelete = `-- name: ResourceSoftDelete :execrows
+UPDATE reference_resource
+SET is_active = FALSE, deleted_at = now(), updated_at = now()
+WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL
+`
+
+type ResourceSoftDeleteParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	Key         string `json:"key"`
+}
+
+func (q *Queries) ResourceSoftDelete(ctx context.Context, arg ResourceSoftDeleteParams) (int64, error) {
+	result, err := q.exec(ctx, q.resourceSoftDeleteStmt, resourceSoftDelete, arg.WorkspaceID, arg.Key)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const resourceUpdate = `-- name: ResourceUpdate :execrows
+UPDATE reference_resource
+SET resource_type = $1, payload = $2, is_active = $3, format = $4,
+    content_type = $5, source_size = $6, source_sha256 = $7, width = $8,
+    height = $9, original_ref = $10, preview_61_ref = $11,
+    preview_128_ref = $12, preview_256_ref = $13, preview_512_ref = $14,
+    placeholder_ref = $15, updated_at = now()
+WHERE workspace_id = $16 AND key = $17 AND deleted_at IS NULL
+`
+
+type ResourceUpdateParams struct {
+	ResourceType   string          `json:"resource_type"`
+	Payload        json.RawMessage `json:"payload"`
+	IsActive       bool            `json:"is_active"`
+	Format         string          `json:"format"`
+	ContentType    string          `json:"content_type"`
+	SourceSize     int64           `json:"source_size"`
+	SourceSha256   string          `json:"source_sha256"`
+	Width          int32           `json:"width"`
+	Height         int32           `json:"height"`
+	OriginalRef    string          `json:"original_ref"`
+	Preview61Ref   string          `json:"preview_61_ref"`
+	Preview128Ref  string          `json:"preview_128_ref"`
+	Preview256Ref  string          `json:"preview_256_ref"`
+	Preview512Ref  string          `json:"preview_512_ref"`
+	PlaceholderRef string          `json:"placeholder_ref"`
+	WorkspaceID    string          `json:"workspace_id"`
+	Key            string          `json:"key"`
+}
+
+func (q *Queries) ResourceUpdate(ctx context.Context, arg ResourceUpdateParams) (int64, error) {
+	result, err := q.exec(ctx, q.resourceUpdateStmt, resourceUpdate,
+		arg.ResourceType,
+		arg.Payload,
+		arg.IsActive,
+		arg.Format,
+		arg.ContentType,
+		arg.SourceSize,
+		arg.SourceSha256,
+		arg.Width,
+		arg.Height,
+		arg.OriginalRef,
+		arg.Preview61Ref,
+		arg.Preview128Ref,
+		arg.Preview256Ref,
+		arg.Preview512Ref,
+		arg.PlaceholderRef,
+		arg.WorkspaceID,
+		arg.Key,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

@@ -13,14 +13,18 @@ import (
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/reference/repository"
 	"github.com/elum2b/services/reference/service/admin"
+	resourceservice "github.com/elum2b/services/reference/service/resource"
 	"github.com/elum2b/services/reference/service/user"
+	resourcestorage "github.com/elum2b/services/reference/storage"
 )
 
 type Reference struct {
-	Admin *admin.Admin
-	User  *user.User
+	Admin    *admin.Admin
+	Resource *resourceservice.Resource
+	User     *user.User
 
 	client     *sqlwrap.Client
+	storage    resourcestorage.Store
 	ownsClient bool
 	rootCtx    context.Context
 	rootCancel context.CancelFunc
@@ -30,11 +34,14 @@ type Reference struct {
 }
 
 func New() *Reference {
+	store, _ := resourcestorage.New(Options{}.ResourceStorage)
+
 	return newReference(
 		context.Background(),
 		sqlwrap.NewUnavailable(),
 		true,
 		Options{},
+		store,
 	)
 }
 
@@ -43,6 +50,15 @@ func NewWithDatabase(
 	db *sql.DB,
 	options Options,
 ) (*Reference, error) {
+	store, err := resourcestorage.New(options.ResourceStorage)
+	if err != nil {
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInvalidFields,
+			"reference resource storage configuration is invalid",
+			err,
+		)
+	}
+
 	client, err := sqlwrap.New(db, toSQLWrapOptions(options))
 	if err != nil {
 		return nil, serviceerrors.Wrap(
@@ -52,7 +68,7 @@ func NewWithDatabase(
 		)
 	}
 
-	return newReference(ctx, client, false, options), nil
+	return newReference(ctx, client, false, options, store), nil
 }
 
 func (r *Reference) Run(ctx context.Context, params DatabaseParams) error {
@@ -150,7 +166,18 @@ func open(ctx context.Context, params DatabaseParams) (*Reference, error) {
 		)
 	}
 
-	return newReference(ctx, client, true, params.Options), nil
+	store, err := resourcestorage.New(params.Options.ResourceStorage)
+	if err != nil {
+		_ = client.Close()
+
+		return nil, serviceerrors.Wrap(
+			serviceerrors.CodeInvalidFields,
+			"reference resource storage configuration is invalid",
+			err,
+		)
+	}
+
+	return newReference(ctx, client, true, params.Options, store), nil
 }
 
 func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
@@ -195,7 +222,8 @@ func (r *Reference) adopt(running *Reference) {
 	defer r.lifecycleMu.Unlock()
 
 	r.Admin, r.User = running.Admin, running.User
-	r.client, r.ownsClient = running.client, running.ownsClient
+	r.Resource = running.Resource
+	r.client, r.storage, r.ownsClient = running.client, running.storage, running.ownsClient
 	r.rootCtx, r.rootCancel = running.rootCtx, running.rootCancel
 }
 
@@ -204,6 +232,7 @@ func newReference(
 	db *sqlwrap.Client,
 	ownsClient bool,
 	options Options,
+	store resourcestorage.Store,
 ) *Reference {
 	rootCtx, cancel := context.WithCancel(contextutil.Normalize(ctx))
 	repositoryOptions := repository.Options{
@@ -219,12 +248,14 @@ func newReference(
 			db,
 			repositoryOptions,
 		),
+		Resource: resourceservice.New(rootCtx, db, repositoryOptions, store),
 		User: user.NewWithRepositoryOptions(
 			rootCtx,
 			db,
 			repositoryOptions,
 		),
 		client:     db,
+		storage:    store,
 		ownsClient: ownsClient,
 		rootCtx:    rootCtx,
 		rootCancel: cancel,
@@ -250,6 +281,10 @@ func (r *Reference) Close() error {
 		err = errors.Join(err, r.User.Close())
 	}
 
+	if r.Resource != nil {
+		err = errors.Join(err, r.Resource.Close())
+	}
+
 	if r.ownsClient && r.client != nil {
 		err = errors.Join(err, r.client.Close())
 	}
@@ -268,6 +303,8 @@ func (r *Reference) IsReady() bool {
 
 	return r.rootCtx != nil && r.rootCtx.Err() == nil &&
 		!r.client.IsUnavailable() &&
+		r.storage != nil &&
 		r.Admin != nil &&
-		r.User != nil
+		r.User != nil &&
+		r.Resource != nil
 }

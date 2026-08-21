@@ -21,6 +21,14 @@ type ReferenceItem struct {
 	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
+type ReferenceItemResource struct {
+	WorkspaceID string    `json:"workspace_id"`
+	ItemKey     string    `json:"item_key"`
+	ResourceKey string    `json:"resource_key"`
+	Position    int32     `json:"position"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type ReferenceLocalization struct {
 	WorkspaceID string    `json:"workspace_id"`
 	ItemKey     string    `json:"item_key"`
@@ -29,4 +37,27 @@ type ReferenceLocalization struct {
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type ReferenceResource struct {
+	WorkspaceID    string          `json:"workspace_id"`
+	Key            string          `json:"key"`
+	ResourceType   string          `json:"resource_type"`
+	Payload        json.RawMessage `json:"payload"`
+	IsActive       bool            `json:"is_active"`
+	DeletedAt      sql.NullTime    `json:"deleted_at"`
+	Format         string          `json:"format"`
+	ContentType    string          `json:"content_type"`
+	SourceSize     int64           `json:"source_size"`
+	SourceSha256   string          `json:"source_sha256"`
+	Width          int32           `json:"width"`
+	Height         int32           `json:"height"`
+	OriginalRef    string          `json:"original_ref"`
+	Preview61Ref   string          `json:"preview_61_ref"`
+	Preview128Ref  string          `json:"preview_128_ref"`
+	Preview256Ref  string          `json:"preview_256_ref"`
+	Preview512Ref  string          `json:"preview_512_ref"`
+	PlaceholderRef string          `json:"placeholder_ref"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
 }

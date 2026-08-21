@@ -29,3 +29,13 @@
 | `Admin.PreviewImport(ctx, workspaceID, pkg)` | `workspaceID`, `ExportPackage`. | Проверяет пакет импорта, считает items/localizations и возвращает конфликты по `item.Key` без записи данных. |
 | `Admin.Import(ctx, workspaceID, req)` | `ImportRequest{Package, ConflictStrategy}`; стратегии `fail_on_conflict`, `skip_existing`, `update_existing`. | Импортирует справочник пачками в транзакции: сначала items, затем localizations, после чего обновляет версии кеша reference. |
 | `Admin.GetStats(ctx, workspaceID)` | `workspaceID`. | Возвращает статистику справочника. |
+
+## resource
+
+| Метод | Что принимает | Что делает |
+| --- | --- | --- |
+| `Resource.Create(ctx, params)` | `SaveParams{WorkspaceID, Key, Type, Payload, IsActive, File}`. | Обрабатывает медиа, сохраняет полный набор variants в configured storage и создаёт resource. |
+| `Resource.Update(ctx, params)` | `SaveParams{WorkspaceID, Key, Type, Payload, IsActive, File}`. | Полностью заменяет медиа resource и обновляет metadata. |
+| `Resource.Get(ctx, params)` | `GetParams{WorkspaceID, Key}`. | Возвращает resource через отдельный versioned cache. |
+| `Resource.Delete(ctx, params)` | `GetParams{WorkspaceID, Key}`. | Soft-delete resource без удаления объектов storage. |
+| `Resource.Attach(ctx, workspaceID, itemKey, resourceKey, position)` | workspace, keys, position. | Привязывает активный resource к item. |
