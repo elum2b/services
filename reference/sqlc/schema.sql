@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS reference_resource (
     content_type VARCHAR(128) NOT NULL,
     source_size BIGINT NOT NULL,
     source_sha256 CHAR(64) NOT NULL,
+    media_version CHAR(8) NOT NULL DEFAULT translate(substring(md5(random()::text), 1, 8), '0123456789', 'abcdefghij'),
     width INTEGER NOT NULL,
     height INTEGER NOT NULL,
     original_ref TEXT NOT NULL,
@@ -57,6 +58,9 @@ CREATE TABLE IF NOT EXISTS reference_resource (
     CONSTRAINT reference_resource_dimensions_chk CHECK (width > 0 AND height > 0),
     CONSTRAINT reference_resource_size_chk CHECK (source_size > 0)
 );
+
+ALTER TABLE reference_resource ADD COLUMN IF NOT EXISTS media_version CHAR(8)
+    NOT NULL DEFAULT translate(substring(md5(random()::text), 1, 8), '0123456789', 'abcdefghij');
 
 CREATE INDEX IF NOT EXISTS reference_resource_list_idx
     ON reference_resource (workspace_id, deleted_at, is_active, resource_type, key);

@@ -99,9 +99,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.resourceListItemResourcesStmt, err = db.PrepareContext(ctx, resourceListItemResources); err != nil {
 		return nil, fmt.Errorf("error preparing query ResourceListItemResources: %w", err)
 	}
-	if q.resourceRestoreStmt, err = db.PrepareContext(ctx, resourceRestore); err != nil {
-		return nil, fmt.Errorf("error preparing query ResourceRestore: %w", err)
-	}
 	if q.resourceSoftDeleteStmt, err = db.PrepareContext(ctx, resourceSoftDelete); err != nil {
 		return nil, fmt.Errorf("error preparing query ResourceSoftDelete: %w", err)
 	}
@@ -238,11 +235,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing resourceListItemResourcesStmt: %w", cerr)
 		}
 	}
-	if q.resourceRestoreStmt != nil {
-		if cerr := q.resourceRestoreStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing resourceRestoreStmt: %w", cerr)
-		}
-	}
 	if q.resourceSoftDeleteStmt != nil {
 		if cerr := q.resourceSoftDeleteStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing resourceSoftDeleteStmt: %w", cerr)
@@ -317,7 +309,6 @@ type Queries struct {
 	resourceListStmt               *sql.Stmt
 	resourceListActiveForItemsStmt *sql.Stmt
 	resourceListItemResourcesStmt  *sql.Stmt
-	resourceRestoreStmt            *sql.Stmt
 	resourceSoftDeleteStmt         *sql.Stmt
 	resourceUpdateStmt             *sql.Stmt
 }
@@ -351,7 +342,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		resourceListStmt:               q.resourceListStmt,
 		resourceListActiveForItemsStmt: q.resourceListActiveForItemsStmt,
 		resourceListItemResourcesStmt:  q.resourceListItemResourcesStmt,
-		resourceRestoreStmt:            q.resourceRestoreStmt,
 		resourceSoftDeleteStmt:         q.resourceSoftDeleteStmt,
 		resourceUpdateStmt:             q.resourceUpdateStmt,
 	}

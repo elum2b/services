@@ -4,6 +4,7 @@ import (
 	"time"
 
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
+	resourcecache "github.com/elum2b/services/reference/service/resource/cache"
 	resourcestorage "github.com/elum2b/services/reference/storage"
 )
 
@@ -39,7 +40,8 @@ type Options struct {
 	OnCacheInvalidationError func(error)
 	// ResourceStorage selects S3/MinIO when Bucket is set; otherwise resources
 	// are saved beside the executable in the reference directory.
-	ResourceStorage resourcestorage.Config
+	ResourceStorage    resourcestorage.Config
+	ResourceMediaCache resourcecache.Config
 }
 
 type DatabaseParams struct {

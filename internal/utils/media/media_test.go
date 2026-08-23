@@ -2,6 +2,7 @@ package media
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"image"
@@ -66,23 +67,22 @@ func TestProcessStaticImage(t *testing.T) {
 }
 
 func TestProcessLottieUsesRenderer(t *testing.T) {
-	renderer := &testRenderer{frame: testImage(20, 10)}
 	source := []byte(`{"v":"5.12.0","w":20,"h":10,"layers":[]}`)
 
 	asset, err := Process(
 		context.Background(),
 		source,
-		Options{PreviewSizes: []int{61}, Renderer: renderer},
+		Options{PreviewSizes: []int{61}, FirstFrame: testPNG(t, 20, 10)},
 	)
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
 
-	if asset.Format != FormatLottie || !renderer.called {
+	if asset.Format != FormatLottie {
 		t.Fatalf(
 			"format = %q renderer called = %t",
 			asset.Format,
-			renderer.called,
+			false,
 		)
 	}
 
@@ -95,23 +95,52 @@ func TestProcessLottieUsesRenderer(t *testing.T) {
 	}
 }
 
+func TestProcessTGSRendersDecompressedLottie(t *testing.T) {
+	json := []byte(`{"v":"5.12.0","w":20,"h":10,"layers":[]}`)
+	source := testTGS(t, json)
+	asset, err := Process(context.Background(), source, Options{PreviewSizes: []int{61}, FirstFrame: testPNG(t, 20, 10)})
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if asset.Format != FormatTGS || !bytes.Equal(asset.Original, source) {
+		t.Fatalf("format=%q original=%q", asset.Format, asset.Original)
+	}
+}
+
+func TestProcessSVGCreatesOnlyPlaceholder(t *testing.T) {
+	source := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><path d="M0 0h20v10H0z"/></svg>`)
+	asset, err := Process(context.Background(), source, Options{FirstFrame: testPNG(t, 20, 10)})
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if asset.Format != FormatSVG || len(asset.Previews) != 0 || len(asset.Placeholder) == 0 {
+		t.Fatalf("format=%q previews=%d placeholder=%d", asset.Format, len(asset.Previews), len(asset.Placeholder))
+	}
+}
+
+func TestProcessRejectsTGSDecompressionBomb(t *testing.T) {
+	_, err := Process(context.Background(), testTGS(t, bytes.Repeat([]byte("x"), 128)), Options{MaxInputBytes: 64, FirstFrame: testPNG(t, 1, 1)})
+	if !errors.Is(err, ErrInputTooLarge) {
+		t.Fatalf("Process() error = %v", err)
+	}
+}
+
 func TestProcessRiveUsesRenderer(t *testing.T) {
-	renderer := &testRenderer{frame: testImage(10, 20)}
 
 	asset, err := Process(
 		context.Background(),
 		[]byte("RIVE\x00\x01"),
-		Options{PreviewSizes: []int{61}, Renderer: renderer},
+		Options{PreviewSizes: []int{61}, FirstFrame: testPNG(t, 10, 20)},
 	)
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
 
-	if asset.Format != FormatRive || !renderer.called {
+	if asset.Format != FormatRive {
 		t.Fatalf(
 			"format = %q renderer called = %t",
 			asset.Format,
-			renderer.called,
+			false,
 		)
 	}
 
@@ -124,15 +153,14 @@ func TestProcessRiveUsesRenderer(t *testing.T) {
 	}
 }
 
-func TestProcessRejectsVectorRejectedByRenderer(t *testing.T) {
-	renderer := &testRenderer{validateErr: errors.New("invalid rive stream")}
+func TestProcessRequiresVectorFirstFrame(t *testing.T) {
 	_, err := Process(
 		context.Background(),
 		[]byte("RIVE\x00\x01"),
-		Options{Renderer: renderer},
+		Options{},
 	)
 
-	if !errors.Is(err, ErrUnsafeContent) {
+	if !errors.Is(err, ErrFirstFrameRequired) {
 		t.Fatalf("Process() error = %v", err)
 	}
 }
@@ -171,13 +199,13 @@ func TestProcessRejectsInvalidAndOversizedInput(t *testing.T) {
 	}
 }
 
-func TestProcessRequiresVectorRenderer(t *testing.T) {
+func TestProcessRejectsInvalidVectorFirstFrame(t *testing.T) {
 	_, err := Process(
 		context.Background(),
 		[]byte(`{"v":"5.12.0","w":1,"h":1,"layers":[]}`),
-		Options{},
+		Options{FirstFrame: []byte("invalid")},
 	)
-	if !errors.Is(err, ErrRendererRequired) {
+	if !errors.Is(err, ErrUnsupportedFormat) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -197,25 +225,6 @@ func TestStaticFormat(t *testing.T) {
 	}
 }
 
-type testRenderer struct {
-	frame       image.Image
-	called      bool
-	validateErr error
-}
-
-func (r *testRenderer) Validate(_ context.Context, _ Format, _ []byte) error {
-	return r.validateErr
-}
-
-func (r *testRenderer) RenderFirstFrame(
-	_ context.Context,
-	_ Format,
-	_ []byte,
-) (image.Image, error) {
-	r.called = true
-	return r.frame, nil
-}
-
 func testPNG(t testing.TB, width, height int) []byte {
 	t.Helper()
 
@@ -225,6 +234,19 @@ func testPNG(t testing.TB, width, height int) []byte {
 		t.Fatal(err)
 	}
 
+	return result.Bytes()
+}
+
+func testTGS(t testing.TB, data []byte) []byte {
+	t.Helper()
+	var result bytes.Buffer
+	writer := gzip.NewWriter(&result)
+	if _, err := writer.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
 	return result.Bytes()
 }
 

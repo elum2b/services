@@ -228,39 +228,34 @@ WHERE workspace_id = $1;
 -- name: ResourceCreate :exec
 INSERT INTO reference_resource (
     workspace_id, key, resource_type, payload, is_active, format, content_type,
-    source_size, source_sha256, width, height, original_ref, preview_61_ref,
+    source_size, source_sha256, media_version, width, height, original_ref, preview_61_ref,
     preview_128_ref, preview_256_ref, preview_512_ref, placeholder_ref
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);
 
 -- name: ResourceUpdate :execrows
 UPDATE reference_resource
 SET resource_type = $1, payload = $2, is_active = $3, format = $4,
-    content_type = $5, source_size = $6, source_sha256 = $7, width = $8,
-    height = $9, original_ref = $10, preview_61_ref = $11,
-    preview_128_ref = $12, preview_256_ref = $13, preview_512_ref = $14,
-    placeholder_ref = $15, updated_at = now()
-WHERE workspace_id = $16 AND key = $17 AND deleted_at IS NULL;
+    content_type = $5, source_size = $6, source_sha256 = $7, media_version = $8, width = $9,
+    height = $10, original_ref = $11, preview_61_ref = $12,
+    preview_128_ref = $13, preview_256_ref = $14, preview_512_ref = $15,
+    placeholder_ref = $16, updated_at = now()
+WHERE workspace_id = $17 AND key = $18 AND deleted_at IS NULL;
 
 -- name: ResourceSoftDelete :execrows
 UPDATE reference_resource
 SET is_active = FALSE, deleted_at = now(), updated_at = now()
 WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL;
 
--- name: ResourceRestore :execrows
-UPDATE reference_resource
-SET is_active = $1, deleted_at = NULL, updated_at = now()
-WHERE workspace_id = $2 AND key = $3 AND deleted_at IS NOT NULL;
-
 -- name: ResourceGet :one
 SELECT * FROM reference_resource
-WHERE workspace_id = $1 AND key = $2;
+WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL;
 
 -- name: ResourceList :many
 SELECT * FROM reference_resource
-WHERE workspace_id = $1 AND ($2 = FALSE OR deleted_at IS NULL)
-ORDER BY key LIMIT $3 OFFSET $4;
+WHERE workspace_id = $1 AND deleted_at IS NULL
+ORDER BY key LIMIT $2 OFFSET $3;
 
--- name: ResourceAttach :exec
+-- name: ResourceAttach :execrows
 INSERT INTO reference_item_resource (workspace_id, item_key, resource_key, position)
 SELECT $1, $2, $3, $4
 WHERE EXISTS (SELECT 1 FROM reference_item WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL)
@@ -275,7 +270,7 @@ WHERE workspace_id = $1 AND item_key = $2 AND resource_key = $3;
 SELECT r.*, ir.item_key, ir.position
 FROM reference_item_resource ir
 JOIN reference_resource r ON r.workspace_id = ir.workspace_id AND r.key = ir.resource_key
-WHERE ir.workspace_id = $1 AND ir.item_key = $2
+WHERE ir.workspace_id = $1 AND ir.item_key = $2 AND r.deleted_at IS NULL
 ORDER BY ir.position;
 
 -- name: ResourceListActiveForItems :many

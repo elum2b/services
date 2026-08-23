@@ -24,6 +24,18 @@ type ItemModel struct {
 	Localization *LocalizationModel `json:"localization,omitempty"`
 	CreatedAt    time.Time          `json:"created_at"`
 	UpdatedAt    time.Time          `json:"updated_at"`
+	Resources    []ResourceModel    `json:"resources,omitempty"`
+}
+type ResourceModel struct {
+	Key            string          `json:"key"`
+	Type           string          `json:"type"`
+	Payload        json.RawMessage `json:"payload"`
+	Format         string          `json:"format"`
+	ContentType    string          `json:"content_type"`
+	MediaVersion   string          `json:"media_version"`
+	Width          int             `json:"width"`
+	Height         int             `json:"height"`
+	PlaceholderRef string          `json:"placeholder_ref"`
 }
 
 type GetParams struct {

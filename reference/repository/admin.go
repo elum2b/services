@@ -251,6 +251,13 @@ func (r *Repository) AdminGetItem(
 			}
 		}
 
+		resources, err := r.ListItemResources(ctx, workspaceID, key)
+		if err != nil {
+			return Item{}, err
+		}
+
+		item.Resources = resources
+
 		return item, nil
 	})
 }

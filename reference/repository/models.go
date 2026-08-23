@@ -22,6 +22,7 @@ type Item struct {
 	UpdatedAt     time.Time
 	Localization  *Localization
 	Localizations []Localization
+	Resources     []Resource
 }
 
 type Localization struct {

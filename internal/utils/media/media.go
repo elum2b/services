@@ -3,6 +3,7 @@ package media
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"image/color"
 	_ "image/jpeg" // Register the JPEG decoder with image.Decode.
 	"image/png"
+	"io"
 	"math"
 	"strings"
 
@@ -20,6 +22,7 @@ import (
 
 	"github.com/elum2b/services/internal/utils/media/lottie"
 	"github.com/elum2b/services/internal/utils/media/rive"
+	"github.com/elum2b/services/internal/utils/media/svg"
 )
 
 const (
@@ -31,11 +34,11 @@ const (
 
 var (
 	ErrUnsupportedFormat  = errors.New("unsupported media format")
-	ErrRendererRequired   = errors.New("media renderer is required")
 	ErrInputTooLarge      = errors.New("media input is too large")
 	ErrImageTooLarge      = errors.New("media image is too large")
 	ErrInvalidPreviewSize = errors.New("invalid preview size")
 	ErrUnsafeContent      = errors.New("unsafe media content")
+	ErrFirstFrameRequired = errors.New("vector media first frame is required")
 )
 
 // Format identifies the source encoding.
@@ -47,24 +50,17 @@ const (
 	FormatWebP   Format = "webp"
 	FormatGIF    Format = "gif"
 	FormatLottie Format = "lottie"
+	FormatTGS    Format = "tgs"
+	FormatSVG    Format = "svg"
 	FormatRive   Format = "rive"
 )
-
-// FrameRenderer validates and renders the first visible frame of a vector or
-// animated asset. Validate must fully parse its input before RenderFirstFrame
-// is called. Native renderers processing untrusted files should run isolated
-// from the API process.
-type FrameRenderer interface {
-	Validate(context.Context, Format, []byte) error
-	RenderFirstFrame(context.Context, Format, []byte) (image.Image, error)
-}
 
 // Options controls resource limits and generated variants.
 type Options struct {
 	PreviewSizes  []int
 	MaxInputBytes int
 	MaxPixels     int64
-	Renderer      FrameRenderer
+	FirstFrame    []byte
 }
 
 // Preview is a PNG rendition whose longest side equals Size.
@@ -85,7 +81,8 @@ type Asset struct {
 	Placeholder []byte // SVG generated from an 8x8 color grid.
 }
 
-// Process validates source bytes, renders its first frame when necessary, and
+// Process validates source bytes, uses a client-rendered first frame for vector
+// media, and
 // produces PNG previews and an SVG placeholder. The original bytes are never
 // transcoded, so Lottie and Rive sources can be stored without loss.
 func Process(
@@ -117,8 +114,9 @@ func Process(
 	format, frame, err := decode(
 		ctx,
 		source,
-		options.Renderer,
+		options.FirstFrame,
 		options.MaxPixels,
+		options.MaxInputBytes,
 	)
 	if err != nil {
 		return Asset{}, err
@@ -143,24 +141,26 @@ func Process(
 	}
 
 	previews := make([]Preview, 0, len(options.PreviewSizes))
-	for _, size := range options.PreviewSizes {
-		preview := resize(frame, size)
+	if format != FormatSVG {
+		for _, size := range options.PreviewSizes {
+			preview := resize(frame, size)
 
-		var encoded bytes.Buffer
+			var encoded bytes.Buffer
 
-		if err := png.Encode(&encoded, preview); err != nil {
-			return Asset{}, fmt.Errorf("encode preview %d: %w", size, err)
+			if err := png.Encode(&encoded, preview); err != nil {
+				return Asset{}, fmt.Errorf("encode preview %d: %w", size, err)
+			}
+
+			previews = append(
+				previews,
+				Preview{
+					Size:   size,
+					Width:  preview.Bounds().Dx(),
+					Height: preview.Bounds().Dy(),
+					PNG:    encoded.Bytes(),
+				},
+			)
 		}
-
-		previews = append(
-			previews,
-			Preview{
-				Size:   size,
-				Width:  preview.Bounds().Dx(),
-				Height: preview.Bounds().Dy(),
-				PNG:    encoded.Bytes(),
-			},
-		)
 	}
 
 	return Asset{
@@ -192,32 +192,26 @@ func normalizedOptions(options Options) Options {
 func decode(
 	ctx context.Context,
 	source []byte,
-	renderer FrameRenderer,
+	firstFrame []byte,
 	maxPixels int64,
+	maxInputBytes int,
 ) (Format, image.Image, error) {
-	if format, ok := vectorFormat(source); ok {
-		if renderer == nil {
-			return "", nil, fmt.Errorf("%w for %s", ErrRendererRequired, format)
+	format, renderSource, ok, err := vectorFormat(source, maxInputBytes)
+	if err != nil {
+		return "", nil, err
+	}
+	if ok {
+		_ = renderSource
+		if len(firstFrame) == 0 {
+			return "", nil, fmt.Errorf("%w for %s", ErrFirstFrameRequired, format)
 		}
-
-		if err := renderer.Validate(ctx, format, source); err != nil {
-			return "", nil, fmt.Errorf(
-				"%w: validate %s: %w",
-				ErrUnsafeContent,
-				format,
-				err,
-			)
+		if len(firstFrame) > maxInputBytes {
+			return "", nil, fmt.Errorf("%w: first frame exceeds %d bytes", ErrInputTooLarge, maxInputBytes)
 		}
-
-		frame, err := renderer.RenderFirstFrame(ctx, format, source)
+		frame, err := decodeFirstFrame(firstFrame, maxPixels)
 		if err != nil {
-			return "", nil, fmt.Errorf("render %s: %w", format, err)
+			return "", nil, err
 		}
-
-		if frame == nil {
-			return "", nil, fmt.Errorf("render %s: nil frame", format)
-		}
-
 		return format, frame, nil
 	}
 
@@ -226,7 +220,7 @@ func decode(
 		return "", nil, fmt.Errorf("%w: %w", ErrUnsupportedFormat, err)
 	}
 
-	format, ok := staticFormat(name)
+	format, ok = staticFormat(name)
 	if !ok {
 		return "", nil, fmt.Errorf("%w: %s", ErrUnsupportedFormat, name)
 	}
@@ -260,16 +254,67 @@ func decode(
 	return format, frame, nil
 }
 
-func vectorFormat(source []byte) (Format, bool) {
+func decodeFirstFrame(source []byte, maxPixels int64) (image.Image, error) {
+	config, name, err := image.DecodeConfig(bytes.NewReader(source))
+	if err != nil {
+		return nil, fmt.Errorf("%w: first frame: %w", ErrUnsupportedFormat, err)
+	}
+	format, ok := staticFormat(name)
+	if !ok || (format != FormatPNG && format != FormatWebP) {
+		return nil, fmt.Errorf("%w: first frame must be PNG or WebP", ErrUnsupportedFormat)
+	}
+	if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > maxPixels {
+		return nil, ErrImageTooLarge
+	}
+	if err := validateStatic(format, source); err != nil {
+		return nil, err
+	}
+	frame, _, err := image.Decode(bytes.NewReader(source))
+	if err != nil {
+		return nil, fmt.Errorf("%w: first frame: %w", ErrUnsupportedFormat, err)
+	}
+	return frame, nil
+}
+
+func vectorFormat(source []byte, maxInputBytes int) (Format, []byte, bool, error) {
+	if err := svg.Validate(source); err == nil {
+		return FormatSVG, source, true, nil
+	}
+	if len(source) >= 2 && source[0] == 0x1f && source[1] == 0x8b {
+		decoded, err := decodeTGS(source, maxInputBytes)
+		if err != nil {
+			return "", nil, false, fmt.Errorf("%w: invalid TGS: %w", ErrUnsupportedFormat, err)
+		}
+		if _, err := lottie.Validate(decoded); err == nil {
+			return FormatTGS, decoded, true, nil
+		}
+		return "", nil, false, fmt.Errorf("%w: invalid TGS Lottie document", ErrUnsupportedFormat)
+	}
 	if rive.Validate(source) == nil {
-		return FormatRive, true
+		return FormatRive, source, true, nil
 	}
 
 	if _, err := lottie.Validate(source); err == nil {
-		return FormatLottie, true
+		return FormatLottie, source, true, nil
 	}
 
-	return "", false
+	return "", nil, false, nil
+}
+
+func decodeTGS(source []byte, maxBytes int) ([]byte, error) {
+	reader, err := gzip.NewReader(bytes.NewReader(source))
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	decoded, err := io.ReadAll(io.LimitReader(reader, int64(maxBytes)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(decoded) > maxBytes {
+		return nil, ErrInputTooLarge
+	}
+	return decoded, nil
 }
 
 func validateStatic(format Format, source []byte) error {

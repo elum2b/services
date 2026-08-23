@@ -39,7 +39,12 @@ func (r *Repository) Get(
 			return Item{}, sql.ErrNoRows
 		}
 
-		return mapGetRow(rows[0]), nil
+		items := []Item{mapGetRow(rows[0])}
+		if err := r.attachActiveResources(ctx, workspaceID, items); err != nil {
+			return Item{}, err
+		}
+
+		return items[0], nil
 	})
 
 	return item, mapNoRows(err)
@@ -94,6 +99,14 @@ func (r *Repository) Resolve(
 		result := make([]Item, 0, len(rows))
 		for _, row := range rows {
 			result = append(result, mapResolveRow(row))
+		}
+
+		if err := r.attachActiveResources(
+			ctx,
+			workspaceID,
+			result,
+		); err != nil {
+			return nil, err
 		}
 
 		return result, nil
@@ -154,8 +167,79 @@ func (r *Repository) List(
 			result = append(result, mapListRow(row))
 		}
 
+		if err := r.attachActiveResources(
+			ctx,
+			workspaceID,
+			result,
+		); err != nil {
+			return nil, err
+		}
+
 		return result, nil
 	})
+}
+
+func (r *Repository) attachActiveResources(
+	ctx context.Context,
+	workspaceID string,
+	items []Item,
+) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(items))
+	byKey := make(map[string]*Item, len(items))
+
+	for index := range items {
+		keys = append(keys, items[index].Key)
+		byKey[items[index].Key] = &items[index]
+		items[index].Resources = []Resource{}
+	}
+
+	rows, err := r.q.ResourceListActiveForItems(
+		ctx,
+		refsqlc.ResourceListActiveForItemsParams{
+			WorkspaceID: workspaceID,
+			Column2:     keys,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	for _, row := range rows {
+		if item := byKey[row.ItemKey]; item != nil {
+			item.Resources = append(
+				item.Resources,
+				Resource{
+					WorkspaceID:    row.WorkspaceID,
+					Key:            row.Key,
+					Type:           row.ResourceType,
+					Payload:        row.Payload,
+					IsActive:       row.IsActive,
+					DeletedAt:      sqlwrap.NullTimePtr(row.DeletedAt),
+					Format:         row.Format,
+					ContentType:    row.ContentType,
+			SHA256:         row.SourceSha256,
+			MediaVersion:   row.MediaVersion,
+					Size:           row.SourceSize,
+					Width:          int(row.Width),
+					Height:         int(row.Height),
+					OriginalRef:    row.OriginalRef,
+					Preview61Ref:   row.Preview61Ref,
+					Preview128Ref:  row.Preview128Ref,
+					Preview256Ref:  row.Preview256Ref,
+					Preview512Ref:  row.Preview512Ref,
+					PlaceholderRef: row.PlaceholderRef,
+					CreatedAt:      row.CreatedAt,
+					UpdatedAt:      row.UpdatedAt,
+				},
+			)
+		}
+	}
+
+	return nil
 }
 
 func mapGetRow(row refsqlc.GetItemBundleRow) Item {

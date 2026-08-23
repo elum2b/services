@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
 	"regexp"
@@ -14,14 +15,19 @@ import (
 	"github.com/elum2b/services/internal/utils/media"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/reference/repository"
+	resourcecache "github.com/elum2b/services/reference/service/resource/cache"
 	"github.com/elum2b/services/reference/storage"
 )
 
-var keyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,127}$`)
+var (
+	keyPattern     = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,127}$`)
+	versionPattern = regexp.MustCompile(`^[A-Za-z]{8}$`)
+)
 
 type Resource struct {
 	repository *repository.Repository
 	store      storage.Store
+	cache      *resourcecache.Cache
 	root       context.Context
 }
 type SaveParams struct {
@@ -29,21 +35,35 @@ type SaveParams struct {
 	Payload                json.RawMessage
 	IsActive               bool
 	File                   []byte
+	FirstFrame             []byte
 }
 type GetParams struct{ WorkspaceID, Key string }
+type ListParams struct {
+	WorkspaceID   string
+	Limit, Offset int32
+}
+type ContentParams struct {
+	WorkspaceID, Key, Version, Format string
+	Size                              int
+}
+type Content struct {
+	Data        []byte
+	ContentType string
+}
 
 func New(
 	ctx context.Context,
 	db *sqlwrap.Client,
 	opts repository.Options,
 	store storage.Store,
+	cache *resourcecache.Cache,
 ) *Resource {
 	repo, e := repository.NewPreparedWithOptions(ctx, db, opts)
 	if e != nil {
 		repo = repository.NewWithOptions(db, opts)
 	}
 
-	return &Resource{repository: repo, store: store, root: ctx}
+	return &Resource{repository: repo, store: store, cache: cache, root: ctx}
 }
 func (s *Resource) Close() error { return s.repository.Close() }
 
@@ -100,6 +120,66 @@ func (s *Resource) Delete(ctx context.Context, p GetParams) error {
 	return e
 }
 
+// GetContent returns original media when Size is zero, otherwise a PNG preview.
+// Version is part of the public media identity, so old and deleted versions stay readable.
+func (s *Resource) GetContent(ctx context.Context, p ContentParams) (Content, error) {
+	p.Key = strings.ToLower(strings.TrimSpace(p.Key))
+	if err := services.ValidateWorkspaceID(p.WorkspaceID); err != nil || !keyPattern.MatchString(p.Key) ||
+		!versionPattern.MatchString(p.Version) || s.store == nil || s.cache == nil {
+		return Content{}, fmt.Errorf("invalid resource content request")
+	}
+	if p.Size != 0 && p.Size != 61 && p.Size != 128 && p.Size != 256 && p.Size != 512 {
+		return Content{}, fmt.Errorf("invalid resource preview size")
+	}
+	if p.Size != 0 && p.Format == string(media.FormatSVG) {
+		return Content{}, fmt.Errorf("SVG resources have no previews")
+	}
+	mimeType := "image/png"
+	if p.Size == 0 {
+		mimeType = contentTypeForFormat(p.Format)
+		if mimeType == "" {
+			return Content{}, fmt.Errorf("invalid resource format")
+		}
+	}
+	key := strings.Join([]string{"reference", "media", p.WorkspaceID, p.Key, p.Version, fmt.Sprint(p.Size), mimeType}, ":")
+	value, err := s.cache.GetOrLoad(key, func() (resourcecache.Value, error) {
+		data, err := s.store.ReadVersion(ctx, p.WorkspaceID, p.Key, p.Version, p.Size)
+		return resourcecache.Value{Data: data, ContentType: mimeType}, err
+	})
+	if err != nil {
+		return Content{}, err
+	}
+	return Content{Data: value.Data, ContentType: value.ContentType}, nil
+}
+
+func (s *Resource) List(
+	ctx context.Context,
+	p ListParams,
+) ([]repository.Resource, error) {
+	if err := services.ValidateWorkspaceID(p.WorkspaceID); err != nil {
+		return nil, err
+	}
+
+	if p.Limit <= 0 {
+		p.Limit = 100
+	}
+
+	if p.Limit > 1000 {
+		p.Limit = 1000
+	}
+
+	if p.Offset < 0 {
+		p.Offset = 0
+	}
+
+	return s.repository.ListResources(
+		ctx,
+		p.WorkspaceID,
+		p.Limit,
+		p.Offset,
+	)
+}
+
 func (s *Resource) Attach(
 	ctx context.Context,
 	workspaceID, itemKey, resourceKey string,
@@ -111,6 +191,29 @@ func (s *Resource) Attach(
 		strings.ToLower(strings.TrimSpace(itemKey)),
 		strings.ToLower(strings.TrimSpace(resourceKey)),
 		position,
+	)
+}
+
+func (s *Resource) Detach(
+	ctx context.Context,
+	workspaceID, itemKey, resourceKey string,
+) (int64, error) {
+	return s.repository.DetachResource(
+		ctx,
+		workspaceID,
+		strings.ToLower(strings.TrimSpace(itemKey)),
+		strings.ToLower(strings.TrimSpace(resourceKey)),
+	)
+}
+
+func (s *Resource) ListItemResources(
+	ctx context.Context,
+	workspaceID, itemKey string,
+) ([]repository.Resource, error) {
+	return s.repository.ListItemResources(
+		ctx,
+		workspaceID,
+		strings.ToLower(strings.TrimSpace(itemKey)),
 	)
 }
 
@@ -129,7 +232,8 @@ func (s *Resource) prepare(
 		return repository.Resource{}, fmt.Errorf("invalid resource")
 	}
 
-	a, e := media.Process(ctx, p.File, media.Options{})
+	options := media.Options{FirstFrame: p.FirstFrame}
+	a, e := media.Process(ctx, p.File, options)
 	if e != nil {
 		return repository.Resource{}, e
 	}
@@ -143,6 +247,7 @@ func (s *Resource) prepare(
 			Data:        a.Placeholder,
 			ContentType: "image/svg+xml",
 		},
+		NoPreviews: a.Format == media.FormatSVG,
 	}
 	for _, x := range a.Previews {
 		files.Previews = append(
@@ -154,7 +259,11 @@ func (s *Resource) prepare(
 		)
 	}
 
-	o, e := s.store.Replace(ctx, p.WorkspaceID, p.Key, files)
+	version, e := mediaVersion()
+	if e != nil {
+		return repository.Resource{}, e
+	}
+	o, e := s.store.Replace(ctx, p.WorkspaceID, p.Key, version, files)
 	if e != nil {
 		return repository.Resource{}, e
 	}
@@ -171,6 +280,7 @@ func (s *Resource) prepare(
 		ContentType:    contentType(a.Format),
 		Size:           int64(len(a.Original)),
 		SHA256:         fmt.Sprintf("%x", h),
+		MediaVersion:   version,
 		Width:          a.Width,
 		Height:         a.Height,
 		OriginalRef:    o.Original,
@@ -186,6 +296,10 @@ func contentType(f media.Format) string {
 	switch f {
 	case media.FormatLottie:
 		return "application/json"
+	case media.FormatTGS:
+		return "application/gzip"
+	case media.FormatSVG:
+		return "image/svg+xml"
 	case media.FormatRive:
 		return "application/octet-stream"
 	case media.FormatWebP:
@@ -197,4 +311,39 @@ func contentType(f media.Format) string {
 	default:
 		return "image/png"
 	}
+}
+
+func contentTypeForFormat(format string) string {
+	switch media.Format(format) {
+	case media.FormatLottie:
+		return "application/json"
+	case media.FormatTGS:
+		return "application/gzip"
+	case media.FormatSVG:
+		return "image/svg+xml"
+	case media.FormatRive:
+		return "application/octet-stream"
+	case media.FormatWebP:
+		return "image/webp"
+	case media.FormatJPEG:
+		return "image/jpeg"
+	case media.FormatGIF:
+		return "image/gif"
+	case media.FormatPNG:
+		return "image/png"
+	default:
+		return ""
+	}
+}
+
+func mediaVersion() (string, error) {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	bytes := make([]byte, 8)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate media version: %w", err)
+	}
+	for i := range bytes {
+		bytes[i] = alphabet[int(bytes[i])%len(alphabet)]
+	}
+	return string(bytes), nil
 }

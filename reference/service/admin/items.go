@@ -231,5 +231,21 @@ func mapItem(item repository.Item) ItemModel {
 		})
 	}
 
+	for _, resource := range item.Resources {
+		result.Resources = append(result.Resources, ResourceModel{
+			Key:            resource.Key,
+			Type:           resource.Type,
+			Payload:        resource.Payload,
+			IsActive:       resource.IsActive,
+			DeletedAt:      resource.DeletedAt,
+			Format:         resource.Format,
+			ContentType:    resource.ContentType,
+			MediaVersion:   resource.MediaVersion,
+			Width:          resource.Width,
+			Height:         resource.Height,
+			PlaceholderRef: resource.PlaceholderRef,
+		})
+	}
+
 	return result
 }

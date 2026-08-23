@@ -50,6 +50,7 @@ type ReferenceResource struct {
 	ContentType    string          `json:"content_type"`
 	SourceSize     int64           `json:"source_size"`
 	SourceSha256   string          `json:"source_sha256"`
+	MediaVersion   string          `json:"media_version"`
 	Width          int32           `json:"width"`
 	Height         int32           `json:"height"`
 	OriginalRef    string          `json:"original_ref"`

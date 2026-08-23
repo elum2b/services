@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -18,6 +19,11 @@ type objectClient interface {
 		*awss3.PutObjectInput,
 		...func(*awss3.Options),
 	) (*awss3.PutObjectOutput, error)
+	GetObject(
+		context.Context,
+		*awss3.GetObjectInput,
+		...func(*awss3.Options),
+	) (*awss3.GetObjectOutput, error)
 }
 
 type s3Store struct {
@@ -81,14 +87,14 @@ func newS3WithClient(client objectClient, bucket string) (*s3Store, error) {
 
 func (s *s3Store) Replace(
 	ctx context.Context,
-	workspaceID, resourceKey string,
+	workspaceID, resourceKey, version string,
 	files Files,
 ) (Objects, error) {
 	if err := validateFiles(files); err != nil {
 		return Objects{}, err
 	}
 
-	prefix, err := objectPrefix(workspaceID, resourceKey)
+	prefix, err := objectPrefix(workspaceID, resourceKey, version)
 	if err != nil {
 		return Objects{}, err
 	}
@@ -128,6 +134,29 @@ func (s *s3Store) Replace(
 	}
 
 	return result, nil
+}
+
+func (s *s3Store) Read(ctx context.Context, reference string) ([]byte, error) {
+	output, err := s.client.GetObject(ctx, &awss3.GetObjectInput{
+		Bucket: aws.String(s.bucket), Key: aws.String(reference),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read resource object: %w", err)
+	}
+	defer output.Body.Close()
+	data, err := io.ReadAll(output.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read resource object body: %w", err)
+	}
+	return data, nil
+}
+
+func (s *s3Store) ReadVersion(ctx context.Context, workspaceID, resourceKey, version string, size int) ([]byte, error) {
+	reference, err := versionReference(workspaceID, resourceKey, version, size)
+	if err != nil {
+		return nil, err
+	}
+	return s.Read(ctx, "reference/"+reference)
 }
 
 func (s *s3Store) put(

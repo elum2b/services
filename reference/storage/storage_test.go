@@ -25,6 +25,7 @@ func TestDiskReplaceWritesAndOverwritesCompleteMediaSet(t *testing.T) {
 		context.Background(),
 		"workspace-a",
 		"sticker.fire",
+		"AbCdEfGh",
 		validFiles("first"),
 	)
 	if err != nil {
@@ -36,17 +37,19 @@ func TestDiskReplaceWritesAndOverwritesCompleteMediaSet(t *testing.T) {
 		t.Fatalf("objects = %+v", objects)
 	}
 
-	if _, err := store.Replace(
+	second, err := store.Replace(
 		context.Background(),
 		"workspace-a",
 		"sticker.fire",
+		"HgfEdCbA",
 		validFiles("second"),
-	); err != nil {
+	)
+	if err != nil {
 		t.Fatalf("second Replace() error = %v", err)
 	}
 
 	data, err := os.ReadFile(
-		filepath.Join(directory, filepath.FromSlash(objects.Previews[61])),
+		filepath.Join(directory, filepath.FromSlash(second.Previews[61])),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -69,6 +72,7 @@ func TestS3ReplaceWritesCompleteMediaSet(t *testing.T) {
 		context.Background(),
 		"workspace-a",
 		"sticker.fire",
+		"AbCdEfGh",
 		validFiles("value"),
 	)
 	if err != nil {
@@ -99,12 +103,52 @@ func TestStorageRejectsInvalidConfigAndFiles(t *testing.T) {
 		context.Background(),
 		"workspace-a",
 		"key",
+		"AbCdEfGh",
 		Files{},
 	); !errors.Is(
 		err,
 		ErrFilesInvalid,
 	) {
 		t.Fatalf("Replace() error = %v", err)
+	}
+}
+
+func TestDiskReadVersionReadsImmutableMedia(t *testing.T) {
+	store, err := New(Config{Directory: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Replace(context.Background(), "workspace-a", "key", "AbCdEfGh", validFiles("first")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Replace(context.Background(), "workspace-a", "key", "HgfEdCbA", validFiles("second")); err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.ReadVersion(context.Background(), "workspace-a", "key", "AbCdEfGh", 61)
+	if err != nil || string(first) != "first-preview-61" {
+		t.Fatalf("first=%q err=%v", first, err)
+	}
+	second, err := store.ReadVersion(context.Background(), "workspace-a", "key", "HgfEdCbA", 61)
+	if err != nil || string(second) != "second-preview-61" {
+		t.Fatalf("second=%q err=%v", second, err)
+	}
+}
+
+func TestDiskReplaceAcceptsSVGWithoutPreviews(t *testing.T) {
+	store, err := New(Config{Directory: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects, err := store.Replace(context.Background(), "workspace-a", "logo", "AbCdEfGh", Files{
+		Original:    File{Data: []byte("<svg/>"), ContentType: "image/svg+xml"},
+		Placeholder: File{Data: []byte("<svg/>"), ContentType: "image/svg+xml"},
+		NoPreviews:  true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if objects.Original == "" || objects.Placeholder == "" || len(objects.Previews) != 0 {
+		t.Fatalf("objects=%+v", objects)
 	}
 }
 
@@ -182,4 +226,16 @@ func (c *fakeClient) PutObject(
 	}
 
 	return &awss3.PutObjectOutput{}, nil
+}
+
+func (c *fakeClient) GetObject(
+	_ context.Context,
+	input *awss3.GetObjectInput,
+	_ ...func(*awss3.Options),
+) (*awss3.GetObjectOutput, error) {
+	object, ok := c.objects[aws.ToString(input.Key)]
+	if !ok {
+		return nil, errors.New("not found")
+	}
+	return &awss3.GetObjectOutput{Body: io.NopCloser(bytes.NewReader(object.data))}, nil
 }

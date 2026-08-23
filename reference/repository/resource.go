@@ -16,7 +16,7 @@ type Resource struct {
 	Payload                                                                                json.RawMessage
 	IsActive                                                                               bool
 	DeletedAt                                                                              *time.Time
-	Format, ContentType, SHA256                                                            string
+	Format, ContentType, SHA256, MediaVersion                                              string
 	Size                                                                                   int64
 	Width, Height                                                                          int
 	OriginalRef, Preview61Ref, Preview128Ref, Preview256Ref, Preview512Ref, PlaceholderRef string
@@ -34,6 +34,7 @@ func mapResource(row refsqlc.ReferenceResource) Resource {
 		Format:         row.Format,
 		ContentType:    row.ContentType,
 		SHA256:         row.SourceSha256,
+		MediaVersion:   row.MediaVersion,
 		Size:           row.SourceSize,
 		Width:          int(row.Width),
 		Height:         int(row.Height),
@@ -66,6 +67,7 @@ func (r *Repository) CreateResource(ctx context.Context, value Resource) error {
 		value.WorkspaceID,
 		"resource_get",
 		"resource_list",
+		"resource_item_list",
 	)
 }
 
@@ -99,6 +101,7 @@ func (r *Repository) UpdateResource(
 		value.WorkspaceID,
 		"resource_get",
 		"resource_list",
+		"resource_item_list",
 		referenceCacheGet,
 		referenceCacheResolve,
 		referenceCacheList,
@@ -144,7 +147,6 @@ func (r *Repository) GetResource(
 func (r *Repository) ListResources(
 	ctx context.Context,
 	workspaceID string,
-	only bool,
 	limit, offset int32,
 ) ([]Resource, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
@@ -155,7 +157,6 @@ func (r *Repository) ListResources(
 		ctx,
 		refsqlc.ResourceListParams{
 			WorkspaceID: workspaceID,
-			Column2:     only,
 			Limit:       limit,
 			Offset:      offset,
 		},
@@ -192,6 +193,7 @@ func (r *Repository) SoftDeleteResource(
 		workspaceID,
 		"resource_get",
 		"resource_list",
+		"resource_item_list",
 		referenceCacheGet,
 		referenceCacheResolve,
 		referenceCacheList,
@@ -209,7 +211,7 @@ func (r *Repository) AttachResource(
 		return err
 	}
 
-	if e := r.q.ResourceAttach(
+	rows, err := r.q.ResourceAttach(
 		ctx,
 		refsqlc.ResourceAttachParams{
 			WorkspaceID: workspaceID,
@@ -217,15 +219,114 @@ func (r *Repository) AttachResource(
 			ResourceKey: resourceKey,
 			Position:    position,
 		},
-	); e != nil {
-		return e
+	)
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return ErrItemNotFound
 	}
 
 	return r.bumpReferenceCacheVersions(
 		workspaceID,
+		"resource_item_list",
 		referenceCacheGet,
 		referenceCacheResolve,
 		referenceCacheList,
+	)
+}
+
+func (r *Repository) DetachResource(
+	ctx context.Context,
+	workspaceID, itemKey, resourceKey string,
+) (int64, error) {
+	if err := requireWorkspace(workspaceID); err != nil {
+		return 0, err
+	}
+
+	rows, err := r.q.ResourceDetach(ctx, refsqlc.ResourceDetachParams{
+		WorkspaceID: workspaceID, ItemKey: itemKey, ResourceKey: resourceKey,
+	})
+	if err != nil {
+		return rows, err
+	}
+
+	return rows, r.bumpReferenceCacheVersions(
+		workspaceID,
+		"resource_item_list",
+		referenceCacheGet,
+		referenceCacheResolve,
+		referenceCacheList,
+	)
+}
+
+func (r *Repository) ListItemResources(
+	ctx context.Context,
+	workspaceID, itemKey string,
+) ([]Resource, error) {
+	if err := requireWorkspace(workspaceID); err != nil {
+		return nil, err
+	}
+
+	return sqlwrap.Query(
+		ctx,
+		r.db,
+		sqlwrap.Params{
+			Key: r.referenceCacheKey(
+				"resource_item_list",
+				workspaceID,
+				itemKey,
+			),
+			Timeout: r.timeout,
+			CacheVersionScope: referenceCacheScope(
+				"resource_item_list",
+				workspaceID,
+			),
+			CacheL1Delay: r.cacheL1,
+			CacheL2Delay: r.cacheL2,
+		},
+		func(ctx context.Context) ([]Resource, error) {
+			rows, err := r.q.ResourceListItemResources(
+				ctx,
+				refsqlc.ResourceListItemResourcesParams{
+					WorkspaceID: workspaceID,
+					ItemKey:     itemKey,
+				},
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			result := make([]Resource, 0, len(rows))
+			for _, row := range rows {
+				result = append(result, Resource{
+					WorkspaceID:    row.WorkspaceID,
+					Key:            row.Key,
+					Type:           row.ResourceType,
+					Payload:        row.Payload,
+					IsActive:       row.IsActive,
+					DeletedAt:      sqlwrap.NullTimePtr(row.DeletedAt),
+					Format:         row.Format,
+					ContentType:    row.ContentType,
+					SHA256:         row.SourceSha256,
+					MediaVersion:   row.MediaVersion,
+					Size:           row.SourceSize,
+					Width:          int(row.Width),
+					Height:         int(row.Height),
+					OriginalRef:    row.OriginalRef,
+					Preview61Ref:   row.Preview61Ref,
+					Preview128Ref:  row.Preview128Ref,
+					Preview256Ref:  row.Preview256Ref,
+					Preview512Ref:  row.Preview512Ref,
+					PlaceholderRef: row.PlaceholderRef,
+					CreatedAt:      row.CreatedAt,
+					UpdatedAt:      row.UpdatedAt,
+				})
+			}
+
+			return result, nil
+		},
 	)
 }
 func resourceParams(v Resource) refsqlc.ResourceCreateParams {
@@ -239,6 +340,7 @@ func resourceParams(v Resource) refsqlc.ResourceCreateParams {
 		ContentType:    v.ContentType,
 		SourceSize:     v.Size,
 		SourceSha256:   v.SHA256,
+		MediaVersion:   v.MediaVersion,
 		Width:          int32(v.Width),
 		Height:         int32(v.Height),
 		OriginalRef:    v.OriginalRef,

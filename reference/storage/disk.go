@@ -27,7 +27,7 @@ func newDisk(directory string) (*diskStore, error) {
 
 func (s *diskStore) Replace(
 	ctx context.Context,
-	workspaceID, resourceKey string,
+	workspaceID, resourceKey, version string,
 	files Files,
 ) (Objects, error) {
 	if err := ctx.Err(); err != nil {
@@ -38,7 +38,7 @@ func (s *diskStore) Replace(
 		return Objects{}, err
 	}
 
-	prefix, err := objectPrefix(workspaceID, resourceKey)
+	prefix, err := objectPrefix(workspaceID, resourceKey, version)
 	if err != nil {
 		return Objects{}, err
 	}
@@ -72,6 +72,25 @@ func (s *diskStore) Replace(
 	}
 
 	return result, nil
+}
+
+func (s *diskStore) Read(ctx context.Context, reference string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(s.directory, filepath.FromSlash(reference)))
+	if err != nil {
+		return nil, fmt.Errorf("read reference media file: %w", err)
+	}
+	return data, nil
+}
+
+func (s *diskStore) ReadVersion(ctx context.Context, workspaceID, resourceKey, version string, size int) ([]byte, error) {
+	reference, err := versionReference(workspaceID, resourceKey, version, size)
+	if err != nil {
+		return nil, err
+	}
+	return s.Read(ctx, reference)
 }
 
 func (s *diskStore) write(reference string, file File) (string, error) {

@@ -14,6 +14,7 @@ import (
 	"github.com/elum2b/services/reference/repository"
 	"github.com/elum2b/services/reference/service/admin"
 	resourceservice "github.com/elum2b/services/reference/service/resource"
+	resourcecache "github.com/elum2b/services/reference/service/resource/cache"
 	"github.com/elum2b/services/reference/service/user"
 	resourcestorage "github.com/elum2b/services/reference/storage"
 )
@@ -25,6 +26,7 @@ type Reference struct {
 
 	client     *sqlwrap.Client
 	storage    resourcestorage.Store
+	mediaCache *resourcecache.Cache
 	ownsClient bool
 	rootCtx    context.Context
 	rootCancel context.CancelFunc
@@ -223,7 +225,7 @@ func (r *Reference) adopt(running *Reference) {
 
 	r.Admin, r.User = running.Admin, running.User
 	r.Resource = running.Resource
-	r.client, r.storage, r.ownsClient = running.client, running.storage, running.ownsClient
+	r.client, r.storage, r.mediaCache, r.ownsClient = running.client, running.storage, running.mediaCache, running.ownsClient
 	r.rootCtx, r.rootCancel = running.rootCtx, running.rootCancel
 }
 
@@ -241,6 +243,7 @@ func newReference(
 		CacheL2Delay:             options.CacheL2Delay,
 		OnCacheInvalidationError: options.OnCacheInvalidationError,
 	}
+	mediaCache := resourcecache.New(options.ResourceMediaCache)
 
 	return &Reference{
 		Admin: admin.NewWithRepositoryOptions(
@@ -248,7 +251,7 @@ func newReference(
 			db,
 			repositoryOptions,
 		),
-		Resource: resourceservice.New(rootCtx, db, repositoryOptions, store),
+		Resource: resourceservice.New(rootCtx, db, repositoryOptions, store, mediaCache),
 		User: user.NewWithRepositoryOptions(
 			rootCtx,
 			db,
@@ -256,6 +259,7 @@ func newReference(
 		),
 		client:     db,
 		storage:    store,
+		mediaCache: mediaCache,
 		ownsClient: ownsClient,
 		rootCtx:    rootCtx,
 		rootCancel: cancel,

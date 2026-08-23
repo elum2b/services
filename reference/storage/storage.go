@@ -49,6 +49,7 @@ type Files struct {
 	Original    File
 	Previews    []Preview
 	Placeholder File
+	NoPreviews  bool
 }
 
 // Objects contains opaque references persisted by Reference, never paths for
@@ -61,7 +62,9 @@ type Objects struct {
 
 // Store replaces every derived object of one resource.
 type Store interface {
-	Replace(context.Context, string, string, Files) (Objects, error)
+	Replace(context.Context, string, string, string, Files) (Objects, error)
+	Read(context.Context, string) ([]byte, error)
+	ReadVersion(context.Context, string, string, string, int) ([]byte, error)
 }
 
 // New selects S3-compatible storage when Bucket is configured, otherwise a
@@ -81,9 +84,10 @@ func New(config Config) (Store, error) {
 	return newDisk(config.Directory)
 }
 
-func objectPrefix(workspaceID, resourceKey string) (string, error) {
+func objectPrefix(workspaceID, resourceKey, version string) (string, error) {
 	if strings.TrimSpace(workspaceID) == "" ||
 		strings.TrimSpace(resourceKey) == "" ||
+		!validVersion(version) ||
 		strings.Contains(workspaceID, "/") {
 		return "", fmt.Errorf(
 			"%w: workspace and resource key are required",
@@ -93,7 +97,35 @@ func objectPrefix(workspaceID, resourceKey string) (string, error) {
 
 	digest := sha256.Sum256([]byte(resourceKey))
 
-	return workspaceID + "/" + fmt.Sprintf("%x", digest[:]), nil
+	return workspaceID + "/" + fmt.Sprintf("%x", digest[:]) + "/" + version, nil
+}
+
+func validVersion(value string) bool {
+	if len(value) != 8 {
+		return false
+	}
+	for _, char := range value {
+		if char < 'A' || char > 'Z' && char < 'a' || char > 'z' {
+			return false
+		}
+	}
+	return true
+}
+
+func versionReference(workspaceID, resourceKey, version string, size int) (string, error) {
+	prefix, err := objectPrefix(workspaceID, resourceKey, version)
+	if err != nil {
+		return "", err
+	}
+	if size == 0 {
+		return prefix + "/original", nil
+	}
+	for _, allowed := range requiredPreviewSizes {
+		if size == allowed {
+			return fmt.Sprintf("%s/preview-%d.png", prefix, size), nil
+		}
+	}
+	return "", ErrFilesInvalid
 }
 
 func validateFiles(files Files) error {
@@ -117,6 +149,15 @@ func validateFiles(files Files) error {
 		seen[preview.Size] = struct{}{}
 	}
 
+	if len(seen) == 0 {
+		if files.NoPreviews {
+			return nil
+		}
+		return ErrFilesInvalid
+	}
+	if files.NoPreviews {
+		return ErrFilesInvalid
+	}
 	if len(seen) != len(requiredPreviewSizes) {
 		return ErrFilesInvalid
 	}
