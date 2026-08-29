@@ -46,4 +46,4 @@
 | `Resource.Attach(ctx, workspaceID, itemKey, resourceKey, position)` | workspace, keys, position. | Привязывает активный resource к item. |
 | `Resource.Detach(ctx, workspaceID, itemKey, resourceKey)` | workspace, keys. | Отвязывает resource от item. |
 | `Resource.ListItemResources(ctx, workspaceID, itemKey)` | workspace, item key. | Возвращает resources, привязанные к item, в порядке position. |
-| `Resource.GetContent(ctx, params)` | `ContentParams{WorkspaceID, Key, Version, Format, Size}`. | Возвращает bytes original (`Size=0`) или WebP preview (`61`, `128`, `256`, `512`) через bounded in-memory media cache. |
+| `Resource.GetContent(ctx, params)` | `ContentParams{WorkspaceID, Key, Version, Format, Size}`. | Возвращает bytes original (`Size=0`) или PNG preview (`61`, `128`, `256`, `512`) через bounded in-memory media cache. |

@@ -12,11 +12,11 @@ import (
 	"image"
 	"image/color"
 	_ "image/jpeg" // Register the JPEG decoder with image.Decode.
+	"image/png"
 	"io"
 	"math"
 	"strings"
 
-	"github.com/kolesa-team/go-webp/encoder"
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // Register the WebP decoder with image.Decode.
 
@@ -61,12 +61,12 @@ type Options struct {
 	FirstFrame    []byte
 }
 
-// Preview is a WebP rendition whose longest side equals Size.
+// Preview is a PNG rendition whose longest side equals Size.
 type Preview struct {
 	Size   int
 	Width  int
 	Height int
-	WebP   []byte
+	PNG    []byte
 }
 
 // Asset retains the original bytes and contains derived delivery assets.
@@ -81,7 +81,7 @@ type Asset struct {
 
 // Process validates source bytes, uses a client-rendered first frame for vector
 // media, and
-// produces WebP previews and an SVG placeholder. The original bytes are never
+// produces PNG previews and an SVG placeholder. The original bytes are never
 // transcoded, so Lottie sources can be stored without loss.
 func Process(
 	ctx context.Context,
@@ -145,28 +145,7 @@ func Process(
 
 			var encoded bytes.Buffer
 
-			options, err := encoder.NewLossyEncoderOptions(
-				encoder.PresetDefault,
-				90,
-			)
-			if err != nil {
-				return Asset{}, fmt.Errorf(
-					"create preview %d options: %w",
-					size,
-					err,
-				)
-			}
-
-			webp, err := encoder.NewEncoder(preview, options)
-			if err != nil {
-				return Asset{}, fmt.Errorf(
-					"create preview %d encoder: %w",
-					size,
-					err,
-				)
-			}
-
-			if err := webp.Encode(&encoded); err != nil {
+			if err := png.Encode(&encoded, preview); err != nil {
 				return Asset{}, fmt.Errorf("encode preview %d: %w", size, err)
 			}
 
@@ -176,7 +155,7 @@ func Process(
 					Size:   size,
 					Width:  preview.Bounds().Dx(),
 					Height: preview.Bounds().Dy(),
-					WebP:   encoded.Bytes(),
+					PNG:    encoded.Bytes(),
 				},
 			)
 		}

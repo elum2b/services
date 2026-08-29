@@ -53,7 +53,7 @@ func (s *diskStore) Replace(
 
 	for _, preview := range files.Previews {
 		ref, err := s.write(
-			fmt.Sprintf("%s/preview-%d.webp", prefix, preview.Size),
+			fmt.Sprintf("%s/preview-%d.png", prefix, preview.Size),
 			preview.File,
 		)
 		if err != nil {

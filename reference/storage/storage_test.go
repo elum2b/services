@@ -37,8 +37,8 @@ func TestDiskReplaceWritesAndOverwritesCompleteMediaSet(t *testing.T) {
 		t.Fatalf("objects = %+v", objects)
 	}
 
-	if filepath.Ext(objects.Previews[61]) != ".webp" {
-		t.Fatalf("preview reference = %q, want .webp", objects.Previews[61])
+	if filepath.Ext(objects.Previews[61]) != ".png" {
+		t.Fatalf("preview reference = %q, want .png", objects.Previews[61])
 	}
 
 	if filepath.Base(objects.Original) != "image.png" {
@@ -91,9 +91,9 @@ func TestS3ReplaceWritesCompleteMediaSet(t *testing.T) {
 		t.Fatalf("objects = %+v uploads = %+v", objects, client.objects)
 	}
 
-	if object := client.objects[objects.Previews[61]]; object.contentType != "image/webp" {
+	if object := client.objects[objects.Previews[61]]; object.contentType != "image/png" {
 		t.Fatalf(
-			"preview content type = %q, want image/webp",
+			"preview content type = %q, want image/png",
 			object.contentType,
 		)
 	}
@@ -311,28 +311,28 @@ func validFiles(prefix string) Files {
 				Size: 61,
 				File: File{
 					Data:        []byte(prefix + "-preview-61"),
-					ContentType: "image/webp",
+					ContentType: "image/png",
 				},
 			},
 			{
 				Size: 128,
 				File: File{
 					Data:        []byte(prefix + "-preview-128"),
-					ContentType: "image/webp",
+					ContentType: "image/png",
 				},
 			},
 			{
 				Size: 256,
 				File: File{
 					Data:        []byte(prefix + "-preview-256"),
-					ContentType: "image/webp",
+					ContentType: "image/png",
 				},
 			},
 			{
 				Size: 512,
 				File: File{
 					Data:        []byte(prefix + "-preview-512"),
-					ContentType: "image/webp",
+					ContentType: "image/png",
 				},
 			},
 		},

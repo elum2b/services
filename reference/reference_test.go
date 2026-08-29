@@ -1885,7 +1885,7 @@ func TestReferenceArchiveJobsMediaRoundTripInWorkspace(t *testing.T) {
 		"manifest.json",
 		"media/animation/lottie.json",
 		"media/animation/placeholder.svg",
-		"media/animation/preview-512.webp",
+		"media/animation/preview-512.png",
 	} {
 		if entries[name] == nil {
 			t.Fatalf("export ZIP is missing %q", name)
@@ -1912,7 +1912,7 @@ func TestReferenceArchiveJobsMediaRoundTripInWorkspace(t *testing.T) {
 
 	archivedPreview := readReferenceZIPEntry(
 		t,
-		entries["media/animation/preview-512.webp"],
+		entries["media/animation/preview-512.png"],
 	)
 
 	if _, err := service.Admin.SoftDeleteItem(

@@ -202,7 +202,7 @@ func (s *Resource) CollectGarbage(
 	return purged, nil
 }
 
-// GetContent returns original media when Size is zero, otherwise a WebP preview.
+// GetContent returns original media when Size is zero, otherwise a PNG preview.
 // Version is part of the public media identity, so old and deleted versions stay readable.
 func (s *Resource) GetContent(
 	ctx context.Context,
@@ -226,7 +226,7 @@ func (s *Resource) GetContent(
 		return Content{}, fmt.Errorf("SVG resources have no previews")
 	}
 
-	mimeType := "image/webp"
+	mimeType := "image/png"
 	originalName := ""
 
 	if p.Size == 0 {
@@ -385,7 +385,7 @@ func (s *Resource) prepare(
 			files.Previews,
 			storage.Preview{
 				Size: x.Size,
-				File: storage.File{Data: x.WebP, ContentType: "image/webp"},
+				File: storage.File{Data: x.PNG, ContentType: "image/png"},
 			},
 		)
 	}

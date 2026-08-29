@@ -80,9 +80,9 @@ func TestGetContentCachesByImmutableVersion(t *testing.T) {
 		)
 	}
 
-	if first.ContentType != "image/webp" {
+	if first.ContentType != "image/png" {
 		t.Fatalf(
-			"preview content type = %q, want image/webp",
+			"preview content type = %q, want image/png",
 			first.ContentType,
 		)
 	}

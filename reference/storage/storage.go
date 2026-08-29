@@ -54,7 +54,7 @@ type File struct {
 	ContentType string
 }
 
-// Preview is a WebP rendition.
+// Preview is a PNG rendition.
 type Preview struct {
 	Size int
 	File File
@@ -158,7 +158,7 @@ func versionReference(
 
 	for _, allowed := range requiredPreviewSizes {
 		if size == allowed {
-			return fmt.Sprintf("%s/preview-%d.webp", prefix, size), nil
+			return fmt.Sprintf("%s/preview-%d.png", prefix, size), nil
 		}
 	}
 
@@ -177,7 +177,7 @@ func validateFiles(files Files) error {
 	seen := make(map[int]struct{}, len(files.Previews))
 	for _, preview := range files.Previews {
 		if preview.Size <= 0 || len(preview.File.Data) == 0 ||
-			preview.File.ContentType != "image/webp" {
+			preview.File.ContentType != "image/png" {
 			return ErrFilesInvalid
 		}
 

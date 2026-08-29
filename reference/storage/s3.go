@@ -128,7 +128,7 @@ func (s *s3Store) Replace(
 	for _, preview := range files.Previews {
 		ref, err := s.put(
 			ctx,
-			fmt.Sprintf("%s/preview-%d.webp", prefix, preview.Size),
+			fmt.Sprintf("%s/preview-%d.png", prefix, preview.Size),
 			preview.File,
 		)
 		if err != nil {
@@ -208,10 +208,10 @@ func (s *s3Store) DeleteVersion(
 
 	for _, suffix := range []string{
 		"placeholder.svg",
-		"preview-61.webp",
-		"preview-128.webp",
-		"preview-256.webp",
-		"preview-512.webp",
+		"preview-61.png",
+		"preview-128.png",
+		"preview-256.png",
+		"preview-512.png",
 	} {
 		objects = append(objects, awstypes.ObjectIdentifier{
 			Key: aws.String("reference/" + prefix + "/" + suffix),

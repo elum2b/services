@@ -124,7 +124,7 @@ func (a *Admin) exportZIP(
 				workspaceID,
 				resource,
 				base,
-				fmt.Sprintf("preview-%d.webp", size),
+				fmt.Sprintf("preview-%d.png", size),
 				size,
 			); err != nil {
 				return err
@@ -395,7 +395,7 @@ func archiveResourceFiles(
 
 	for _, size := range []int{61, 128, 256, 512} {
 		data, err := readArchiveFile(
-			entries[base+fmt.Sprintf("preview-%d.webp", size)],
+			entries[base+fmt.Sprintf("preview-%d.png", size)],
 			64<<20,
 		)
 		if err != nil {
@@ -406,7 +406,7 @@ func archiveResourceFiles(
 			files.Previews,
 			storage.Preview{
 				Size: size,
-				File: storage.File{Data: data, ContentType: "image/webp"},
+				File: storage.File{Data: data, ContentType: "image/png"},
 			},
 		)
 	}

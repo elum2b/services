@@ -42,15 +42,15 @@ func TestProcessStaticImage(t *testing.T) {
 			)
 		}
 
-		decoded, format, err := image.Decode(bytes.NewReader(preview.WebP))
+		decoded, format, err := image.Decode(bytes.NewReader(preview.PNG))
 		if err != nil {
-			t.Errorf("preview %d is not WebP: %v", preview.Size, err)
+			t.Errorf("preview %d is not PNG: %v", preview.Size, err)
 
 			continue
 		}
 
-		if format != "webp" {
-			t.Errorf("preview %d format = %q, want webp", preview.Size, format)
+		if format != "png" {
+			t.Errorf("preview %d format = %q, want png", preview.Size, format)
 		}
 
 		if decoded.Bounds().Dx() != preview.Width ||
