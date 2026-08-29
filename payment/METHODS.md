@@ -27,9 +27,12 @@
 | `Admin.AttachProductItem(ctx, params)` | `AttachProductItemParams` alias `product.AddItemParams`. | Привязывает к продукту непрозрачный item key, которым владеет сервис `reference`, и задает параметры награды. |
 | `Admin.CreateCatalogPrice(ctx, params)` | `CreateCatalogPriceParams` alias `product.CreatePriceParams`. | Создает цену продукта. |
 | `Admin.UpdateCatalogPrice(ctx, params)` | `UpdateCatalogPriceParams` alias `product.UpdatePriceParams`. | Обновляет цену продукта. |
-| `Admin.Export(ctx, workspaceID, req)` | `workspaceID`, `ExportRequest{Now}`. | Экспортирует каталог payment workspace в `payment.export.v1`: группы, продукты, target, локализации, связи product-item и цены. Reward/reference items не выводятся в payment export. |
-| `Admin.PreviewImport(ctx, workspaceID, pkg)` | `workspaceID`, `ExportPackage`. | Проверяет пакет импорта, считает элементы и возвращает конфликты по group/product/item ключам без записи данных. |
-| `Admin.Import(ctx, workspaceID, req)` | `ImportRequest{Package, ConflictStrategy}`; стратегии `fail_on_conflict`, `skip_existing`, `update_existing`. | Импортирует каталог payment пачками в транзакции, затем один раз перестраивает product cache workspace. |
+| `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, ExportRequest}`. | Ставит ZIP-экспорт в асинхронную очередь. |
+| `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, ImportRequest, Archive}`. | Ставит ZIP-импорт в асинхронную очередь; асинхронный импорт не предоставляет `PreviewImport`. |
+| `Admin.ArchiveJob(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Возвращает текущий статус задачи. |
+| `Admin.ArchiveHistory(ctx, workspaceID, page)` | `workspaceID`, `Page`. | Возвращает историю задач workspace. |
+| `Admin.DownloadArchive(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Скачивает результат завершенного export job. |
+| `Admin.ArchiveJobHistory(ctx, workspaceID, id, page)` | `workspaceID`, job `id`, `Page`. | Возвращает историю состояний задачи. |
 | `Admin.ListProductGroups(ctx, params)` | `ProductGroupListParams{WorkspaceID, Page}`. | Возвращает группы продуктов. |
 | `Admin.GetProductGroup(ctx, workspaceID, code)` | `workspaceID`, `code`. | Возвращает группу продуктов. |
 | `Admin.UpsertProductGroup(ctx, params)` | `paymentsqlc.UpsertProductGroupParams`. | Создает или обновляет группу продуктов. |

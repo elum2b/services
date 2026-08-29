@@ -472,7 +472,7 @@ func TestPromoImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 		})
 	}
 
-	result, err := service.Admin.Import(
+	result, err := repository.New(service.client).Import(
 		context.Background(),
 		testsupport.WorkspaceID("large-workspace"),
 		admin.ImportRequest{
@@ -528,20 +528,21 @@ func TestPromoImportSerializesWithAdminWrite(t *testing.T) {
 	importResult := make(chan error, 1)
 
 	go func() {
-		_, err := service.Admin.Import(ctx, workspaceID, admin.ImportRequest{
-			Package: admin.ExportPackage{
-				Format:  repository.ExportFormat,
-				Service: "promo",
-				Promos: []repository.ExportPromo{
-					{
-						Code:     "IMPORT",
-						Payload:  json.RawMessage(`{}`),
-						IsActive: true,
+		_, err := repository.New(service.client).
+			Import(ctx, workspaceID, admin.ImportRequest{
+				Package: admin.ExportPackage{
+					Format:  repository.ExportFormat,
+					Service: "promo",
+					Promos: []repository.ExportPromo{
+						{
+							Code:     "IMPORT",
+							Payload:  json.RawMessage(`{}`),
+							IsActive: true,
+						},
 					},
 				},
-			},
-			ConflictStrategy: repository.ImportConflictUpdate,
-		})
+				ConflictStrategy: repository.ImportConflictUpdate,
+			})
 		importResult <- err
 	}()
 
@@ -1004,7 +1005,7 @@ func TestPromoImportExportCycle(t *testing.T) {
 		t.Fatalf("upsert reward: %v", err)
 	}
 
-	pkg, err := service.Admin.Export(
+	pkg, err := repository.New(service.client).Export(
 		ctx,
 		testsupport.WorkspaceID("workspace-export"),
 		admin.ExportRequest{},
@@ -1013,7 +1014,7 @@ func TestPromoImportExportCycle(t *testing.T) {
 		t.Fatalf("export: %v", err)
 	}
 
-	preview, err := service.Admin.PreviewImport(
+	preview, err := repository.New(service.client).PreviewImport(
 		ctx,
 		testsupport.WorkspaceID("workspace-import"),
 		pkg,
@@ -1022,7 +1023,7 @@ func TestPromoImportExportCycle(t *testing.T) {
 		t.Fatalf("preview import: value=%+v err=%v", preview, err)
 	}
 
-	if _, err := service.Admin.Import(
+	if _, err := repository.New(service.client).Import(
 		ctx,
 		testsupport.WorkspaceID("workspace-import"),
 		admin.ImportRequest{
@@ -1032,7 +1033,7 @@ func TestPromoImportExportCycle(t *testing.T) {
 		t.Fatalf("import: %v", err)
 	}
 
-	imported, err := service.Admin.Export(
+	imported, err := repository.New(service.client).Export(
 		ctx,
 		testsupport.WorkspaceID("workspace-import"),
 		admin.ExportRequest{},
@@ -1071,7 +1072,7 @@ func TestPromoImportExportCycle(t *testing.T) {
 	pkg.Promos[0].Localization = nil
 	pkg.Promos[0].Rewards = nil
 
-	if _, err := service.Admin.Import(
+	if _, err := repository.New(service.client).Import(
 		ctx,
 		testsupport.WorkspaceID("workspace-import"),
 		admin.ImportRequest{
@@ -1082,7 +1083,7 @@ func TestPromoImportExportCycle(t *testing.T) {
 		t.Fatalf("replace imported promo: %v", err)
 	}
 
-	replaced, err := service.Admin.Export(
+	replaced, err := repository.New(service.client).Export(
 		ctx,
 		testsupport.WorkspaceID("workspace-import"),
 		admin.ExportRequest{},

@@ -158,18 +158,31 @@ func (s *s3Store) Read(ctx context.Context, reference string) ([]byte, error) {
 		return nil, fmt.Errorf("read resource object: %w", err)
 	}
 	defer output.Body.Close()
+
 	data, err := io.ReadAll(output.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read resource object body: %w", err)
 	}
+
 	return data, nil
 }
 
-func (s *s3Store) ReadVersion(ctx context.Context, workspaceID, resourceKey, version, originalName string, size int) ([]byte, error) {
-	reference, err := versionReference(workspaceID, resourceKey, version, originalName, size)
+func (s *s3Store) ReadVersion(
+	ctx context.Context,
+	workspaceID, resourceKey, version, originalName string,
+	size int,
+) ([]byte, error) {
+	reference, err := versionReference(
+		workspaceID,
+		resourceKey,
+		version,
+		originalName,
+		size,
+	)
 	if err != nil {
 		return nil, err
 	}
+
 	return s.Read(ctx, "reference/"+reference)
 }
 
@@ -182,12 +195,17 @@ func (s *s3Store) DeleteVersion(
 		return err
 	}
 
-	objects := make([]awstypes.ObjectIdentifier, 0, len(originalNames)+len(requiredPreviewSizes)+1)
+	objects := make(
+		[]awstypes.ObjectIdentifier,
+		0,
+		len(originalNames)+len(requiredPreviewSizes)+1,
+	)
 	for _, name := range originalNames {
 		objects = append(objects, awstypes.ObjectIdentifier{
 			Key: aws.String("reference/" + prefix + "/" + name),
 		})
 	}
+
 	for _, suffix := range []string{
 		"placeholder.svg",
 		"preview-61.webp",
@@ -207,8 +225,12 @@ func (s *s3Store) DeleteVersion(
 	if err != nil {
 		return fmt.Errorf("delete resource media version: %w", err)
 	}
+
 	if len(output.Errors) > 0 {
-		return fmt.Errorf("delete resource media version: %d objects failed", len(output.Errors))
+		return fmt.Errorf(
+			"delete resource media version: %d objects failed",
+			len(output.Errors),
+		)
 	}
 
 	return nil

@@ -353,7 +353,7 @@ func BenchmarkCalendarImportExport(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	pkg, err := service.Admin.Export(
+	pkg, err := repository.New(service.client).Export(
 		ctx,
 		testsupport.WorkspaceID("bench-import"),
 		admin.ExportRequest{},
@@ -362,7 +362,7 @@ func BenchmarkCalendarImportExport(b *testing.B) {
 	b.ReportAllocs()
 	b.Run("Export", func(b *testing.B) {
 		for range b.N {
-			_, err := service.Admin.Export(
+			_, err := repository.New(service.client).Export(
 				ctx,
 				testsupport.WorkspaceID("bench-import"),
 				admin.ExportRequest{},
@@ -372,7 +372,7 @@ func BenchmarkCalendarImportExport(b *testing.B) {
 	})
 	b.Run("Import/update", func(b *testing.B) {
 		for range b.N {
-			_, err := service.Admin.Import(
+			_, err := repository.New(service.client).Import(
 				ctx,
 				testsupport.WorkspaceID("bench-import"),
 				admin.ImportRequest{

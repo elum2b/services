@@ -31,10 +31,16 @@ const (
 )
 
 var (
-	ErrActiveJob       = errors.New("importexport jobs: active job already exists")
+	ErrActiveJob = errors.New(
+		"importexport jobs: active job already exists",
+	)
 	ErrJobNotFound     = errors.New("importexport jobs: job not found")
-	ErrArchiveNotReady = errors.New("importexport jobs: archive is not available")
-	ErrNotLeased       = errors.New("importexport jobs: job is not leased by worker")
+	ErrArchiveNotReady = errors.New(
+		"importexport jobs: archive is not available",
+	)
+	ErrNotLeased = errors.New(
+		"importexport jobs: job is not leased by worker",
+	)
 )
 
 // Archive owns durable dump storage. The manager calls Delete after retention
@@ -85,6 +91,7 @@ func newToken() string {
 		// crypto/rand failing is exceptional; time still prevents normal collisions.
 		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
 	}
+
 	return hex.EncodeToString(value)
 }
 

@@ -74,22 +74,40 @@ func (s *diskStore) Replace(
 	return result, nil
 }
 
-func (s *diskStore) Read(ctx context.Context, reference string) ([]byte, error) {
+func (s *diskStore) Read(
+	ctx context.Context,
+	reference string,
+) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(filepath.Join(s.directory, filepath.FromSlash(reference)))
+
+	data, err := os.ReadFile(
+		filepath.Join(s.directory, filepath.FromSlash(reference)),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("read reference media file: %w", err)
 	}
+
 	return data, nil
 }
 
-func (s *diskStore) ReadVersion(ctx context.Context, workspaceID, resourceKey, version, originalName string, size int) ([]byte, error) {
-	reference, err := versionReference(workspaceID, resourceKey, version, originalName, size)
+func (s *diskStore) ReadVersion(
+	ctx context.Context,
+	workspaceID, resourceKey, version, originalName string,
+	size int,
+) ([]byte, error) {
+	reference, err := versionReference(
+		workspaceID,
+		resourceKey,
+		version,
+		originalName,
+		size,
+	)
 	if err != nil {
 		return nil, err
 	}
+
 	return s.Read(ctx, reference)
 }
 
@@ -106,7 +124,9 @@ func (s *diskStore) DeleteVersion(
 		return err
 	}
 
-	if err := os.RemoveAll(filepath.Join(s.directory, filepath.FromSlash(prefix))); err != nil {
+	if err := os.RemoveAll(
+		filepath.Join(s.directory, filepath.FromSlash(prefix)),
+	); err != nil {
 		return fmt.Errorf("delete resource media version: %w", err)
 	}
 

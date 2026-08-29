@@ -1,12 +1,19 @@
 package admin
 
 import (
+	"io"
 	"time"
 
 	json "github.com/goccy/go-json"
 
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	"github.com/elum2b/services/tasks/repository"
 )
+
+type Page struct {
+	Limit  int32
+	Offset int32
+}
 
 type SaveTaskParams struct {
 	ID                  uint64
@@ -214,3 +221,16 @@ type ImportPreview = repository.ImportPreview
 type ImportCounts = repository.ImportCounts
 type ImportConflict = repository.ImportConflict
 type ImportResult = repository.ImportResult
+type QueueArchiveExportParams struct {
+	WorkspaceID string
+	FileName    string
+	ExportRequest
+}
+type QueueArchiveImportParams struct {
+	WorkspaceID string
+	FileName    string
+	ImportRequest
+	Archive io.Reader
+}
+type ArchiveJob = jobs.Job
+type ArchiveJobHistoryEntry = jobs.HistoryEntry

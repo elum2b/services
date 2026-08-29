@@ -39,7 +39,7 @@ func BenchmarkTasksExampleDumpImport(b *testing.B) {
 		b.Fatalf("unmarshal daily example request: %v", err)
 	}
 
-	preview, err := service.Admin.PreviewImport(
+	preview, err := repository.New(service.client).PreviewImport(
 		ctx,
 		testsupport.WorkspaceID("daily-import-preview"),
 		req.Package,
@@ -64,7 +64,7 @@ func BenchmarkTasksExampleDumpImport(b *testing.B) {
 			b.Fatalf("unmarshal daily example: %v", err)
 		}
 
-		result, err := service.Admin.Import(
+		result, err := repository.New(service.client).Import(
 			ctx,
 			benchmarkWorkspace("daily-import", i),
 			admin.ImportRequest{
@@ -92,7 +92,7 @@ func BenchmarkTasksExampleDumpExport(b *testing.B) {
 		b.Fatalf("unmarshal daily example request: %v", err)
 	}
 
-	preview, err := service.Admin.PreviewImport(
+	preview, err := repository.New(service.client).PreviewImport(
 		ctx,
 		testsupport.WorkspaceID("daily-export-preview"),
 		req.Package,
@@ -102,14 +102,15 @@ func BenchmarkTasksExampleDumpExport(b *testing.B) {
 	}
 
 	workspaceID := testsupport.WorkspaceID("daily-export-benchmark")
-	if _, err := service.Admin.Import(ctx, workspaceID, admin.ImportRequest{
-		Package:          req.Package,
-		ConflictStrategy: repository.ImportConflictFail,
-		Secrets: exportImportSecretMap(
-			preview.RequiredSecrets,
-			"benchmark-secret",
-		),
-	}); err != nil {
+	if _, err := repository.New(service.client).
+		Import(ctx, workspaceID, admin.ImportRequest{
+			Package:          req.Package,
+			ConflictStrategy: repository.ImportConflictFail,
+			Secrets: exportImportSecretMap(
+				preview.RequiredSecrets,
+				"benchmark-secret",
+			),
+		}); err != nil {
 		b.Fatalf("seed daily example: %v", err)
 	}
 
@@ -118,7 +119,7 @@ func BenchmarkTasksExampleDumpExport(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		exported, err := service.Admin.Export(
+		exported, err := repository.New(service.client).Export(
 			ctx,
 			workspaceID,
 			admin.ExportRequest{

@@ -10,6 +10,10 @@ var (
 		serviceerrors.CodeNotReady,
 		"cpa admin repository is not configured",
 	)
+	ErrArchiveJobsNotConfigured = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"cpa admin archive jobs are not configured",
+	)
 	ErrCodeUploadModeUnsupported = repository.ErrCodeUploadMode
 	ErrCallbackEventIDRequired   = serviceerrors.New(
 		serviceerrors.CodeInvalidFields,

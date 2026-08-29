@@ -48,8 +48,6 @@ func BenchmarkPromoServiceMethods(b *testing.B) {
 	promoID := env.ids[0]
 	writeID := env.writeID
 	writeCode := env.writeCode
-	importPackage := promoBenchmarkImportPackage()
-
 	first, err := env.api.User.Apply(env.ctx, user.ApplyParams{
 		Identity: appliedIdentity,
 		Code:     code,
@@ -228,29 +226,6 @@ func BenchmarkPromoServiceMethods(b *testing.B) {
 		}
 	})
 
-	b.Run("Admin.Export", func(b *testing.B) {
-		for range b.N {
-			_, err := env.api.Admin.Export(
-				env.ctx,
-				promoBenchWorkspace,
-				admin.ExportRequest{},
-			)
-			promoBenchNoError(b, err)
-		}
-	})
-
-	b.Run("Admin.Import/update_existing", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_, err := env.api.Admin.Import(env.ctx, testsupport.WorkspaceID(
-				promoBenchmarkRunValue("import_workspace", i),
-			), admin.ImportRequest{
-				Package:          importPackage,
-				ConflictStrategy: repository.ImportConflictUpdate,
-			})
-			promoBenchNoError(b, err)
-		}
-	})
-
 	_ = identity
 }
 
@@ -327,35 +302,6 @@ func seedPromoBenchmark(b *testing.B, env *promoBenchmarkEnv) {
 			Locale:   "ru",
 		})
 		promoBenchNoError(b, err)
-	}
-}
-
-func promoBenchmarkImportPackage() admin.ExportPackage {
-	return admin.ExportPackage{
-		Format:  repository.ExportFormat,
-		Service: "promo",
-		Promos: []admin.ExportPromo{
-			{
-				Code:           "IMPORT_BENCH_1",
-				Payload:        json.RawMessage(`{"benchmark":true}`),
-				MaxActivations: 0,
-				IsActive:       true,
-				Localization: map[string]admin.ExportText{
-					"ru": {
-						Title:       "Import benchmark",
-						Description: "Import benchmark description",
-					},
-				},
-				Rewards: []admin.ExportReward{
-					{
-						Key:      "stars",
-						Type:     "quantity",
-						Quantity: 100,
-						Scale:    2,
-					},
-				},
-			},
-		},
 	}
 }
 

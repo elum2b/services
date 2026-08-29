@@ -58,15 +58,21 @@ func (r *Repository) CreateResource(ctx context.Context, value Resource) error {
 		ctx,
 		value.WorkspaceID,
 		func(tx *Repository) error {
-			if err := tx.q.ResourceCreate(ctx, resourceParams(value)); err != nil {
+			if err := tx.q.ResourceCreate(
+				ctx,
+				resourceParams(value),
+			); err != nil {
 				return err
 			}
 
-			return tx.q.ResourceMediaVersionCreate(ctx, refsqlc.ResourceMediaVersionCreateParams{
-				WorkspaceID:  value.WorkspaceID,
-				ResourceKey:  value.Key,
-				MediaVersion: value.MediaVersion,
-			})
+			return tx.q.ResourceMediaVersionCreate(
+				ctx,
+				refsqlc.ResourceMediaVersionCreateParams{
+					WorkspaceID:  value.WorkspaceID,
+					ResourceKey:  value.Key,
+					MediaVersion: value.MediaVersion,
+				},
+			)
 		},
 	)
 	if err != nil {
@@ -101,17 +107,25 @@ func (r *Repository) UpdateResource(
 			if e != nil || rows == 0 {
 				return e
 			}
-			if e = tx.q.ResourceMediaVersionRetireActive(ctx, refsqlc.ResourceMediaVersionRetireActiveParams{
-				WorkspaceID: value.WorkspaceID,
-				ResourceKey: value.Key,
-			}); e != nil {
+
+			if e = tx.q.ResourceMediaVersionRetireActive(
+				ctx,
+				refsqlc.ResourceMediaVersionRetireActiveParams{
+					WorkspaceID: value.WorkspaceID,
+					ResourceKey: value.Key,
+				},
+			); e != nil {
 				return e
 			}
-			e = tx.q.ResourceMediaVersionCreate(ctx, refsqlc.ResourceMediaVersionCreateParams{
-				WorkspaceID:  value.WorkspaceID,
-				ResourceKey:  value.Key,
-				MediaVersion: value.MediaVersion,
-			})
+
+			e = tx.q.ResourceMediaVersionCreate(
+				ctx,
+				refsqlc.ResourceMediaVersionCreateParams{
+					WorkspaceID:  value.WorkspaceID,
+					ResourceKey:  value.Key,
+					MediaVersion: value.MediaVersion,
+				},
+			)
 
 			return e
 		},
@@ -208,21 +222,28 @@ func (r *Repository) SoftDeleteResource(
 	}
 
 	var rows int64
+
 	e := r.withWorkspaceMutation(ctx, workspaceID, func(tx *Repository) error {
 		var err error
 
 		rows, err = tx.q.ResourceSoftDelete(
 			ctx,
-			refsqlc.ResourceSoftDeleteParams{WorkspaceID: workspaceID, Key: key},
+			refsqlc.ResourceSoftDeleteParams{
+				WorkspaceID: workspaceID,
+				Key:         key,
+			},
 		)
 		if err != nil || rows == 0 {
 			return err
 		}
 
-		return tx.q.ResourceMediaVersionRetireActive(ctx, refsqlc.ResourceMediaVersionRetireActiveParams{
-			WorkspaceID: workspaceID,
-			ResourceKey: key,
-		})
+		return tx.q.ResourceMediaVersionRetireActive(
+			ctx,
+			refsqlc.ResourceMediaVersionRetireActiveParams{
+				WorkspaceID: workspaceID,
+				ResourceKey: key,
+			},
+		)
 	})
 	if e != nil {
 		return rows, e
@@ -254,10 +275,13 @@ func (r *Repository) ListGarbageMediaVersions(
 		return []GarbageMediaVersion{}, nil
 	}
 
-	rows, err := r.q.ResourceListGarbageMediaVersions(ctx, refsqlc.ResourceListGarbageMediaVersionsParams{
-		RetiredAt: sql.NullTime{Time: before, Valid: true},
-		Limit:     limit,
-	})
+	rows, err := r.q.ResourceListGarbageMediaVersions(
+		ctx,
+		refsqlc.ResourceListGarbageMediaVersionsParams{
+			RetiredAt: sql.NullTime{Time: before, Valid: true},
+			Limit:     limit,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -283,12 +307,15 @@ func (r *Repository) DeleteMediaVersion(
 		return 0, err
 	}
 
-	return r.q.ResourceDeleteMediaVersion(ctx, refsqlc.ResourceDeleteMediaVersionParams{
-		WorkspaceID:  value.WorkspaceID,
-		ResourceKey:  value.ResourceKey,
-		MediaVersion: value.MediaVersion,
-		RetiredAt:    sql.NullTime{Time: before, Valid: true},
-	})
+	return r.q.ResourceDeleteMediaVersion(
+		ctx,
+		refsqlc.ResourceDeleteMediaVersionParams{
+			WorkspaceID:  value.WorkspaceID,
+			ResourceKey:  value.ResourceKey,
+			MediaVersion: value.MediaVersion,
+			RetiredAt:    sql.NullTime{Time: before, Valid: true},
+		},
+	)
 }
 
 func (r *Repository) PurgeDeletedResource(
@@ -299,10 +326,13 @@ func (r *Repository) PurgeDeletedResource(
 		return 0, err
 	}
 
-	rows, err := r.q.ResourcePurgeDeleted(ctx, refsqlc.ResourcePurgeDeletedParams{
-		WorkspaceID: workspaceID,
-		Key:         key,
-	})
+	rows, err := r.q.ResourcePurgeDeleted(
+		ctx,
+		refsqlc.ResourcePurgeDeletedParams{
+			WorkspaceID: workspaceID,
+			Key:         key,
+		},
+	)
 	if err != nil || rows == 0 {
 		return rows, err
 	}

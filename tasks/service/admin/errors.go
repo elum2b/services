@@ -7,6 +7,10 @@ var (
 		serviceerrors.CodeNotReady,
 		"tasks admin repository is not configured",
 	)
+	ErrArchiveJobsNotConfigured = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"tasks admin archive jobs are not configured",
+	)
 	ErrRewardRequired = serviceerrors.New(
 		serviceerrors.CodeInvalidFields,
 		"tasks admin reward key and positive quantity are required",

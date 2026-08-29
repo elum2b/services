@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"io"
 	"time"
 
 	json "github.com/goccy/go-json"
@@ -8,6 +9,7 @@ import (
 	"github.com/elum2b/services/cpa/model"
 	"github.com/elum2b/services/cpa/repository"
 	"github.com/elum2b/services/cpa/service/user"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 )
 
 type Page struct {
@@ -98,3 +100,16 @@ type ImportPreview = repository.ImportPreview
 type ImportCounts = repository.ImportCounts
 type ImportConflict = repository.ImportConflict
 type ImportResult = repository.ImportResult
+type QueueArchiveExportParams struct {
+	WorkspaceID string
+	FileName    string
+	ExportRequest
+}
+type QueueArchiveImportParams struct {
+	WorkspaceID string
+	FileName    string
+	ImportRequest
+	Archive io.Reader
+}
+type ArchiveJob = jobs.Job
+type ArchiveJobHistoryEntry = jobs.HistoryEntry

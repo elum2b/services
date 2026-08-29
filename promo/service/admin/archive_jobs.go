@@ -1,79 +1,99 @@
 package admin
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"fmt"
 	"io"
-	"time"
 
 	json "github.com/goccy/go-json"
 
-	"github.com/elum2b/services/internal/utils/contextutil"
 	"github.com/elum2b/services/internal/utils/importexport/jobs"
-	sqlwrap "github.com/elum2b/services/internal/utils/sql"
-	"github.com/elum2b/services/reference/repository"
-	resourcestorage "github.com/elum2b/services/reference/storage"
 )
 
-type Admin struct {
-	repository *repository.Repository
-	rootCtx    context.Context
-	store      resourcestorage.Store
-	jobs       *jobs.Manager
-}
+const archiveManifestName = "manifest.json"
 
-func NewWithRepositoryOptionsAndStore(
+type archiveJobHandler struct{ admin *Admin }
+
+func (h archiveJobHandler) Export(
 	ctx context.Context,
-	db *sqlwrap.Client,
-	options repository.Options,
-	store resourcestorage.Store,
-) *Admin {
-	admin := NewWithRepositoryOptions(ctx, db, options)
+	job jobs.Job,
+) (io.ReadCloser, error) {
+	var request ExportRequest
 
-	admin.store = store
+	if err := json.Unmarshal(job.Options, &request); err != nil {
+		return nil, fmt.Errorf("decode export job options: %w", err)
+	}
 
-	return admin
-}
-
-func NewWithRepositoryOptions(
-	ctx context.Context,
-	db *sqlwrap.Client,
-	options repository.Options,
-) *Admin {
-	repo, err := repository.NewPreparedWithOptions(
-		contextutil.Normalize(ctx),
-		db,
-		options,
-	)
+	pkg, err := h.admin.repository.Export(ctx, job.WorkspaceID, request)
 	if err != nil {
-		repo = repository.NewWithOptions(db, options)
+		return nil, err
 	}
 
-	return &Admin{repository: repo, rootCtx: contextutil.Normalize(ctx)}
+	var data bytes.Buffer
+
+	writer := zip.NewWriter(&data)
+
+	manifest, err := writer.Create(archiveManifestName)
+	if err == nil {
+		err = json.NewEncoder(manifest).Encode(pkg)
+	}
+
+	if closeErr := writer.Close(); err == nil {
+		err = closeErr
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("write export ZIP: %w", err)
+	}
+
+	return io.NopCloser(bytes.NewReader(data.Bytes())), nil
 }
 
-func New(ctx context.Context, db *sqlwrap.Client) *Admin {
-	return NewWithRepositoryOptions(ctx, db, repository.Options{
-		CacheL1Delay: 10 * time.Minute, CacheL2Delay: 10 * time.Minute,
-	})
+func (h archiveJobHandler) Import(
+	ctx context.Context,
+	job jobs.Job,
+	source io.Reader,
+) error {
+	var request ImportRequest
+
+	if err := json.Unmarshal(job.Options, &request); err != nil {
+		return fmt.Errorf("decode import job options: %w", err)
+	}
+
+	data, err := io.ReadAll(source)
+	if err != nil {
+		return fmt.Errorf("read import ZIP: %w", err)
+	}
+
+	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return fmt.Errorf("open import ZIP: %w", err)
+	}
+
+	for _, file := range archive.File {
+		if file.Name != archiveManifestName {
+			continue
+		}
+
+		reader, err := file.Open()
+		if err != nil {
+			return err
+		}
+		defer reader.Close()
+
+		if err := json.NewDecoder(reader).Decode(&request.Package); err != nil {
+			return fmt.Errorf("decode import manifest: %w", err)
+		}
+
+		_, err = h.admin.repository.Import(ctx, job.WorkspaceID, request)
+
+		return err
+	}
+
+	return fmt.Errorf("import ZIP is missing %s", archiveManifestName)
 }
-
-func (a *Admin) Close() error {
-	if a == nil {
-		return nil
-	}
-
-	if a.jobs != nil {
-		a.jobs.Close()
-	}
-
-	if a.repository != nil {
-		return a.repository.Close()
-	}
-
-	return nil
-}
-
-func (a *Admin) configureArchiveJobs(manager *jobs.Manager) { a.jobs = manager }
 
 func (a *Admin) QueueArchiveExport(
 	ctx context.Context,
@@ -83,9 +103,7 @@ func (a *Admin) QueueArchiveExport(
 		return jobs.Job{}, ErrArchiveJobsNotConfigured
 	}
 
-	options, err := json.Marshal(
-		ArchiveExportRequest{IncludeMedia: params.IncludeMedia},
-	)
+	options, err := json.Marshal(params.ExportRequest)
 	if err != nil {
 		return jobs.Job{}, err
 	}
@@ -93,7 +111,7 @@ func (a *Admin) QueueArchiveExport(
 	return a.jobs.QueueExport(
 		ctx,
 		jobs.QueueExportParams{
-			Service:     "reference",
+			Service:     "promo",
 			WorkspaceID: params.WorkspaceID,
 			FileName:    params.FileName,
 			Options:     options,
@@ -109,12 +127,7 @@ func (a *Admin) QueueArchiveImport(
 		return jobs.Job{}, ErrArchiveJobsNotConfigured
 	}
 
-	options, err := json.Marshal(
-		ArchiveImportRequest{
-			IncludeMedia:     params.IncludeMedia,
-			ConflictStrategy: params.ConflictStrategy,
-		},
-	)
+	options, err := json.Marshal(params.ImportRequest)
 	if err != nil {
 		return jobs.Job{}, err
 	}
@@ -122,7 +135,7 @@ func (a *Admin) QueueArchiveImport(
 	return a.jobs.QueueImport(
 		ctx,
 		jobs.QueueImportParams{
-			Service:     "reference",
+			Service:     "promo",
 			WorkspaceID: params.WorkspaceID,
 			FileName:    params.FileName,
 			Options:     options,
@@ -142,11 +155,7 @@ func (a *Admin) ArchiveJob(
 
 	return a.jobs.Status(
 		ctx,
-		jobs.StatusParams{
-			Service:     "reference",
-			WorkspaceID: workspaceID,
-			ID:          id,
-		},
+		jobs.StatusParams{Service: "promo", WorkspaceID: workspaceID, ID: id},
 	)
 }
 
@@ -164,7 +173,7 @@ func (a *Admin) ArchiveHistory(
 	return a.jobs.History(
 		ctx,
 		jobs.HistoryParams{
-			Service:     "reference",
+			Service:     "promo",
 			WorkspaceID: workspaceID,
 			Limit:       limit,
 			Offset:      offset,
@@ -183,11 +192,7 @@ func (a *Admin) DownloadArchive(
 
 	return a.jobs.Download(
 		ctx,
-		jobs.DownloadParams{
-			Service:     "reference",
-			WorkspaceID: workspaceID,
-			ID:          id,
-		},
+		jobs.DownloadParams{Service: "promo", WorkspaceID: workspaceID, ID: id},
 	)
 }
 
@@ -206,33 +211,11 @@ func (a *Admin) ArchiveJobHistory(
 	return a.jobs.JobHistory(
 		ctx,
 		jobs.JobHistoryParams{
-			Service:     "reference",
+			Service:     "promo",
 			WorkspaceID: workspaceID,
 			ID:          id,
 			Limit:       limit,
 			Offset:      offset,
 		},
 	)
-}
-
-func (a *Admin) withContext(
-	ctx context.Context,
-) (context.Context, context.CancelFunc) {
-	return contextutil.Merge(a.rootCtx, ctx)
-}
-
-func normalizePage(page Page) (int32, int32) {
-	if page.Limit <= 0 {
-		page.Limit = 100
-	}
-
-	if page.Limit > 1000 {
-		page.Limit = 1000
-	}
-
-	if page.Offset < 0 {
-		page.Offset = 0
-	}
-
-	return page.Limit, page.Offset
 }

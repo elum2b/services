@@ -81,7 +81,14 @@ type Objects struct {
 type Store interface {
 	Replace(context.Context, string, string, string, Files) (Objects, error)
 	Read(context.Context, string) ([]byte, error)
-	ReadVersion(context.Context, string, string, string, string, int) ([]byte, error)
+	ReadVersion(
+		context.Context,
+		string,
+		string,
+		string,
+		string,
+		int,
+	) ([]byte, error)
 	DeleteVersion(context.Context, string, string, string) error
 }
 
@@ -122,35 +129,46 @@ func validVersion(value string) bool {
 	if len(value) != 8 {
 		return false
 	}
+
 	for _, char := range value {
 		if char < 'A' || char > 'Z' && char < 'a' || char > 'z' {
 			return false
 		}
 	}
+
 	return true
 }
 
-func versionReference(workspaceID, resourceKey, version, originalName string, size int) (string, error) {
+func versionReference(
+	workspaceID, resourceKey, version, originalName string,
+	size int,
+) (string, error) {
 	prefix, err := objectPrefix(workspaceID, resourceKey, version)
 	if err != nil {
 		return "", err
 	}
+
 	if size == 0 {
 		if !validOriginalName(originalName) {
 			return "", ErrFilesInvalid
 		}
+
 		return prefix + "/" + originalName, nil
 	}
+
 	for _, allowed := range requiredPreviewSizes {
 		if size == allowed {
 			return fmt.Sprintf("%s/preview-%d.webp", prefix, size), nil
 		}
 	}
+
 	return "", ErrFilesInvalid
 }
 
 func validateFiles(files Files) error {
-	if !validOriginalName(files.OriginalName) || len(files.Original.Data) == 0 || files.Original.ContentType == "" ||
+	if !validOriginalName(files.OriginalName) ||
+		len(files.Original.Data) == 0 ||
+		files.Original.ContentType == "" ||
 		len(files.Placeholder.Data) == 0 ||
 		files.Placeholder.ContentType != "image/svg+xml" {
 		return ErrFilesInvalid
@@ -174,11 +192,14 @@ func validateFiles(files Files) error {
 		if files.NoPreviews {
 			return nil
 		}
+
 		return ErrFilesInvalid
 	}
+
 	if files.NoPreviews {
 		return ErrFilesInvalid
 	}
+
 	if len(seen) != len(requiredPreviewSizes) {
 		return ErrFilesInvalid
 	}
@@ -198,5 +219,6 @@ func validOriginalName(name string) bool {
 			return true
 		}
 	}
+
 	return false
 }

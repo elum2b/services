@@ -36,9 +36,11 @@ func TestDiskReplaceWritesAndOverwritesCompleteMediaSet(t *testing.T) {
 		objects.Placeholder == "" {
 		t.Fatalf("objects = %+v", objects)
 	}
+
 	if filepath.Ext(objects.Previews[61]) != ".webp" {
 		t.Fatalf("preview reference = %q, want .webp", objects.Previews[61])
 	}
+
 	if filepath.Base(objects.Original) != "image.png" {
 		t.Fatalf("original reference = %q, want image.png", objects.Original)
 	}
@@ -88,12 +90,23 @@ func TestS3ReplaceWritesCompleteMediaSet(t *testing.T) {
 	if len(client.objects) != 6 || len(objects.Previews) != 4 {
 		t.Fatalf("objects = %+v uploads = %+v", objects, client.objects)
 	}
+
 	if object := client.objects[objects.Previews[61]]; object.contentType != "image/webp" {
-		t.Fatalf("preview content type = %q, want image/webp", object.contentType)
+		t.Fatalf(
+			"preview content type = %q, want image/webp",
+			object.contentType,
+		)
 	}
-	if err := store.DeleteVersion(context.Background(), "workspace-a", "sticker.fire", "AbCdEfGh"); err != nil {
+
+	if err := store.DeleteVersion(
+		context.Background(),
+		"workspace-a",
+		"sticker.fire",
+		"AbCdEfGh",
+	); err != nil {
 		t.Fatalf("DeleteVersion() error = %v", err)
 	}
+
 	if len(client.objects) != 0 {
 		t.Fatalf("S3 objects remain after DeleteVersion: %+v", client.objects)
 	}
@@ -126,8 +139,11 @@ func TestStorageRejectsInvalidConfigAndFiles(t *testing.T) {
 	) {
 		t.Fatalf("Replace() error = %v", err)
 	}
+
 	files := validFiles("missing-name")
+
 	files.OriginalName = ""
+
 	if _, err := store.Replace(
 		context.Background(),
 		"workspace-a",
@@ -144,17 +160,47 @@ func TestDiskReadVersionReadsImmutableMedia(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Replace(context.Background(), "workspace-a", "key", "AbCdEfGh", validFiles("first")); err != nil {
+
+	if _, err := store.Replace(
+		context.Background(),
+		"workspace-a",
+		"key",
+		"AbCdEfGh",
+		validFiles("first"),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Replace(context.Background(), "workspace-a", "key", "HgfEdCbA", validFiles("second")); err != nil {
+
+	if _, err := store.Replace(
+		context.Background(),
+		"workspace-a",
+		"key",
+		"HgfEdCbA",
+		validFiles("second"),
+	); err != nil {
 		t.Fatal(err)
 	}
-	first, err := store.ReadVersion(context.Background(), "workspace-a", "key", "AbCdEfGh", "", 61)
+
+	first, err := store.ReadVersion(
+		context.Background(),
+		"workspace-a",
+		"key",
+		"AbCdEfGh",
+		"",
+		61,
+	)
 	if err != nil || string(first) != "first-preview-61" {
 		t.Fatalf("first=%q err=%v", first, err)
 	}
-	second, err := store.ReadVersion(context.Background(), "workspace-a", "key", "HgfEdCbA", "", 61)
+
+	second, err := store.ReadVersion(
+		context.Background(),
+		"workspace-a",
+		"key",
+		"HgfEdCbA",
+		"",
+		61,
+	)
 	if err != nil || string(second) != "second-preview-61" {
 		t.Fatalf("second=%q err=%v", second, err)
 	}
@@ -165,20 +211,56 @@ func TestDiskDeleteVersionRemovesOnlyRequestedVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Replace(context.Background(), "workspace-a", "key", "AbCdEfGh", validFiles("first")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Replace(context.Background(), "workspace-a", "key", "HgfEdCbA", validFiles("second")); err != nil {
+
+	if _, err := store.Replace(
+		context.Background(),
+		"workspace-a",
+		"key",
+		"AbCdEfGh",
+		validFiles("first"),
+	); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := store.DeleteVersion(context.Background(), "workspace-a", "key", "AbCdEfGh"); err != nil {
+	if _, err := store.Replace(
+		context.Background(),
+		"workspace-a",
+		"key",
+		"HgfEdCbA",
+		validFiles("second"),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.DeleteVersion(
+		context.Background(),
+		"workspace-a",
+		"key",
+		"AbCdEfGh",
+	); err != nil {
 		t.Fatalf("DeleteVersion() error = %v", err)
 	}
-	if _, err := store.ReadVersion(context.Background(), "workspace-a", "key", "AbCdEfGh", "image.png", 0); err == nil {
+
+	if _, err := store.ReadVersion(
+		context.Background(),
+		"workspace-a",
+		"key",
+		"AbCdEfGh",
+		"image.png",
+		0,
+	); err == nil {
 		t.Fatal("deleted version remains readable")
 	}
-	if data, err := store.ReadVersion(context.Background(), "workspace-a", "key", "HgfEdCbA", "image.png", 0); err != nil || string(data) != "second-original" {
+
+	if data, err := store.ReadVersion(
+		context.Background(),
+		"workspace-a",
+		"key",
+		"HgfEdCbA",
+		"image.png",
+		0,
+	); err != nil ||
+		string(data) != "second-original" {
 		t.Fatalf("retained version = %q err=%v", data, err)
 	}
 }
@@ -188,16 +270,31 @@ func TestDiskReplaceAcceptsSVGWithoutPreviews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	objects, err := store.Replace(context.Background(), "workspace-a", "logo", "AbCdEfGh", Files{
-		OriginalName: "image.svg",
-		Original:     File{Data: []byte("<svg/>"), ContentType: "image/svg+xml"},
-		Placeholder:  File{Data: []byte("<svg/>"), ContentType: "image/svg+xml"},
-		NoPreviews:   true,
-	})
+
+	objects, err := store.Replace(
+		context.Background(),
+		"workspace-a",
+		"logo",
+		"AbCdEfGh",
+		Files{
+			OriginalName: "image.svg",
+			Original: File{
+				Data:        []byte("<svg/>"),
+				ContentType: "image/svg+xml",
+			},
+			Placeholder: File{
+				Data:        []byte("<svg/>"),
+				ContentType: "image/svg+xml",
+			},
+			NoPreviews: true,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if objects.Original == "" || objects.Placeholder == "" || len(objects.Previews) != 0 {
+
+	if objects.Original == "" || objects.Placeholder == "" ||
+		len(objects.Previews) != 0 {
 		t.Fatalf("objects=%+v", objects)
 	}
 }
@@ -288,7 +385,10 @@ func (c *fakeClient) GetObject(
 	if !ok {
 		return nil, errors.New("not found")
 	}
-	return &awss3.GetObjectOutput{Body: io.NopCloser(bytes.NewReader(object.data))}, nil
+
+	return &awss3.GetObjectOutput{
+		Body: io.NopCloser(bytes.NewReader(object.data)),
+	}, nil
 }
 
 func (c *fakeClient) DeleteObjects(
@@ -299,6 +399,7 @@ func (c *fakeClient) DeleteObjects(
 	if c.err != nil {
 		return nil, c.err
 	}
+
 	for _, object := range input.Delete.Objects {
 		delete(c.objects, aws.ToString(object.Key))
 	}

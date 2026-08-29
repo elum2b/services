@@ -213,7 +213,7 @@ func TestCalendarImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 		})
 	}
 
-	result, err := service.Admin.Import(
+	result, err := repository.New(service.client).Import(
 		context.Background(),
 		testsupport.WorkspaceID("large-workspace"),
 		admin.ImportRequest{
@@ -269,16 +269,17 @@ func TestCalendarImportSerializesWithAdminWrite(t *testing.T) {
 	importResult := make(chan error, 1)
 
 	go func() {
-		_, err := service.Admin.Import(ctx, workspaceID, admin.ImportRequest{
-			Package: admin.ExportPackage{
-				Format:  repository.ExportFormat,
-				Service: "calendar",
-				Calendars: []repository.ExportCalendar{
-					calendarImportTestValue("import"),
+		_, err := repository.New(service.client).
+			Import(ctx, workspaceID, admin.ImportRequest{
+				Package: admin.ExportPackage{
+					Format:  repository.ExportFormat,
+					Service: "calendar",
+					Calendars: []repository.ExportCalendar{
+						calendarImportTestValue("import"),
+					},
 				},
-			},
-			ConflictStrategy: repository.ImportConflictUpdate,
-		})
+				ConflictStrategy: repository.ImportConflictUpdate,
+			})
 		importResult <- err
 	}()
 
@@ -697,7 +698,7 @@ func TestCalendarImportExportCycle(t *testing.T) {
 		t.Fatalf("upsert localization: %v", err)
 	}
 
-	pkg, err := service.Admin.Export(
+	pkg, err := repository.New(service.client).Export(
 		ctx,
 		testsupport.WorkspaceID("workspace-export"),
 		admin.ExportRequest{},
@@ -706,7 +707,7 @@ func TestCalendarImportExportCycle(t *testing.T) {
 		t.Fatalf("export: %v", err)
 	}
 
-	if _, err := service.Admin.Import(
+	if _, err := repository.New(service.client).Import(
 		ctx,
 		testsupport.WorkspaceID("workspace-import"),
 		admin.ImportRequest{
@@ -716,7 +717,7 @@ func TestCalendarImportExportCycle(t *testing.T) {
 		t.Fatalf("import: %v", err)
 	}
 
-	imported, err := service.Admin.Export(
+	imported, err := repository.New(service.client).Export(
 		ctx,
 		testsupport.WorkspaceID("workspace-import"),
 		admin.ExportRequest{},
@@ -735,7 +736,7 @@ func TestCalendarImportExportCycle(t *testing.T) {
 	pkg.Calendars[0].Localization = nil
 	pkg.Calendars[0].Steps = nil
 
-	if _, err := service.Admin.Import(
+	if _, err := repository.New(service.client).Import(
 		ctx,
 		testsupport.WorkspaceID("workspace-import"),
 		admin.ImportRequest{
@@ -746,7 +747,7 @@ func TestCalendarImportExportCycle(t *testing.T) {
 		t.Fatalf("replace imported calendar: %v", err)
 	}
 
-	replaced, err := service.Admin.Export(
+	replaced, err := repository.New(service.client).Export(
 		ctx,
 		testsupport.WorkspaceID("workspace-import"),
 		admin.ExportRequest{},
@@ -1415,12 +1416,14 @@ func TestCalendarAdminSurfaceAndCallbackControls(t *testing.T) {
 		t.Fatalf("list operations: values=%+v err=%v", operations, err)
 	}
 
-	pkg, err := service.Admin.Export(ctx, workspaceID, admin.ExportRequest{})
+	pkg, err := repository.New(service.client).
+		Export(ctx, workspaceID, admin.ExportRequest{})
 	if err != nil {
 		t.Fatalf("export calendar: %v", err)
 	}
 
-	preview, err := service.Admin.PreviewImport(ctx, workspaceID, pkg)
+	preview, err := repository.New(service.client).
+		PreviewImport(ctx, workspaceID, pkg)
 	if err != nil || preview.Counts.Calendars != 1 ||
 		len(preview.Conflicts) != 1 {
 		t.Fatalf("preview import: value=%+v err=%v", preview, err)

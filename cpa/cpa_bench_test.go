@@ -37,8 +37,8 @@ func BenchmarkCPA(b *testing.B) {
 	b.Run("Admin.GetStats", benchmarkCPAAdminGetStats)
 	b.Run("Admin.ListAssignments", benchmarkCPAAdminListAssignments)
 	b.Run("Admin.RefreshDailyStats", benchmarkCPAAdminRefreshDailyStats)
-	b.Run("Admin.Export", benchmarkCPAAdminExport)
-	b.Run("Admin.Import", benchmarkCPAAdminImport)
+	b.Run("Repository.Export", benchmarkCPARepositoryExport)
+	b.Run("Repository.Import", benchmarkCPARepositoryImport)
 }
 
 func benchmarkCPAUserGetCodeNewAssignmentParallel(b *testing.B) {
@@ -337,13 +337,13 @@ func benchmarkCPAAdminRefreshDailyStats(b *testing.B) {
 	}
 }
 
-func benchmarkCPAAdminExport(b *testing.B) {
+func benchmarkCPARepositoryExport(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	seedCPACatalog(b, env, 100)
 	b.ResetTimer()
 
 	for b.Loop() {
-		if _, err := env.Service.Admin.Export(
+		if _, err := env.Repository.Export(
 			env.Context,
 			cpaTestWorkspaceID,
 			admin.ExportRequest{},
@@ -353,11 +353,11 @@ func benchmarkCPAAdminExport(b *testing.B) {
 	}
 }
 
-func benchmarkCPAAdminImport(b *testing.B) {
+func benchmarkCPARepositoryImport(b *testing.B) {
 	env := newCPATestEnvironment(b, testCPAOptions())
 	seedCPACatalog(b, env, 100)
 
-	pkg, err := env.Service.Admin.Export(
+	pkg, err := env.Repository.Export(
 		env.Context,
 		cpaTestWorkspaceID,
 		admin.ExportRequest{},
@@ -369,7 +369,7 @@ func benchmarkCPAAdminImport(b *testing.B) {
 	b.ResetTimer()
 
 	for index := 0; b.Loop(); index++ {
-		if _, err := env.Service.Admin.Import(
+		if _, err := env.Repository.Import(
 			env.Context,
 			testsupport.WorkspaceID(fmt.Sprintf("import-%d", index)),
 			admin.ImportRequest{

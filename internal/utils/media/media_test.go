@@ -48,6 +48,7 @@ func TestProcessStaticImage(t *testing.T) {
 
 			continue
 		}
+
 		if format != "webp" {
 			t.Errorf("preview %d format = %q, want webp", preview.Size, format)
 		}
@@ -101,28 +102,52 @@ func TestProcessLottieUsesRenderer(t *testing.T) {
 func TestProcessTGSRendersDecompressedLottie(t *testing.T) {
 	json := []byte(`{"v":"5.12.0","w":20,"h":10,"layers":[]}`)
 	source := testTGS(t, json)
-	asset, err := Process(context.Background(), source, Options{PreviewSizes: []int{61}, FirstFrame: testPNG(t, 20, 10)})
+
+	asset, err := Process(
+		context.Background(),
+		source,
+		Options{PreviewSizes: []int{61}, FirstFrame: testPNG(t, 20, 10)},
+	)
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
+
 	if asset.Format != FormatTGS || !bytes.Equal(asset.Original, source) {
 		t.Fatalf("format=%q original=%q", asset.Format, asset.Original)
 	}
 }
 
 func TestProcessSVGCreatesOnlyPlaceholder(t *testing.T) {
-	source := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><path d="M0 0h20v10H0z"/></svg>`)
-	asset, err := Process(context.Background(), source, Options{FirstFrame: testPNG(t, 20, 10)})
+	source := []byte(
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><path d="M0 0h20v10H0z"/></svg>`,
+	)
+
+	asset, err := Process(
+		context.Background(),
+		source,
+		Options{FirstFrame: testPNG(t, 20, 10)},
+	)
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
-	if asset.Format != FormatSVG || len(asset.Previews) != 0 || len(asset.Placeholder) == 0 {
-		t.Fatalf("format=%q previews=%d placeholder=%d", asset.Format, len(asset.Previews), len(asset.Placeholder))
+
+	if asset.Format != FormatSVG || len(asset.Previews) != 0 ||
+		len(asset.Placeholder) == 0 {
+		t.Fatalf(
+			"format=%q previews=%d placeholder=%d",
+			asset.Format,
+			len(asset.Previews),
+			len(asset.Placeholder),
+		)
 	}
 }
 
 func TestProcessRejectsTGSDecompressionBomb(t *testing.T) {
-	_, err := Process(context.Background(), testTGS(t, bytes.Repeat([]byte("x"), 128)), Options{MaxInputBytes: 64, FirstFrame: testPNG(t, 1, 1)})
+	_, err := Process(
+		context.Background(),
+		testTGS(t, bytes.Repeat([]byte("x"), 128)),
+		Options{MaxInputBytes: 64, FirstFrame: testPNG(t, 1, 1)},
+	)
 	if !errors.Is(err, ErrInputTooLarge) {
 		t.Fatalf("Process() error = %v", err)
 	}
@@ -214,14 +239,19 @@ func testPNG(t testing.TB, width, height int) []byte {
 
 func testTGS(t testing.TB, data []byte) []byte {
 	t.Helper()
+
 	var result bytes.Buffer
+
 	writer := gzip.NewWriter(&result)
+
 	if _, err := writer.Write(data); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
+
 	return result.Bytes()
 }
 

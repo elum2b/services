@@ -27,9 +27,12 @@
 | `Admin.UpsertReward(ctx, params)` | `UpsertRewardParams{WorkspaceID, CPAID, Key, Type, Quantity, Scale, Unit}`. | Создает или обновляет награду оффера. `Scale` задает точность дробной валюты, например `25/scale=2` = `0.25`. |
 | `Admin.ListRewards(ctx, workspaceID, cpaID)` | `workspaceID`, `cpaID`. | Возвращает награды оффера. |
 | `Admin.DeleteReward(ctx, workspaceID, cpaID, rewardKey)` | `workspaceID`, `cpaID`, `rewardKey`. | Удаляет награду оффера. |
-| `Admin.Export(ctx, workspaceID, req)` | `workspaceID`, `ExportRequest{Now}`. | Экспортирует CPA-офферы workspace в `cpa.export.v1`: payload, target, локализации, награды и настройки кодов. |
-| `Admin.PreviewImport(ctx, workspaceID, pkg)` | `workspaceID`, `ExportPackage`. | Проверяет пакет импорта, считает элементы и возвращает конфликты по `offer.ID` без записи данных. |
-| `Admin.Import(ctx, workspaceID, req)` | `ImportRequest{Package, ConflictStrategy}`; стратегии `fail_on_conflict`, `skip_existing`, `update_existing`. | Импортирует CPA-офферы в workspace пачками в транзакции и сбрасывает кеш CPA. Некорректное вложенное поле возвращает `INVALID_FIELDS` с контекстом `offers[index].field`. |
+| `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, ExportRequest}`. | Ставит ZIP-экспорт в асинхронную очередь. |
+| `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, ImportRequest, Archive}`. | Ставит ZIP-импорт в асинхронную очередь; асинхронный импорт не предоставляет `PreviewImport`. |
+| `Admin.ArchiveJob(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Возвращает текущий статус задачи. |
+| `Admin.ArchiveHistory(ctx, workspaceID, page)` | `workspaceID`, `Page`. | Возвращает историю задач workspace. |
+| `Admin.DownloadArchive(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Скачивает результат завершенного export job. |
+| `Admin.ArchiveJobHistory(ctx, workspaceID, id, page)` | `workspaceID`, job `id`, `Page`. | Возвращает историю состояний задачи. |
 | `Admin.AddCodes(ctx, params)` | `AddCodesParams{WorkspaceID, CPAID, Codes}`. | Добавляет пул персональных кодов для оффера. |
 | `Admin.DeleteAvailableCodes(ctx, workspaceID, cpaID)` | `workspaceID`, `cpaID`. | Удаляет доступные, еще не выданные коды оффера. |
 | `Admin.DeleteIssuedCodes(ctx, workspaceID, cpaID)` | `workspaceID`, `cpaID`. | Помечает выданные code rows как удаленные. Assignment пользователя и выданный ему код остаются доступны в истории; повторная выдача не создается. |

@@ -444,7 +444,7 @@ func BenchmarkPaymentImportExport(b *testing.B) {
 	)
 	benchNoError(b, err)
 
-	pkg, err := env.api.Admin.Export(
+	pkg, err := repository.NewPaymentRepository(env.client).Export(
 		env.ctx,
 		workspaceID,
 		repository.ExportRequest{},
@@ -453,7 +453,7 @@ func BenchmarkPaymentImportExport(b *testing.B) {
 	b.ReportAllocs()
 	b.Run("Export", func(b *testing.B) {
 		for range b.N {
-			_, err := env.api.Admin.Export(
+			_, err := repository.NewPaymentRepository(env.client).Export(
 				env.ctx,
 				workspaceID,
 				repository.ExportRequest{},
@@ -463,7 +463,7 @@ func BenchmarkPaymentImportExport(b *testing.B) {
 	})
 	b.Run("Import/update", func(b *testing.B) {
 		for range b.N {
-			_, err := env.api.Admin.Import(
+			_, err := repository.NewPaymentRepository(env.client).Import(
 				env.ctx,
 				workspaceID,
 				repository.ImportRequest{

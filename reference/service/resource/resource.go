@@ -108,6 +108,7 @@ func (s *Resource) Update(
 	if e != nil {
 		return repository.Resource{}, e
 	}
+
 	if s.gcTrigger != nil {
 		select {
 		case s.gcTrigger <- struct{}{}:
@@ -155,12 +156,18 @@ func (s *Resource) CollectGarbage(
 	}
 
 	before := time.Now().Add(-s.gcRetention)
-	resources, err := s.repository.ListGarbageMediaVersions(ctx, before, p.Limit)
+
+	resources, err := s.repository.ListGarbageMediaVersions(
+		ctx,
+		before,
+		p.Limit,
+	)
 	if err != nil {
 		return 0, err
 	}
 
 	purged := 0
+
 	for _, resource := range resources {
 		if err := s.store.DeleteVersion(
 			ctx,
@@ -175,12 +182,14 @@ func (s *Resource) CollectGarbage(
 		if err != nil {
 			return purged, err
 		}
+
 		if rows == 0 {
 			continue
 		}
+
 		purged++
 
-		rows, err = s.repository.PurgeDeletedResource(
+		_, err = s.repository.PurgeDeletedResource(
 			ctx,
 			resource.WorkspaceID,
 			resource.ResourceKey,
@@ -195,36 +204,72 @@ func (s *Resource) CollectGarbage(
 
 // GetContent returns original media when Size is zero, otherwise a WebP preview.
 // Version is part of the public media identity, so old and deleted versions stay readable.
-func (s *Resource) GetContent(ctx context.Context, p ContentParams) (Content, error) {
+func (s *Resource) GetContent(
+	ctx context.Context,
+	p ContentParams,
+) (Content, error) {
 	p.Key = strings.ToLower(strings.TrimSpace(p.Key))
-	if err := services.ValidateWorkspaceID(p.WorkspaceID); err != nil || !keyPattern.MatchString(p.Key) ||
-		!versionPattern.MatchString(p.Version) || s.store == nil || s.cache == nil {
+	if err := services.ValidateWorkspaceID(
+		p.WorkspaceID,
+	); err != nil || !keyPattern.MatchString(p.Key) ||
+		!versionPattern.MatchString(p.Version) || s.store == nil ||
+		s.cache == nil {
 		return Content{}, fmt.Errorf("invalid resource content request")
 	}
-	if p.Size != 0 && p.Size != 61 && p.Size != 128 && p.Size != 256 && p.Size != 512 {
+
+	if p.Size != 0 && p.Size != 61 && p.Size != 128 && p.Size != 256 &&
+		p.Size != 512 {
 		return Content{}, fmt.Errorf("invalid resource preview size")
 	}
+
 	if p.Size != 0 && p.Format == string(media.FormatSVG) {
 		return Content{}, fmt.Errorf("SVG resources have no previews")
 	}
+
 	mimeType := "image/webp"
 	originalName := ""
+
 	if p.Size == 0 {
 		mimeType = contentTypeForFormat(p.Format)
+
 		var ok bool
+
 		originalName, ok = storage.OriginalName(p.Format)
+
 		if mimeType == "" || !ok {
 			return Content{}, fmt.Errorf("invalid resource format")
 		}
 	}
-	key := strings.Join([]string{"reference", "media", p.WorkspaceID, p.Key, p.Version, fmt.Sprint(p.Size), mimeType}, ":")
+
+	key := strings.Join(
+		[]string{
+			"reference",
+			"media",
+			p.WorkspaceID,
+			p.Key,
+			p.Version,
+			fmt.Sprint(p.Size),
+			mimeType,
+		},
+		":",
+	)
+
 	value, err := s.cache.GetOrLoad(key, func() (resourcecache.Value, error) {
-		data, err := s.store.ReadVersion(ctx, p.WorkspaceID, p.Key, p.Version, originalName, p.Size)
+		data, err := s.store.ReadVersion(
+			ctx,
+			p.WorkspaceID,
+			p.Key,
+			p.Version,
+			originalName,
+			p.Size,
+		)
+
 		return resourcecache.Value{Data: data, ContentType: mimeType}, err
 	})
 	if err != nil {
 		return Content{}, err
 	}
+
 	return Content{Data: value.Data, ContentType: value.ContentType}, nil
 }
 
@@ -309,13 +354,18 @@ func (s *Resource) prepare(
 	}
 
 	options := media.Options{FirstFrame: p.FirstFrame}
+
 	a, e := media.Process(ctx, p.File, options)
 	if e != nil {
 		return repository.Resource{}, e
 	}
+
 	originalName, ok := storage.OriginalName(string(a.Format))
 	if !ok {
-		return repository.Resource{}, fmt.Errorf("unsupported resource format %q", a.Format)
+		return repository.Resource{}, fmt.Errorf(
+			"unsupported resource format %q",
+			a.Format,
+		)
 	}
 
 	files := storage.Files{
@@ -344,6 +394,7 @@ func (s *Resource) prepare(
 	if e != nil {
 		return repository.Resource{}, e
 	}
+
 	o, e := s.store.Replace(ctx, p.WorkspaceID, p.Key, version, files)
 	if e != nil {
 		return repository.Resource{}, e
@@ -416,12 +467,16 @@ func contentTypeForFormat(format string) string {
 
 func mediaVersion() (string, error) {
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
 	bytes := make([]byte, 8)
+
 	if _, err := rand.Read(bytes); err != nil {
 		return "", fmt.Errorf("generate media version: %w", err)
 	}
+
 	for i := range bytes {
 		bytes[i] = alphabet[int(bytes[i])%len(alphabet)]
 	}
+
 	return string(bytes), nil
 }

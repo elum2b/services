@@ -25,9 +25,12 @@
 | `Admin.GetReward(ctx, workspaceID, promoID, key)` | `workspaceID`, `promoID`, `key`. | Возвращает награду. |
 | `Admin.ListRewards(ctx, workspaceID, promoID)` | `workspaceID`, `promoID`. | Возвращает награды промокода. |
 | `Admin.DeleteReward(ctx, workspaceID, promoID, key)` | `workspaceID`, `promoID`, `key`. | Удаляет награду. |
-| `Admin.Export(ctx, workspaceID, req)` | `workspaceID`, `ExportRequest{Now}`. | Экспортирует промокоды workspace в `promo.export.v1`: payload, target, локализации, награды и лимиты активаций. |
-| `Admin.PreviewImport(ctx, workspaceID, pkg)` | `workspaceID`, `ExportPackage`. | Проверяет пакет импорта, считает элементы и возвращает конфликты по нормализованному `Code` без записи данных. |
-| `Admin.Import(ctx, workspaceID, req)` | `ImportRequest{Package, ConflictStrategy}`; стратегии `fail_on_conflict`, `skip_existing`, `update_existing`. | Импортирует промокоды в workspace пачками в транзакции и сбрасывает кеш promo. |
+| `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, ExportRequest}`. | Ставит ZIP-экспорт в асинхронную очередь. |
+| `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, ImportRequest, Archive}`. | Ставит ZIP-импорт в асинхронную очередь; асинхронный импорт не предоставляет `PreviewImport`. |
+| `Admin.ArchiveJob(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Возвращает текущий статус задачи. |
+| `Admin.ArchiveHistory(ctx, workspaceID, page)` | `workspaceID`, `Page`. | Возвращает историю задач workspace. |
+| `Admin.DownloadArchive(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Скачивает результат завершенного export job. |
+| `Admin.ArchiveJobHistory(ctx, workspaceID, id, page)` | `workspaceID`, job `id`, `Page`. | Возвращает историю состояний задачи. |
 | `Admin.GetStats(ctx, workspaceID, promoID)` | `workspaceID`, `promoID`. | Возвращает статистику активаций промокода. |
 | `Admin.GetUserRedemption(ctx, identity, promoID)` | `Identity`, `promoID`. | Возвращает активацию промокода конкретным пользователем. |
 | `Admin.ListRedemptions(ctx, workspaceID, promoID, page)` | `workspaceID`, `promoID`, `Page`. | Возвращает список активаций. |

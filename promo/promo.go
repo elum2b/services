@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -12,6 +15,7 @@ import (
 	callbackutil "github.com/elum2b/services/internal/utils/callback"
 	"github.com/elum2b/services/internal/utils/contextutil"
 	goroutinemanager "github.com/elum2b/services/internal/utils/goroutine"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/promo/repository"
 	"github.com/elum2b/services/promo/service/admin"
@@ -50,7 +54,13 @@ func NewWithDatabase(
 		)
 	}
 
-	return newPromo(ctx, client, false, options), nil
+	service := newPromo(ctx, client, false, options)
+	if err := configureArchiveJobs(ctx, service); err != nil {
+		_ = service.Close()
+		return nil, err
+	}
+
+	return service, nil
 }
 
 func (p *Promo) Run(ctx context.Context, params DatabaseParams) error {
@@ -164,7 +174,42 @@ func open(ctx context.Context, params DatabaseParams) (*Promo, error) {
 		)
 	}
 
-	return newPromo(ctx, client, true, params.Options), nil
+	service := newPromo(ctx, client, true, params.Options)
+	if err := configureArchiveJobs(ctx, service); err != nil {
+		_ = service.Close()
+		return nil, err
+	}
+
+	return service, nil
+}
+
+func configureArchiveJobs(ctx context.Context, service *Promo) error {
+	if err := jobs.Bootstrap(ctx, service.client.DB()); err != nil {
+		return fmt.Errorf("bootstrap promo archive jobs: %w", err)
+	}
+
+	binaryPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve promo archive directory: %w", err)
+	}
+
+	archive, err := jobs.NewDiskArchive(
+		filepath.Join(filepath.Dir(binaryPath), "promo", "importexport"),
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := service.Admin.ConfigureArchiveJobs(
+		service.client.DB(),
+		archive,
+	); err != nil {
+		return fmt.Errorf("configure promo archive jobs: %w", err)
+	}
+
+	service.Admin.StartArchiveJobs(service.rootCtx)
+
+	return nil
 }
 
 func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {

@@ -244,7 +244,7 @@ func BenchmarkReferenceImportExport(b *testing.B) {
 		}
 	}
 
-	pkg, err := service.Admin.Export(
+	pkg, err := repository.New(service.client).Export(
 		ctx,
 		referenceBenchmarkImportWorkspace,
 		admin.ExportRequest{},
@@ -253,7 +253,7 @@ func BenchmarkReferenceImportExport(b *testing.B) {
 	b.ReportAllocs()
 	b.Run("Export", func(b *testing.B) {
 		for range b.N {
-			_, err := service.Admin.Export(
+			_, err := repository.New(service.client).Export(
 				ctx,
 				referenceBenchmarkImportWorkspace,
 				admin.ExportRequest{},
@@ -263,7 +263,7 @@ func BenchmarkReferenceImportExport(b *testing.B) {
 	})
 	b.Run("Import/update", func(b *testing.B) {
 		for range b.N {
-			_, err := service.Admin.Import(
+			_, err := repository.New(service.client).Import(
 				ctx,
 				referenceBenchmarkImportWorkspace,
 				admin.ImportRequest{
@@ -309,6 +309,7 @@ func BenchmarkReferenceResourceMethods(b *testing.B) {
 			CacheL2Delay: -1,
 		})
 		create(b, service, "resource")
+
 		_, err := service.Resource.Get(ctx, resourceservice.GetParams{
 			WorkspaceID: workspaceID,
 			Key:         "resource",
@@ -334,6 +335,7 @@ func BenchmarkReferenceResourceMethods(b *testing.B) {
 			CacheL2Delay: time.Minute,
 		})
 		create(b, service, "resource")
+
 		_, err := service.Resource.Get(ctx, resourceservice.GetParams{
 			WorkspaceID: workspaceID,
 			Key:         "resource",
@@ -367,8 +369,13 @@ func BenchmarkReferenceResourceMethods(b *testing.B) {
 	})
 
 	b.Run("Resource.ListItemResources/1", func(b *testing.B) {
-		service := newService(b, "reference_bench_resource_item_list", Options{})
+		service := newService(
+			b,
+			"reference_bench_resource_item_list",
+			Options{},
+		)
 		create(b, service, "resource")
+
 		if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
 			WorkspaceID: workspaceID,
 			Key:         "item",
@@ -378,12 +385,20 @@ func BenchmarkReferenceResourceMethods(b *testing.B) {
 		}); err != nil {
 			b.Fatal(err)
 		}
-		benchError(b, service.Resource.Attach(ctx, workspaceID, "item", "resource", 1))
+
+		benchError(
+			b,
+			service.Resource.Attach(ctx, workspaceID, "item", "resource", 1),
+		)
 		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
-			_, err := service.Resource.ListItemResources(ctx, workspaceID, "item")
+			_, err := service.Resource.ListItemResources(
+				ctx,
+				workspaceID,
+				"item",
+			)
 			benchError(b, err)
 		}
 	})
@@ -418,8 +433,13 @@ func BenchmarkReferenceResourceMethods(b *testing.B) {
 	})
 
 	b.Run("Resource.AttachDetach", func(b *testing.B) {
-		service := newService(b, "reference_bench_resource_attach_detach", Options{})
+		service := newService(
+			b,
+			"reference_bench_resource_attach_detach",
+			Options{},
+		)
 		create(b, service, "resource")
+
 		if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
 			WorkspaceID: workspaceID,
 			Key:         "item",
@@ -429,12 +449,28 @@ func BenchmarkReferenceResourceMethods(b *testing.B) {
 		}); err != nil {
 			b.Fatal(err)
 		}
+
 		b.ReportAllocs()
 		b.ResetTimer()
 
 		for range b.N {
-			benchError(b, service.Resource.Attach(ctx, workspaceID, "item", "resource", 1))
-			_, err := service.Resource.Detach(ctx, workspaceID, "item", "resource")
+			benchError(
+				b,
+				service.Resource.Attach(
+					ctx,
+					workspaceID,
+					"item",
+					"resource",
+					1,
+				),
+			)
+
+			_, err := service.Resource.Detach(
+				ctx,
+				workspaceID,
+				"item",
+				"resource",
+			)
 			benchError(b, err)
 		}
 	})

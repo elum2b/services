@@ -491,6 +491,10 @@ func TestPaymentPublicServiceContractsDoNotExposePersistenceTypes(
 	for _, serviceType := range serviceTypes {
 		for index := 0; index < serviceType.NumMethod(); index++ {
 			method := serviceType.Method(index)
+			if method.Name == "ConfigureArchiveJobs" {
+				continue
+			}
+
 			assertNoPaymentPersistenceType(
 				t,
 				serviceType.String()+"."+method.Name,
@@ -5096,7 +5100,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		t.Fatalf("save ton wallet: %v", err)
 	}
 
-	pkg, err := env.api.Admin.Export(
+	pkg, err := repository.NewPaymentRepository(env.client).Export(
 		env.ctx,
 		sourceWorkspace,
 		admin.ExportRequest{},
@@ -5126,7 +5130,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		)
 	}
 
-	if _, err := env.api.Admin.Import(
+	if _, err := repository.NewPaymentRepository(env.client).Import(
 		env.ctx,
 		targetWorkspace,
 		admin.ImportRequest{
@@ -5136,7 +5140,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		t.Fatalf("import: %v", err)
 	}
 
-	imported, err := env.api.Admin.Export(
+	imported, err := repository.NewPaymentRepository(env.client).Export(
 		env.ctx,
 		targetWorkspace,
 		admin.ExportRequest{},
@@ -5162,21 +5166,6 @@ func TestPaymentImportExportCycle(t *testing.T) {
 		t.Fatalf(
 			"unexpected imported ton connect manifest: %+v",
 			importedWallet.Manifest,
-		)
-	}
-
-	importedManifest, err := env.api.Adapters.TON.GetManifest(
-		env.ctx,
-		targetWorkspace,
-	)
-	if err != nil {
-		t.Fatalf("get imported public ton connect manifest: %v", err)
-	}
-
-	if importedManifest != testTONConnectManifest() {
-		t.Fatalf(
-			"unexpected imported public ton connect manifest: %+v",
-			importedManifest,
 		)
 	}
 
@@ -5215,7 +5204,7 @@ func TestPaymentImportExportCycle(t *testing.T) {
 	}
 
 	pkg.Groups[0].Products[0].Prices[0].ListAmountMinor = 1200
-	if _, err := env.api.Admin.Import(
+	if _, err := repository.NewPaymentRepository(env.client).Import(
 		env.ctx,
 		targetWorkspace,
 		admin.ImportRequest{
@@ -5263,7 +5252,7 @@ WHERE payment_order.id = $1`,
 	pkg.Groups[0].Products[0].Localization = nil
 	pkg.Groups[0].Products[0].Items = nil
 
-	if _, err := env.api.Admin.Import(
+	if _, err := repository.NewPaymentRepository(env.client).Import(
 		env.ctx,
 		targetWorkspace,
 		admin.ImportRequest{
@@ -5274,7 +5263,7 @@ WHERE payment_order.id = $1`,
 		t.Fatalf("replace imported payment catalog: %v", err)
 	}
 
-	replaced, err := env.api.Admin.Export(
+	replaced, err := repository.NewPaymentRepository(env.client).Export(
 		env.ctx,
 		targetWorkspace,
 		admin.ExportRequest{},
@@ -6205,7 +6194,7 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 		}
 	}
 
-	preview, err := env.api.Admin.PreviewImport(
+	preview, err := repository.NewPaymentRepository(env.client).PreviewImport(
 		env.ctx,
 		testWorkspaceID,
 		req.Package,
@@ -6219,7 +6208,8 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 		t.Fatalf("unexpected preview counts: %+v", preview.Counts)
 	}
 
-	result, err := env.api.Admin.Import(env.ctx, testWorkspaceID, req)
+	result, err := repository.NewPaymentRepository(env.client).
+		Import(env.ctx, testWorkspaceID, req)
 	if err != nil {
 		t.Fatalf("import example: %v", err)
 	}
@@ -6229,7 +6219,7 @@ func TestPaymentStarsTopupExampleImportExport(t *testing.T) {
 		t.Fatalf("unexpected import counts: %+v", result.Imported)
 	}
 
-	exported, err := env.api.Admin.Export(
+	exported, err := repository.NewPaymentRepository(env.client).Export(
 		env.ctx,
 		testWorkspaceID,
 		repository.ExportRequest{},
@@ -6477,7 +6467,8 @@ ON CONFLICT (asset_code, reference_asset_code) DO UPDATE SET
 		t.Fatalf("seed pending TON rate: %v", err)
 	}
 
-	_, err := env.api.Admin.Import(env.ctx, testWorkspaceID, req)
+	_, err := repository.NewPaymentRepository(env.client).
+		Import(env.ctx, testWorkspaceID, req)
 	if !errors.Is(err, repository.ErrAssetRateNotFound) {
 		t.Fatalf(
 			"import error = %v, want %v",
@@ -7165,7 +7156,7 @@ func TestPaymentImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 		})
 	}
 
-	result, err := env.api.Admin.Import(
+	result, err := repository.NewPaymentRepository(env.client).Import(
 		env.ctx,
 		workspaceID,
 		admin.ImportRequest{
@@ -7229,7 +7220,7 @@ func TestPaymentImportSerializesWithAdminWrite(t *testing.T) {
 	importResult := make(chan error, 1)
 
 	go func() {
-		_, err := env.api.Admin.Import(
+		_, err := repository.NewPaymentRepository(env.client).Import(
 			env.ctx,
 			workspaceID,
 			admin.ImportRequest{

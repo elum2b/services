@@ -19,7 +19,13 @@ func TestArchiveOriginalNames(t *testing.T) {
 	for format, name := range want {
 		got, ok := storage.OriginalName(format)
 		if !ok || got != name {
-			t.Errorf("OriginalName(%q) = %q, %t; want %q, true", format, got, ok, name)
+			t.Errorf(
+				"OriginalName(%q) = %q, %t; want %q, true",
+				format,
+				got,
+				ok,
+				name,
+			)
 		}
 	}
 }

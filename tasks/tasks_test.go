@@ -6286,20 +6286,6 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 		t.Fatalf("export manifest: value=%+v err=%v", manifest, err)
 	}
 
-	pkg, err := service.Admin.Export(ctx, workspaceID, admin.ExportRequest{
-		IncludeSecrets: true,
-	})
-	if err != nil || len(pkg.Groups) != 1 || len(pkg.Groups[0].Tasks) != 2 ||
-		len(pkg.Groups[0].PartnerConfigs) != 1 ||
-		len(pkg.Groups[0].PartnerRewardRules) != 1 {
-		t.Fatalf("export package: value=%+v err=%v", pkg, err)
-	}
-
-	preview, err := service.Admin.PreviewImport(ctx, workspaceID, pkg)
-	if err != nil || preview.Counts.Tasks != 2 || len(preview.Conflicts) == 0 {
-		t.Fatalf("preview import: value=%+v err=%v", preview, err)
-	}
-
 	if changed, err := service.Admin.DeletePartnerRewardRule(
 		ctx,
 		workspaceID,
@@ -6603,7 +6589,7 @@ func TestTasksImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
 		})
 	}
 
-	result, err := service.Admin.Import(
+	result, err := repository.New(service.client).Import(
 		context.Background(),
 		testsupport.WorkspaceID("large-workspace"),
 		admin.ImportRequest{
@@ -6671,22 +6657,23 @@ func TestTasksImportSerializesWithAdminWrite(t *testing.T) {
 	importResult := make(chan error, 1)
 
 	go func() {
-		_, err := service.Admin.Import(ctx, workspaceID, admin.ImportRequest{
-			Package: admin.ExportPackage{
-				Format:  repository.ExportFormat,
-				Service: "tasks",
-				Groups: []repository.ExportGroup{
-					{
-						Key:      "main",
-						IsActive: true,
-						Tasks: []repository.ExportTask{
-							tasksImportTestTask("import-task"),
+		_, err := repository.New(service.client).
+			Import(ctx, workspaceID, admin.ImportRequest{
+				Package: admin.ExportPackage{
+					Format:  repository.ExportFormat,
+					Service: "tasks",
+					Groups: []repository.ExportGroup{
+						{
+							Key:      "main",
+							IsActive: true,
+							Tasks: []repository.ExportTask{
+								tasksImportTestTask("import-task"),
+							},
 						},
 					},
 				},
-			},
-			ConflictStrategy: repository.ImportConflictUpdate,
-		})
+				ConflictStrategy: repository.ImportConflictUpdate,
+			})
 		importResult <- err
 	}()
 

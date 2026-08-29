@@ -35,10 +35,11 @@ const (
 var cpaTestDatabaseSequence atomic.Uint64
 
 type cpaTestEnvironment struct {
-	Context  context.Context
-	Database *sql.DB
-	Name     string
-	Service  *cpa.CPA
+	Context    context.Context
+	Database   *sql.DB
+	Name       string
+	Service    *cpa.CPA
+	Repository *repository.Repository
 }
 
 func TestCPA_NewWithDatabaseAppliesDefaultCache(t *testing.T) {
@@ -1647,7 +1648,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 		{
 			name: "export without workspace",
 			call: func() error {
-				_, err := env.Service.Admin.Export(
+				_, err := env.Repository.Export(
 					env.Context,
 					"",
 					admin.ExportRequest{},
@@ -1659,7 +1660,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 		{
 			name: "preview import without workspace",
 			call: func() error {
-				_, err := env.Service.Admin.PreviewImport(
+				_, err := env.Repository.PreviewImport(
 					env.Context,
 					"",
 					admin.ExportPackage{
@@ -1674,7 +1675,7 @@ func TestCPA_AdminMethodsRejectInvalidInput(t *testing.T) {
 		{
 			name: "import without workspace",
 			call: func() error {
-				_, err := env.Service.Admin.Import(
+				_, err := env.Repository.Import(
 					env.Context,
 					"",
 					admin.ImportRequest{
@@ -2060,7 +2061,7 @@ func TestCPA_AdminExportAndImportPreserveOffer(t *testing.T) {
 	upsertLocalization(t, env, "export_offer", "en", "Export offer")
 	upsertReward(t, env, "export_offer", "stars", 25, 2)
 
-	pkg, err := env.Service.Admin.Export(
+	pkg, err := env.Repository.Export(
 		env.Context,
 		cpaTestWorkspaceID,
 		admin.ExportRequest{},
@@ -2084,7 +2085,7 @@ func TestCPA_AdminExportAndImportPreserveOffer(t *testing.T) {
 		t.Fatal("CPA export must not duplicate reference items")
 	}
 
-	preview, err := env.Service.Admin.PreviewImport(
+	preview, err := env.Repository.PreviewImport(
 		env.Context,
 		cpaImportWorkspaceID,
 		pkg,
@@ -2093,7 +2094,7 @@ func TestCPA_AdminExportAndImportPreserveOffer(t *testing.T) {
 		t.Fatalf("preview import: preview=%+v err=%v", preview, err)
 	}
 
-	if _, err := env.Service.Admin.Import(
+	if _, err := env.Repository.Import(
 		env.Context,
 		cpaImportWorkspaceID,
 		admin.ImportRequest{
@@ -2164,7 +2165,7 @@ func TestCPA_AdminImportUpdateReplacesNestedOfferSnapshot(t *testing.T) {
 		}
 	}
 
-	_, err := env.Service.Admin.Import(
+	_, err := env.Repository.Import(
 		env.Context,
 		cpaImportWorkspaceID,
 		admin.ImportRequest{
@@ -2227,7 +2228,7 @@ func TestCPA_AdminExportAndFailOnConflictInspectAllOffers(t *testing.T) {
 		upsertSharedOffer(t, env, fmt.Sprintf("offer-%04d", index), true)
 	}
 
-	pkg, err := env.Service.Admin.Export(
+	pkg, err := env.Repository.Export(
 		env.Context,
 		cpaTestWorkspaceID,
 		admin.ExportRequest{},
@@ -2240,7 +2241,7 @@ func TestCPA_AdminExportAndFailOnConflictInspectAllOffers(t *testing.T) {
 		t.Fatalf("exported offers = %d, want 1001", len(pkg.Offers))
 	}
 
-	_, err = env.Service.Admin.Import(
+	_, err = env.Repository.Import(
 		env.Context,
 		cpaTestWorkspaceID,
 		admin.ImportRequest{
@@ -2289,7 +2290,7 @@ func TestCPA_AdminImportFailOnConflictIsAtomicAgainstConcurrentOfferWrite(
 	result := make(chan error, 1)
 
 	go func() {
-		_, err := env.Service.Admin.Import(
+		_, err := env.Repository.Import(
 			env.Context,
 			cpaTestWorkspaceID,
 			admin.ImportRequest{
@@ -2368,7 +2369,7 @@ INSERT INTO cpa_offer (
 func TestCPA_AdminImportRejectsUnsupportedPackage(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 
-	_, err := env.Service.Admin.Import(
+	_, err := env.Repository.Import(
 		env.Context,
 		cpaTestWorkspaceID,
 		admin.ImportRequest{
@@ -2385,7 +2386,7 @@ func TestCPA_AdminImportRejectsUnsupportedPackage(t *testing.T) {
 
 func TestCPA_AdminImportRejectsInvalidOfferBeforeWrite(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
-	_, err := env.Service.Admin.Import(
+	_, err := env.Repository.Import(
 		env.Context,
 		cpaImportWorkspaceID,
 		admin.ImportRequest{
@@ -2514,7 +2515,7 @@ func TestCPA_AdminImportRejectsInvalidNestedDataBeforeWrite(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			env := newCPATestEnvironment(t, testCPAOptions())
-			_, err := env.Service.Admin.Import(
+			_, err := env.Repository.Import(
 				env.Context,
 				cpaImportWorkspaceID,
 				admin.ImportRequest{
@@ -2625,7 +2626,7 @@ func TestCPA_AdminImportBatchesPackageBeyondPostgreSQLParameterLimit(
 		})
 	}
 
-	result, err := env.Service.Admin.Import(
+	result, err := env.Repository.Import(
 		env.Context,
 		cpaImportWorkspaceID,
 		admin.ImportRequest{
@@ -2645,7 +2646,7 @@ func TestCPA_AdminImportBatchesPackageBeyondPostgreSQLParameterLimit(
 		)
 	}
 
-	exported, err := env.Service.Admin.Export(
+	exported, err := env.Repository.Export(
 		env.Context,
 		cpaImportWorkspaceID,
 		admin.ExportRequest{},
@@ -2919,10 +2920,11 @@ func newCPATestEnvironment(
 	tb.Cleanup(func() { _ = service.Close() })
 
 	return cpaTestEnvironment{
-		Context:  ctx,
-		Database: appDB,
-		Name:     database,
-		Service:  service,
+		Context:    ctx,
+		Database:   appDB,
+		Name:       database,
+		Service:    service,
+		Repository: bootstrap,
 	}
 }
 

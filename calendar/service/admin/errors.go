@@ -7,6 +7,10 @@ var (
 		serviceerrors.CodeNotReady,
 		"calendar admin repository is not configured",
 	)
+	ErrArchiveJobsNotConfigured = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"calendar admin archive jobs are not configured",
+	)
 	ErrCalendarIDRequired = serviceerrors.New(
 		serviceerrors.CodeInvalidFields,
 		"calendar admin id is required",

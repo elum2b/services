@@ -29,9 +29,12 @@
 | `Admin.UpdateReward(ctx, params)` | `SaveRewardParams` с обязательным `ID`. | Обновляет награду шага. |
 | `Admin.GetReward(ctx, workspaceID, calendarID, id)` | `workspaceID`, `calendarID`, `id`. | Возвращает награду. |
 | `Admin.DeleteReward(ctx, workspaceID, calendarID, id)` | `workspaceID`, `calendarID`, `id`. | Удаляет награду. |
-| `Admin.Export(ctx, workspaceID, req)` | `workspaceID`, `ExportRequest{Now}`. | Экспортирует календари workspace в `calendar.export.v1`: определения, локализации, шаги и награды. |
-| `Admin.PreviewImport(ctx, workspaceID, pkg)` | `workspaceID`, `ExportPackage`. | Проверяет пакет импорта, считает элементы и возвращает конфликты по `calendar.Type` без записи данных. |
-| `Admin.Import(ctx, workspaceID, req)` | `ImportRequest{Package, ConflictStrategy}`; стратегии `fail_on_conflict`, `skip_existing`, `update_existing`. | Импортирует календари в workspace пачками в транзакции; при новом workspace генерирует новые `calendarID` и переносит связи шагов/наград. |
+| `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, ExportRequest}`. | Ставит ZIP-экспорт в асинхронную очередь. |
+| `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, ImportRequest, Archive}`. | Ставит ZIP-импорт в асинхронную очередь; асинхронный импорт не предоставляет `PreviewImport`. |
+| `Admin.ArchiveJob(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Возвращает текущий статус задачи. |
+| `Admin.ArchiveHistory(ctx, workspaceID, page)` | `workspaceID`, `Page`. | Возвращает историю задач workspace. |
+| `Admin.DownloadArchive(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Скачивает результат завершенного export job. |
+| `Admin.ArchiveJobHistory(ctx, workspaceID, id, page)` | `workspaceID`, job `id`, `Page`. | Возвращает историю состояний задачи. |
 | `Admin.UpsertLocalization(ctx, params)` | `SaveLocalizationParams{WorkspaceID, CalendarID, Locale, Title, Description}`. | Создает или обновляет локализацию календаря. |
 | `Admin.GetLocalization(ctx, workspaceID, calendarID, locale)` | `workspaceID`, `calendarID`, `locale`. | Возвращает локализацию. |
 | `Admin.ListLocalizations(ctx, workspaceID, calendarID)` | `workspaceID`, `calendarID`. | Возвращает локализации календаря. |

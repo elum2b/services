@@ -79,10 +79,15 @@ func NewWithDatabase(
 	}
 
 	service := newReference(ctx, client, false, options, store)
-	if err := configureArchiveJobs(ctx, service, options.ResourceStorage); err != nil {
+	if err := configureArchiveJobs(
+		ctx,
+		service,
+		options.ResourceStorage,
+	); err != nil {
 		_ = service.Close()
 		return nil, err
 	}
+
 	return service, nil
 }
 
@@ -194,10 +199,15 @@ func open(ctx context.Context, params DatabaseParams) (*Reference, error) {
 	}
 
 	service := newReference(ctx, client, true, params.Options, store)
-	if err := configureArchiveJobs(ctx, service, params.Options.ResourceStorage); err != nil {
+	if err := configureArchiveJobs(
+		ctx,
+		service,
+		params.Options.ResourceStorage,
+	); err != nil {
 		_ = service.Close()
 		return nil, err
 	}
+
 	return service, nil
 }
 
@@ -246,9 +256,11 @@ func (r *Reference) adopt(running *Reference) {
 	r.Resource = running.Resource
 	r.client, r.storage, r.mediaCache, r.ownsClient = running.client, running.storage, running.mediaCache, running.ownsClient
 	r.rootCtx, r.rootCancel = running.rootCtx, running.rootCancel
+
 	if r.workers != nil {
 		r.workers.Close()
 	}
+
 	r.workers, r.gcInterval, r.gcBatch, r.gcRetention, r.gcTrigger = running.workers, running.gcInterval, running.gcBatch, running.gcRetention, running.gcTrigger
 }
 
@@ -268,17 +280,21 @@ func newReference(
 	}
 	mediaCache := resourcecache.New(options.ResourceMediaCache)
 	gcInterval := options.ResourceGCInterval
+
 	if gcInterval <= 0 {
 		gcInterval = time.Minute
 	}
+
 	gcBatch := options.ResourceGCBatch
 	if gcBatch <= 0 {
 		gcBatch = 100
 	}
+
 	gcRetention := options.ResourceGCRetention
 	if gcRetention <= 0 {
 		gcRetention = time.Hour
 	}
+
 	gcTrigger := make(chan struct{}, 1)
 
 	return &Reference{
@@ -288,7 +304,15 @@ func newReference(
 			repositoryOptions,
 			store,
 		),
-		Resource: resourceservice.New(rootCtx, db, repositoryOptions, store, mediaCache, gcTrigger, gcRetention),
+		Resource: resourceservice.New(
+			rootCtx,
+			db,
+			repositoryOptions,
+			store,
+			mediaCache,
+			gcTrigger,
+			gcRetention,
+		),
 		User: user.NewWithRepositoryOptions(
 			rootCtx,
 			db,
@@ -312,6 +336,7 @@ func (r *Reference) startWorkers() {
 	if r == nil || r.workers == nil || r.Resource == nil {
 		return
 	}
+
 	if r.Admin != nil {
 		r.Admin.StartArchiveJobs(r.rootCtx)
 	}
@@ -321,9 +346,13 @@ func (r *Reference) startWorkers() {
 		defer ticker.Stop()
 
 		for {
-			if _, err := r.Resource.CollectGarbage(r.rootCtx, resourceservice.CollectGarbageParams{
-				Limit: r.gcBatch,
-			}); err != nil && r.rootCtx.Err() == nil {
+			if _, err := r.Resource.CollectGarbage(
+				r.rootCtx,
+				resourceservice.CollectGarbageParams{
+					Limit: r.gcBatch,
+				},
+			); err != nil &&
+				r.rootCtx.Err() == nil {
 				log.Printf("reference resource GC: %v", err)
 			}
 
@@ -345,6 +374,7 @@ func (r *Reference) Close() error {
 	if r.rootCancel != nil {
 		r.rootCancel()
 	}
+
 	if r.workers != nil {
 		r.workers.Close()
 	}

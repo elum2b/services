@@ -51,9 +51,12 @@ Lua provider экспортирует не общий `handle`, а конкре�
 | `Admin.DeleteComplexCondition(ctx, workspaceID, parentTaskID, conditionTaskID)` | Ключи связи. | Удаляет условие из complex task. |
 | `Admin.ListComplexConditions(ctx, workspaceID)` | `workspaceID`. | Возвращает все связи complex task -> condition task внутри workspace. |
 | `Admin.ExportManifest(ctx)` | Только `ctx`. | Возвращает manifest доступных секций export/import для tasks. |
-| `Admin.Export(ctx, workspaceID, req)` | `workspaceID`, `ExportRequest{Sections, IncludeSecrets, Now}`. | Экспортирует задачи в `tasks.export.v1`: группы, последовательности, задачи, локализации, награды, target, интеграционные настройки, партнерские настройки и правила наград согласно выбранным секциям. По умолчанию секреты экспортируются только как ссылки на ключи; при `IncludeSecrets=true` значения пишутся в `secret.value/webhook_secret.value`. |
-| `Admin.PreviewImport(ctx, workspaceID, pkg)` | `workspaceID`, `ExportPackage`. | Проверяет пакет импорта, считает элементы и возвращает конфликты без записи данных. |
-| `Admin.Import(ctx, workspaceID, req)` | `ImportRequest{Package, ConflictStrategy, Secrets}`; стратегии `fail_on_conflict`, `skip_existing`, `update_existing`. | Импортирует выбранные секции задач пачками в транзакции и обновляет связи групп, задач, локализаций, наград, интеграций и партнеров. Секреты берутся из `Secrets`, а если ключа нет, из вложенного `secret.value/webhook_secret.value`. |
+| `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, ExportRequest}`. | Ставит ZIP-экспорт в асинхронную очередь. |
+| `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, ImportRequest, Archive}`. | Ставит ZIP-импорт в асинхронную очередь; асинхронный импорт не предоставляет `PreviewImport`. |
+| `Admin.ArchiveJob(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Возвращает текущий статус задачи. |
+| `Admin.ArchiveHistory(ctx, workspaceID, page)` | `workspaceID`, `Page`. | Возвращает историю задач workspace. |
+| `Admin.DownloadArchive(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Скачивает результат завершенного export job. |
+| `Admin.ArchiveJobHistory(ctx, workspaceID, id, page)` | `workspaceID`, job `id`, `Page`. | Возвращает историю состояний задачи. |
 | `Admin.SavePartnerConfig(ctx, params)` | `PartnerConfigModel{WorkspaceID, Provider, GroupKey, Platform, IsEnabled, Secret, WebhookSecret, Target, Settings}`. | Создает или обновляет настройки партнера, включая API-секрет партнера, секрет входящего webhook и target. |
 | `Admin.GetPartnerConfig(ctx, workspaceID, provider, groupKey, platform)` | Ключи конфигурации партнера. | Возвращает конфигурацию партнера. |
 | `Admin.ListPartnerConfigs(ctx, workspaceID)` | `workspaceID`. | Возвращает все конфигурации партнеров workspace. |

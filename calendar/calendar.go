@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -15,6 +18,7 @@ import (
 	callbackutil "github.com/elum2b/services/internal/utils/callback"
 	"github.com/elum2b/services/internal/utils/contextutil"
 	goroutinemanager "github.com/elum2b/services/internal/utils/goroutine"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 )
 
@@ -57,7 +61,13 @@ func NewWithDatabase(
 		)
 	}
 
-	return newCalendar(ctx, client, false, options), nil
+	service := newCalendar(ctx, client, false, options)
+	if err := configureArchiveJobs(ctx, service); err != nil {
+		_ = service.Close()
+		return nil, err
+	}
+
+	return service, nil
 }
 
 func (c *Calendar) Run(ctx context.Context, params DatabaseParams) error {
@@ -171,7 +181,42 @@ func open(ctx context.Context, params DatabaseParams) (*Calendar, error) {
 		)
 	}
 
-	return newCalendar(ctx, client, true, params.Options), nil
+	service := newCalendar(ctx, client, true, params.Options)
+	if err := configureArchiveJobs(ctx, service); err != nil {
+		_ = service.Close()
+		return nil, err
+	}
+
+	return service, nil
+}
+
+func configureArchiveJobs(ctx context.Context, service *Calendar) error {
+	if err := jobs.Bootstrap(ctx, service.client.DB()); err != nil {
+		return fmt.Errorf("bootstrap calendar archive jobs: %w", err)
+	}
+
+	binaryPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve calendar archive directory: %w", err)
+	}
+
+	archive, err := jobs.NewDiskArchive(
+		filepath.Join(filepath.Dir(binaryPath), "calendar", "importexport"),
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := service.Admin.ConfigureArchiveJobs(
+		service.client.DB(),
+		archive,
+	); err != nil {
+		return fmt.Errorf("configure calendar archive jobs: %w", err)
+	}
+
+	service.Admin.StartArchiveJobs(service.rootCtx)
+
+	return nil
 }
 
 func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {

@@ -16,10 +16,9 @@ import (
 	"math"
 	"strings"
 
+	"github.com/kolesa-team/go-webp/encoder"
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // Register the WebP decoder with image.Decode.
-
-	"github.com/kolesa-team/go-webp/encoder"
 
 	"github.com/elum2b/services/internal/utils/media/lottie"
 	"github.com/elum2b/services/internal/utils/media/svg"
@@ -151,12 +150,22 @@ func Process(
 				90,
 			)
 			if err != nil {
-				return Asset{}, fmt.Errorf("create preview %d options: %w", size, err)
+				return Asset{}, fmt.Errorf(
+					"create preview %d options: %w",
+					size,
+					err,
+				)
 			}
+
 			webp, err := encoder.NewEncoder(preview, options)
 			if err != nil {
-				return Asset{}, fmt.Errorf("create preview %d encoder: %w", size, err)
+				return Asset{}, fmt.Errorf(
+					"create preview %d encoder: %w",
+					size,
+					err,
+				)
 			}
+
 			if err := webp.Encode(&encoded); err != nil {
 				return Asset{}, fmt.Errorf("encode preview %d: %w", size, err)
 			}
@@ -210,18 +219,31 @@ func decode(
 	if err != nil {
 		return "", nil, err
 	}
+
 	if ok {
 		_ = renderSource
+
 		if len(firstFrame) == 0 {
-			return "", nil, fmt.Errorf("%w for %s", ErrFirstFrameRequired, format)
+			return "", nil, fmt.Errorf(
+				"%w for %s",
+				ErrFirstFrameRequired,
+				format,
+			)
 		}
+
 		if len(firstFrame) > maxInputBytes {
-			return "", nil, fmt.Errorf("%w: first frame exceeds %d bytes", ErrInputTooLarge, maxInputBytes)
+			return "", nil, fmt.Errorf(
+				"%w: first frame exceeds %d bytes",
+				ErrInputTooLarge,
+				maxInputBytes,
+			)
 		}
+
 		frame, err := decodeFirstFrame(firstFrame, maxPixels)
 		if err != nil {
 			return "", nil, err
 		}
+
 		return format, frame, nil
 	}
 
@@ -269,37 +291,60 @@ func decodeFirstFrame(source []byte, maxPixels int64) (image.Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: first frame: %w", ErrUnsupportedFormat, err)
 	}
+
 	format, ok := staticFormat(name)
 	if !ok || (format != FormatPNG && format != FormatWebP) {
-		return nil, fmt.Errorf("%w: first frame must be PNG or WebP", ErrUnsupportedFormat)
+		return nil, fmt.Errorf(
+			"%w: first frame must be PNG or WebP",
+			ErrUnsupportedFormat,
+		)
 	}
-	if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > maxPixels {
+
+	if config.Width <= 0 || config.Height <= 0 ||
+		int64(config.Width)*int64(config.Height) > maxPixels {
 		return nil, ErrImageTooLarge
 	}
+
 	if err := validateStatic(format, source); err != nil {
 		return nil, err
 	}
+
 	frame, _, err := image.Decode(bytes.NewReader(source))
 	if err != nil {
 		return nil, fmt.Errorf("%w: first frame: %w", ErrUnsupportedFormat, err)
 	}
+
 	return frame, nil
 }
 
-func vectorFormat(source []byte, maxInputBytes int) (Format, []byte, bool, error) {
+func vectorFormat(
+	source []byte,
+	maxInputBytes int,
+) (Format, []byte, bool, error) {
 	if err := svg.Validate(source); err == nil {
 		return FormatSVG, source, true, nil
 	}
+
 	if len(source) >= 2 && source[0] == 0x1f && source[1] == 0x8b {
 		decoded, err := decodeTGS(source, maxInputBytes)
 		if err != nil {
-			return "", nil, false, fmt.Errorf("%w: invalid TGS: %w", ErrUnsupportedFormat, err)
+			return "", nil, false, fmt.Errorf(
+				"%w: invalid TGS: %w",
+				ErrUnsupportedFormat,
+				err,
+			)
 		}
+
 		if _, err := lottie.Validate(decoded); err == nil {
 			return FormatTGS, decoded, true, nil
 		}
-		return "", nil, false, fmt.Errorf("%w: invalid TGS Lottie document", ErrUnsupportedFormat)
+
+		return "", nil, false, fmt.Errorf(
+			"%w: invalid TGS Lottie document",
+			ErrUnsupportedFormat,
+		)
 	}
+
 	if _, err := lottie.Validate(source); err == nil {
 		return FormatLottie, source, true, nil
 	}
@@ -313,13 +358,16 @@ func decodeTGS(source []byte, maxBytes int) ([]byte, error) {
 		return nil, err
 	}
 	defer reader.Close()
+
 	decoded, err := io.ReadAll(io.LimitReader(reader, int64(maxBytes)+1))
 	if err != nil {
 		return nil, err
 	}
+
 	if len(decoded) > maxBytes {
 		return nil, ErrInputTooLarge
 	}
+
 	return decoded, nil
 }
 
@@ -555,12 +603,15 @@ func averageCell(
 ) color.NRGBA {
 	x0, x1 := bounds.Min.X+x*bounds.Dx()/cells, bounds.Min.X+(x+1)*bounds.Dx()/cells
 	y0, y1 := bounds.Min.Y+y*bounds.Dy()/cells, bounds.Min.Y+(y+1)*bounds.Dy()/cells
+
 	if x0 == x1 {
 		x1++
 	}
+
 	if y0 == y1 {
 		y1++
 	}
+
 	// A bounded sample count keeps placeholder generation independent of source size.
 	xStep := max(1, (x1-x0+15)/16)
 	yStep := max(1, (y1-y0+15)/16)

@@ -7,6 +7,10 @@ var (
 		serviceerrors.CodeNotReady,
 		"promo admin repository is not configured",
 	)
+	ErrArchiveJobsNotConfigured = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"promo admin archive jobs are not configured",
+	)
 	ErrLocalizationRequired = serviceerrors.New(
 		serviceerrors.CodeInvalidFields,
 		"promo admin locale and title are required",
