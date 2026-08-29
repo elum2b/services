@@ -846,9 +846,9 @@ func (q *Queries) ResolveItemBundles(ctx context.Context, arg ResolveItemBundles
 
 const resourceAttach = `-- name: ResourceAttach :execrows
 INSERT INTO reference_item_resource (workspace_id, item_key, resource_key, position)
-SELECT $1, $2, $3, $4
-WHERE EXISTS (SELECT 1 FROM reference_item WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL)
-  AND EXISTS (SELECT 1 FROM reference_resource WHERE workspace_id = $1 AND key = $3 AND deleted_at IS NULL)
+SELECT $1::varchar, $2::varchar, $3::varchar, $4
+WHERE EXISTS (SELECT 1 FROM reference_item WHERE workspace_id = $1::varchar AND key = $2::varchar AND deleted_at IS NULL)
+  AND EXISTS (SELECT 1 FROM reference_resource WHERE workspace_id = $1::varchar AND key = $3::varchar AND deleted_at IS NULL)
 ON CONFLICT (workspace_id, item_key, resource_key) DO UPDATE SET position = EXCLUDED.position
 `
 
@@ -923,6 +923,31 @@ func (q *Queries) ResourceCreate(ctx context.Context, arg ResourceCreateParams) 
 		arg.PlaceholderRef,
 	)
 	return err
+}
+
+const resourceDeleteMediaVersion = `-- name: ResourceDeleteMediaVersion :execrows
+DELETE FROM reference_resource_media_version
+WHERE workspace_id = $1 AND resource_key = $2 AND media_version = $3 AND retired_at <= $4
+`
+
+type ResourceDeleteMediaVersionParams struct {
+	WorkspaceID  string       `json:"workspace_id"`
+	ResourceKey  string       `json:"resource_key"`
+	MediaVersion string       `json:"media_version"`
+	RetiredAt    sql.NullTime `json:"retired_at"`
+}
+
+func (q *Queries) ResourceDeleteMediaVersion(ctx context.Context, arg ResourceDeleteMediaVersionParams) (int64, error) {
+	result, err := q.exec(ctx, q.resourceDeleteMediaVersionStmt, resourceDeleteMediaVersion,
+		arg.WorkspaceID,
+		arg.ResourceKey,
+		arg.MediaVersion,
+		arg.RetiredAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const resourceDetach = `-- name: ResourceDetach :execrows
@@ -1127,6 +1152,48 @@ func (q *Queries) ResourceListActiveForItems(ctx context.Context, arg ResourceLi
 	return items, nil
 }
 
+const resourceListGarbageMediaVersions = `-- name: ResourceListGarbageMediaVersions :many
+SELECT workspace_id, resource_key, media_version
+FROM reference_resource_media_version
+WHERE retired_at <= $1
+ORDER BY retired_at
+LIMIT $2
+`
+
+type ResourceListGarbageMediaVersionsParams struct {
+	RetiredAt sql.NullTime `json:"retired_at"`
+	Limit     int32        `json:"limit"`
+}
+
+type ResourceListGarbageMediaVersionsRow struct {
+	WorkspaceID  string `json:"workspace_id"`
+	ResourceKey  string `json:"resource_key"`
+	MediaVersion string `json:"media_version"`
+}
+
+func (q *Queries) ResourceListGarbageMediaVersions(ctx context.Context, arg ResourceListGarbageMediaVersionsParams) ([]ResourceListGarbageMediaVersionsRow, error) {
+	rows, err := q.query(ctx, q.resourceListGarbageMediaVersionsStmt, resourceListGarbageMediaVersions, arg.RetiredAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ResourceListGarbageMediaVersionsRow
+	for rows.Next() {
+		var i ResourceListGarbageMediaVersionsRow
+		if err := rows.Scan(&i.WorkspaceID, &i.ResourceKey, &i.MediaVersion); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resourceListItemResources = `-- name: ResourceListItemResources :many
 SELECT r.workspace_id, r.key, r.resource_type, r.payload, r.is_active, r.deleted_at, r.format, r.content_type, r.source_size, r.source_sha256, r.media_version, r.width, r.height, r.original_ref, r.preview_61_ref, r.preview_128_ref, r.preview_256_ref, r.preview_512_ref, r.placeholder_ref, r.created_at, r.updated_at, ir.item_key, ir.position
 FROM reference_item_resource ir
@@ -1211,6 +1278,68 @@ func (q *Queries) ResourceListItemResources(ctx context.Context, arg ResourceLis
 		return nil, err
 	}
 	return items, nil
+}
+
+const resourceMediaVersionCreate = `-- name: ResourceMediaVersionCreate :exec
+INSERT INTO reference_resource_media_version (workspace_id, resource_key, media_version)
+VALUES ($1, $2, $3)
+ON CONFLICT (workspace_id, resource_key, media_version) DO UPDATE SET retired_at = NULL
+`
+
+type ResourceMediaVersionCreateParams struct {
+	WorkspaceID  string `json:"workspace_id"`
+	ResourceKey  string `json:"resource_key"`
+	MediaVersion string `json:"media_version"`
+}
+
+func (q *Queries) ResourceMediaVersionCreate(ctx context.Context, arg ResourceMediaVersionCreateParams) error {
+	_, err := q.exec(ctx, q.resourceMediaVersionCreateStmt, resourceMediaVersionCreate, arg.WorkspaceID, arg.ResourceKey, arg.MediaVersion)
+	return err
+}
+
+const resourceMediaVersionRetireActive = `-- name: ResourceMediaVersionRetireActive :exec
+UPDATE reference_resource_media_version
+SET retired_at = now()
+WHERE workspace_id = $1 AND resource_key = $2 AND retired_at IS NULL
+`
+
+type ResourceMediaVersionRetireActiveParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	ResourceKey string `json:"resource_key"`
+}
+
+func (q *Queries) ResourceMediaVersionRetireActive(ctx context.Context, arg ResourceMediaVersionRetireActiveParams) error {
+	_, err := q.exec(ctx, q.resourceMediaVersionRetireActiveStmt, resourceMediaVersionRetireActive, arg.WorkspaceID, arg.ResourceKey)
+	return err
+}
+
+const resourcePurgeDeleted = `-- name: ResourcePurgeDeleted :execrows
+WITH removed_links AS (
+    DELETE FROM reference_item_resource
+    WHERE workspace_id = $1 AND resource_key = $2
+)
+DELETE FROM reference_resource
+WHERE reference_resource.workspace_id = $1
+  AND reference_resource.key = $2
+  AND reference_resource.deleted_at IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM reference_resource_media_version
+      WHERE workspace_id = $1 AND resource_key = $2
+  )
+`
+
+type ResourcePurgeDeletedParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	Key         string `json:"key"`
+}
+
+func (q *Queries) ResourcePurgeDeleted(ctx context.Context, arg ResourcePurgeDeletedParams) (int64, error) {
+	result, err := q.exec(ctx, q.resourcePurgeDeletedStmt, resourcePurgeDeleted, arg.WorkspaceID, arg.Key)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const resourceSoftDelete = `-- name: ResourceSoftDelete :execrows

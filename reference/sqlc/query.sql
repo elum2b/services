@@ -232,6 +232,16 @@ INSERT INTO reference_resource (
     preview_128_ref, preview_256_ref, preview_512_ref, placeholder_ref
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);
 
+-- name: ResourceMediaVersionCreate :exec
+INSERT INTO reference_resource_media_version (workspace_id, resource_key, media_version)
+VALUES ($1, $2, $3)
+ON CONFLICT (workspace_id, resource_key, media_version) DO UPDATE SET retired_at = NULL;
+
+-- name: ResourceMediaVersionRetireActive :exec
+UPDATE reference_resource_media_version
+SET retired_at = now()
+WHERE workspace_id = $1 AND resource_key = $2 AND retired_at IS NULL;
+
 -- name: ResourceUpdate :execrows
 UPDATE reference_resource
 SET resource_type = $1, payload = $2, is_active = $3, format = $4,
@@ -246,6 +256,32 @@ UPDATE reference_resource
 SET is_active = FALSE, deleted_at = now(), updated_at = now()
 WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL;
 
+-- name: ResourceListGarbageMediaVersions :many
+SELECT workspace_id, resource_key, media_version
+FROM reference_resource_media_version
+WHERE retired_at <= $1
+ORDER BY retired_at
+LIMIT $2;
+
+-- name: ResourceDeleteMediaVersion :execrows
+DELETE FROM reference_resource_media_version
+WHERE workspace_id = $1 AND resource_key = $2 AND media_version = $3 AND retired_at <= $4;
+
+-- name: ResourcePurgeDeleted :execrows
+WITH removed_links AS (
+    DELETE FROM reference_item_resource
+    WHERE workspace_id = $1 AND resource_key = $2
+)
+DELETE FROM reference_resource
+WHERE reference_resource.workspace_id = $1
+  AND reference_resource.key = $2
+  AND reference_resource.deleted_at IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM reference_resource_media_version
+      WHERE workspace_id = $1 AND resource_key = $2
+  );
+
 -- name: ResourceGet :one
 SELECT * FROM reference_resource
 WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL;
@@ -257,9 +293,9 @@ ORDER BY key LIMIT $2 OFFSET $3;
 
 -- name: ResourceAttach :execrows
 INSERT INTO reference_item_resource (workspace_id, item_key, resource_key, position)
-SELECT $1, $2, $3, $4
-WHERE EXISTS (SELECT 1 FROM reference_item WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL)
-  AND EXISTS (SELECT 1 FROM reference_resource WHERE workspace_id = $1 AND key = $3 AND deleted_at IS NULL)
+SELECT sqlc.arg(workspace_id)::varchar, sqlc.arg(item_key)::varchar, sqlc.arg(resource_key)::varchar, sqlc.arg(position)
+WHERE EXISTS (SELECT 1 FROM reference_item WHERE workspace_id = sqlc.arg(workspace_id)::varchar AND key = sqlc.arg(item_key)::varchar AND deleted_at IS NULL)
+  AND EXISTS (SELECT 1 FROM reference_resource WHERE workspace_id = sqlc.arg(workspace_id)::varchar AND key = sqlc.arg(resource_key)::varchar AND deleted_at IS NULL)
 ON CONFLICT (workspace_id, item_key, resource_key) DO UPDATE SET position = EXCLUDED.position;
 
 -- name: ResourceDetach :execrows

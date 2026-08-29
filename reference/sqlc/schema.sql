@@ -65,6 +65,27 @@ ALTER TABLE reference_resource ADD COLUMN IF NOT EXISTS media_version CHAR(8)
 CREATE INDEX IF NOT EXISTS reference_resource_list_idx
     ON reference_resource (workspace_id, deleted_at, is_active, resource_type, key);
 
+CREATE TABLE IF NOT EXISTS reference_resource_media_version (
+    workspace_id VARCHAR(36) NOT NULL,
+    resource_key VARCHAR(128) NOT NULL,
+    media_version CHAR(8) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    retired_at TIMESTAMPTZ NULL,
+    PRIMARY KEY (workspace_id, resource_key, media_version),
+    CONSTRAINT reference_resource_media_version_resource_fk
+        FOREIGN KEY (workspace_id, resource_key)
+        REFERENCES reference_resource (workspace_id, key)
+        ON UPDATE RESTRICT ON DELETE RESTRICT
+);
+
+INSERT INTO reference_resource_media_version (workspace_id, resource_key, media_version)
+SELECT workspace_id, key, media_version
+FROM reference_resource
+ON CONFLICT (workspace_id, resource_key, media_version) DO NOTHING;
+
+CREATE INDEX IF NOT EXISTS reference_resource_media_version_gc_idx
+    ON reference_resource_media_version (retired_at, workspace_id, resource_key);
+
 CREATE TABLE IF NOT EXISTS reference_item_resource (
     workspace_id VARCHAR(36) NOT NULL,
     item_key VARCHAR(128) NOT NULL,

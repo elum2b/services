@@ -42,11 +42,14 @@ func TestProcessStaticImage(t *testing.T) {
 			)
 		}
 
-		decoded, err := png.Decode(bytes.NewReader(preview.PNG))
+		decoded, format, err := image.Decode(bytes.NewReader(preview.WebP))
 		if err != nil {
-			t.Errorf("preview %d is not PNG: %v", preview.Size, err)
+			t.Errorf("preview %d is not WebP: %v", preview.Size, err)
 
 			continue
+		}
+		if format != "webp" {
+			t.Errorf("preview %d format = %q, want webp", preview.Size, format)
 		}
 
 		if decoded.Bounds().Dx() != preview.Width ||
@@ -125,38 +128,10 @@ func TestProcessRejectsTGSDecompressionBomb(t *testing.T) {
 	}
 }
 
-func TestProcessRiveUsesRenderer(t *testing.T) {
-
-	asset, err := Process(
-		context.Background(),
-		[]byte("RIVE\x00\x01"),
-		Options{PreviewSizes: []int{61}, FirstFrame: testPNG(t, 10, 20)},
-	)
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
-
-	if asset.Format != FormatRive {
-		t.Fatalf(
-			"format = %q renderer called = %t",
-			asset.Format,
-			false,
-		)
-	}
-
-	if got := asset.Previews[0]; got.Width != 31 || got.Height != 61 {
-		t.Fatalf(
-			"preview dimensions = %dx%d, want 31x61",
-			got.Width,
-			got.Height,
-		)
-	}
-}
-
 func TestProcessRequiresVectorFirstFrame(t *testing.T) {
 	_, err := Process(
 		context.Background(),
-		[]byte("RIVE\x00\x01"),
+		[]byte(`{"v":"5.12.0","w":20,"h":10,"layers":[]}`),
 		Options{},
 	)
 

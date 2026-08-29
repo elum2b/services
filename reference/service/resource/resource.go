@@ -25,10 +25,12 @@ var (
 )
 
 type Resource struct {
-	repository *repository.Repository
-	store      storage.Store
-	cache      *resourcecache.Cache
-	root       context.Context
+	repository  *repository.Repository
+	store       storage.Store
+	cache       *resourcecache.Cache
+	root        context.Context
+	gcTrigger   chan<- struct{}
+	gcRetention time.Duration
 }
 type SaveParams struct {
 	WorkspaceID, Key, Type string
@@ -50,6 +52,7 @@ type Content struct {
 	Data        []byte
 	ContentType string
 }
+type CollectGarbageParams struct{ Limit int32 }
 
 func New(
 	ctx context.Context,
@@ -57,13 +60,22 @@ func New(
 	opts repository.Options,
 	store storage.Store,
 	cache *resourcecache.Cache,
+	gcTrigger chan<- struct{},
+	gcRetention time.Duration,
 ) *Resource {
 	repo, e := repository.NewPreparedWithOptions(ctx, db, opts)
 	if e != nil {
 		repo = repository.NewWithOptions(db, opts)
 	}
 
-	return &Resource{repository: repo, store: store, cache: cache, root: ctx}
+	return &Resource{
+		repository:  repo,
+		store:       store,
+		cache:       cache,
+		root:        ctx,
+		gcTrigger:   gcTrigger,
+		gcRetention: gcRetention,
+	}
 }
 func (s *Resource) Close() error { return s.repository.Close() }
 
@@ -96,6 +108,12 @@ func (s *Resource) Update(
 	if e != nil {
 		return repository.Resource{}, e
 	}
+	if s.gcTrigger != nil {
+		select {
+		case s.gcTrigger <- struct{}{}:
+		default:
+		}
+	}
 
 	return s.repository.GetResource(ctx, v.WorkspaceID, v.Key)
 }
@@ -117,10 +135,65 @@ func (s *Resource) Delete(ctx context.Context, p GetParams) error {
 		strings.ToLower(strings.TrimSpace(p.Key)),
 	)
 
+	if e == nil && s.gcTrigger != nil {
+		select {
+		case s.gcTrigger <- struct{}{}:
+		default:
+		}
+	}
+
 	return e
 }
 
-// GetContent returns original media when Size is zero, otherwise a PNG preview.
+// CollectGarbage removes media for soft-deleted resources before purging their rows.
+func (s *Resource) CollectGarbage(
+	ctx context.Context,
+	p CollectGarbageParams,
+) (int, error) {
+	if s.store == nil || p.Limit <= 0 {
+		return 0, nil
+	}
+
+	before := time.Now().Add(-s.gcRetention)
+	resources, err := s.repository.ListGarbageMediaVersions(ctx, before, p.Limit)
+	if err != nil {
+		return 0, err
+	}
+
+	purged := 0
+	for _, resource := range resources {
+		if err := s.store.DeleteVersion(
+			ctx,
+			resource.WorkspaceID,
+			resource.ResourceKey,
+			resource.MediaVersion,
+		); err != nil {
+			return purged, err
+		}
+
+		rows, err := s.repository.DeleteMediaVersion(ctx, resource, before)
+		if err != nil {
+			return purged, err
+		}
+		if rows == 0 {
+			continue
+		}
+		purged++
+
+		rows, err = s.repository.PurgeDeletedResource(
+			ctx,
+			resource.WorkspaceID,
+			resource.ResourceKey,
+		)
+		if err != nil {
+			return purged, err
+		}
+	}
+
+	return purged, nil
+}
+
+// GetContent returns original media when Size is zero, otherwise a WebP preview.
 // Version is part of the public media identity, so old and deleted versions stay readable.
 func (s *Resource) GetContent(ctx context.Context, p ContentParams) (Content, error) {
 	p.Key = strings.ToLower(strings.TrimSpace(p.Key))
@@ -134,16 +207,19 @@ func (s *Resource) GetContent(ctx context.Context, p ContentParams) (Content, er
 	if p.Size != 0 && p.Format == string(media.FormatSVG) {
 		return Content{}, fmt.Errorf("SVG resources have no previews")
 	}
-	mimeType := "image/png"
+	mimeType := "image/webp"
+	originalName := ""
 	if p.Size == 0 {
 		mimeType = contentTypeForFormat(p.Format)
-		if mimeType == "" {
+		var ok bool
+		originalName, ok = storage.OriginalName(p.Format)
+		if mimeType == "" || !ok {
 			return Content{}, fmt.Errorf("invalid resource format")
 		}
 	}
 	key := strings.Join([]string{"reference", "media", p.WorkspaceID, p.Key, p.Version, fmt.Sprint(p.Size), mimeType}, ":")
 	value, err := s.cache.GetOrLoad(key, func() (resourcecache.Value, error) {
-		data, err := s.store.ReadVersion(ctx, p.WorkspaceID, p.Key, p.Version, p.Size)
+		data, err := s.store.ReadVersion(ctx, p.WorkspaceID, p.Key, p.Version, originalName, p.Size)
 		return resourcecache.Value{Data: data, ContentType: mimeType}, err
 	})
 	if err != nil {
@@ -237,8 +313,13 @@ func (s *Resource) prepare(
 	if e != nil {
 		return repository.Resource{}, e
 	}
+	originalName, ok := storage.OriginalName(string(a.Format))
+	if !ok {
+		return repository.Resource{}, fmt.Errorf("unsupported resource format %q", a.Format)
+	}
 
 	files := storage.Files{
+		OriginalName: originalName,
 		Original: storage.File{
 			Data:        a.Original,
 			ContentType: contentType(a.Format),
@@ -254,7 +335,7 @@ func (s *Resource) prepare(
 			files.Previews,
 			storage.Preview{
 				Size: x.Size,
-				File: storage.File{Data: x.PNG, ContentType: "image/png"},
+				File: storage.File{Data: x.WebP, ContentType: "image/webp"},
 			},
 		)
 	}
@@ -292,6 +373,7 @@ func (s *Resource) prepare(
 		CreatedAt:      time.Now(),
 	}, nil
 }
+
 func contentType(f media.Format) string {
 	switch f {
 	case media.FormatLottie:
@@ -300,8 +382,6 @@ func contentType(f media.Format) string {
 		return "application/gzip"
 	case media.FormatSVG:
 		return "image/svg+xml"
-	case media.FormatRive:
-		return "application/octet-stream"
 	case media.FormatWebP:
 		return "image/webp"
 	case media.FormatJPEG:
@@ -321,8 +401,6 @@ func contentTypeForFormat(format string) string {
 		return "application/gzip"
 	case media.FormatSVG:
 		return "image/svg+xml"
-	case media.FormatRive:
-		return "application/octet-stream"
 	case media.FormatWebP:
 		return "image/webp"
 	case media.FormatJPEG:

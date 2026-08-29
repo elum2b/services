@@ -47,14 +47,13 @@
   ограниченной распаковки как Lottie JSON. SVG хранит только original и
   generated placeholder, без raster preview variants.
 - Backend не рендерит vector/animated media. Admin frontend передаёт
-  проверенный PNG/WebP `FirstFrame`; backend валидирует original Lottie/TGS,
-  ограниченно проверяет Rive container и генерирует delivery previews и
-  placeholder только из `FirstFrame`.
+  проверенный PNG/WebP `FirstFrame`; backend валидирует original Lottie/TGS и
+  генерирует delivery previews и placeholder только из `FirstFrame`.
 - Resource export/import в текущем виде не расширяется. Целевой контракт —
   asynchronous ZIP dump job с постепенной подготовкой и download retention 24
   hours; этот workflow не смешивается с текущим синхронным import/export API.
-- GC удаляет только unreferenced immutable media version prefixes старше 24
-  hours, ограниченным batch за запуск. Update и soft-delete никогда не
+- GC удаляет только unreferenced immutable media version prefixes старше одного
+  часа, ограниченным batch за запуск. Update и soft-delete никогда не
   удаляют storage synchronously.
 
 ## Обязательные тесты

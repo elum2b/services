@@ -18,6 +18,35 @@ type ExportRequest struct {
 	OnlyNotDeleted bool      `json:"only_not_deleted,omitempty"`
 }
 
+// ArchivePackage is the media portion of a Reference ZIP export. Package is
+// kept separate so the established JSON ExportPackage format remains intact.
+type ArchivePackage struct {
+	Package   ExportPackage        `json:"package"`
+	Resources []ExportResource     `json:"resources,omitempty"`
+	Links     []ExportResourceLink `json:"links,omitempty"`
+}
+
+type ExportResource struct {
+	Key            string          `json:"key"`
+	Type           string          `json:"type"`
+	Payload        json.RawMessage `json:"payload"`
+	IsActive       bool            `json:"is_active"`
+	Format         string          `json:"format"`
+	ContentType    string          `json:"content_type"`
+	SHA256         string          `json:"sha256"`
+	MediaVersion   string          `json:"media_version"`
+	Size           int64           `json:"size"`
+	Width          int             `json:"width"`
+	Height         int             `json:"height"`
+	PlaceholderRef string          `json:"-"`
+}
+
+type ExportResourceLink struct {
+	ItemKey     string `json:"item_key"`
+	ResourceKey string `json:"resource_key"`
+	Position    int32  `json:"position"`
+}
+
 type ExportPackage struct {
 	Format    string       `json:"format"`
 	Service   string       `json:"service"`

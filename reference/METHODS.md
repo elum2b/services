@@ -34,11 +34,12 @@
 
 | Метод | Что принимает | Что делает |
 | --- | --- | --- |
-| `Resource.Create(ctx, params)` | `SaveParams{WorkspaceID, Key, Type, Payload, IsActive, File, FirstFrame}`. | Обрабатывает media и создаёт resource; Lottie/TGS/Rive/SVG требуют PNG/WebP `FirstFrame` из admin frontend. |
+| `Resource.Create(ctx, params)` | `SaveParams{WorkspaceID, Key, Type, Payload, IsActive, File, FirstFrame}`. | Обрабатывает media и создаёт resource; Lottie/TGS/SVG требуют PNG/WebP `FirstFrame` из admin frontend. |
 | `Resource.Update(ctx, params)` | `SaveParams{WorkspaceID, Key, Type, Payload, IsActive, File, FirstFrame}`. | Записывает media в новую immutable версию и обновляет metadata resource. |
 | `Resource.Get(ctx, params)` | `GetParams{WorkspaceID, Key}`. | Возвращает resource через отдельный versioned cache. |
 | `Resource.List(ctx, params)` | `ListParams{WorkspaceID, Limit, Offset}`. | Возвращает страницу не удалённых resources workspace. |
 | `Resource.Delete(ctx, params)` | `GetParams{WorkspaceID, Key}`. | Soft-delete resource без удаления объектов storage. |
+| `Resource.CollectGarbage(ctx, params)` | `CollectGarbageParams{Limit}`. | Через час удаляет retired media versions из storage, затем физически purges полностью удалённые resources; вызывается внутренним worker. |
 | `Resource.Attach(ctx, workspaceID, itemKey, resourceKey, position)` | workspace, keys, position. | Привязывает активный resource к item. |
 | `Resource.Detach(ctx, workspaceID, itemKey, resourceKey)` | workspace, keys. | Отвязывает resource от item. |
 | `Resource.ListItemResources(ctx, workspaceID, itemKey)` | workspace, item key. | Возвращает resources, привязанные к item, в порядке position. |

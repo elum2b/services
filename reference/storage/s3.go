@@ -11,6 +11,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
+	awstypes "github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 type objectClient interface {
@@ -24,6 +25,11 @@ type objectClient interface {
 		*awss3.GetObjectInput,
 		...func(*awss3.Options),
 	) (*awss3.GetObjectOutput, error)
+	DeleteObjects(
+		context.Context,
+		*awss3.DeleteObjectsInput,
+		...func(*awss3.Options),
+	) (*awss3.DeleteObjectsOutput, error)
 }
 
 type s3Store struct {
@@ -32,6 +38,16 @@ type s3Store struct {
 }
 
 func newS3(config Config) (*s3Store, error) {
+	client, err := NewS3Client(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return newS3WithClient(client, config.Bucket)
+}
+
+// NewS3Client builds the S3-compatible client shared by Reference storage.
+func NewS3Client(config Config) (*awss3.Client, error) {
 	if strings.TrimSpace(config.Bucket) == "" ||
 		(config.AccessKey == "") != (config.SecretKey == "") {
 		return nil, ErrConfigInvalid
@@ -65,16 +81,14 @@ func newS3(config Config) (*s3Store, error) {
 		return nil, fmt.Errorf("%w: %w", ErrConfigInvalid, err)
 	}
 
-	client := awss3.NewFromConfig(awsConfig, func(options *awss3.Options) {
+	return awss3.NewFromConfig(awsConfig, func(options *awss3.Options) {
 		options.UsePathStyle = config.UsePathStyle || config.Endpoint != ""
 		if config.Endpoint != "" {
 			options.BaseEndpoint = aws.String(
 				s3Endpoint(config.Endpoint, config.Secure),
 			)
 		}
-	})
-
-	return newS3WithClient(client, config.Bucket)
+	}), nil
 }
 
 func newS3WithClient(client objectClient, bucket string) (*s3Store, error) {
@@ -105,7 +119,7 @@ func (s *s3Store) Replace(
 
 	if result.Original, err = s.put(
 		ctx,
-		prefix+"/original",
+		prefix+"/"+files.OriginalName,
 		files.Original,
 	); err != nil {
 		return Objects{}, err
@@ -114,7 +128,7 @@ func (s *s3Store) Replace(
 	for _, preview := range files.Previews {
 		ref, err := s.put(
 			ctx,
-			fmt.Sprintf("%s/preview-%d.png", prefix, preview.Size),
+			fmt.Sprintf("%s/preview-%d.webp", prefix, preview.Size),
 			preview.File,
 		)
 		if err != nil {
@@ -151,12 +165,53 @@ func (s *s3Store) Read(ctx context.Context, reference string) ([]byte, error) {
 	return data, nil
 }
 
-func (s *s3Store) ReadVersion(ctx context.Context, workspaceID, resourceKey, version string, size int) ([]byte, error) {
-	reference, err := versionReference(workspaceID, resourceKey, version, size)
+func (s *s3Store) ReadVersion(ctx context.Context, workspaceID, resourceKey, version, originalName string, size int) ([]byte, error) {
+	reference, err := versionReference(workspaceID, resourceKey, version, originalName, size)
 	if err != nil {
 		return nil, err
 	}
 	return s.Read(ctx, "reference/"+reference)
+}
+
+func (s *s3Store) DeleteVersion(
+	ctx context.Context,
+	workspaceID, resourceKey, version string,
+) error {
+	prefix, err := objectPrefix(workspaceID, resourceKey, version)
+	if err != nil {
+		return err
+	}
+
+	objects := make([]awstypes.ObjectIdentifier, 0, len(originalNames)+len(requiredPreviewSizes)+1)
+	for _, name := range originalNames {
+		objects = append(objects, awstypes.ObjectIdentifier{
+			Key: aws.String("reference/" + prefix + "/" + name),
+		})
+	}
+	for _, suffix := range []string{
+		"placeholder.svg",
+		"preview-61.webp",
+		"preview-128.webp",
+		"preview-256.webp",
+		"preview-512.webp",
+	} {
+		objects = append(objects, awstypes.ObjectIdentifier{
+			Key: aws.String("reference/" + prefix + "/" + suffix),
+		})
+	}
+
+	output, err := s.client.DeleteObjects(ctx, &awss3.DeleteObjectsInput{
+		Bucket: aws.String(s.bucket),
+		Delete: &awstypes.Delete{Objects: objects, Quiet: aws.Bool(true)},
+	})
+	if err != nil {
+		return fmt.Errorf("delete resource media version: %w", err)
+	}
+	if len(output.Errors) > 0 {
+		return fmt.Errorf("delete resource media version: %d objects failed", len(output.Errors))
+	}
+
+	return nil
 }
 
 func (s *s3Store) put(

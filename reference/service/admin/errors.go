@@ -3,6 +3,10 @@ package admin
 import serviceerrors "github.com/elum2b/services/errors"
 
 var (
+	ErrArchiveJobsNotConfigured = serviceerrors.New(
+		serviceerrors.CodeNotReady,
+		"reference archive jobs are not configured",
+	)
 	ErrRepositoryNotConfigured = serviceerrors.New(
 		serviceerrors.CodeNotReady,
 		"reference admin repository is not configured",

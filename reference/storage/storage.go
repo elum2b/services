@@ -18,6 +18,22 @@ var (
 
 var requiredPreviewSizes = [...]int{61, 128, 256, 512}
 
+var originalNames = map[string]string{
+	"jpeg":   "image.jpeg",
+	"png":    "image.png",
+	"webp":   "image.webp",
+	"gif":    "image.gif",
+	"lottie": "lottie.json",
+	"tgs":    "animation.tgs",
+	"svg":    "image.svg",
+}
+
+// OriginalName returns the semantic object name for a processed media format.
+func OriginalName(format string) (string, bool) {
+	name, ok := originalNames[format]
+	return name, ok
+}
+
 // Config uses S3 when Bucket is set. Otherwise media is kept under Directory,
 // or under <binary-dir>/reference when Directory is empty.
 type Config struct {
@@ -38,7 +54,7 @@ type File struct {
 	ContentType string
 }
 
-// Preview is a PNG rendition.
+// Preview is a WebP rendition.
 type Preview struct {
 	Size int
 	File File
@@ -46,10 +62,11 @@ type Preview struct {
 
 // Files is the full set replaced for a resource in one operation.
 type Files struct {
-	Original    File
-	Previews    []Preview
-	Placeholder File
-	NoPreviews  bool
+	OriginalName string
+	Original     File
+	Previews     []Preview
+	Placeholder  File
+	NoPreviews   bool
 }
 
 // Objects contains opaque references persisted by Reference, never paths for
@@ -64,7 +81,8 @@ type Objects struct {
 type Store interface {
 	Replace(context.Context, string, string, string, Files) (Objects, error)
 	Read(context.Context, string) ([]byte, error)
-	ReadVersion(context.Context, string, string, string, int) ([]byte, error)
+	ReadVersion(context.Context, string, string, string, string, int) ([]byte, error)
+	DeleteVersion(context.Context, string, string, string) error
 }
 
 // New selects S3-compatible storage when Bucket is configured, otherwise a
@@ -112,24 +130,27 @@ func validVersion(value string) bool {
 	return true
 }
 
-func versionReference(workspaceID, resourceKey, version string, size int) (string, error) {
+func versionReference(workspaceID, resourceKey, version, originalName string, size int) (string, error) {
 	prefix, err := objectPrefix(workspaceID, resourceKey, version)
 	if err != nil {
 		return "", err
 	}
 	if size == 0 {
-		return prefix + "/original", nil
+		if !validOriginalName(originalName) {
+			return "", ErrFilesInvalid
+		}
+		return prefix + "/" + originalName, nil
 	}
 	for _, allowed := range requiredPreviewSizes {
 		if size == allowed {
-			return fmt.Sprintf("%s/preview-%d.png", prefix, size), nil
+			return fmt.Sprintf("%s/preview-%d.webp", prefix, size), nil
 		}
 	}
 	return "", ErrFilesInvalid
 }
 
 func validateFiles(files Files) error {
-	if len(files.Original.Data) == 0 || files.Original.ContentType == "" ||
+	if !validOriginalName(files.OriginalName) || len(files.Original.Data) == 0 || files.Original.ContentType == "" ||
 		len(files.Placeholder.Data) == 0 ||
 		files.Placeholder.ContentType != "image/svg+xml" {
 		return ErrFilesInvalid
@@ -138,7 +159,7 @@ func validateFiles(files Files) error {
 	seen := make(map[int]struct{}, len(files.Previews))
 	for _, preview := range files.Previews {
 		if preview.Size <= 0 || len(preview.File.Data) == 0 ||
-			preview.File.ContentType != "image/png" {
+			preview.File.ContentType != "image/webp" {
 			return ErrFilesInvalid
 		}
 
@@ -169,4 +190,13 @@ func validateFiles(files Files) error {
 	}
 
 	return nil
+}
+
+func validOriginalName(name string) bool {
+	for _, value := range originalNames {
+		if name == value {
+			return true
+		}
+	}
+	return false
 }

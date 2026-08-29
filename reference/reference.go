@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"sync"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	serviceerrors "github.com/elum2b/services/errors"
 	"github.com/elum2b/services/internal/utils/contextutil"
+	"github.com/elum2b/services/internal/utils/goroutine"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/reference/repository"
 	"github.com/elum2b/services/reference/service/admin"
@@ -24,12 +27,17 @@ type Reference struct {
 	Resource *resourceservice.Resource
 	User     *user.User
 
-	client     *sqlwrap.Client
-	storage    resourcestorage.Store
-	mediaCache *resourcecache.Cache
-	ownsClient bool
-	rootCtx    context.Context
-	rootCancel context.CancelFunc
+	client      *sqlwrap.Client
+	storage     resourcestorage.Store
+	mediaCache  *resourcecache.Cache
+	ownsClient  bool
+	rootCtx     context.Context
+	rootCancel  context.CancelFunc
+	workers     *goroutine.Manager
+	gcInterval  time.Duration
+	gcBatch     int32
+	gcRetention time.Duration
+	gcTrigger   chan struct{}
 
 	lifecycleMu sync.Mutex
 	running     bool
@@ -70,7 +78,12 @@ func NewWithDatabase(
 		)
 	}
 
-	return newReference(ctx, client, false, options, store), nil
+	service := newReference(ctx, client, false, options, store)
+	if err := configureArchiveJobs(ctx, service, options.ResourceStorage); err != nil {
+		_ = service.Close()
+		return nil, err
+	}
+	return service, nil
 }
 
 func (r *Reference) Run(ctx context.Context, params DatabaseParams) error {
@@ -104,6 +117,7 @@ func (r *Reference) Run(ctx context.Context, params DatabaseParams) error {
 	}
 
 	r.adopt(running)
+	r.startWorkers()
 
 	defer r.Close()
 
@@ -179,7 +193,12 @@ func open(ctx context.Context, params DatabaseParams) (*Reference, error) {
 		)
 	}
 
-	return newReference(ctx, client, true, params.Options, store), nil
+	service := newReference(ctx, client, true, params.Options, store)
+	if err := configureArchiveJobs(ctx, service, params.Options.ResourceStorage); err != nil {
+		_ = service.Close()
+		return nil, err
+	}
+	return service, nil
 }
 
 func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
@@ -227,6 +246,10 @@ func (r *Reference) adopt(running *Reference) {
 	r.Resource = running.Resource
 	r.client, r.storage, r.mediaCache, r.ownsClient = running.client, running.storage, running.mediaCache, running.ownsClient
 	r.rootCtx, r.rootCancel = running.rootCtx, running.rootCancel
+	if r.workers != nil {
+		r.workers.Close()
+	}
+	r.workers, r.gcInterval, r.gcBatch, r.gcRetention, r.gcTrigger = running.workers, running.gcInterval, running.gcBatch, running.gcRetention, running.gcTrigger
 }
 
 func newReference(
@@ -244,26 +267,74 @@ func newReference(
 		OnCacheInvalidationError: options.OnCacheInvalidationError,
 	}
 	mediaCache := resourcecache.New(options.ResourceMediaCache)
+	gcInterval := options.ResourceGCInterval
+	if gcInterval <= 0 {
+		gcInterval = time.Minute
+	}
+	gcBatch := options.ResourceGCBatch
+	if gcBatch <= 0 {
+		gcBatch = 100
+	}
+	gcRetention := options.ResourceGCRetention
+	if gcRetention <= 0 {
+		gcRetention = time.Hour
+	}
+	gcTrigger := make(chan struct{}, 1)
 
 	return &Reference{
-		Admin: admin.NewWithRepositoryOptions(
+		Admin: admin.NewWithRepositoryOptionsAndStore(
 			rootCtx,
 			db,
 			repositoryOptions,
+			store,
 		),
-		Resource: resourceservice.New(rootCtx, db, repositoryOptions, store, mediaCache),
+		Resource: resourceservice.New(rootCtx, db, repositoryOptions, store, mediaCache, gcTrigger, gcRetention),
 		User: user.NewWithRepositoryOptions(
 			rootCtx,
 			db,
 			repositoryOptions,
 		),
-		client:     db,
-		storage:    store,
-		mediaCache: mediaCache,
-		ownsClient: ownsClient,
-		rootCtx:    rootCtx,
-		rootCancel: cancel,
+		client:      db,
+		storage:     store,
+		mediaCache:  mediaCache,
+		ownsClient:  ownsClient,
+		rootCtx:     rootCtx,
+		rootCancel:  cancel,
+		workers:     goroutine.New(),
+		gcInterval:  gcInterval,
+		gcBatch:     gcBatch,
+		gcRetention: gcRetention,
+		gcTrigger:   gcTrigger,
 	}
+}
+
+func (r *Reference) startWorkers() {
+	if r == nil || r.workers == nil || r.Resource == nil {
+		return
+	}
+	if r.Admin != nil {
+		r.Admin.StartArchiveJobs(r.rootCtx)
+	}
+
+	r.workers.Go("reference-resource-gc", func() {
+		ticker := time.NewTicker(r.gcInterval)
+		defer ticker.Stop()
+
+		for {
+			if _, err := r.Resource.CollectGarbage(r.rootCtx, resourceservice.CollectGarbageParams{
+				Limit: r.gcBatch,
+			}); err != nil && r.rootCtx.Err() == nil {
+				log.Printf("reference resource GC: %v", err)
+			}
+
+			select {
+			case <-r.rootCtx.Done():
+				return
+			case <-ticker.C:
+			case <-r.gcTrigger:
+			}
+		}
+	})
 }
 
 func (r *Reference) Close() error {
@@ -273,6 +344,9 @@ func (r *Reference) Close() error {
 
 	if r.rootCancel != nil {
 		r.rootCancel()
+	}
+	if r.workers != nil {
+		r.workers.Close()
 	}
 
 	var err error

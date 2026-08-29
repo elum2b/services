@@ -40,8 +40,13 @@ type Options struct {
 	OnCacheInvalidationError func(error)
 	// ResourceStorage selects S3/MinIO when Bucket is set; otherwise resources
 	// are saved beside the executable in the reference directory.
-	ResourceStorage    resourcestorage.Config
-	ResourceMediaCache resourcecache.Config
+	// Async import/export archives use <Directory>/importexport. S3 resource
+	// storage is rejected until a shared S3 archive adapter is configured.
+	ResourceStorage     resourcestorage.Config
+	ResourceMediaCache  resourcecache.Config
+	ResourceGCInterval  time.Duration
+	ResourceGCBatch     int32
+	ResourceGCRetention time.Duration
 }
 
 type DatabaseParams struct {

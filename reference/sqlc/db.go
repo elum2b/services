@@ -84,6 +84,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.resourceCreateStmt, err = db.PrepareContext(ctx, resourceCreate); err != nil {
 		return nil, fmt.Errorf("error preparing query ResourceCreate: %w", err)
 	}
+	if q.resourceDeleteMediaVersionStmt, err = db.PrepareContext(ctx, resourceDeleteMediaVersion); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceDeleteMediaVersion: %w", err)
+	}
 	if q.resourceDetachStmt, err = db.PrepareContext(ctx, resourceDetach); err != nil {
 		return nil, fmt.Errorf("error preparing query ResourceDetach: %w", err)
 	}
@@ -96,8 +99,20 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.resourceListActiveForItemsStmt, err = db.PrepareContext(ctx, resourceListActiveForItems); err != nil {
 		return nil, fmt.Errorf("error preparing query ResourceListActiveForItems: %w", err)
 	}
+	if q.resourceListGarbageMediaVersionsStmt, err = db.PrepareContext(ctx, resourceListGarbageMediaVersions); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceListGarbageMediaVersions: %w", err)
+	}
 	if q.resourceListItemResourcesStmt, err = db.PrepareContext(ctx, resourceListItemResources); err != nil {
 		return nil, fmt.Errorf("error preparing query ResourceListItemResources: %w", err)
+	}
+	if q.resourceMediaVersionCreateStmt, err = db.PrepareContext(ctx, resourceMediaVersionCreate); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceMediaVersionCreate: %w", err)
+	}
+	if q.resourceMediaVersionRetireActiveStmt, err = db.PrepareContext(ctx, resourceMediaVersionRetireActive); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceMediaVersionRetireActive: %w", err)
+	}
+	if q.resourcePurgeDeletedStmt, err = db.PrepareContext(ctx, resourcePurgeDeleted); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourcePurgeDeleted: %w", err)
 	}
 	if q.resourceSoftDeleteStmt, err = db.PrepareContext(ctx, resourceSoftDelete); err != nil {
 		return nil, fmt.Errorf("error preparing query ResourceSoftDelete: %w", err)
@@ -210,6 +225,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing resourceCreateStmt: %w", cerr)
 		}
 	}
+	if q.resourceDeleteMediaVersionStmt != nil {
+		if cerr := q.resourceDeleteMediaVersionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceDeleteMediaVersionStmt: %w", cerr)
+		}
+	}
 	if q.resourceDetachStmt != nil {
 		if cerr := q.resourceDetachStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing resourceDetachStmt: %w", cerr)
@@ -230,9 +250,29 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing resourceListActiveForItemsStmt: %w", cerr)
 		}
 	}
+	if q.resourceListGarbageMediaVersionsStmt != nil {
+		if cerr := q.resourceListGarbageMediaVersionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceListGarbageMediaVersionsStmt: %w", cerr)
+		}
+	}
 	if q.resourceListItemResourcesStmt != nil {
 		if cerr := q.resourceListItemResourcesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing resourceListItemResourcesStmt: %w", cerr)
+		}
+	}
+	if q.resourceMediaVersionCreateStmt != nil {
+		if cerr := q.resourceMediaVersionCreateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceMediaVersionCreateStmt: %w", cerr)
+		}
+	}
+	if q.resourceMediaVersionRetireActiveStmt != nil {
+		if cerr := q.resourceMediaVersionRetireActiveStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceMediaVersionRetireActiveStmt: %w", cerr)
+		}
+	}
+	if q.resourcePurgeDeletedStmt != nil {
+		if cerr := q.resourcePurgeDeletedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourcePurgeDeletedStmt: %w", cerr)
 		}
 	}
 	if q.resourceSoftDeleteStmt != nil {
@@ -282,67 +322,77 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                             DBTX
-	tx                             *sql.Tx
-	adminCreateItemStmt            *sql.Stmt
-	adminDangerousChangeTypeStmt   *sql.Stmt
-	adminDeleteLocalizationStmt    *sql.Stmt
-	adminGetItemBundleStmt         *sql.Stmt
-	adminGetLocalizationStmt       *sql.Stmt
-	adminGetStatsStmt              *sql.Stmt
-	adminListItemsStmt             *sql.Stmt
-	adminListLocalizationsStmt     *sql.Stmt
-	adminRestoreItemStmt           *sql.Stmt
-	adminSoftDeleteItemStmt        *sql.Stmt
-	adminUpdateItemStmt            *sql.Stmt
-	adminUpsertLocalizationStmt    *sql.Stmt
-	getItemBundleStmt              *sql.Stmt
-	listExportItemsStmt            *sql.Stmt
-	listExportLocalizationsStmt    *sql.Stmt
-	listImportItemKeysStmt         *sql.Stmt
-	listItemBundlesStmt            *sql.Stmt
-	resolveItemBundlesStmt         *sql.Stmt
-	resourceAttachStmt             *sql.Stmt
-	resourceCreateStmt             *sql.Stmt
-	resourceDetachStmt             *sql.Stmt
-	resourceGetStmt                *sql.Stmt
-	resourceListStmt               *sql.Stmt
-	resourceListActiveForItemsStmt *sql.Stmt
-	resourceListItemResourcesStmt  *sql.Stmt
-	resourceSoftDeleteStmt         *sql.Stmt
-	resourceUpdateStmt             *sql.Stmt
+	db                                   DBTX
+	tx                                   *sql.Tx
+	adminCreateItemStmt                  *sql.Stmt
+	adminDangerousChangeTypeStmt         *sql.Stmt
+	adminDeleteLocalizationStmt          *sql.Stmt
+	adminGetItemBundleStmt               *sql.Stmt
+	adminGetLocalizationStmt             *sql.Stmt
+	adminGetStatsStmt                    *sql.Stmt
+	adminListItemsStmt                   *sql.Stmt
+	adminListLocalizationsStmt           *sql.Stmt
+	adminRestoreItemStmt                 *sql.Stmt
+	adminSoftDeleteItemStmt              *sql.Stmt
+	adminUpdateItemStmt                  *sql.Stmt
+	adminUpsertLocalizationStmt          *sql.Stmt
+	getItemBundleStmt                    *sql.Stmt
+	listExportItemsStmt                  *sql.Stmt
+	listExportLocalizationsStmt          *sql.Stmt
+	listImportItemKeysStmt               *sql.Stmt
+	listItemBundlesStmt                  *sql.Stmt
+	resolveItemBundlesStmt               *sql.Stmt
+	resourceAttachStmt                   *sql.Stmt
+	resourceCreateStmt                   *sql.Stmt
+	resourceDeleteMediaVersionStmt       *sql.Stmt
+	resourceDetachStmt                   *sql.Stmt
+	resourceGetStmt                      *sql.Stmt
+	resourceListStmt                     *sql.Stmt
+	resourceListActiveForItemsStmt       *sql.Stmt
+	resourceListGarbageMediaVersionsStmt *sql.Stmt
+	resourceListItemResourcesStmt        *sql.Stmt
+	resourceMediaVersionCreateStmt       *sql.Stmt
+	resourceMediaVersionRetireActiveStmt *sql.Stmt
+	resourcePurgeDeletedStmt             *sql.Stmt
+	resourceSoftDeleteStmt               *sql.Stmt
+	resourceUpdateStmt                   *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                             tx,
-		tx:                             tx,
-		adminCreateItemStmt:            q.adminCreateItemStmt,
-		adminDangerousChangeTypeStmt:   q.adminDangerousChangeTypeStmt,
-		adminDeleteLocalizationStmt:    q.adminDeleteLocalizationStmt,
-		adminGetItemBundleStmt:         q.adminGetItemBundleStmt,
-		adminGetLocalizationStmt:       q.adminGetLocalizationStmt,
-		adminGetStatsStmt:              q.adminGetStatsStmt,
-		adminListItemsStmt:             q.adminListItemsStmt,
-		adminListLocalizationsStmt:     q.adminListLocalizationsStmt,
-		adminRestoreItemStmt:           q.adminRestoreItemStmt,
-		adminSoftDeleteItemStmt:        q.adminSoftDeleteItemStmt,
-		adminUpdateItemStmt:            q.adminUpdateItemStmt,
-		adminUpsertLocalizationStmt:    q.adminUpsertLocalizationStmt,
-		getItemBundleStmt:              q.getItemBundleStmt,
-		listExportItemsStmt:            q.listExportItemsStmt,
-		listExportLocalizationsStmt:    q.listExportLocalizationsStmt,
-		listImportItemKeysStmt:         q.listImportItemKeysStmt,
-		listItemBundlesStmt:            q.listItemBundlesStmt,
-		resolveItemBundlesStmt:         q.resolveItemBundlesStmt,
-		resourceAttachStmt:             q.resourceAttachStmt,
-		resourceCreateStmt:             q.resourceCreateStmt,
-		resourceDetachStmt:             q.resourceDetachStmt,
-		resourceGetStmt:                q.resourceGetStmt,
-		resourceListStmt:               q.resourceListStmt,
-		resourceListActiveForItemsStmt: q.resourceListActiveForItemsStmt,
-		resourceListItemResourcesStmt:  q.resourceListItemResourcesStmt,
-		resourceSoftDeleteStmt:         q.resourceSoftDeleteStmt,
-		resourceUpdateStmt:             q.resourceUpdateStmt,
+		db:                                   tx,
+		tx:                                   tx,
+		adminCreateItemStmt:                  q.adminCreateItemStmt,
+		adminDangerousChangeTypeStmt:         q.adminDangerousChangeTypeStmt,
+		adminDeleteLocalizationStmt:          q.adminDeleteLocalizationStmt,
+		adminGetItemBundleStmt:               q.adminGetItemBundleStmt,
+		adminGetLocalizationStmt:             q.adminGetLocalizationStmt,
+		adminGetStatsStmt:                    q.adminGetStatsStmt,
+		adminListItemsStmt:                   q.adminListItemsStmt,
+		adminListLocalizationsStmt:           q.adminListLocalizationsStmt,
+		adminRestoreItemStmt:                 q.adminRestoreItemStmt,
+		adminSoftDeleteItemStmt:              q.adminSoftDeleteItemStmt,
+		adminUpdateItemStmt:                  q.adminUpdateItemStmt,
+		adminUpsertLocalizationStmt:          q.adminUpsertLocalizationStmt,
+		getItemBundleStmt:                    q.getItemBundleStmt,
+		listExportItemsStmt:                  q.listExportItemsStmt,
+		listExportLocalizationsStmt:          q.listExportLocalizationsStmt,
+		listImportItemKeysStmt:               q.listImportItemKeysStmt,
+		listItemBundlesStmt:                  q.listItemBundlesStmt,
+		resolveItemBundlesStmt:               q.resolveItemBundlesStmt,
+		resourceAttachStmt:                   q.resourceAttachStmt,
+		resourceCreateStmt:                   q.resourceCreateStmt,
+		resourceDeleteMediaVersionStmt:       q.resourceDeleteMediaVersionStmt,
+		resourceDetachStmt:                   q.resourceDetachStmt,
+		resourceGetStmt:                      q.resourceGetStmt,
+		resourceListStmt:                     q.resourceListStmt,
+		resourceListActiveForItemsStmt:       q.resourceListActiveForItemsStmt,
+		resourceListGarbageMediaVersionsStmt: q.resourceListGarbageMediaVersionsStmt,
+		resourceListItemResourcesStmt:        q.resourceListItemResourcesStmt,
+		resourceMediaVersionCreateStmt:       q.resourceMediaVersionCreateStmt,
+		resourceMediaVersionRetireActiveStmt: q.resourceMediaVersionRetireActiveStmt,
+		resourcePurgeDeletedStmt:             q.resourcePurgeDeletedStmt,
+		resourceSoftDeleteStmt:               q.resourceSoftDeleteStmt,
+		resourceUpdateStmt:                   q.resourceUpdateStmt,
 	}
 }

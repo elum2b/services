@@ -45,7 +45,7 @@ func (s *diskStore) Replace(
 
 	result := Objects{Previews: make(map[int]string, len(files.Previews))}
 	if result.Original, err = s.write(
-		prefix+"/original",
+		prefix+"/"+files.OriginalName,
 		files.Original,
 	); err != nil {
 		return Objects{}, err
@@ -53,7 +53,7 @@ func (s *diskStore) Replace(
 
 	for _, preview := range files.Previews {
 		ref, err := s.write(
-			fmt.Sprintf("%s/preview-%d.png", prefix, preview.Size),
+			fmt.Sprintf("%s/preview-%d.webp", prefix, preview.Size),
 			preview.File,
 		)
 		if err != nil {
@@ -85,12 +85,32 @@ func (s *diskStore) Read(ctx context.Context, reference string) ([]byte, error) 
 	return data, nil
 }
 
-func (s *diskStore) ReadVersion(ctx context.Context, workspaceID, resourceKey, version string, size int) ([]byte, error) {
-	reference, err := versionReference(workspaceID, resourceKey, version, size)
+func (s *diskStore) ReadVersion(ctx context.Context, workspaceID, resourceKey, version, originalName string, size int) ([]byte, error) {
+	reference, err := versionReference(workspaceID, resourceKey, version, originalName, size)
 	if err != nil {
 		return nil, err
 	}
 	return s.Read(ctx, reference)
+}
+
+func (s *diskStore) DeleteVersion(
+	ctx context.Context,
+	workspaceID, resourceKey, version string,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	prefix, err := objectPrefix(workspaceID, resourceKey, version)
+	if err != nil {
+		return err
+	}
+
+	if err := os.RemoveAll(filepath.Join(s.directory, filepath.FromSlash(prefix))); err != nil {
+		return fmt.Errorf("delete resource media version: %w", err)
+	}
+
+	return nil
 }
 
 func (s *diskStore) write(reference string, file File) (string, error) {

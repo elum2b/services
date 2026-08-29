@@ -57,7 +57,17 @@ func (r *Repository) CreateResource(ctx context.Context, value Resource) error {
 	err := r.withWorkspaceMutation(
 		ctx,
 		value.WorkspaceID,
-		func(tx *Repository) error { return tx.q.ResourceCreate(ctx, resourceParams(value)) },
+		func(tx *Repository) error {
+			if err := tx.q.ResourceCreate(ctx, resourceParams(value)); err != nil {
+				return err
+			}
+
+			return tx.q.ResourceMediaVersionCreate(ctx, refsqlc.ResourceMediaVersionCreateParams{
+				WorkspaceID:  value.WorkspaceID,
+				ResourceKey:  value.Key,
+				MediaVersion: value.MediaVersion,
+			})
+		},
 	)
 	if err != nil {
 		return err
@@ -88,6 +98,20 @@ func (r *Repository) UpdateResource(
 			var e error
 
 			rows, e = tx.q.ResourceUpdate(ctx, resourceUpdateParams(value))
+			if e != nil || rows == 0 {
+				return e
+			}
+			if e = tx.q.ResourceMediaVersionRetireActive(ctx, refsqlc.ResourceMediaVersionRetireActiveParams{
+				WorkspaceID: value.WorkspaceID,
+				ResourceKey: value.Key,
+			}); e != nil {
+				return e
+			}
+			e = tx.q.ResourceMediaVersionCreate(ctx, refsqlc.ResourceMediaVersionCreateParams{
+				WorkspaceID:  value.WorkspaceID,
+				ResourceKey:  value.Key,
+				MediaVersion: value.MediaVersion,
+			})
 
 			return e
 		},
@@ -116,7 +140,7 @@ func (r *Repository) GetResource(
 		return Resource{}, err
 	}
 
-	return sqlwrap.Query(
+	resource, err := sqlwrap.Query(
 		ctx,
 		r.db,
 		sqlwrap.Params{
@@ -142,6 +166,8 @@ func (r *Repository) GetResource(
 			return mapResource(row), nil
 		},
 	)
+
+	return resource, mapNoRows(err)
 }
 
 func (r *Repository) ListResources(
@@ -181,10 +207,23 @@ func (r *Repository) SoftDeleteResource(
 		return 0, err
 	}
 
-	rows, e := r.q.ResourceSoftDelete(
-		ctx,
-		refsqlc.ResourceSoftDeleteParams{WorkspaceID: workspaceID, Key: key},
-	)
+	var rows int64
+	e := r.withWorkspaceMutation(ctx, workspaceID, func(tx *Repository) error {
+		var err error
+
+		rows, err = tx.q.ResourceSoftDelete(
+			ctx,
+			refsqlc.ResourceSoftDeleteParams{WorkspaceID: workspaceID, Key: key},
+		)
+		if err != nil || rows == 0 {
+			return err
+		}
+
+		return tx.q.ResourceMediaVersionRetireActive(ctx, refsqlc.ResourceMediaVersionRetireActiveParams{
+			WorkspaceID: workspaceID,
+			ResourceKey: key,
+		})
+	})
 	if e != nil {
 		return rows, e
 	}
@@ -200,6 +239,83 @@ func (r *Repository) SoftDeleteResource(
 	)
 
 	return rows, nil
+}
+
+type GarbageMediaVersion struct {
+	WorkspaceID, ResourceKey, MediaVersion string
+}
+
+func (r *Repository) ListGarbageMediaVersions(
+	ctx context.Context,
+	before time.Time,
+	limit int32,
+) ([]GarbageMediaVersion, error) {
+	if limit <= 0 {
+		return []GarbageMediaVersion{}, nil
+	}
+
+	rows, err := r.q.ResourceListGarbageMediaVersions(ctx, refsqlc.ResourceListGarbageMediaVersionsParams{
+		RetiredAt: sql.NullTime{Time: before, Valid: true},
+		Limit:     limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	resources := make([]GarbageMediaVersion, 0, len(rows))
+	for _, row := range rows {
+		resources = append(resources, GarbageMediaVersion{
+			WorkspaceID:  row.WorkspaceID,
+			ResourceKey:  row.ResourceKey,
+			MediaVersion: row.MediaVersion,
+		})
+	}
+
+	return resources, nil
+}
+
+func (r *Repository) DeleteMediaVersion(
+	ctx context.Context,
+	value GarbageMediaVersion,
+	before time.Time,
+) (int64, error) {
+	if err := requireWorkspace(value.WorkspaceID); err != nil {
+		return 0, err
+	}
+
+	return r.q.ResourceDeleteMediaVersion(ctx, refsqlc.ResourceDeleteMediaVersionParams{
+		WorkspaceID:  value.WorkspaceID,
+		ResourceKey:  value.ResourceKey,
+		MediaVersion: value.MediaVersion,
+		RetiredAt:    sql.NullTime{Time: before, Valid: true},
+	})
+}
+
+func (r *Repository) PurgeDeletedResource(
+	ctx context.Context,
+	workspaceID, key string,
+) (int64, error) {
+	if err := requireWorkspace(workspaceID); err != nil {
+		return 0, err
+	}
+
+	rows, err := r.q.ResourcePurgeDeleted(ctx, refsqlc.ResourcePurgeDeletedParams{
+		WorkspaceID: workspaceID,
+		Key:         key,
+	})
+	if err != nil || rows == 0 {
+		return rows, err
+	}
+
+	return rows, r.bumpReferenceCacheVersions(
+		workspaceID,
+		"resource_get",
+		"resource_list",
+		"resource_item_list",
+		referenceCacheGet,
+		referenceCacheResolve,
+		referenceCacheList,
+	)
 }
 
 func (r *Repository) AttachResource(
@@ -362,6 +478,7 @@ func resourceUpdateParams(v Resource) refsqlc.ResourceUpdateParams {
 		ContentType:    p.ContentType,
 		SourceSize:     p.SourceSize,
 		SourceSha256:   p.SourceSha256,
+		MediaVersion:   p.MediaVersion,
 		Width:          p.Width,
 		Height:         p.Height,
 		OriginalRef:    p.OriginalRef,

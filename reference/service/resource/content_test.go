@@ -15,7 +15,10 @@ func (s *contentStore) Replace(context.Context, string, string, string, storage.
 	return storage.Objects{}, nil
 }
 func (s *contentStore) Read(context.Context, string) ([]byte, error) { return nil, nil }
-func (s *contentStore) ReadVersion(_ context.Context, _, _, version string, size int) ([]byte, error) {
+func (s *contentStore) DeleteVersion(context.Context, string, string, string) error {
+	return nil
+}
+func (s *contentStore) ReadVersion(_ context.Context, _, _, version, _ string, size int) ([]byte, error) {
 	s.reads.Add(1)
 	return []byte(version + ":" + string(rune(size))), nil
 }
@@ -23,7 +26,7 @@ func (s *contentStore) ReadVersion(_ context.Context, _, _, version string, size
 func TestGetContentCachesByImmutableVersion(t *testing.T) {
 	store := &contentStore{}
 	service := &Resource{store: store, cache: resourcecache.New(resourcecache.Config{})}
-	params := ContentParams{WorkspaceID: "c2b604c6-6960-41a7-b330-5083ca633434", Key: "logo", Version: "AbCdEfGh", Format: "png"}
+	params := ContentParams{WorkspaceID: "c2b604c6-6960-41a7-b330-5083ca633434", Key: "logo", Version: "AbCdEfGh", Format: "png", Size: 61}
 	first, err := service.GetContent(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +37,9 @@ func TestGetContentCachesByImmutableVersion(t *testing.T) {
 	}
 	if store.reads.Load() != 1 || string(first.Data) != string(second.Data) {
 		t.Fatalf("reads=%d first=%q second=%q", store.reads.Load(), first.Data, second.Data)
+	}
+	if first.ContentType != "image/webp" {
+		t.Fatalf("preview content type = %q, want image/webp", first.ContentType)
 	}
 	params.Version = "HgfEdCbA"
 	if _, err := service.GetContent(context.Background(), params); err != nil {

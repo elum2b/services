@@ -1,10 +1,12 @@
 package admin
 
 import (
+	"io"
 	"time"
 
 	json "github.com/goccy/go-json"
 
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	"github.com/elum2b/services/reference/repository"
 )
 
@@ -98,6 +100,28 @@ type StatsModel struct {
 
 type ExportRequest = repository.ExportRequest
 type ExportPackage = repository.ExportPackage
+type ArchiveExportRequest struct {
+	ExportRequest
+	IncludeMedia bool `json:"include_media"`
+}
+type ArchiveImportRequest struct {
+	ConflictStrategy string `json:"conflict_strategy,omitempty"`
+	IncludeMedia     bool   `json:"include_media"`
+}
+type QueueArchiveExportParams struct {
+	WorkspaceID  string
+	FileName     string
+	IncludeMedia bool
+}
+type QueueArchiveImportParams struct {
+	WorkspaceID      string
+	FileName         string
+	IncludeMedia     bool
+	ConflictStrategy string
+	Archive          io.Reader
+}
+type ArchiveJob = jobs.Job
+type ArchiveJobHistoryEntry = jobs.HistoryEntry
 type ExportItem = repository.ExportItem
 type ExportText = repository.ExportText
 type ImportRequest = repository.ImportRequest

@@ -1139,6 +1139,38 @@ func TestControlAccessCatalogHasLocalizedGlobalAndWorkspaceScopes(
 	}
 }
 
+func TestControlAccessCatalogIncludesLocalizedReferenceResources(t *testing.T) {
+	service := newControlTestService(t)
+	initializeControl(t, service, "owner")
+
+	for _, locale := range []string{"ru", "en"} {
+		catalog, err := service.Admin.ListAccess(
+			context.Background(),
+			locale,
+			admin.ScopeWorkspace,
+		)
+		if err != nil {
+			t.Fatalf("list %s access catalog: %v", locale, err)
+		}
+
+		for _, key := range []string{
+			"reference.resource.read",
+			"reference.resource.write",
+			"reference.resource.delete",
+		} {
+			access, ok := accessCatalogAccess(catalog, key)
+			if !ok || access.Title == "" || access.Desc == "" {
+				t.Fatalf(
+					"localized %s access %q is missing: %#v",
+					locale,
+					key,
+					catalog,
+				)
+			}
+		}
+	}
+}
+
 func TestControlPlatformRemovalClearsAccessAndRequiresFreshGlobalInvite(
 	t *testing.T,
 ) {
@@ -3485,6 +3517,23 @@ func accessCatalogContains(
 	}
 
 	return false
+}
+
+func accessCatalogAccess(
+	items []admin.AccessGroupModel,
+	methodKey string,
+) (admin.AccessModel, bool) {
+	for _, service := range items {
+		for _, group := range service.Groups {
+			for _, access := range group.Accesses {
+				if access.Key == methodKey {
+					return access, true
+				}
+			}
+		}
+	}
+
+	return admin.AccessModel{}, false
 }
 
 func signedTMALaunch(

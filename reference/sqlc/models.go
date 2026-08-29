@@ -62,3 +62,11 @@ type ReferenceResource struct {
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 }
+
+type ReferenceResourceMediaVersion struct {
+	WorkspaceID  string       `json:"workspace_id"`
+	ResourceKey  string       `json:"resource_key"`
+	MediaVersion string       `json:"media_version"`
+	CreatedAt    time.Time    `json:"created_at"`
+	RetiredAt    sql.NullTime `json:"retired_at"`
+}

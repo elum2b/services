@@ -12,7 +12,6 @@ import (
 	"image"
 	"image/color"
 	_ "image/jpeg" // Register the JPEG decoder with image.Decode.
-	"image/png"
 	"io"
 	"math"
 	"strings"
@@ -20,8 +19,9 @@ import (
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // Register the WebP decoder with image.Decode.
 
+	"github.com/kolesa-team/go-webp/encoder"
+
 	"github.com/elum2b/services/internal/utils/media/lottie"
-	"github.com/elum2b/services/internal/utils/media/rive"
 	"github.com/elum2b/services/internal/utils/media/svg"
 )
 
@@ -52,7 +52,6 @@ const (
 	FormatLottie Format = "lottie"
 	FormatTGS    Format = "tgs"
 	FormatSVG    Format = "svg"
-	FormatRive   Format = "rive"
 )
 
 // Options controls resource limits and generated variants.
@@ -63,12 +62,12 @@ type Options struct {
 	FirstFrame    []byte
 }
 
-// Preview is a PNG rendition whose longest side equals Size.
+// Preview is a WebP rendition whose longest side equals Size.
 type Preview struct {
 	Size   int
 	Width  int
 	Height int
-	PNG    []byte
+	WebP   []byte
 }
 
 // Asset retains the original bytes and contains derived delivery assets.
@@ -83,8 +82,8 @@ type Asset struct {
 
 // Process validates source bytes, uses a client-rendered first frame for vector
 // media, and
-// produces PNG previews and an SVG placeholder. The original bytes are never
-// transcoded, so Lottie and Rive sources can be stored without loss.
+// produces WebP previews and an SVG placeholder. The original bytes are never
+// transcoded, so Lottie sources can be stored without loss.
 func Process(
 	ctx context.Context,
 	source []byte,
@@ -147,7 +146,18 @@ func Process(
 
 			var encoded bytes.Buffer
 
-			if err := png.Encode(&encoded, preview); err != nil {
+			options, err := encoder.NewLossyEncoderOptions(
+				encoder.PresetDefault,
+				90,
+			)
+			if err != nil {
+				return Asset{}, fmt.Errorf("create preview %d options: %w", size, err)
+			}
+			webp, err := encoder.NewEncoder(preview, options)
+			if err != nil {
+				return Asset{}, fmt.Errorf("create preview %d encoder: %w", size, err)
+			}
+			if err := webp.Encode(&encoded); err != nil {
 				return Asset{}, fmt.Errorf("encode preview %d: %w", size, err)
 			}
 
@@ -157,7 +167,7 @@ func Process(
 					Size:   size,
 					Width:  preview.Bounds().Dx(),
 					Height: preview.Bounds().Dy(),
-					PNG:    encoded.Bytes(),
+					WebP:   encoded.Bytes(),
 				},
 			)
 		}
@@ -290,10 +300,6 @@ func vectorFormat(source []byte, maxInputBytes int) (Format, []byte, bool, error
 		}
 		return "", nil, false, fmt.Errorf("%w: invalid TGS Lottie document", ErrUnsupportedFormat)
 	}
-	if rive.Validate(source) == nil {
-		return FormatRive, source, true, nil
-	}
-
 	if _, err := lottie.Validate(source); err == nil {
 		return FormatLottie, source, true, nil
 	}
@@ -549,6 +555,12 @@ func averageCell(
 ) color.NRGBA {
 	x0, x1 := bounds.Min.X+x*bounds.Dx()/cells, bounds.Min.X+(x+1)*bounds.Dx()/cells
 	y0, y1 := bounds.Min.Y+y*bounds.Dy()/cells, bounds.Min.Y+(y+1)*bounds.Dy()/cells
+	if x0 == x1 {
+		x1++
+	}
+	if y0 == y1 {
+		y1++
+	}
 	// A bounded sample count keeps placeholder generation independent of source size.
 	xStep := max(1, (x1-x0+15)/16)
 	yStep := max(1, (y1-y0+15)/16)
