@@ -38,6 +38,11 @@ type Options struct {
 	Codec                    Codec
 	Mutex                    Mutex
 	OnCacheInvalidationError func(error)
+	// ArchiveImportTimeout bounds the database transaction and media upload.
+	ArchiveImportTimeout time.Duration
+	// ArchiveJobLease must exceed ArchiveImportTimeout for async imports. Values
+	// not exceeding it are raised to ArchiveImportTimeout plus five minutes.
+	ArchiveJobLease time.Duration
 	// ResourceStorage selects S3/MinIO when Bucket is set; otherwise resources
 	// are saved beside the executable in the reference directory.
 	// Async import/export archives use <Directory>/importexport. S3 resource

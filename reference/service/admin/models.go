@@ -101,7 +101,6 @@ type StatsModel struct {
 type ExportRequest = repository.ExportRequest
 type ExportPackage = repository.ExportPackage
 type ArchiveExportRequest struct {
-	ExportRequest
 	IncludeMedia bool `json:"include_media"`
 }
 type ArchiveImportRequest struct {

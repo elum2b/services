@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS reference_item_resource (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (workspace_id, item_key, resource_key),
     UNIQUE (workspace_id, item_key, position),
+    CONSTRAINT reference_item_resource_position_nonnegative CHECK (position >= 0),
     CONSTRAINT reference_item_resource_item_fk
         FOREIGN KEY (workspace_id, item_key)
         REFERENCES reference_item (workspace_id, key)
@@ -106,3 +107,18 @@ CREATE TABLE IF NOT EXISTS reference_item_resource (
 
 CREATE INDEX IF NOT EXISTS reference_item_resource_resource_idx
     ON reference_item_resource (workspace_id, resource_key, item_key);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'reference_item_resource_position_nonnegative'
+          AND conrelid = 'reference_item_resource'::regclass
+    ) THEN
+        ALTER TABLE reference_item_resource
+            ADD CONSTRAINT reference_item_resource_position_nonnegative
+            CHECK (position >= 0);
+    END IF;
+END
+$$;

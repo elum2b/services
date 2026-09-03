@@ -21,6 +21,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	serviceerrors "github.com/elum2b/services/errors"
 	"github.com/elum2b/services/internal/testsupport"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/reference/repository"
@@ -62,6 +63,35 @@ func TestIsReady(t *testing.T) {
 
 	if service.IsReady() {
 		t.Fatal("closed reference must not be ready")
+	}
+}
+
+func TestReferenceArchiveJobLeaseExceedsImportTimeout(t *testing.T) {
+	service := newReference(
+		context.Background(),
+		sqlwrap.NewUnavailable(),
+		false,
+		Options{
+			ArchiveImportTimeout: time.Minute,
+			ArchiveJobLease:      time.Second,
+		},
+		nil,
+	)
+
+	if service.archiveImportTimeout != time.Minute {
+		t.Fatalf(
+			"archive import timeout = %s, want %s",
+			service.archiveImportTimeout,
+			time.Minute,
+		)
+	}
+
+	if service.archiveJobLease != 6*time.Minute {
+		t.Fatalf(
+			"archive job lease = %s, want %s",
+			service.archiveJobLease,
+			6*time.Minute,
+		)
 	}
 }
 
@@ -425,6 +455,281 @@ func TestReferenceResourceUpdatePreservesNewMediaVersion(t *testing.T) {
 			"media version = %q, want %q",
 			updated.MediaVersion,
 			resource.MediaVersion,
+		)
+	}
+}
+
+type failingResourceStore struct {
+	failReplace  bool
+	replaceCalls int
+	deleteCalls  int
+}
+
+func (s *failingResourceStore) Replace(
+	context.Context,
+	string,
+	string,
+	string,
+	resourcestorage.Files,
+) (resourcestorage.Objects, error) {
+	s.replaceCalls++
+
+	if s.failReplace {
+		return resourcestorage.Objects{}, errors.New("storage write failed")
+	}
+
+	return resourcestorage.Objects{
+		Original: "original",
+		Previews: map[int]string{
+			61:  "preview-61",
+			128: "preview-128",
+			256: "preview-256",
+			512: "preview-512",
+		},
+		Placeholder: "placeholder",
+	}, nil
+}
+
+func (s *failingResourceStore) Read(context.Context, string) ([]byte, error) {
+	return nil, nil
+}
+
+func (s *failingResourceStore) ReadVersion(
+	context.Context,
+	string,
+	string,
+	string,
+	string,
+	int,
+) ([]byte, error) {
+	return nil, nil
+}
+
+func (s *failingResourceStore) DeleteVersion(
+	context.Context,
+	string,
+	string,
+	string,
+) error {
+	s.deleteCalls++
+	return nil
+}
+
+func TestReferenceResourceStorageFailureRollsBackDatabase(t *testing.T) {
+	service := newReferenceTestService(t)
+	store := &failingResourceStore{failReplace: true}
+	resources := newReference(
+		context.Background(),
+		service.client,
+		false,
+		Options{},
+		store,
+	)
+
+	t.Cleanup(func() { _ = resources.Close() })
+
+	ctx := context.Background()
+	workspaceID := testsupport.WorkspaceID("resource-storage-failure")
+	params := resourceservice.SaveParams{
+		WorkspaceID: workspaceID,
+		Key:         "banner",
+		Type:        "image",
+		Payload:     json.RawMessage(`{}`),
+		IsActive:    true,
+		File:        referencePNG(t, color.NRGBA{R: 255, A: 255}),
+	}
+
+	if _, err := resources.Resource.Create(ctx, params); err == nil {
+		t.Fatal("create with failed storage succeeded")
+	}
+
+	assertReferenceResource(t, service, workspaceID, params.Key, "", "")
+
+	store.failReplace = false
+
+	created, err := resources.Resource.Create(ctx, params)
+	if err != nil {
+		t.Fatalf("create resource: %v", err)
+	}
+
+	store.failReplace = true
+	params.File = referencePNG(t, color.NRGBA{B: 255, A: 255})
+
+	if _, err := resources.Resource.Update(ctx, params); err == nil {
+		t.Fatal("update with failed storage succeeded")
+	}
+
+	assertReferenceResource(
+		t,
+		service,
+		workspaceID,
+		params.Key,
+		created.MediaVersion,
+		created.SHA256,
+	)
+
+	if store.deleteCalls != 2 {
+		t.Fatalf("DeleteVersion calls = %d, want 2", store.deleteCalls)
+	}
+
+	if store.replaceCalls != 3 {
+		t.Fatalf("Replace calls = %d, want 3", store.replaceCalls)
+	}
+}
+
+func TestReferenceResourceCommitFailureAfterWriteRollsBackAndCompensates(
+	t *testing.T,
+) {
+	service := newReferenceTestService(t)
+	store := &failingResourceStore{}
+	resources := newReference(
+		context.Background(),
+		service.client,
+		false,
+		Options{},
+		store,
+	)
+
+	t.Cleanup(func() { _ = resources.Close() })
+
+	ctx := context.Background()
+	workspaceID := testsupport.WorkspaceID("resource-database-failure")
+	params := resourceservice.SaveParams{
+		WorkspaceID: workspaceID,
+		Key:         "banner",
+		Type:        "image",
+		Payload:     json.RawMessage(`{}`),
+		IsActive:    true,
+		File:        referencePNG(t, color.NRGBA{R: 255, A: 255}),
+	}
+
+	created, err := resources.Resource.Create(ctx, params)
+	if err != nil {
+		t.Fatalf("create resource: %v", err)
+	}
+
+	if _, err := service.client.DB().ExecContext(ctx, `
+CREATE FUNCTION reference_resource_fail_object_refs() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'injected object-reference failure';
+END;
+$$;
+CREATE CONSTRAINT TRIGGER reference_resource_fail_object_refs
+AFTER UPDATE OF original_ref ON reference_resource
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW WHEN (NEW.original_ref = 'original')
+EXECUTE FUNCTION reference_resource_fail_object_refs();
+`); err != nil {
+		t.Fatalf("install failure injection: %v", err)
+	}
+
+	failedCreate := params
+
+	failedCreate.Key = "failed-create"
+
+	if _, err := resources.Resource.Create(ctx, failedCreate); err == nil {
+		t.Fatal("create with post-write commit failure succeeded")
+	}
+
+	assertReferenceResource(t, service, workspaceID, failedCreate.Key, "", "")
+
+	params.File = referencePNG(t, color.NRGBA{B: 255, A: 255})
+	params.Type = "replacement"
+	params.Payload = json.RawMessage(`{"changed":true}`)
+	params.IsActive = false
+
+	if _, err := resources.Resource.Update(ctx, params); err == nil {
+		t.Fatal("update with post-write commit failure succeeded")
+	}
+
+	assertReferenceResource(
+		t,
+		service,
+		workspaceID,
+		params.Key,
+		created.MediaVersion,
+		created.SHA256,
+	)
+
+	persisted, err := resources.Resource.Get(ctx, resourceservice.GetParams{
+		WorkspaceID: workspaceID,
+		Key:         params.Key,
+	})
+	if err != nil || persisted.Type != created.Type ||
+		string(persisted.Payload) != string(created.Payload) ||
+		persisted.IsActive != created.IsActive ||
+		persisted.OriginalRef != created.OriginalRef ||
+		persisted.PlaceholderRef != created.PlaceholderRef {
+		t.Fatalf(
+			"resource fields after failed update = %+v, want %+v, err=%v",
+			persisted,
+			created,
+			err,
+		)
+	}
+
+	var activeVersion string
+
+	if err := service.client.DB().QueryRowContext(ctx, `
+SELECT media_version
+FROM reference_resource_media_version
+WHERE workspace_id = $1 AND resource_key = $2 AND retired_at IS NULL
+`, workspaceID, params.Key).Scan(&activeVersion); err != nil || activeVersion != created.MediaVersion {
+		t.Fatalf(
+			"active media version = %q, want %q, err=%v",
+			activeVersion,
+			created.MediaVersion,
+			err,
+		)
+	}
+
+	if store.replaceCalls != 3 || store.deleteCalls != 2 {
+		t.Fatalf(
+			"storage calls = Replace:%d DeleteVersion:%d, want Replace:3 DeleteVersion:2",
+			store.replaceCalls,
+			store.deleteCalls,
+		)
+	}
+}
+
+func assertReferenceResource(
+	t testing.TB,
+	service *Reference,
+	workspaceID, key, wantVersion, wantSHA256 string,
+) {
+	t.Helper()
+
+	var version, sha256 string
+
+	err := service.client.DB().QueryRowContext(
+		context.Background(),
+		"SELECT media_version, source_sha256 FROM reference_resource WHERE workspace_id = $1 AND key = $2",
+		workspaceID,
+		key,
+	).
+		Scan(&version, &sha256)
+
+	if wantVersion == "" {
+		if !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf(
+				"resource row after failed create: version=%q err=%v",
+				version,
+				err,
+			)
+		}
+
+		return
+	}
+
+	if err != nil || version != wantVersion || sha256 != wantSHA256 {
+		t.Fatalf(
+			"resource version/SHA-256 = %q/%q, want %q/%q, err=%v",
+			version,
+			sha256,
+			wantVersion,
+			wantSHA256,
+			err,
 		)
 	}
 }
@@ -1335,6 +1640,211 @@ func TestReferenceFullLifecycle(t *testing.T) {
 	}
 }
 
+func TestResourceSemanticOrdering(t *testing.T) {
+	service := newReferenceTestService(t)
+	ctx := context.Background()
+	workspaceID := testsupport.WorkspaceID("resource-semantic-order")
+
+	for _, itemKey := range []string{"item", "other-item"} {
+		if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
+			WorkspaceID: workspaceID,
+			Key:         itemKey,
+			Type:        repository.ItemTypeQuantity,
+			Payload:     json.RawMessage(`{}`),
+			IsActive:    true,
+		}); err != nil {
+			t.Fatalf("create item %s: %v", itemKey, err)
+		}
+	}
+
+	for _, key := range []string{"a", "b", "c", "d", "e"} {
+		if _, err := service.Resource.Create(ctx, resourceservice.SaveParams{
+			WorkspaceID: workspaceID,
+			Key:         key,
+			Type:        "image",
+			Payload:     json.RawMessage(`{}`),
+			IsActive:    true,
+			File:        referencePNG(t, color.NRGBA{R: 255, A: 255}),
+		}); err != nil {
+			t.Fatalf("create resource %s: %v", key, err)
+		}
+	}
+
+	insert := func(resourceKey, afterResourceKey string) {
+		t.Helper()
+
+		if err := service.Resource.InsertAfter(
+			ctx, workspaceID, "item", resourceKey, afterResourceKey,
+		); err != nil {
+			t.Fatalf(
+				"insert %s after %s: %v",
+				resourceKey,
+				afterResourceKey,
+				err,
+			)
+		}
+	}
+	move := func(resourceKey, afterResourceKey string) {
+		t.Helper()
+
+		if err := service.Resource.MoveAfter(
+			ctx, workspaceID, "item", resourceKey, afterResourceKey,
+		); err != nil {
+			t.Fatalf("move %s after %s: %v", resourceKey, afterResourceKey, err)
+		}
+	}
+	assertOrder := func(itemKey string, want ...string) {
+		t.Helper()
+
+		resources, err := service.Resource.ListItemResources(
+			ctx,
+			workspaceID,
+			itemKey,
+		)
+		if err != nil {
+			t.Fatalf("list %s resources: %v", itemKey, err)
+		}
+
+		got := make([]string, 0, len(resources))
+		for _, resource := range resources {
+			got = append(got, resource.Key)
+		}
+
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("%s order = %v, want %v", itemKey, got, want)
+		}
+
+		rows, err := service.client.DB().QueryContext(ctx, `
+SELECT position FROM reference_item_resource
+WHERE workspace_id = $1 AND item_key = $2
+ORDER BY position`, workspaceID, itemKey)
+		if err != nil {
+			t.Fatalf("query %s positions: %v", itemKey, err)
+		}
+		defer rows.Close()
+
+		position := 0
+
+		for rows.Next() {
+			var gotPosition int
+
+			if err := rows.Scan(&gotPosition); err != nil {
+				t.Fatalf("scan %s position: %v", itemKey, err)
+			}
+
+			if gotPosition != position {
+				t.Fatalf(
+					"%s position = %d, want %d",
+					itemKey,
+					gotPosition,
+					position,
+				)
+			}
+
+			position++
+		}
+
+		if err := rows.Err(); err != nil {
+			t.Fatalf("iterate %s positions: %v", itemKey, err)
+		}
+	}
+
+	insert("a", "")
+	insert("b", "a")
+	insert("c", "b")
+	insert("d", "a")
+	assertOrder("item", "a", "d", "b", "c")
+
+	move("c", "")
+	assertOrder("item", "c", "a", "d", "b")
+	move("a", "b")
+	assertOrder("item", "c", "d", "b", "a")
+	move("a", "c")
+	assertOrder("item", "c", "a", "d", "b")
+	move("a", "a")
+	assertOrder("item", "c", "a", "d", "b")
+
+	if err := service.Resource.InsertAfter(
+		ctx,
+		workspaceID,
+		"item",
+		"e",
+		"missing",
+	); serviceerrors.MessageOf(
+		err,
+	) != serviceerrors.MessageOf(
+		repository.ErrResourceAnchorNotFound,
+	) {
+		t.Fatalf("insert missing anchor error = %v", err)
+	}
+
+	if err := service.Resource.InsertAfter(
+		ctx,
+		workspaceID,
+		"item",
+		"a",
+		"",
+	); serviceerrors.MessageOf(
+		err,
+	) != serviceerrors.MessageOf(
+		repository.ErrResourceAlreadyAttached,
+	) {
+		t.Fatalf("duplicate insert error = %v", err)
+	}
+
+	if err := service.Resource.MoveAfter(
+		ctx,
+		workspaceID,
+		"item",
+		"b",
+		"missing",
+	); serviceerrors.MessageOf(
+		err,
+	) != serviceerrors.MessageOf(
+		repository.ErrResourceAnchorNotFound,
+	) {
+		t.Fatalf("move missing anchor error = %v", err)
+	}
+
+	if err := service.Resource.MoveAfter(
+		ctx,
+		workspaceID,
+		"item",
+		"e",
+		"",
+	); serviceerrors.MessageOf(
+		err,
+	) != serviceerrors.MessageOf(
+		repository.ErrResourceAttachmentNotFound,
+	) {
+		t.Fatalf("move missing attachment error = %v", err)
+	}
+
+	if err := service.Resource.InsertAfter(
+		ctx,
+		workspaceID,
+		"other-item",
+		"a",
+		"",
+	); err != nil {
+		t.Fatalf("attach resource to other item: %v", err)
+	}
+
+	if err := service.Resource.InsertAfter(
+		ctx,
+		workspaceID,
+		"other-item",
+		"e",
+		"a",
+	); err != nil {
+		t.Fatalf("attach second resource to other item: %v", err)
+	}
+
+	move("b", "")
+	assertOrder("item", "b", "c", "a", "d")
+	assertOrder("other-item", "a", "e")
+}
+
 func TestReferenceImportExportCycle(t *testing.T) {
 	service := newReferenceTestService(t)
 	ctx := context.Background()
@@ -1677,9 +2187,12 @@ func TestReferenceOpenBootstrapsSchema(t *testing.T) {
 }
 
 func TestReferenceArchiveJobsExportDownloadAndImport(t *testing.T) {
-	service := newReferenceTestServiceWithOptions(t, referenceTestDB, Options{
+	options := Options{
 		ResourceStorage: resourcestorage.Config{Directory: t.TempDir()},
-	})
+	}
+	service := newReferenceTestServiceWithOptions(t, referenceTestDB, options)
+	startReferenceTestRunner(t, referenceTestDB, options)
+
 	ctx := context.Background()
 	sourceWorkspace := testsupport.WorkspaceID("archive-jobs-source")
 
@@ -1690,6 +2203,24 @@ func TestReferenceArchiveJobsExportDownloadAndImport(t *testing.T) {
 		Payload:     json.RawMessage(`{"value": 1}`),
 		IsActive:    true,
 	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
+		WorkspaceID: sourceWorkspace,
+		Key:         "deleted",
+		Type:        repository.ItemTypeQuantity,
+		Payload:     json.RawMessage(`{}`),
+		IsActive:    true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.Admin.SoftDeleteItem(
+		ctx,
+		sourceWorkspace,
+		"deleted",
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1756,6 +2287,17 @@ func TestReferenceArchiveJobsExportDownloadAndImport(t *testing.T) {
 		t.Fatalf("imported item: %v", err)
 	}
 
+	if _, err := service.User.Get(
+		ctx,
+		user.GetParams{
+			WorkspaceID: destinationWorkspace,
+			Key:         "deleted",
+			Locale:      "en",
+		},
+	); !errors.Is(err, repository.ErrItemNotFound) {
+		t.Fatalf("deleted item was exported: %v", err)
+	}
+
 	history, err := service.Admin.ArchiveJobHistory(
 		ctx,
 		sourceWorkspace,
@@ -1769,9 +2311,12 @@ func TestReferenceArchiveJobsExportDownloadAndImport(t *testing.T) {
 
 func TestReferenceArchiveJobsMediaRoundTripInWorkspace(t *testing.T) {
 	storageDirectory := t.TempDir()
-	service := newReferenceTestServiceWithOptions(t, referenceTestDB, Options{
+	options := Options{
 		ResourceStorage: resourcestorage.Config{Directory: storageDirectory},
-	})
+	}
+	service := newReferenceTestServiceWithOptions(t, referenceTestDB, options)
+	startReferenceTestRunner(t, referenceTestDB, options)
+
 	ctx := context.Background()
 	workspaceID := testsupport.WorkspaceID("archive-jobs-media-round-trip")
 	fixtures := filepath.Join("testdata", "archive-media")
@@ -1892,6 +2437,13 @@ func TestReferenceArchiveJobsMediaRoundTripInWorkspace(t *testing.T) {
 		}
 	}
 
+	if bytes.Contains(
+		readReferenceZIPEntry(t, entries["manifest.json"]),
+		[]byte("media_version"),
+	) {
+		t.Fatal("archive manifest serializes media_version")
+	}
+
 	archivedOriginal := readReferenceZIPEntry(
 		t,
 		entries["media/animation/lottie.json"],
@@ -1999,9 +2551,9 @@ func TestReferenceArchiveJobsMediaRoundTripInWorkspace(t *testing.T) {
 		t.Fatalf("restored resource: %v", err)
 	}
 
-	if restored.MediaVersion != created.MediaVersion {
+	if restored.MediaVersion == created.MediaVersion {
 		t.Fatalf(
-			"restored media version = %q, want %q",
+			"restored media version = %q, want a fresh version distinct from %q",
 			restored.MediaVersion,
 			created.MediaVersion,
 		)
@@ -2061,6 +2613,54 @@ func TestReferenceArchiveJobsMediaRoundTripInWorkspace(t *testing.T) {
 
 	if !bytes.Equal(restoredPlaceholder, placeholder) {
 		t.Fatal("restored placeholder does not match the SVG fixture")
+	}
+}
+
+func TestReferenceArchiveJobsWaitForRun(t *testing.T) {
+	options := Options{
+		ResourceStorage: resourcestorage.Config{Directory: t.TempDir()},
+	}
+	service := newReferenceTestServiceWithOptions(t, referenceTestDB, options)
+	ctx := context.Background()
+	workspaceID := testsupport.WorkspaceID("archive-jobs-wait-for-run")
+
+	if err := service.Admin.CreateItem(ctx, admin.SaveItemParams{
+		WorkspaceID: workspaceID,
+		Key:         "queued",
+		Type:        repository.ItemTypeQuantity,
+		Payload:     json.RawMessage(`{}`),
+		IsActive:    true,
+	}); err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+
+	job, err := service.Admin.QueueArchiveExport(
+		ctx,
+		admin.QueueArchiveExportParams{
+			WorkspaceID: workspaceID,
+			FileName:    "queued.zip",
+		},
+	)
+	if err != nil {
+		t.Fatalf("queue export: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	job, err = service.Admin.ArchiveJob(ctx, workspaceID, job.ID)
+	if err != nil {
+		t.Fatalf("read queued job: %v", err)
+	}
+
+	if job.Status != "queued" {
+		t.Fatalf("job before Run status = %q, want queued", job.Status)
+	}
+
+	startReferenceTestRunner(t, referenceTestDB, options)
+
+	job = waitForArchiveJob(t, service, workspaceID, job.ID)
+	if job.Status != "completed" {
+		t.Fatalf("job after Run status = %q: %s", job.Status, job.Error)
 	}
 }
 
@@ -2178,6 +2778,52 @@ func newReferenceTestServiceWithOptions(
 	})
 
 	return service
+}
+
+func startReferenceTestRunner(t *testing.T, database string, options Options) {
+	t.Helper()
+
+	runner := New()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	params := DatabaseParams{
+		User:     referenceTestPGUser,
+		Password: referenceTestPGPassword,
+		Database: database,
+		Host:     referenceTestPGHost,
+		Port:     referenceTestPGPort,
+		Options:  referenceTestOptions(options),
+	}
+
+	go func() {
+		done <- runner.Run(ctx, params)
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for !runner.IsReady() {
+		select {
+		case err := <-done:
+			cancel()
+			t.Fatalf("Run returned before readiness: %v", err)
+		default:
+		}
+
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("reference runner did not become ready")
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Cleanup(func() {
+		cancel()
+
+		if err := <-done; err != nil {
+			t.Errorf("reference runner shutdown: %v", err)
+		}
+	})
 }
 
 func referenceTestOptions(options Options) Options {

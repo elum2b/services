@@ -3,9 +3,13 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
+	"math"
 	"time"
 
 	json "github.com/goccy/go-json"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	refsqlc "github.com/elum2b/services/reference/sqlc"
@@ -22,6 +26,10 @@ type Resource struct {
 	OriginalRef, Preview61Ref, Preview128Ref, Preview256Ref, Preview512Ref, PlaceholderRef string
 	CreatedAt, UpdatedAt                                                                   time.Time
 }
+
+// ResourceSave writes media and populates its object references. Its result is
+// true only when the media write must be compensated after transaction failure.
+type ResourceSave func(context.Context, *Resource) (bool, error)
 
 func mapResource(row refsqlc.ReferenceResource) Resource {
 	return Resource{
@@ -50,8 +58,24 @@ func mapResource(row refsqlc.ReferenceResource) Resource {
 }
 
 func (r *Repository) CreateResource(ctx context.Context, value Resource) error {
+	_, err := r.CreateResourceWithSave(ctx, value, nil)
+	return err
+}
+
+func (r *Repository) CreateResourceWithSave(
+	ctx context.Context,
+	value Resource,
+	save ResourceSave,
+) (bool, error) {
 	if err := requireWorkspace(value.WorkspaceID); err != nil {
-		return err
+		return false, err
+	}
+
+	written := false
+	initial := value
+
+	if save != nil {
+		clearResourceObjectRefs(&initial)
 	}
 
 	err := r.withWorkspaceMutation(
@@ -60,26 +84,41 @@ func (r *Repository) CreateResource(ctx context.Context, value Resource) error {
 		func(tx *Repository) error {
 			if err := tx.q.ResourceCreate(
 				ctx,
-				resourceParams(value),
+				resourceParams(initial),
 			); err != nil {
 				return err
 			}
 
-			return tx.q.ResourceMediaVersionCreate(
+			if err := tx.q.ResourceMediaVersionCreate(
 				ctx,
 				refsqlc.ResourceMediaVersionCreateParams{
-					WorkspaceID:  value.WorkspaceID,
-					ResourceKey:  value.Key,
-					MediaVersion: value.MediaVersion,
+					WorkspaceID:  initial.WorkspaceID,
+					ResourceKey:  initial.Key,
+					MediaVersion: initial.MediaVersion,
 				},
-			)
+			); err != nil {
+				return err
+			}
+
+			if save == nil {
+				return nil
+			}
+
+			var err error
+
+			written, err = save(ctx, &value)
+			if err != nil {
+				return err
+			}
+
+			return tx.updateResourceObjectRefs(ctx, value)
 		},
 	)
 	if err != nil {
-		return err
+		return written, err
 	}
 
-	return r.bumpReferenceCacheVersions(
+	return false, r.bumpReferenceCacheVersions(
 		value.WorkspaceID,
 		"resource_get",
 		"resource_list",
@@ -91,19 +130,45 @@ func (r *Repository) UpdateResource(
 	ctx context.Context,
 	value Resource,
 ) (int64, error) {
+	rows, _, err := r.UpdateResourceWithSave(ctx, value, nil)
+	return rows, err
+}
+
+func (r *Repository) UpdateResourceWithSave(
+	ctx context.Context,
+	value Resource,
+	save ResourceSave,
+) (int64, bool, error) {
 	if err := requireWorkspace(value.WorkspaceID); err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
 	var rows int64
+
+	written := false
+	initial := value
+
+	if save != nil {
+		clearResourceObjectRefs(&initial)
+	}
 
 	err := r.withWorkspaceMutation(
 		ctx,
 		value.WorkspaceID,
 		func(tx *Repository) error {
-			var e error
+			_, e := tx.q.ResourceGet(ctx, refsqlc.ResourceGetParams{
+				WorkspaceID: value.WorkspaceID,
+				Key:         value.Key,
+			})
+			if e != nil {
+				if errors.Is(e, sql.ErrNoRows) {
+					return nil
+				}
 
-			rows, e = tx.q.ResourceUpdate(ctx, resourceUpdateParams(value))
+				return e
+			}
+
+			rows, e = tx.q.ResourceUpdate(ctx, resourceUpdateParams(initial))
 			if e != nil || rows == 0 {
 				return e
 			}
@@ -127,15 +192,24 @@ func (r *Repository) UpdateResource(
 				},
 			)
 
-			return e
+			if e != nil || save == nil {
+				return e
+			}
+
+			written, e = save(ctx, &value)
+			if e != nil {
+				return e
+			}
+
+			return tx.updateResourceObjectRefs(ctx, value)
 		},
 	)
 
 	if err != nil || rows == 0 {
-		return rows, err
+		return rows, written, err
 	}
 
-	return rows, r.bumpReferenceCacheVersions(
+	return rows, false, r.bumpReferenceCacheVersions(
 		value.WorkspaceID,
 		"resource_get",
 		"resource_list",
@@ -144,6 +218,42 @@ func (r *Repository) UpdateResource(
 		referenceCacheResolve,
 		referenceCacheList,
 	)
+}
+
+const updateResourceObjectRefs = `
+UPDATE reference_resource
+SET original_ref = $1, preview_61_ref = $2, preview_128_ref = $3,
+    preview_256_ref = $4, preview_512_ref = $5, placeholder_ref = $6
+WHERE workspace_id = $7 AND key = $8 AND deleted_at IS NULL
+`
+
+func (r *Repository) updateResourceObjectRefs(
+	ctx context.Context,
+	value Resource,
+) error {
+	_, err := r.executor.ExecContext(
+		ctx,
+		updateResourceObjectRefs,
+		value.OriginalRef,
+		value.Preview61Ref,
+		value.Preview128Ref,
+		value.Preview256Ref,
+		value.Preview512Ref,
+		value.PlaceholderRef,
+		value.WorkspaceID,
+		value.Key,
+	)
+
+	return err
+}
+
+func clearResourceObjectRefs(value *Resource) {
+	value.OriginalRef = ""
+	value.Preview61Ref = ""
+	value.Preview128Ref = ""
+	value.Preview256Ref = ""
+	value.Preview512Ref = ""
+	value.PlaceholderRef = ""
 }
 
 func (r *Repository) GetResource(
@@ -357,6 +467,10 @@ func (r *Repository) AttachResource(
 		return err
 	}
 
+	if position < 0 {
+		return ErrResourcePositionInvalid
+	}
+
 	rows, err := r.q.ResourceAttach(
 		ctx,
 		refsqlc.ResourceAttachParams{
@@ -367,6 +481,12 @@ func (r *Repository) AttachResource(
 		},
 	)
 	if err != nil {
+		var pgErr *pgconn.PgError
+
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return ErrResourcePositionConflict
+		}
+
 		return err
 	}
 
@@ -380,6 +500,215 @@ func (r *Repository) AttachResource(
 		referenceCacheGet,
 		referenceCacheResolve,
 		referenceCacheList,
+	)
+}
+
+// InsertResourceAfter attaches an unattached resource after another resource.
+// An empty anchor places the resource first.
+func (r *Repository) InsertResourceAfter(
+	ctx context.Context,
+	workspaceID, itemKey, resourceKey, afterResourceKey string,
+) error {
+	return r.orderResourceAfter(
+		ctx, workspaceID, itemKey, resourceKey, afterResourceKey, false,
+	)
+}
+
+// MoveResourceAfter moves an attached resource after another resource. An empty
+// anchor places the resource first.
+func (r *Repository) MoveResourceAfter(
+	ctx context.Context,
+	workspaceID, itemKey, resourceKey, afterResourceKey string,
+) error {
+	return r.orderResourceAfter(
+		ctx, workspaceID, itemKey, resourceKey, afterResourceKey, true,
+	)
+}
+
+func (r *Repository) orderResourceAfter(
+	ctx context.Context,
+	workspaceID, itemKey, resourceKey, afterResourceKey string,
+	move bool,
+) error {
+	if err := requireWorkspace(workspaceID); err != nil {
+		return err
+	}
+
+	changed := false
+	err := r.withWorkspaceMutation(
+		ctx,
+		workspaceID,
+		func(tx *Repository) error {
+			var exists bool
+
+			if err := tx.executor.QueryRowContext(ctx, `
+SELECT EXISTS (
+    SELECT 1 FROM reference_item
+    WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL
+)`, workspaceID, itemKey).Scan(&exists); err != nil {
+				return err
+			}
+
+			if !exists {
+				return ErrItemNotFound
+			}
+
+			if err := tx.executor.QueryRowContext(ctx, `
+SELECT EXISTS (
+    SELECT 1 FROM reference_resource
+    WHERE workspace_id = $1 AND key = $2 AND deleted_at IS NULL
+)`, workspaceID, resourceKey).Scan(&exists); err != nil {
+				return err
+			}
+
+			if !exists {
+				return ErrResourceNotFound
+			}
+
+			rows, err := tx.executor.QueryContext(ctx, `
+SELECT resource_key, position
+FROM reference_item_resource
+WHERE workspace_id = $1 AND item_key = $2
+ORDER BY position
+FOR UPDATE`, workspaceID, itemKey)
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+
+			type attachment struct {
+				key      string
+				position int32
+			}
+
+			attachments := []attachment{}
+
+			for rows.Next() {
+				var attachment attachment
+
+				if err := rows.Scan(
+					&attachment.key,
+					&attachment.position,
+				); err != nil {
+					return err
+				}
+
+				if attachment.position < 0 {
+					return ErrResourcePositionInvalid
+				}
+
+				attachments = append(attachments, attachment)
+			}
+
+			if err := rows.Err(); err != nil {
+				return err
+			}
+
+			source := -1
+			anchor := -1
+
+			for i, attachment := range attachments {
+				if attachment.key == resourceKey {
+					source = i
+				}
+
+				if afterResourceKey != "" &&
+					attachment.key == afterResourceKey {
+					anchor = i
+				}
+			}
+
+			if move && source == -1 {
+				return ErrResourceAttachmentNotFound
+			}
+
+			if !move && source != -1 {
+				return ErrResourceAlreadyAttached
+			}
+
+			if afterResourceKey != "" && anchor == -1 {
+				return ErrResourceAnchorNotFound
+			}
+
+			if move && resourceKey == afterResourceKey {
+				return nil
+			}
+
+			ordered := make([]string, 0, len(attachments)+1)
+			for _, attachment := range attachments {
+				if attachment.key != resourceKey {
+					ordered = append(ordered, attachment.key)
+				}
+			}
+
+			insertAt := 0
+
+			if afterResourceKey != "" {
+				for i, key := range ordered {
+					if key == afterResourceKey {
+						insertAt = i + 1
+						break
+					}
+				}
+			}
+
+			ordered = append(ordered, "")
+			copy(ordered[insertAt+1:], ordered[insertAt:])
+
+			ordered[insertAt] = resourceKey
+
+			maxPosition := int32(0)
+			for _, attachment := range attachments {
+				if attachment.position > maxPosition {
+					maxPosition = attachment.position
+				}
+			}
+
+			if maxPosition > math.MaxInt32-int32(len(attachments))-1 {
+				return fmt.Errorf(
+					"%w: temporary position overflow",
+					ErrResourcePositionInvalid,
+				)
+			}
+
+			offset := maxPosition + int32(len(attachments)) + 1
+			if _, err := tx.executor.ExecContext(ctx, `
+UPDATE reference_item_resource
+SET position = position + $1
+WHERE workspace_id = $2 AND item_key = $3`, offset, workspaceID, itemKey); err != nil {
+				return err
+			}
+
+			if !move {
+				if _, err := tx.executor.ExecContext(ctx, `
+INSERT INTO reference_item_resource (workspace_id, item_key, resource_key, position)
+VALUES ($1, $2, $3, $4)`, workspaceID, itemKey, resourceKey, offset+int32(len(attachments))); err != nil {
+					return err
+				}
+			}
+
+			for position, key := range ordered {
+				if _, err := tx.executor.ExecContext(ctx, `
+UPDATE reference_item_resource
+SET position = $1
+WHERE workspace_id = $2 AND item_key = $3 AND resource_key = $4`, position, workspaceID, itemKey, key); err != nil {
+					return err
+				}
+			}
+
+			changed = true
+
+			return nil
+		},
+	)
+
+	if err != nil || !changed {
+		return err
+	}
+
+	return r.bumpReferenceCacheVersions(
+		workspaceID, "resource_item_list", referenceCacheGet,
+		referenceCacheResolve, referenceCacheList,
 	)
 }
 

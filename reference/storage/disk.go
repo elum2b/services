@@ -52,6 +52,10 @@ func (s *diskStore) Replace(
 	}
 
 	for _, preview := range files.Previews {
+		if err := ctx.Err(); err != nil {
+			return Objects{}, err
+		}
+
 		ref, err := s.write(
 			fmt.Sprintf("%s/preview-%d.png", prefix, preview.Size),
 			preview.File,
@@ -61,6 +65,10 @@ func (s *diskStore) Replace(
 		}
 
 		result.Previews[preview.Size] = ref
+	}
+
+	if err := ctx.Err(); err != nil {
+		return Objects{}, err
 	}
 
 	result.Placeholder, err = s.write(

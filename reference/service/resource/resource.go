@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -54,6 +55,11 @@ type Content struct {
 }
 type CollectGarbageParams struct{ Limit int32 }
 
+type preparedResource struct {
+	resource repository.Resource
+	files    storage.Files
+}
+
 func New(
 	ctx context.Context,
 	db *sqlwrap.Client,
@@ -83,29 +89,50 @@ func (s *Resource) Create(
 	ctx context.Context,
 	p SaveParams,
 ) (repository.Resource, error) {
-	v, e := s.prepare(ctx, p)
+	prepared, e := s.prepare(ctx, p)
 	if e != nil {
 		return repository.Resource{}, e
 	}
 
-	if e = s.repository.CreateResource(ctx, v); e != nil {
+	written, e := s.repository.CreateResourceWithSave(
+		ctx,
+		prepared.resource,
+		s.replace(prepared.files),
+	)
+	if e != nil {
+		if written {
+			s.deleteVersion(ctx, prepared.resource)
+		}
+
 		return repository.Resource{}, e
 	}
 
-	return s.repository.GetResource(ctx, v.WorkspaceID, v.Key)
+	return s.repository.GetResource(
+		ctx,
+		prepared.resource.WorkspaceID,
+		prepared.resource.Key,
+	)
 }
 
 func (s *Resource) Update(
 	ctx context.Context,
 	p SaveParams,
 ) (repository.Resource, error) {
-	v, e := s.prepare(ctx, p)
+	prepared, e := s.prepare(ctx, p)
 	if e != nil {
 		return repository.Resource{}, e
 	}
 
-	_, e = s.repository.UpdateResource(ctx, v)
+	_, written, e := s.repository.UpdateResourceWithSave(
+		ctx,
+		prepared.resource,
+		s.replace(prepared.files),
+	)
 	if e != nil {
+		if written {
+			s.deleteVersion(ctx, prepared.resource)
+		}
+
 		return repository.Resource{}, e
 	}
 
@@ -116,7 +143,11 @@ func (s *Resource) Update(
 		}
 	}
 
-	return s.repository.GetResource(ctx, v.WorkspaceID, v.Key)
+	return s.repository.GetResource(
+		ctx,
+		prepared.resource.WorkspaceID,
+		prepared.resource.Key,
+	)
 }
 
 func (s *Resource) Get(
@@ -327,6 +358,32 @@ func (s *Resource) Detach(
 	)
 }
 
+// InsertAfter attaches an unattached resource after another resource. An empty
+// afterResourceKey places the resource first.
+func (s *Resource) InsertAfter(
+	ctx context.Context,
+	workspaceID, itemKey, resourceKey, afterResourceKey string,
+) error {
+	return s.repository.InsertResourceAfter(
+		ctx, workspaceID, strings.ToLower(strings.TrimSpace(itemKey)),
+		strings.ToLower(strings.TrimSpace(resourceKey)),
+		strings.ToLower(strings.TrimSpace(afterResourceKey)),
+	)
+}
+
+// MoveAfter moves an attached resource after another resource. An empty
+// afterResourceKey places the resource first.
+func (s *Resource) MoveAfter(
+	ctx context.Context,
+	workspaceID, itemKey, resourceKey, afterResourceKey string,
+) error {
+	return s.repository.MoveResourceAfter(
+		ctx, workspaceID, strings.ToLower(strings.TrimSpace(itemKey)),
+		strings.ToLower(strings.TrimSpace(resourceKey)),
+		strings.ToLower(strings.TrimSpace(afterResourceKey)),
+	)
+}
+
 func (s *Resource) ListItemResources(
 	ctx context.Context,
 	workspaceID, itemKey string,
@@ -341,28 +398,28 @@ func (s *Resource) ListItemResources(
 func (s *Resource) prepare(
 	ctx context.Context,
 	p SaveParams,
-) (repository.Resource, error) {
+) (preparedResource, error) {
 	p.Key = strings.ToLower(strings.TrimSpace(p.Key))
 	if e := services.ValidateWorkspaceID(p.WorkspaceID); e != nil {
-		return repository.Resource{}, e
+		return preparedResource{}, e
 	}
 
 	if !keyPattern.MatchString(p.Key) || p.Type == "" ||
 		!json.Valid(p.Payload) ||
 		s.store == nil {
-		return repository.Resource{}, fmt.Errorf("invalid resource")
+		return preparedResource{}, fmt.Errorf("invalid resource")
 	}
 
 	options := media.Options{FirstFrame: p.FirstFrame}
 
 	a, e := media.Process(ctx, p.File, options)
 	if e != nil {
-		return repository.Resource{}, e
+		return preparedResource{}, e
 	}
 
 	originalName, ok := storage.OriginalName(string(a.Format))
 	if !ok {
-		return repository.Resource{}, fmt.Errorf(
+		return preparedResource{}, fmt.Errorf(
 			"unsupported resource format %q",
 			a.Format,
 		)
@@ -392,37 +449,72 @@ func (s *Resource) prepare(
 
 	version, e := mediaVersion()
 	if e != nil {
-		return repository.Resource{}, e
-	}
-
-	o, e := s.store.Replace(ctx, p.WorkspaceID, p.Key, version, files)
-	if e != nil {
-		return repository.Resource{}, e
+		return preparedResource{}, e
 	}
 
 	h := sha256.Sum256(a.Original)
 
-	return repository.Resource{
-		WorkspaceID:    p.WorkspaceID,
-		Key:            p.Key,
-		Type:           p.Type,
-		Payload:        p.Payload,
-		IsActive:       p.IsActive,
-		Format:         string(a.Format),
-		ContentType:    contentType(a.Format),
-		Size:           int64(len(a.Original)),
-		SHA256:         fmt.Sprintf("%x", h),
-		MediaVersion:   version,
-		Width:          a.Width,
-		Height:         a.Height,
-		OriginalRef:    o.Original,
-		Preview61Ref:   o.Previews[61],
-		Preview128Ref:  o.Previews[128],
-		Preview256Ref:  o.Previews[256],
-		Preview512Ref:  o.Previews[512],
-		PlaceholderRef: o.Placeholder,
-		CreatedAt:      time.Now(),
+	return preparedResource{
+		resource: repository.Resource{
+			WorkspaceID:  p.WorkspaceID,
+			Key:          p.Key,
+			Type:         p.Type,
+			Payload:      p.Payload,
+			IsActive:     p.IsActive,
+			Format:       string(a.Format),
+			ContentType:  contentType(a.Format),
+			Size:         int64(len(a.Original)),
+			SHA256:       fmt.Sprintf("%x", h),
+			MediaVersion: version,
+			Width:        a.Width,
+			Height:       a.Height,
+			CreatedAt:    time.Now(),
+		},
+		files: files,
 	}, nil
+}
+
+func (s *Resource) replace(files storage.Files) repository.ResourceSave {
+	return func(ctx context.Context, value *repository.Resource) (bool, error) {
+		objects, err := s.store.Replace(
+			ctx,
+			value.WorkspaceID,
+			value.Key,
+			value.MediaVersion,
+			files,
+		)
+		if err != nil {
+			cleanupErr := s.store.DeleteVersion(
+				ctx,
+				value.WorkspaceID,
+				value.Key,
+				value.MediaVersion,
+			)
+
+			return false, errors.Join(err, cleanupErr)
+		}
+
+		value.OriginalRef = objects.Original
+		value.Preview61Ref = objects.Previews[61]
+		value.Preview128Ref = objects.Previews[128]
+		value.Preview256Ref = objects.Previews[256]
+		value.Preview512Ref = objects.Previews[512]
+		value.PlaceholderRef = objects.Placeholder
+
+		return true, nil
+	}
+}
+
+func (s *Resource) deleteVersion(
+	ctx context.Context,
+	value repository.Resource,
+) {
+	_ = s.store.DeleteVersion(
+		ctx,
+		value.WorkspaceID,
+		value.Key,
+		value.MediaVersion,
+	)
 }
 
 func contentType(f media.Format) string {

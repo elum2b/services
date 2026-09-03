@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"time"
 
 	json "github.com/goccy/go-json"
 
@@ -21,12 +22,20 @@ const (
 
 // ConfigureArchiveJobs attaches the persistent async ZIP queue to this Admin.
 // The caller must bootstrap the jobs table before invoking it.
-func (a *Admin) ConfigureArchiveJobs(db *sql.DB, archive jobs.Archive) error {
+func (a *Admin) ConfigureArchiveJobs(
+	db *sql.DB,
+	archive jobs.Archive,
+	importTimeout, leaseTimeout time.Duration,
+) error {
+	if importTimeout > 0 {
+		a.archiveImportTimeout = importTimeout
+	}
+
 	manager, err := jobs.New(
 		db,
 		archive,
 		archiveJobHandler{admin: a},
-		jobs.Options{},
+		jobs.Options{LeaseTimeout: leaseTimeout},
 	)
 	if err != nil {
 		return err
@@ -96,9 +105,20 @@ func (h archiveJobHandler) Import(
 		return err
 	}
 
-	_, err = h.admin.importZIP(ctx, job.WorkspaceID, archive, request)
+	importCtx, cancel := context.WithTimeout(ctx, h.admin.importTimeout())
+	defer cancel()
+
+	_, err = h.admin.importZIP(importCtx, job.WorkspaceID, archive, request)
 
 	return err
+}
+
+func (a *Admin) importTimeout() time.Duration {
+	if a != nil && a.archiveImportTimeout > 0 {
+		return a.archiveImportTimeout
+	}
+
+	return 15 * time.Minute
 }
 
 func validateQueuedZIP(archive *zip.Reader, includeMedia bool) error {

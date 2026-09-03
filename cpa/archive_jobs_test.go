@@ -25,7 +25,13 @@ func TestCPAArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitCPAArchiveJob(t, env.Service, cpaTestWorkspaceID, export.ID)
+	if export.Status != jobs.StatusQueued {
+		t.Fatalf("export status = %s, want queued", export.Status)
+	}
+
+	worker := startCPAArchiveWorker(t, env.Name)
+
+	waitCPAArchiveJob(t, worker, cpaTestWorkspaceID, export.ID)
 
 	dump, _, err := env.Service.Admin.DownloadArchive(
 		env.Context,
@@ -52,7 +58,7 @@ func TestCPAArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitCPAArchiveJob(t, env.Service, cpaImportWorkspaceID, importJob.ID)
+	waitCPAArchiveJob(t, worker, cpaImportWorkspaceID, importJob.ID)
 
 	pkg, err := env.Repository.Export(
 		context.Background(),
@@ -62,6 +68,35 @@ func TestCPAArchiveJobsRoundTrip(t *testing.T) {
 	if err != nil || len(pkg.Offers) != 1 {
 		t.Fatalf("imported package = %+v, err = %v", pkg, err)
 	}
+}
+
+func startCPAArchiveWorker(t *testing.T, database string) *cpa.CPA {
+	t.Helper()
+
+	service := cpa.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- service.Run(ctx, cpa.DatabaseParams{
+			User:     cpaTestPGUser,
+			Password: cpaTestPGPassword,
+			Database: database,
+			Host:     cpaTestPGHost,
+			Port:     cpaTestPGPort,
+			Options:  testCPAOptions(),
+		})
+	}()
+
+	t.Cleanup(func() {
+		cancel()
+
+		if err := <-done; err != nil {
+			t.Errorf("stop CPA archive worker: %v", err)
+		}
+	})
+
+	return service
 }
 
 func waitCPAArchiveJob(

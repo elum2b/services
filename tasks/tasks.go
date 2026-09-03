@@ -106,6 +106,7 @@ func (t *Tasks) Run(ctx context.Context, params DatabaseParams) error {
 	}
 
 	t.adopt(running)
+	t.startWorkers()
 
 	defer t.Close()
 
@@ -213,9 +214,11 @@ func configureArchiveJobs(ctx context.Context, service *Tasks) error {
 		return fmt.Errorf("configure tasks archive jobs: %w", err)
 	}
 
-	service.Admin.StartArchiveJobs(service.rootCtx)
-
 	return nil
+}
+
+func (t *Tasks) startWorkers() {
+	t.Admin.StartArchiveJobs(t.rootCtx)
 }
 
 func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {

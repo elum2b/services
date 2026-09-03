@@ -27,18 +27,20 @@ type ArchivePackage struct {
 }
 
 type ExportResource struct {
-	Key            string          `json:"key"`
-	Type           string          `json:"type"`
-	Payload        json.RawMessage `json:"payload"`
-	IsActive       bool            `json:"is_active"`
-	Format         string          `json:"format"`
-	ContentType    string          `json:"content_type"`
-	SHA256         string          `json:"sha256"`
-	MediaVersion   string          `json:"media_version"`
-	Size           int64           `json:"size"`
-	Width          int             `json:"width"`
-	Height         int             `json:"height"`
-	PlaceholderRef string          `json:"-"`
+	Key         string          `json:"key"`
+	Type        string          `json:"type"`
+	Payload     json.RawMessage `json:"payload"`
+	IsActive    bool            `json:"is_active"`
+	Format      string          `json:"format"`
+	ContentType string          `json:"content_type"`
+	SHA256      string          `json:"sha256"`
+	// MediaVersion identifies the source object while exporting. It is never
+	// portable archive data; imports always allocate a target version.
+	MediaVersion   string `json:"-"`
+	Size           int64  `json:"size"`
+	Width          int    `json:"width"`
+	Height         int    `json:"height"`
+	PlaceholderRef string `json:"-"`
 }
 
 type ExportResourceLink struct {

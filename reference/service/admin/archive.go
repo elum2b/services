@@ -3,12 +3,14 @@ package admin
 import (
 	"archive/zip"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
 	"io"
 	"path"
 	"regexp"
 	"strings"
+	"time"
 
 	json "github.com/goccy/go-json"
 
@@ -39,7 +41,11 @@ func (a *Admin) exportZIP(
 
 	defer cancel()
 
-	pkg, err := a.repository.Export(mergedCtx, workspaceID, req.ExportRequest)
+	pkg, err := a.repository.Export(
+		mergedCtx,
+		workspaceID,
+		repository.ExportRequest{OnlyNotDeleted: true},
+	)
 	if err != nil {
 		return err
 	}
@@ -244,30 +250,11 @@ func (a *Admin) importZIP(
 	}
 
 	if err := validateArchiveResources(
+		manifest.Package,
 		manifest.Resources,
 		manifest.Links,
 	); err != nil {
 		return ImportResult{}, err
-	}
-
-	if normalizedStrategy(
-		req.ConflictStrategy,
-	) == repository.ImportConflictFail {
-		conflicts, err := a.repository.ArchiveResourceConflicts(
-			mergedCtx,
-			workspaceID,
-			manifest.Resources,
-		)
-		if err != nil {
-			return ImportResult{}, err
-		}
-
-		if len(conflicts) > 0 {
-			return ImportResult{}, fmt.Errorf(
-				"resource import conflicts found: %d",
-				len(conflicts),
-			)
-		}
 	}
 
 	mediaFiles := make([]storage.Files, len(manifest.Resources))
@@ -278,67 +265,69 @@ func (a *Admin) importZIP(
 		}
 	}
 
-	result, err := a.repository.Import(
+	resources := make([]*repository.Resource, 0, len(manifest.Resources))
+	filesByKey := make(map[string]storage.Files, len(manifest.Resources))
+
+	for index, value := range manifest.Resources {
+		version, err := archiveMediaVersion()
+		if err != nil {
+			return ImportResult{}, err
+		}
+
+		resources = append(
+			resources,
+			&repository.Resource{
+				WorkspaceID:  workspaceID,
+				Key:          value.Key,
+				Type:         value.Type,
+				Payload:      value.Payload,
+				IsActive:     value.IsActive,
+				Format:       value.Format,
+				ContentType:  value.ContentType,
+				SHA256:       value.SHA256,
+				MediaVersion: version,
+				Size:         value.Size,
+				Width:        value.Width,
+				Height:       value.Height,
+			},
+		)
+		filesByKey[value.Key] = mediaFiles[index]
+	}
+
+	result, err := a.repository.ImportArchiveWithMedia(
 		mergedCtx,
 		workspaceID,
 		repository.ImportRequest{
 			Package:          manifest.Package,
 			ConflictStrategy: req.ConflictStrategy,
 		},
-	)
-	if err != nil {
-		return ImportResult{}, err
-	}
-
-	resources := make([]repository.Resource, 0, len(manifest.Resources))
-	for index, value := range manifest.Resources {
-		objects, err := a.store.Replace(
-			mergedCtx,
-			workspaceID,
-			value.Key,
-			value.MediaVersion,
-			mediaFiles[index],
-		)
-		if err != nil {
-			return ImportResult{}, fmt.Errorf(
-				"restore resource %s: %w",
-				value.Key,
-				err,
-			)
-		}
-
-		resources = append(
-			resources,
-			repository.Resource{
-				WorkspaceID:    workspaceID,
-				Key:            value.Key,
-				Type:           value.Type,
-				Payload:        value.Payload,
-				IsActive:       value.IsActive,
-				Format:         value.Format,
-				ContentType:    value.ContentType,
-				SHA256:         value.SHA256,
-				MediaVersion:   value.MediaVersion,
-				Size:           value.Size,
-				Width:          value.Width,
-				Height:         value.Height,
-				OriginalRef:    objects.Original,
-				Preview61Ref:   objects.Previews[61],
-				Preview128Ref:  objects.Previews[128],
-				Preview256Ref:  objects.Previews[256],
-				Preview512Ref:  objects.Previews[512],
-				PlaceholderRef: objects.Placeholder,
-			},
-		)
-	}
-
-	if err := a.repository.ImportArchiveResources(
-		mergedCtx,
-		workspaceID,
 		resources,
 		manifest.Links,
-		normalizedStrategy(req.ConflictStrategy),
-	); err != nil {
+		a.importTimeout(),
+		func(ctx context.Context, values []*repository.Resource) error {
+			for _, value := range values {
+				objects, err := a.store.Replace(
+					ctx,
+					workspaceID,
+					value.Key,
+					value.MediaVersion,
+					filesByKey[value.Key],
+				)
+				if err != nil {
+					return fmt.Errorf("restore resource %s: %w", value.Key, err)
+				}
+
+				value.OriginalRef, value.PlaceholderRef = objects.Original, objects.Placeholder
+				value.Preview61Ref, value.Preview128Ref = objects.Previews[61], objects.Previews[128]
+				value.Preview256Ref, value.Preview512Ref = objects.Previews[256], objects.Previews[512]
+			}
+
+			return nil
+		},
+	)
+	if err != nil {
+		a.cleanupArchiveVersions(workspaceID, resources)
+
 		return ImportResult{}, err
 	}
 
@@ -442,36 +431,89 @@ func readArchiveFile(file *zip.File, limit int64) ([]byte, error) {
 }
 
 func validateArchiveResources(
+	pkg repository.ExportPackage,
 	resources []repository.ExportResource,
 	links []repository.ExportResourceLink,
 ) error {
+	items := make(map[string]struct{}, len(pkg.Items))
+	for _, item := range pkg.Items {
+		items[item.Key] = struct{}{}
+	}
+
 	seen := make(map[string]bool, len(resources))
 	for _, resource := range resources {
 		if _, ok := storage.OriginalName(
 			resource.Format,
-		); !ok || !archiveResourceKeyPattern.MatchString(resource.Key) || seen[resource.Key] || !json.Valid(resource.Payload) || resource.Type == "" || resource.ContentType == "" || resource.Size <= 0 || resource.Size > maxArchiveMediaFile || resource.Width <= 0 || resource.Height <= 0 || len(resource.SHA256) != 64 ||
-			!regexp.MustCompile(`^[A-Za-z]{8}$`).
-				MatchString(resource.MediaVersion) {
+		); !ok || !archiveResourceKeyPattern.MatchString(resource.Key) || seen[resource.Key] || !json.Valid(resource.Payload) || resource.Type == "" || resource.ContentType == "" || resource.Size <= 0 || resource.Size > maxArchiveMediaFile || resource.Width <= 0 || resource.Height <= 0 || len(resource.SHA256) != 64 {
 			return fmt.Errorf("invalid archive resource %q", resource.Key)
 		}
 
 		seen[resource.Key] = true
 	}
 
+	positions := make(map[string]struct{}, len(links))
 	for _, link := range links {
 		if !archiveResourceKeyPattern.MatchString(link.ItemKey) ||
 			!seen[link.ResourceKey] {
 			return fmt.Errorf("invalid archive resource link")
 		}
+
+		if _, exists := items[link.ItemKey]; !exists {
+			return fmt.Errorf(
+				"archive resource link references an unknown item",
+			)
+		}
+
+		position := fmt.Sprintf("%s\x00%d", link.ItemKey, link.Position)
+		if _, exists := positions[position]; exists {
+			return fmt.Errorf("duplicate archive resource link position")
+		}
+
+		positions[position] = struct{}{}
 	}
 
 	return nil
 }
 
-func normalizedStrategy(value string) string {
-	if value == "" {
-		return repository.ImportConflictFail
+func archiveMediaVersion() (string, error) {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+	value := make([]byte, 8)
+
+	if _, err := rand.Read(value); err != nil {
+		return "", fmt.Errorf("generate archive media version: %w", err)
 	}
 
-	return value
+	for index := range value {
+		value[index] = alphabet[int(value[index])%len(alphabet)]
+	}
+
+	return string(value), nil
+}
+
+func (a *Admin) cleanupArchiveVersions(
+	workspaceID string,
+	resources []*repository.Resource,
+) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	for _, value := range resources {
+		durable, err := a.repository.ArchiveMediaVersionDurable(
+			ctx,
+			workspaceID,
+			value.Key,
+			value.MediaVersion,
+		)
+		if err == nil && durable {
+			continue
+		}
+
+		_ = a.store.DeleteVersion(
+			ctx,
+			workspaceID,
+			value.Key,
+			value.MediaVersion,
+		)
+	}
 }

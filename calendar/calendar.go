@@ -103,6 +103,7 @@ func (c *Calendar) Run(ctx context.Context, params DatabaseParams) error {
 	}
 
 	c.adopt(running)
+	c.startWorkers()
 
 	defer c.Close()
 
@@ -214,9 +215,11 @@ func configureArchiveJobs(ctx context.Context, service *Calendar) error {
 		return fmt.Errorf("configure calendar archive jobs: %w", err)
 	}
 
-	service.Admin.StartArchiveJobs(service.rootCtx)
-
 	return nil
+}
+
+func (c *Calendar) startWorkers() {
+	c.Admin.StartArchiveJobs(c.rootCtx)
 }
 
 func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {

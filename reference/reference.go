@@ -27,17 +27,19 @@ type Reference struct {
 	Resource *resourceservice.Resource
 	User     *user.User
 
-	client      *sqlwrap.Client
-	storage     resourcestorage.Store
-	mediaCache  *resourcecache.Cache
-	ownsClient  bool
-	rootCtx     context.Context
-	rootCancel  context.CancelFunc
-	workers     *goroutine.Manager
-	gcInterval  time.Duration
-	gcBatch     int32
-	gcRetention time.Duration
-	gcTrigger   chan struct{}
+	client               *sqlwrap.Client
+	storage              resourcestorage.Store
+	mediaCache           *resourcecache.Cache
+	ownsClient           bool
+	rootCtx              context.Context
+	rootCancel           context.CancelFunc
+	workers              *goroutine.Manager
+	gcInterval           time.Duration
+	gcBatch              int32
+	gcRetention          time.Duration
+	gcTrigger            chan struct{}
+	archiveImportTimeout time.Duration
+	archiveJobLease      time.Duration
 
 	lifecycleMu sync.Mutex
 	running     bool
@@ -262,6 +264,7 @@ func (r *Reference) adopt(running *Reference) {
 	}
 
 	r.workers, r.gcInterval, r.gcBatch, r.gcRetention, r.gcTrigger = running.workers, running.gcInterval, running.gcBatch, running.gcRetention, running.gcTrigger
+	r.archiveImportTimeout, r.archiveJobLease = running.archiveImportTimeout, running.archiveJobLease
 }
 
 func newReference(
@@ -296,6 +299,16 @@ func newReference(
 	}
 
 	gcTrigger := make(chan struct{}, 1)
+	archiveImportTimeout := options.ArchiveImportTimeout
+
+	if archiveImportTimeout <= 0 {
+		archiveImportTimeout = 15 * time.Minute
+	}
+
+	archiveJobLease := options.ArchiveJobLease
+	if archiveJobLease <= archiveImportTimeout {
+		archiveJobLease = archiveImportTimeout + 5*time.Minute
+	}
 
 	return &Reference{
 		Admin: admin.NewWithRepositoryOptionsAndStore(
@@ -318,17 +331,19 @@ func newReference(
 			db,
 			repositoryOptions,
 		),
-		client:      db,
-		storage:     store,
-		mediaCache:  mediaCache,
-		ownsClient:  ownsClient,
-		rootCtx:     rootCtx,
-		rootCancel:  cancel,
-		workers:     goroutine.New(),
-		gcInterval:  gcInterval,
-		gcBatch:     gcBatch,
-		gcRetention: gcRetention,
-		gcTrigger:   gcTrigger,
+		client:               db,
+		storage:              store,
+		mediaCache:           mediaCache,
+		ownsClient:           ownsClient,
+		rootCtx:              rootCtx,
+		rootCancel:           cancel,
+		workers:              goroutine.New(),
+		gcInterval:           gcInterval,
+		gcBatch:              gcBatch,
+		gcRetention:          gcRetention,
+		gcTrigger:            gcTrigger,
+		archiveImportTimeout: archiveImportTimeout,
+		archiveJobLease:      archiveJobLease,
 	}
 }
 

@@ -41,7 +41,13 @@ func TestPromoArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitPromoArchiveJob(t, service, source, export.ID)
+	if export.Status != jobs.StatusQueued {
+		t.Fatalf("export status = %s, want queued", export.Status)
+	}
+
+	worker := startPromoArchiveWorker(t)
+
+	waitPromoArchiveJob(t, worker, source, export.ID)
 
 	dump, _, err := service.Admin.DownloadArchive(ctx, source, export.ID)
 	if err != nil {
@@ -64,13 +70,42 @@ func TestPromoArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitPromoArchiveJob(t, service, target, importJob.ID)
+	waitPromoArchiveJob(t, worker, target, importJob.ID)
 
 	pkg, err := repository.New(service.client).
 		Export(ctx, target, admin.ExportRequest{})
 	if err != nil || len(pkg.Promos) != 1 {
 		t.Fatalf("imported package = %+v, err = %v", pkg, err)
 	}
+}
+
+func startPromoArchiveWorker(t *testing.T) *Promo {
+	t.Helper()
+
+	service := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- service.Run(ctx, DatabaseParams{
+			User:     promoTestPGUser,
+			Password: promoTestPGPassword,
+			Database: promoTestDB,
+			Host:     promoTestPGHost,
+			Port:     promoTestPGPort,
+			Options:  promoTestOptions(),
+		})
+	}()
+
+	t.Cleanup(func() {
+		cancel()
+
+		if err := <-done; err != nil {
+			t.Errorf("stop promo archive worker: %v", err)
+		}
+	})
+
+	return service
 }
 
 func waitPromoArchiveJob(

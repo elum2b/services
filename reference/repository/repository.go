@@ -22,6 +22,30 @@ var (
 		serviceerrors.CodeNotFound,
 		"reference item not found",
 	)
+	ErrResourceNotFound = serviceerrors.New(
+		serviceerrors.CodeNotFound,
+		"reference resource not found",
+	)
+	ErrResourceAlreadyAttached = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"reference resource is already attached to item",
+	)
+	ErrResourceAttachmentNotFound = serviceerrors.New(
+		serviceerrors.CodeNotFound,
+		"reference resource attachment not found",
+	)
+	ErrResourceAnchorNotFound = serviceerrors.New(
+		serviceerrors.CodeNotFound,
+		"reference resource anchor not found",
+	)
+	ErrResourcePositionInvalid = serviceerrors.New(
+		serviceerrors.CodeInvalidFields,
+		"reference resource position is invalid",
+	)
+	ErrResourcePositionConflict = serviceerrors.New(
+		serviceerrors.CodeConflict,
+		"reference resource position is already occupied",
+	)
 )
 
 const bootstrapQueryTimeout = 30 * time.Second
@@ -103,6 +127,35 @@ func (r *Repository) WithTx(
 		ctx,
 		r.db,
 		sqlwrap.Params{Timeout: r.timeout},
+		func(ctx context.Context, tx *sql.Tx) (struct{}, error) {
+			txRepo := &Repository{
+				db:                       r.db,
+				q:                        r.q.WithTx(tx),
+				executor:                 tx,
+				timeout:                  r.timeout,
+				cacheL1:                  r.cacheL1,
+				cacheL2:                  r.cacheL2,
+				onCacheInvalidationError: r.onCacheInvalidationError,
+			}
+
+			return struct{}{}, fn(txRepo)
+		},
+	)
+
+	return err
+}
+
+// WithTxTimeout is reserved for operations that intentionally keep a
+// transaction open while coordinating durable external storage.
+func (r *Repository) WithTxTimeout(
+	ctx context.Context,
+	timeout time.Duration,
+	fn func(*Repository) error,
+) error {
+	_, err := sqlwrap.Transaction(
+		ctx,
+		r.db,
+		sqlwrap.Params{Timeout: timeout},
 		func(ctx context.Context, tx *sql.Tx) (struct{}, error) {
 			txRepo := &Repository{
 				db:                       r.db,

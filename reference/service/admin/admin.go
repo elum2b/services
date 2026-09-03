@@ -15,10 +15,11 @@ import (
 )
 
 type Admin struct {
-	repository *repository.Repository
-	rootCtx    context.Context
-	store      resourcestorage.Store
-	jobs       *jobs.Manager
+	repository           *repository.Repository
+	rootCtx              context.Context
+	store                resourcestorage.Store
+	jobs                 *jobs.Manager
+	archiveImportTimeout time.Duration
 }
 
 func NewWithRepositoryOptionsAndStore(

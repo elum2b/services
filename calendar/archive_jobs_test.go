@@ -43,7 +43,13 @@ func TestCalendarArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitCalendarArchiveJob(t, service, source, export.ID)
+	if export.Status != jobs.StatusQueued {
+		t.Fatalf("export status = %s, want queued", export.Status)
+	}
+
+	worker := startCalendarArchiveWorker(t)
+
+	waitCalendarArchiveJob(t, worker, source, export.ID)
 
 	dump, _, err := service.Admin.DownloadArchive(ctx, source, export.ID)
 	if err != nil {
@@ -66,13 +72,42 @@ func TestCalendarArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitCalendarArchiveJob(t, service, target, importJob.ID)
+	waitCalendarArchiveJob(t, worker, target, importJob.ID)
 
 	pkg, err := repository.New(service.client).
 		Export(ctx, target, admin.ExportRequest{})
 	if err != nil || len(pkg.Calendars) != 1 {
 		t.Fatalf("imported package = %+v, err = %v", pkg, err)
 	}
+}
+
+func startCalendarArchiveWorker(t *testing.T) *Calendar {
+	t.Helper()
+
+	service := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- service.Run(ctx, DatabaseParams{
+			User:     calendarTestPGUser,
+			Password: calendarTestPGPassword,
+			Database: calendarTestDB,
+			Host:     calendarTestPGHost,
+			Port:     calendarTestPGPort,
+			Options:  calendarTestOptions(),
+		})
+	}()
+
+	t.Cleanup(func() {
+		cancel()
+
+		if err := <-done; err != nil {
+			t.Errorf("stop calendar archive worker: %v", err)
+		}
+	})
+
+	return service
 }
 
 func waitCalendarArchiveJob(

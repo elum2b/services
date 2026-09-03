@@ -56,7 +56,13 @@ func TestTasksArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitTasksArchiveJob(t, service, source, export.ID)
+	if export.Status != jobs.StatusQueued {
+		t.Fatalf("export status = %s, want queued", export.Status)
+	}
+
+	worker := startTasksArchiveWorker(t)
+
+	waitTasksArchiveJob(t, worker, source, export.ID)
 
 	dump, _, err := service.Admin.DownloadArchive(ctx, source, export.ID)
 	if err != nil {
@@ -79,13 +85,42 @@ func TestTasksArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitTasksArchiveJob(t, service, target, importJob.ID)
+	waitTasksArchiveJob(t, worker, target, importJob.ID)
 
 	pkg, err := repository.New(service.client).
 		Export(ctx, target, admin.ExportRequest{})
 	if err != nil || len(pkg.Groups) != 1 || len(pkg.Groups[0].Tasks) != 1 {
 		t.Fatalf("imported package = %+v, err = %v", pkg, err)
 	}
+}
+
+func startTasksArchiveWorker(t *testing.T) *Tasks {
+	t.Helper()
+
+	service := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- service.Run(ctx, DatabaseParams{
+			User:     pgUser,
+			Password: pgPassword,
+			Database: tasksTestDB,
+			Host:     pgHost,
+			Port:     pgPort,
+			Options:  tasksTestOptions(Options{}),
+		})
+	}()
+
+	t.Cleanup(func() {
+		cancel()
+
+		if err := <-done; err != nil {
+			t.Errorf("stop tasks archive worker: %v", err)
+		}
+	})
+
+	return service
 }
 
 func waitTasksArchiveJob(

@@ -28,7 +28,13 @@ func TestPaymentArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitPaymentArchiveJob(t, env.api, source, export.ID)
+	if export.Status != jobs.StatusQueued {
+		t.Fatalf("export status = %s, want queued", export.Status)
+	}
+
+	worker := startPaymentArchiveWorker(t)
+
+	waitPaymentArchiveJob(t, worker, source, export.ID)
 
 	dump, _, err := env.api.Admin.DownloadArchive(
 		context.Background(),
@@ -55,13 +61,42 @@ func TestPaymentArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitPaymentArchiveJob(t, env.api, target, importJob.ID)
+	waitPaymentArchiveJob(t, worker, target, importJob.ID)
 
 	pkg, err := repository.NewPaymentRepository(env.client).
 		Export(context.Background(), target, admin.ExportRequest{})
 	if err != nil || len(pkg.Groups) != 1 || len(pkg.Groups[0].Products) != 1 {
 		t.Fatalf("imported package = %+v, err = %v", pkg, err)
 	}
+}
+
+func startPaymentArchiveWorker(t *testing.T) *Payment {
+	t.Helper()
+
+	service := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- service.Run(ctx, DatabaseParams{
+			User:     paymentPostgresUsername,
+			Password: paymentPostgresPassword,
+			Database: paymentTestDB,
+			Host:     paymentPostgresHost,
+			Port:     paymentPostgresPort,
+			Options:  paymentTestOptions(),
+		})
+	}()
+
+	t.Cleanup(func() {
+		cancel()
+
+		if err := <-done; err != nil {
+			t.Errorf("stop payment archive worker: %v", err)
+		}
+	})
+
+	return service
 }
 
 func waitPaymentArchiveJob(

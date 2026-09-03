@@ -96,6 +96,7 @@ func (p *Promo) Run(ctx context.Context, params DatabaseParams) error {
 	}
 
 	p.adopt(running)
+	p.startWorkers()
 
 	defer p.Close()
 
@@ -207,9 +208,11 @@ func configureArchiveJobs(ctx context.Context, service *Promo) error {
 		return fmt.Errorf("configure promo archive jobs: %w", err)
 	}
 
-	service.Admin.StartArchiveJobs(service.rootCtx)
-
 	return nil
+}
+
+func (p *Promo) startWorkers() {
+	p.Admin.StartArchiveJobs(p.rootCtx)
 }
 
 func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {

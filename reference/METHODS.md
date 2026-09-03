@@ -25,7 +25,7 @@
 | `Admin.GetLocalization(ctx, workspaceID, key, locale)` | `workspaceID`, `key`, `locale`. | Возвращает локализацию. |
 | `Admin.ListLocalizations(ctx, workspaceID, key)` | `workspaceID`, `key`. | Возвращает локализации item. |
 | `Admin.DeleteLocalization(ctx, workspaceID, key, locale)` | `workspaceID`, `key`, `locale`. | Удаляет локализацию. |
-| `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, IncludeMedia, ExportRequest}`. | Ставит ZIP-экспорт в асинхронную очередь. |
+| `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, IncludeMedia}`. | Ставит ZIP-экспорт только не удалённых данных в асинхронную очередь. |
 | `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, IncludeMedia, ConflictStrategy, Archive}`. | Ставит ZIP-импорт в асинхронную очередь; асинхронный импорт не предоставляет `PreviewImport`. |
 | `Admin.ArchiveJob(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Возвращает текущий статус задачи. |
 | `Admin.ArchiveHistory(ctx, workspaceID, page)` | `workspaceID`, `Page`. | Возвращает историю задач workspace. |
@@ -43,7 +43,9 @@
 | `Resource.List(ctx, params)` | `ListParams{WorkspaceID, Limit, Offset}`. | Возвращает страницу не удалённых resources workspace. |
 | `Resource.Delete(ctx, params)` | `GetParams{WorkspaceID, Key}`. | Soft-delete resource без удаления объектов storage. |
 | `Resource.CollectGarbage(ctx, params)` | `CollectGarbageParams{Limit}`. | Через час удаляет retired media versions из storage, затем физически purges полностью удалённые resources; вызывается внутренним worker. |
-| `Resource.Attach(ctx, workspaceID, itemKey, resourceKey, position)` | workspace, keys, position. | Привязывает активный resource к item. |
+| `Resource.InsertAfter(ctx, workspaceID, itemKey, resourceKey, afterResourceKey)` | workspace, keys; пустой `afterResourceKey` означает начало. | Рекомендуемый atomic API: привязывает ещё не привязанный resource и нормализует порядок `0..n-1`. |
+| `Resource.MoveAfter(ctx, workspaceID, itemKey, resourceKey, afterResourceKey)` | workspace, keys; пустой `afterResourceKey` означает начало. | Рекомендуемый atomic API: перемещает привязанный resource и нормализует порядок `0..n-1`. |
+| `Resource.Attach(ctx, workspaceID, itemKey, resourceKey, position)` | workspace, keys, position. | Legacy low-level attach; для упорядочивания используйте `InsertAfter` и `MoveAfter`. |
 | `Resource.Detach(ctx, workspaceID, itemKey, resourceKey)` | workspace, keys. | Отвязывает resource от item. |
 | `Resource.ListItemResources(ctx, workspaceID, itemKey)` | workspace, item key. | Возвращает resources, привязанные к item, в порядке position. |
 | `Resource.GetContent(ctx, params)` | `ContentParams{WorkspaceID, Key, Version, Format, Size}`. | Возвращает bytes original (`Size=0`) или PNG preview (`61`, `128`, `256`, `512`) через bounded in-memory media cache. |

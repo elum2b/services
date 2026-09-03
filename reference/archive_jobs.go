@@ -43,11 +43,11 @@ func configureArchiveJobs(
 	if err := service.Admin.ConfigureArchiveJobs(
 		service.client.DB(),
 		archive,
+		service.archiveImportTimeout,
+		service.archiveJobLease,
 	); err != nil {
 		return fmt.Errorf("configure reference archive jobs: %w", err)
 	}
-
-	service.Admin.StartArchiveJobs(service.rootCtx)
 
 	return nil
 }

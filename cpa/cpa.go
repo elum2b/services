@@ -98,6 +98,7 @@ func (c *CPA) Run(ctx context.Context, params DatabaseParams) error {
 	}
 
 	c.adopt(running)
+	c.startWorkers()
 
 	defer c.Close()
 
@@ -211,9 +212,11 @@ func configureArchiveJobs(ctx context.Context, service *CPA) error {
 		return fmt.Errorf("configure cpa archive jobs: %w", err)
 	}
 
-	service.Admin.StartArchiveJobs(service.rootCtx)
-
 	return nil
+}
+
+func (c *CPA) startWorkers() {
+	c.Admin.StartArchiveJobs(c.rootCtx)
 }
 
 func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {

@@ -143,6 +143,7 @@ func (a *Payment) Run(ctx context.Context, params DatabaseParams) error {
 	}
 
 	a.adopt(running)
+	a.startWorkers()
 
 	defer a.Close()
 
@@ -257,9 +258,11 @@ func configureArchiveJobs(ctx context.Context, service *Payment) error {
 		return fmt.Errorf("configure payment archive jobs: %w", err)
 	}
 
-	service.Admin.StartArchiveJobs(service.rootCtx)
-
 	return nil
+}
+
+func (a *Payment) startWorkers() {
+	a.Admin.StartArchiveJobs(a.rootCtx)
 }
 
 func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
