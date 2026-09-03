@@ -31,6 +31,7 @@ type PaymentRepository struct {
 	pendingTONManifestInvalidations map[string]struct{}
 	pendingInvalidateAll            bool
 	onCacheInvalidationError        func(error)
+	referenceItemChecker            ReferenceItemDependencyChecker
 }
 
 type Options struct {
@@ -38,6 +39,7 @@ type Options struct {
 	CacheL1Delay             time.Duration
 	CacheL2Delay             time.Duration
 	OnCacheInvalidationError func(error)
+	ReferenceItemChecker     ReferenceItemDependencyChecker
 }
 
 const bootstrapQueryTimeout = 30 * time.Second
@@ -95,6 +97,7 @@ func NewPaymentRepositoryWithOptions(
 		cacheL1:                  options.CacheL1Delay,
 		cacheL2:                  options.CacheL2Delay,
 		onCacheInvalidationError: options.OnCacheInvalidationError,
+		referenceItemChecker:     options.ReferenceItemChecker,
 	}
 }
 
@@ -152,6 +155,7 @@ func (r *PaymentRepository) WithTx(
 				pendingWorkspaceInvalidations:   pendingWorkspaces,
 				pendingTONManifestInvalidations: pendingTONManifests,
 				onCacheInvalidationError:        r.onCacheInvalidationError,
+				referenceItemChecker:            r.referenceItemChecker,
 			}
 			callbackErr := fn(txRepo)
 

@@ -14,20 +14,27 @@ import (
 )
 
 const (
-	DefaultTable         = "importexport_job"
-	DefaultWorkerID      = "importexport-worker"
-	DefaultIdleDelay     = time.Second
-	DefaultLeaseTimeout  = 10 * time.Minute
-	DefaultRetention     = 24 * time.Hour
-	DefaultCleanupPeriod = time.Hour
-	DefaultHistoryLimit  = int32(100)
-	DefaultCleanupLimit  = int32(100)
-	StatusQueued         = "queued"
-	StatusProcessing     = "processing"
-	StatusCompleted      = "completed"
-	StatusFailed         = "failed"
-	TypeExport           = "export"
-	TypeImport           = "import"
+	DefaultTable                   = "importexport_job"
+	DefaultWorkerID                = "importexport-worker"
+	DefaultIdleDelay               = time.Second
+	DefaultLeaseTimeout            = 10 * time.Minute
+	DefaultRetention               = 24 * time.Hour
+	DefaultCleanupPeriod           = time.Hour
+	DefaultHistoryLimit            = int32(100)
+	DefaultCleanupLimit            = int32(100)
+	DefaultMaxUploadBytes          = int64(100 << 20)
+	DefaultMaxZIPEntries           = 1000
+	DefaultMaxZIPUncompressedBytes = int64(500 << 20)
+	DefaultMaxZIPCompressionRatio  = 100
+	DefaultMaxAttempts             = 3
+	DefaultRetryBackoff            = time.Second
+	DefaultHandlerTimeout          = time.Hour
+	StatusQueued                   = "queued"
+	StatusProcessing               = "processing"
+	StatusCompleted                = "completed"
+	StatusFailed                   = "failed"
+	TypeExport                     = "export"
+	TypeImport                     = "import"
 )
 
 var (
@@ -41,6 +48,10 @@ var (
 	ErrNotLeased = errors.New(
 		"importexport jobs: job is not leased by worker",
 	)
+	ErrArchiveTooLarge = errors.New(
+		"importexport jobs: archive exceeds upload limit",
+	)
+	ErrInvalidZIP = errors.New("importexport jobs: invalid ZIP archive")
 )
 
 // Archive owns durable dump storage. The manager calls Delete after retention
@@ -49,6 +60,18 @@ type Archive interface {
 	Store(context.Context, ArchiveObject, io.Reader) (string, error)
 	Open(context.Context, string) (io.ReadCloser, error)
 	Delete(context.Context, string) error
+}
+
+// ArchiveLister is optional. Archives that implement it can be swept for
+// objects left behind when a process stops between storing an archive and
+// persisting its job.
+type ArchiveLister interface {
+	List(context.Context) ([]ArchiveInfo, error)
+}
+
+type ArchiveInfo struct {
+	Key       string
+	CreatedAt time.Time
 }
 
 type ArchiveObject struct {
@@ -83,6 +106,8 @@ type Job struct {
 	StartedAt      *time.Time
 	FinishedAt     *time.Time
 	UpdatedAt      time.Time
+	Attempt        int
+	NextAttemptAt  *time.Time
 }
 
 func newToken() string {
@@ -114,8 +139,11 @@ type QueueImportParams struct {
 	Service     string
 	WorkspaceID string
 	FileName    string
-	Options     json.RawMessage
-	Dump        io.Reader
+	// ManifestName requires exactly one named entry in the uploaded ZIP.
+	// Archive services use this to enforce their single-manifest contract.
+	ManifestName string
+	Options      json.RawMessage
+	Dump         io.Reader
 }
 
 type HistoryParams struct {
@@ -146,10 +174,26 @@ type DownloadParams struct {
 }
 
 type Options struct {
-	TableName     string
-	WorkerID      string
-	IdleDelay     time.Duration
-	LeaseTimeout  time.Duration
-	Retention     time.Duration
-	CleanupPeriod time.Duration
+	// Service identifies the service whose jobs this manager may process.
+	Service        string
+	TableName      string
+	WorkerID       string
+	IdleDelay      time.Duration
+	LeaseTimeout   time.Duration
+	Retention      time.Duration
+	CleanupPeriod  time.Duration
+	MaxUploadBytes int64
+	ZIPLimits      ZIPLimits
+	MaxAttempts    int
+	RetryBackoff   time.Duration
+	HandlerTimeout time.Duration
+}
+
+// ZIPLimits bound ZIP metadata before a manifest consumer opens an entry.
+// A zero field uses the package default.
+type ZIPLimits struct {
+	MaxEntries           int
+	MaxCompressedBytes   int64
+	MaxUncompressedBytes int64
+	MaxCompressionRatio  int
 }

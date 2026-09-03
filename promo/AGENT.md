@@ -32,6 +32,10 @@
 - Mutation promo/localization/reward bump-ает связанные scopes после commit.
 - Export не содержит item metadata; reward key разрешается через Reference во
   внешнем приложении.
+- Archive использует единственный формат `promo.export.v1`: он переносит catalog и
+  `activation_count`, чтобы сохранить global activation limit. Redemptions,
+  user-specific reward snapshots, events и daily statistics не переносятся;
+  это не полный backup activation history.
 - `update_existing` полностью заменяет вложенные localization/rewards, а не
   смешивает старый и импортированный catalog.
 - Export и conflict preview соблюдают общий consistent snapshot/advisory lock

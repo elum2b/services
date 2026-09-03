@@ -18,3 +18,12 @@ deleting and only clears the matching claim.
 Export handlers return a ZIP stream. Import handlers receive the previously
 stored ZIP stream. Archives are removed after the configured retention period;
 the job and transition history remain available.
+
+Imports are spooled and validated before storage. The default upload limit is
+100 MiB; ZIP metadata and decompressed content are bounded by entry,
+compressed-size, uncompressed-size, and ratio limits. Manifest consumers can
+use `ValidateManifestZIP` to additionally require exactly one manifest entry.
+Temporary network-style failures are retried with bounded exponential backoff.
+Handlers receive a bounded context while the worker renews its fenced lease;
+handlers must honor context cancellation. Archives implementing `ArchiveLister`
+are reconciled during cleanup after the retention grace period.

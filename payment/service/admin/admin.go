@@ -85,7 +85,7 @@ func (a *Admin) ConfigureArchiveJobs(db *sql.DB, archive jobs.Archive) error {
 		db,
 		archive,
 		archiveJobHandler{admin: a},
-		jobs.Options{},
+		jobs.Options{Service: "payment"},
 	)
 	if err != nil {
 		return err

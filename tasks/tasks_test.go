@@ -1856,14 +1856,22 @@ func TestExportImportFullCycle(t *testing.T) {
 	if len(withSecrets.Groups) != 1 ||
 		len(withSecrets.Groups[0].PartnerConfigs) != 1 ||
 		withSecrets.Groups[0].PartnerConfigs[0].Secret == nil ||
-		withSecrets.Groups[0].PartnerConfigs[0].Secret.Value == nil ||
-		*withSecrets.Groups[0].PartnerConfigs[0].Secret.Value != "source-token" ||
+		withSecrets.Groups[0].PartnerConfigs[0].Secret.Value != nil ||
 		withSecrets.Groups[0].PartnerConfigs[0].WebhookSecret == nil ||
-		withSecrets.Groups[0].PartnerConfigs[0].WebhookSecret.Value == nil ||
-		*withSecrets.Groups[0].PartnerConfigs[0].WebhookSecret.Value != "source-webhook-secret" {
+		withSecrets.Groups[0].PartnerConfigs[0].WebhookSecret.Value != nil {
 		t.Fatalf(
-			"export with secrets missed values: %+v",
+			"export must not contain secret values: %+v",
 			withSecrets.Groups[0].PartnerConfigs,
+		)
+	}
+
+	rawWithSecrets, err := json.Marshal(withSecrets)
+	if err != nil || strings.Contains(string(rawWithSecrets), "source-token") ||
+		strings.Contains(string(rawWithSecrets), "source-webhook-secret") {
+		t.Fatalf(
+			"secret-enabled export exposed a secret: %s, err=%v",
+			rawWithSecrets,
+			err,
 		)
 	}
 
@@ -1972,6 +1980,45 @@ func TestExportImportFullCycle(t *testing.T) {
 		skipped.Skipped.PartnerConfigs != 1 {
 		t.Fatalf("bad skipped result: %+v", skipped)
 	}
+
+	complex := pkg.Groups[0].Tasks[0]
+
+	complex.Key = "imported-complex"
+	complex.TaskKind = repository.TaskKindComplex
+	complex.ActionKey = "imported.complex"
+	complex.ActionKind = repository.ActionKindComposite
+	complex.SequenceKey = nil
+	complex.SequencePosition = nil
+	complex.Position = 20
+	complex.Conditions = []repository.ExportCondition{{
+		TaskKey: pkg.Groups[0].Tasks[0].Key,
+	}}
+	pkg.Groups[0].Tasks = append(pkg.Groups[0].Tasks, complex)
+
+	if _, err := repo.Import(ctx, targetWorkspace, repository.ImportRequest{
+		Package:          pkg,
+		ConflictStrategy: repository.ImportConflictSkip,
+		Secrets:          secrets,
+	}); err != nil {
+		t.Fatalf("skip import complex task referencing existing task: %v", err)
+	}
+
+	importedWithComplex, err := repo.Export(
+		ctx,
+		targetWorkspace,
+		repository.ExportRequest{},
+	)
+	if err != nil || len(importedWithComplex.Groups[0].Tasks) != 2 ||
+		len(importedWithComplex.Groups[0].Tasks[1].Conditions) != 1 ||
+		importedWithComplex.Groups[0].Tasks[1].Conditions[0].TaskKey != "subscribe_tg" {
+		t.Fatalf(
+			"skipped task condition was not imported: %+v, err=%v",
+			importedWithComplex,
+			err,
+		)
+	}
+
+	pkg.Groups[0].Tasks = pkg.Groups[0].Tasks[:1]
 
 	pkg.Groups[0].Localization["ru"] = repository.ExportText{
 		Title:       "Обновленные",
@@ -6255,8 +6302,7 @@ func TestTasksAdminCatalogAndPartnerScriptSurface(t *testing.T) {
 	configs, err := service.Admin.ListPartnerConfigs(ctx, workspaceID)
 	if err != nil || len(configs) != 1 ||
 		configs[0].Provider != "admin-provider" ||
-		configs[0].Secret == nil ||
-		*configs[0].Secret != secret {
+		configs[0].Secret != nil || configs[0].WebhookSecret != nil {
 		t.Fatalf("list partner configs: values=%+v err=%v", configs, err)
 	}
 
@@ -6532,11 +6578,12 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 		Platform:    "telegram",
 		IsEnabled:   true,
 		Secret:      &secret,
+		Settings:    json.RawMessage(`{"version":"old"}`),
 	}); err != nil {
 		t.Fatalf("create cached partner config: %v", err)
 	}
 
-	assertTasksCacheRead(t, nodeB, "Old title", "old-secret")
+	assertTasksCacheRead(t, nodeB, "Old title", "old")
 
 	if err := nodeA.Admin.UpsertTaskLocalization(
 		ctx,
@@ -6557,11 +6604,12 @@ func TestTasksCacheVersionsInvalidateOtherNode(t *testing.T) {
 		Platform:    "telegram",
 		IsEnabled:   true,
 		Secret:      &secret,
+		Settings:    json.RawMessage(`{"version":"new"}`),
 	}); err != nil {
 		t.Fatalf("update cached partner config: %v", err)
 	}
 
-	assertTasksCacheRead(t, nodeB, "New title", "new-secret")
+	assertTasksCacheRead(t, nodeB, "New title", "new")
 }
 
 func TestTasksImportBatchesMoreThanPostgresParameterLimit(t *testing.T) {
@@ -6776,7 +6824,7 @@ func assertTasksCacheRead(
 	t *testing.T,
 	service *Tasks,
 	title string,
-	secret string,
+	settingsVersion string,
 ) {
 	t.Helper()
 
@@ -6807,13 +6855,21 @@ func assertTasksCacheRead(
 		"main",
 		"telegram",
 	)
-	if err != nil || !found || config.Secret == nil ||
-		*config.Secret != secret {
+
+	var settings struct {
+		Version string `json:"version"`
+	}
+
+	settingsErr := json.Unmarshal(config.Settings, &settings)
+	if err != nil || !found || config.Secret != nil ||
+		config.WebhookSecret != nil || settingsErr != nil ||
+		settings.Version != settingsVersion {
 		t.Fatalf(
-			"tasks node returned stale partner config: config=%+v found=%v err=%v",
+			"tasks node returned stale partner config: config=%+v found=%v err=%v settings err=%v",
 			config,
 			found,
 			err,
+			settingsErr,
 		)
 	}
 }
@@ -10380,10 +10436,10 @@ WHERE workspace_id = $1 AND provider = $2 AND group_key = $3 AND platform = $4`,
 		"daily",
 		"telegram",
 	)
-	if err != nil || !found || config.Secret == nil ||
-		*config.Secret != secret {
+	if err != nil || !found || config.Secret != nil ||
+		config.WebhookSecret != nil {
 		t.Fatalf(
-			"decrypted partner config = %#v, found=%v, err=%v",
+			"partner config exposed a secret = %#v, found=%v, err=%v",
 			config,
 			found,
 			err,

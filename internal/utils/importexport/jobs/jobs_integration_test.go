@@ -66,8 +66,62 @@ func openIntegrationStore(t *testing.T) (*sql.DB, *store) {
 		db:        db,
 		table:     table,
 		history:   table + "_history",
+		service:   "service",
 		workerID:  "worker-" + newToken(),
 		leaseTime: time.Minute,
+	}
+}
+
+func TestClaimImportReceiptIsIdempotentAndTransactional(t *testing.T) {
+	db, _ := openIntegrationStore(t)
+	ctx := t.Context()
+	workspaceID := "c2b604c6-6960-41a7-b330-5083ca633434"
+	jobID := time.Now().UnixNano()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, err := ClaimImportReceipt(ctx, tx, jobID, "promo", workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !claimed {
+		t.Fatal("first receipt claim was not recorded")
+	}
+
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, err = ClaimImportReceipt(ctx, db, jobID, "promo", workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !claimed {
+		t.Fatal("rolled back receipt prevented a new claim")
+	}
+
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(
+			context.Background(),
+			"DELETE FROM importexport_job_import_receipt WHERE job_id = $1 AND service = $2 AND workspace_id = $3",
+			jobID,
+			"promo",
+			workspaceID,
+		)
+	})
+
+	claimed, err = ClaimImportReceipt(ctx, db, jobID, "promo", workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if claimed {
+		t.Fatal("duplicate receipt claim was accepted")
 	}
 }
 
@@ -174,5 +228,88 @@ func TestPostgresLeaseFencingAndCleanupClaim(t *testing.T) {
 		claims[0].LeaseToken,
 	); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPostgresLeaseIsScopedToService(t *testing.T) {
+	_, first := openIntegrationStore(t)
+	second := &store{
+		db:        first.db,
+		table:     first.table,
+		history:   first.history,
+		service:   "second",
+		workerID:  "worker-" + newToken(),
+		leaseTime: time.Minute,
+	}
+
+	first.service = "first"
+
+	for _, service := range []string{"first", "second"} {
+		if _, err := first.queue(
+			t.Context(),
+			service,
+			"c2b604c6-6960-41a7-b330-5083ca633434",
+			TypeExport,
+			"dump.zip",
+			"",
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	lease, err := second.lease(t.Context())
+	if err != nil || lease.Service != "second" {
+		t.Fatalf("second service lease = %#v, err = %v", lease, err)
+	}
+
+	lease, err = first.lease(t.Context())
+	if err != nil || lease.Service != "first" {
+		t.Fatalf("first service lease = %#v, err = %v", lease, err)
+	}
+}
+
+func TestDownloadRejectsCompletedImport(t *testing.T) {
+	_, store := openIntegrationStore(t)
+
+	job, err := store.queue(
+		t.Context(),
+		"service",
+		"c2b604c6-6960-41a7-b330-5083ca633434",
+		TypeImport,
+		"dump.zip",
+		"upload",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lease, err := store.lease(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.complete(
+		t.Context(),
+		job.ID,
+		lease.LeaseToken,
+		"upload",
+		time.Hour,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := &Manager{store: store}
+	if _, _, err := manager.Download(
+		t.Context(),
+		DownloadParams{
+			Service:     "service",
+			WorkspaceID: job.WorkspaceID,
+			ID:          job.ID,
+		},
+	); !errors.Is(
+		err,
+		ErrArchiveNotReady,
+	) {
+		t.Fatalf("completed import download error = %v", err)
 	}
 }

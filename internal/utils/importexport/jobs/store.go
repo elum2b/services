@@ -19,6 +19,7 @@ type store struct {
 	db        *sql.DB
 	table     string
 	history   string
+	service   string
 	workerID  string
 	leaseTime time.Duration
 
@@ -27,9 +28,9 @@ type store struct {
 }
 
 type storeQueryTemplates struct {
-	queue, get, historyFor, list, lease, complete, fail string
-	claimExpiredArchives                                string
-	clearArchive, releaseArchiveClaim, addHistoryTx     string
+	queue, get, historyFor, list, lease, renew, complete, fail, retry string
+	claimExpiredArchives                                              string
+	clearArchive, releaseArchiveClaim, addHistoryTx                   string
 }
 
 func (s *store) queries() *storeQueryTemplates {
@@ -60,18 +61,26 @@ SELECT %s FROM inserted`, table, history, jobColumns),
 				table,
 			),
 			lease: fmt.Sprintf(`WITH due AS (
-    SELECT id FROM %s WHERE status IN ('queued', 'processing')
-      AND (locked_until IS NULL OR locked_until <= now()) ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+	    SELECT id FROM %s WHERE service = $1 AND status IN ('queued', 'processing')
+	      AND (locked_until IS NULL OR locked_until <= now()) AND (next_attempt_at IS NULL OR next_attempt_at <= now()) ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
 )
-UPDATE %s AS job SET status = 'processing', locked_by = $1, lease_token = $2,
-    locked_until = now() + ($3 * interval '1 microsecond'), started_at = COALESCE(started_at, now()), updated_at = now()
+UPDATE %s AS job SET status = 'processing', locked_by = $2, lease_token = $3,
+    locked_until = now() + ($4 * interval '1 microsecond'), started_at = COALESCE(started_at, now()), updated_at = now()
 FROM due WHERE job.id = due.id RETURNING %s`, table, table, qualifiedJobColumns),
+			renew: fmt.Sprintf(
+				`UPDATE %s SET locked_until = now() + ($1 * interval '1 microsecond'), updated_at = now() WHERE id = $2 AND status = 'processing' AND locked_by = $3 AND lease_token = $4 AND locked_until > now()`,
+				table,
+			),
 			complete: fmt.Sprintf(
 				`UPDATE %s SET status = 'completed', archive_key = NULLIF($1, ''), archive_expires_at = now() + ($2 * interval '1 microsecond'), error = NULL, locked_by = NULL, lease_token = NULL, locked_until = NULL, finished_at = now(), updated_at = now() WHERE id = $3 AND status = 'processing' AND locked_by = $4 AND lease_token = $5 AND locked_until > now()`,
 				table,
 			),
 			fail: fmt.Sprintf(
 				`UPDATE %s SET status = 'failed', error = $1, archive_expires_at = CASE WHEN archive_key IS NULL THEN NULL ELSE now() + ($2 * interval '1 microsecond') END, locked_by = NULL, lease_token = NULL, locked_until = NULL, finished_at = now(), updated_at = now() WHERE id = $3 AND status = 'processing' AND locked_by = $4 AND lease_token = $5 AND locked_until > now()`,
+				table,
+			),
+			retry: fmt.Sprintf(
+				`UPDATE %s SET status = 'queued', error = $1, attempt = attempt + 1, next_attempt_at = now() + ($2 * interval '1 microsecond'), locked_by = NULL, lease_token = NULL, locked_until = NULL, updated_at = now() WHERE id = $3 AND status = 'processing' AND locked_by = $4 AND lease_token = $5 AND locked_until > now()`,
 				table,
 			),
 			claimExpiredArchives: fmt.Sprintf(`WITH due AS (
@@ -120,9 +129,9 @@ func BootstrapTable(ctx context.Context, db *sql.DB, tableName string) error {
 id BIGSERIAL PRIMARY KEY, service VARCHAR(64) NOT NULL, workspace_id VARCHAR(36) NOT NULL,
 
  type VARCHAR(16) NOT NULL, status VARCHAR(16) NOT NULL DEFAULT 'queued', file_name TEXT NOT NULL DEFAULT '', options JSONB NOT NULL DEFAULT '{}'::jsonb, archive_key TEXT NULL,
-	archive_expires_at TIMESTAMPTZ NULL, error TEXT NULL, locked_by VARCHAR(128) NULL,
+ archive_expires_at TIMESTAMPTZ NULL, error TEXT NULL, locked_by VARCHAR(128) NULL,
 	lease_token TEXT NULL, locked_until TIMESTAMPTZ NULL, archive_claim_token TEXT NULL, archive_claimed_until TIMESTAMPTZ NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-started_at TIMESTAMPTZ NULL, finished_at TIMESTAMPTZ NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+started_at TIMESTAMPTZ NULL, finished_at TIMESTAMPTZ NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), attempt INTEGER NOT NULL DEFAULT 0, next_attempt_at TIMESTAMPTZ NULL,
 CONSTRAINT %s_type_chk CHECK (type IN ('export', 'import')),
 CONSTRAINT %s_status_chk CHECK (status IN ('queued', 'processing', 'completed', 'failed'))
 )`, table, tableName, tableName),
@@ -151,6 +160,10 @@ CONSTRAINT %s_status_chk CHECK (status IN ('queued', 'processing', 'completed', 
 			historyTable,
 			history,
 		),
+		`CREATE TABLE IF NOT EXISTS importexport_job_import_receipt (
+job_id BIGINT NOT NULL, service VARCHAR(64) NOT NULL, workspace_id VARCHAR(36) NOT NULL,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (job_id, service, workspace_id)
+)`,
 	}
 
 	for _, statement := range statements {
@@ -166,6 +179,8 @@ CONSTRAINT %s_status_chk CHECK (status IN ('queued', 'processing', 'completed', 
 		fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS lease_token TEXT NULL`, table),
 		fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS archive_claim_token TEXT NULL`, table),
 		fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS archive_claimed_until TIMESTAMPTZ NULL`, table),
+		fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS attempt INTEGER NOT NULL DEFAULT 0`, table),
+		fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ NULL`, table),
 	} {
 		if _, err := db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("importexport jobs schema migration: %w", err)
@@ -181,6 +196,30 @@ CONSTRAINT %s_status_chk CHECK (status IN ('queued', 'processing', 'completed', 
 		),
 	); err != nil {
 		return fmt.Errorf("importexport jobs schema: %w", err)
+	}
+
+	return nil
+}
+
+func (s *store) renew(
+	ctx context.Context,
+	jobID int64,
+	leaseToken string,
+) error {
+	result, err := s.db.ExecContext(
+		ctx,
+		s.queries().renew,
+		s.leaseTime.Microseconds(),
+		jobID,
+		s.workerID,
+		leaseToken,
+	)
+	if err != nil {
+		return err
+	}
+
+	if rows, err := result.RowsAffected(); err != nil || rows != 1 {
+		return ErrNotLeased
 	}
 
 	return nil
@@ -327,7 +366,7 @@ func (s *store) lease(ctx context.Context) (Job, error) {
 
 	leaseToken := newToken()
 
-	err = tx.QueryRowContext(ctx, s.queries().lease, s.workerID, leaseToken, s.leaseTime.Microseconds()).
+	err = tx.QueryRowContext(ctx, s.queries().lease, s.service, s.workerID, leaseToken, s.leaseTime.Microseconds()).
 		Scan(jobDestinations(&job)...)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -438,6 +477,48 @@ func (s *store) fail(
 	return tx.Commit()
 }
 
+func (s *store) retry(
+	ctx context.Context,
+	jobID int64,
+	leaseToken, message string,
+	delay time.Duration,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(
+		ctx,
+		s.queries().retry,
+		message,
+		delay.Microseconds(),
+		jobID,
+		s.workerID,
+		leaseToken,
+	)
+	if err != nil {
+		return err
+	}
+
+	if rows, err := result.RowsAffected(); err != nil || rows != 1 {
+		return ErrNotLeased
+	}
+
+	if err := s.addHistoryTx(
+		ctx,
+		tx,
+		jobID,
+		StatusQueued,
+		"retry: "+message,
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (s *store) claimExpiredArchives(
 	ctx context.Context,
 	limit int32,
@@ -528,6 +609,15 @@ func (s *store) releaseArchiveClaim(
 	return err
 }
 
+func (s *store) hasArchive(ctx context.Context, key string) (bool, error) {
+	var exists bool
+
+	err := s.db.QueryRowContext(ctx, fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE archive_key = $1)`, quoteIdentifier(s.table)), key).
+		Scan(&exists)
+
+	return exists, err
+}
+
 func (s *store) addHistoryTx(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -545,9 +635,9 @@ func (s *store) addHistoryTx(
 	return err
 }
 
-const jobColumns = "id, service, workspace_id, type, status, file_name, options, COALESCE(archive_key, ''), archive_expires_at, COALESCE(error, ''), COALESCE(locked_by, ''), COALESCE(lease_token, ''), locked_until, created_at, started_at, finished_at, updated_at"
+const jobColumns = "id, service, workspace_id, type, status, file_name, options, COALESCE(archive_key, ''), archive_expires_at, COALESCE(error, ''), COALESCE(locked_by, ''), COALESCE(lease_token, ''), locked_until, created_at, started_at, finished_at, updated_at, attempt, next_attempt_at"
 
-const qualifiedJobColumns = "job.id, job.service, job.workspace_id, job.type, job.status, job.file_name, job.options, COALESCE(job.archive_key, ''), job.archive_expires_at, COALESCE(job.error, ''), COALESCE(job.locked_by, ''), COALESCE(job.lease_token, ''), job.locked_until, job.created_at, job.started_at, job.finished_at, job.updated_at"
+const qualifiedJobColumns = "job.id, job.service, job.workspace_id, job.type, job.status, job.file_name, job.options, COALESCE(job.archive_key, ''), job.archive_expires_at, COALESCE(job.error, ''), COALESCE(job.locked_by, ''), COALESCE(job.lease_token, ''), job.locked_until, job.created_at, job.started_at, job.finished_at, job.updated_at, job.attempt, job.next_attempt_at"
 
 func jobDestinations(job *Job) []any {
 	return []any{
@@ -568,6 +658,8 @@ func jobDestinations(job *Job) []any {
 		&job.StartedAt,
 		&job.FinishedAt,
 		&job.UpdatedAt,
+		&job.Attempt,
+		&job.NextAttemptAt,
 	}
 }
 func normalizeTableName(value string) string {

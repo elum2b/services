@@ -27,8 +27,8 @@
 | `Admin.UpsertReward(ctx, params)` | `UpsertRewardParams{WorkspaceID, CPAID, Key, Type, Quantity, Scale, Unit}`. | Создает или обновляет награду оффера. `Scale` задает точность дробной валюты, например `25/scale=2` = `0.25`. |
 | `Admin.ListRewards(ctx, workspaceID, cpaID)` | `workspaceID`, `cpaID`. | Возвращает награды оффера. |
 | `Admin.DeleteReward(ctx, workspaceID, cpaID, rewardKey)` | `workspaceID`, `cpaID`, `rewardKey`. | Удаляет награду оффера. |
-| `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, ExportRequest}`. | Ставит ZIP-экспорт в асинхронную очередь. |
-| `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, ImportRequest, Archive}`. | Ставит ZIP-импорт в асинхронную очередь; асинхронный импорт не предоставляет `PreviewImport`. |
+| `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, ExportRequest}`. | Ставит ZIP-экспорт `cpa.export.v1`: catalog, personal-code pool/status, assignments с raw unified identity, reward snapshots и assignment events. Source serial IDs и callback outbox не переносятся; daily stats пересчитываются при import. |
+| `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, ImportRequest, Archive}`. | Ставит ZIP-импорт единственного формата `cpa.export.v1` в одной transaction. Existing codes и assignments импортируемых identities заменяются, но import отклоняется и откатывается, если replacement code связан с assignment другой target identity. Асинхронный импорт не предоставляет `PreviewImport`. |
 | `Admin.ArchiveJob(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Возвращает текущий статус задачи. |
 | `Admin.ArchiveHistory(ctx, workspaceID, page)` | `workspaceID`, `Page`. | Возвращает историю задач workspace. |
 | `Admin.DownloadArchive(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Скачивает результат завершенного export job. |

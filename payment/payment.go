@@ -102,7 +102,7 @@ func NewWithDatabase(
 	}
 
 	service := newAPI(ctx, client, false, options)
-	if err := configureArchiveJobs(ctx, service); err != nil {
+	if err := configureArchiveJobs(ctx, service, options); err != nil {
 		_ = service.Close()
 		return nil, err
 	}
@@ -202,6 +202,7 @@ func open(ctx context.Context, params DatabaseParams) (*Payment, error) {
 			CacheL1Delay:             params.Options.CacheL1Delay,
 			CacheL2Delay:             params.Options.CacheL2Delay,
 			OnCacheInvalidationError: params.Options.OnCacheInvalidationError,
+			ReferenceItemChecker:     params.Options.ReferenceItemChecker,
 		},
 	)
 	if err := bootstrap.Bootstrap(ctx); err != nil {
@@ -226,7 +227,7 @@ func open(ctx context.Context, params DatabaseParams) (*Payment, error) {
 	}
 
 	service := newAPI(ctx, client, true, params.Options)
-	if err := configureArchiveJobs(ctx, service); err != nil {
+	if err := configureArchiveJobs(ctx, service, params.Options); err != nil {
 		_ = service.Close()
 		return nil, err
 	}
@@ -234,21 +235,37 @@ func open(ctx context.Context, params DatabaseParams) (*Payment, error) {
 	return service, nil
 }
 
-func configureArchiveJobs(ctx context.Context, service *Payment) error {
+func configureArchiveJobs(
+	ctx context.Context,
+	service *Payment,
+	options Options,
+) error {
 	if err := jobs.Bootstrap(ctx, service.client.DB()); err != nil {
 		return fmt.Errorf("bootstrap payment archive jobs: %w", err)
 	}
 
-	binaryPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("resolve payment archive directory: %w", err)
-	}
+	archive := options.Archive
+	if archive == nil {
+		directory := options.ArchiveDirectory
+		if directory == "" {
+			binaryPath, err := os.Executable()
+			if err != nil {
+				return fmt.Errorf("resolve payment archive directory: %w", err)
+			}
 
-	archive, err := jobs.NewDiskArchive(
-		filepath.Join(filepath.Dir(binaryPath), "payment", "importexport"),
-	)
-	if err != nil {
-		return err
+			directory = filepath.Join(
+				filepath.Dir(binaryPath),
+				"payment",
+				"importexport",
+			)
+		}
+
+		var err error
+
+		archive, err = jobs.NewDiskArchive(directory)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := service.Admin.ConfigureArchiveJobs(
@@ -347,6 +364,7 @@ func newAPI(
 		CacheL1Delay:             options.CacheL1Delay,
 		CacheL2Delay:             options.CacheL2Delay,
 		OnCacheInvalidationError: options.OnCacheInvalidationError,
+		ReferenceItemChecker:     options.ReferenceItemChecker,
 	}
 	telegramStarsAPI := telegramstars.NewWithOptions(
 		rootCtx,

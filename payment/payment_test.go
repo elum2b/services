@@ -5273,13 +5273,13 @@ WHERE payment_order.id = $1`,
 	}
 
 	if len(replaced.Groups) != 1 ||
-		len(replaced.Groups[0].Localization) != 0 ||
+		len(replaced.Groups[0].Localization) != 1 ||
 		len(replaced.Groups[0].Products) != 1 ||
-		len(replaced.Groups[0].Products[0].Localization) != 0 ||
+		len(replaced.Groups[0].Products[0].Localization) != 1 ||
 		len(replaced.Groups[0].Products[0].Items) != 0 ||
 		len(replaced.Groups[0].Products[0].Prices) != 1 {
 		t.Fatalf(
-			"update_existing kept removed payment children: %+v",
+			"update_existing did not preserve shared localizations: %+v",
 			replaced.Groups,
 		)
 	}
@@ -6467,13 +6467,164 @@ ON CONFLICT (asset_code, reference_asset_code) DO UPDATE SET
 		t.Fatalf("seed pending TON rate: %v", err)
 	}
 
-	_, err := repository.NewPaymentRepository(env.client).
-		Import(env.ctx, testWorkspaceID, req)
-	if !errors.Is(err, repository.ErrAssetRateNotFound) {
+	repo := repository.NewPaymentRepository(env.client)
+	preflight, err := repo.PreflightImport(
+		env.ctx,
+		testWorkspaceID,
+		req.Package,
+	)
+
+	if err != nil || len(preflight.MissingRates) == 0 {
+		t.Fatalf("preflight = %+v, err = %v", preflight, err)
+	}
+
+	_, err = repo.Import(env.ctx, testWorkspaceID, req)
+
+	var dependencyErr *repository.ImportDependenciesMissingError
+
+	if !errors.As(err, &dependencyErr) ||
+		len(dependencyErr.Report.MissingRates) == 0 {
 		t.Fatalf(
-			"import error = %v, want %v",
+			"import error = %v, want missing dynamic rate dependency",
 			err,
-			repository.ErrAssetRateNotFound,
+		)
+	}
+
+	var products int
+
+	if err := env.db.QueryRowContext(
+		env.ctx,
+		"SELECT count(*) FROM payment_product WHERE workspace_id = $1",
+		testWorkspaceID,
+	).Scan(&products); err != nil || products != 0 {
+		t.Fatalf("products after rejected import = %d, err = %v", products, err)
+	}
+}
+
+func TestPaymentImportSkipExistingIgnoresSkippedProductDependencies(
+	t *testing.T,
+) {
+	env := setupPaymentIntegrationTest(t)
+	req := loadPaymentImportExample(t, "stars_topup_import.json")
+	repo := repository.NewPaymentRepositoryWithOptions(
+		env.client,
+		repository.Options{
+			ReferenceItemChecker: paymentImportReferenceChecker{},
+		},
+	)
+
+	req.Package.Groups[0].Products[0].Prices[0].AssetCode = "MISSING_ASSET"
+
+	if err := env.api.Admin.UpsertProduct(env.ctx, admin.ProductUpsertParams{
+		WorkspaceID:    testWorkspaceID,
+		ID:             "topup.stars.flexible",
+		TitleKey:       "test.skip_existing.title",
+		QuantityMode:   "fixed",
+		GlobalInterval: "UNLIMITED",
+		UserInterval:   "UNLIMITED",
+		IsVisible:      true,
+	}); err != nil {
+		t.Fatalf("seed conflicting product: %v", err)
+	}
+
+	preview, err := repo.PreviewImport(env.ctx, testWorkspaceID, req.Package)
+	if err != nil || !repositoryPreviewHasConflict(
+		preview,
+		"product",
+		"topup.stars.flexible",
+	) {
+		t.Fatalf("seeded product conflict = %+v, err = %v", preview, err)
+	}
+
+	if _, err := env.db.ExecContext(env.ctx, `
+DELETE FROM payment_asset_rate
+WHERE asset_code = 'TON' AND reference_asset_code = 'USDT_TON'`); err != nil {
+		t.Fatalf("remove dynamic price rate: %v", err)
+	}
+
+	req.ConflictStrategy = repository.ImportConflictSkip
+
+	_, err = repo.Import(env.ctx, testWorkspaceID, req)
+	if err != nil {
+		t.Fatalf("skip existing import: %v", err)
+	}
+
+	product, err := env.api.Admin.GetProduct(
+		env.ctx,
+		testWorkspaceID,
+		"topup.stars.flexible",
+	)
+	if err != nil || product.TitleKey != "test.skip_existing.title" {
+		t.Fatalf("skipped product = %+v, err = %v", product, err)
+	}
+}
+
+func repositoryPreviewHasConflict(
+	preview repository.ImportPreview,
+	kind, key string,
+) bool {
+	for _, conflict := range preview.Conflicts {
+		if conflict.Type == kind && conflict.Key == key {
+			return true
+		}
+	}
+
+	return false
+}
+
+type paymentImportReferenceChecker struct{}
+
+func (paymentImportReferenceChecker) MissingReferenceItemKeys(
+	context.Context,
+	string,
+	[]string,
+) ([]string, error) {
+	return []string{"stars"}, nil
+}
+
+func TestPaymentImportPreflightReportsReferenceDependencies(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	req := loadPaymentImportExample(t, "stars_topup_import.json")
+
+	repo := repository.NewPaymentRepositoryWithOptions(
+		env.client,
+		repository.Options{
+			ReferenceItemChecker: paymentImportReferenceChecker{},
+		},
+	)
+
+	preflight, err := repo.PreflightImport(
+		env.ctx,
+		testWorkspaceID,
+		req.Package,
+	)
+	if err != nil {
+		t.Fatalf("preflight import: %v", err)
+	}
+
+	if len(preflight.RequiredReferenceIDs) != 1 ||
+		preflight.RequiredReferenceIDs[0] != "stars" ||
+		len(preflight.MissingReferenceIDs) != 1 ||
+		preflight.MissingReferenceIDs[0] != "stars" {
+		t.Fatalf("reference dependency report = %+v", preflight)
+	}
+}
+
+func TestPaymentImportRejectsWhitespaceIdentifier(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	req := loadPaymentImportExample(t, "stars_topup_import.json")
+
+	req.Package.Groups[0].Code = " stars "
+
+	_, err := repository.NewPaymentRepository(env.client).PreflightImport(
+		env.ctx,
+		testWorkspaceID,
+		req.Package,
+	)
+	if err == nil || !strings.Contains(err.Error(), "surrounding whitespace") {
+		t.Fatalf(
+			"preflight error = %v, want whitespace identifier rejection",
+			err,
 		)
 	}
 }
@@ -10038,13 +10189,18 @@ SELECT
 	callbackCtx, cancel := context.WithCancel(env.ctx)
 	defer cancel()
 
+	var seenRenewalMu sync.Mutex
+
 	seenRenewal := false
 
 	err = env.api.OnCallback(
 		callbackCtx,
 		func(callback Context) error {
 			if callback.EventType == CallbackEventPaymentSubscriptionRenewed {
+				seenRenewalMu.Lock()
+
 				seenRenewal = true
+				seenRenewalMu.Unlock()
 
 				if callback.PaymentSubscriptionRenewed == nil ||
 					callback.Payload == nil {
@@ -10067,7 +10223,12 @@ SELECT
 				return err
 			}
 
-			if seenRenewal {
+			seenRenewalMu.Lock()
+
+			hasSeenRenewal := seenRenewal
+			seenRenewalMu.Unlock()
+
+			if hasSeenRenewal {
 				cancel()
 			}
 
@@ -10081,7 +10242,12 @@ SELECT
 		t.Fatalf("consume subscription renewal callback: %v", err)
 	}
 
-	if !seenRenewal {
+	seenRenewalMu.Lock()
+
+	hasSeenRenewal := seenRenewal
+	seenRenewalMu.Unlock()
+
+	if !hasSeenRenewal {
 		t.Fatal("subscription renewal callback was not delivered")
 	}
 }

@@ -3,6 +3,7 @@ package calendar
 import (
 	"time"
 
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 )
 
@@ -36,6 +37,12 @@ type Options struct {
 	Codec                    Codec
 	Mutex                    Mutex
 	OnCacheInvalidationError func(error)
+	// Archive stores async import/export ZIPs. Set this to shared durable
+	// storage when workers run on more than one node.
+	Archive jobs.Archive
+	// ArchiveDirectory overrides the local disk archive directory when Archive
+	// is nil. The executable-relative development directory remains the default.
+	ArchiveDirectory string
 }
 
 type DatabaseParams struct {

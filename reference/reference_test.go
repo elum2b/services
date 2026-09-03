@@ -2298,6 +2298,54 @@ func TestReferenceArchiveJobsExportDownloadAndImport(t *testing.T) {
 		t.Fatalf("deleted item was exported: %v", err)
 	}
 
+	var receipts int
+
+	if err := service.client.DB().QueryRowContext(
+		ctx,
+		`SELECT COUNT(*) FROM importexport_job_import_receipt
+WHERE job_id = $1 AND service = 'reference' AND workspace_id = $2`,
+		imported.ID,
+		destinationWorkspace,
+	).Scan(&receipts); err != nil || receipts != 1 {
+		t.Fatalf("archive import receipt = %d, err = %v", receipts, err)
+	}
+
+	// A retried job must not apply a different package after its receipt commits.
+	repo := repository.New(service.client)
+
+	repeated, err := repo.ImportJob(
+		ctx,
+		destinationWorkspace,
+		imported.ID,
+		repository.ImportRequest{
+			Package: repository.ExportPackage{
+				Format:  repository.ExportFormat,
+				Service: "reference",
+				Items: []repository.ExportItem{{
+					Key:      "must-not-import",
+					Type:     repository.ItemTypeQuantity,
+					Payload:  json.RawMessage(`{}`),
+					IsActive: true,
+				}},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("repeat archive import: %v", err)
+	}
+
+	if repeated != (repository.ImportResult{}) {
+		t.Fatalf("repeat archive import result = %+v, want no-op", repeated)
+	}
+
+	if _, err := service.User.Get(ctx, user.GetParams{
+		WorkspaceID: destinationWorkspace,
+		Key:         "must-not-import",
+		Locale:      "en",
+	}); !errors.Is(err, repository.ErrItemNotFound) {
+		t.Fatalf("repeat archive import mutated workspace: %v", err)
+	}
+
 	history, err := service.Admin.ArchiveJobHistory(
 		ctx,
 		sourceWorkspace,

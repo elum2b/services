@@ -11,6 +11,7 @@ import (
 	json "github.com/goccy/go-json"
 
 	importexport "github.com/elum2b/services/internal/utils/importexport"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 )
 
 var referenceImportItemKeyPattern = regexp.MustCompile(
@@ -58,6 +59,26 @@ func (r *Repository) Import(
 	workspaceID string,
 	req ImportRequest,
 ) (ImportResult, error) {
+	return r.importWithJob(ctx, workspaceID, req, 0)
+}
+
+// ImportJob applies an archive-job import at most once after its transaction
+// commits.
+func (r *Repository) ImportJob(
+	ctx context.Context,
+	workspaceID string,
+	jobID int64,
+	req ImportRequest,
+) (ImportResult, error) {
+	return r.importWithJob(ctx, workspaceID, req, jobID)
+}
+
+func (r *Repository) importWithJob(
+	ctx context.Context,
+	workspaceID string,
+	req ImportRequest,
+	jobID int64,
+) (ImportResult, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return ImportResult{}, err
 	}
@@ -80,10 +101,26 @@ func (r *Repository) Import(
 	}
 
 	result := ImportResult{}
+	alreadyApplied := false
 
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
+		}
+
+		if jobID != 0 {
+			applied, err := jobs.ClaimImportReceipt(
+				ctx,
+				txRepo.executor,
+				jobID,
+				"reference",
+				workspaceID,
+			)
+			if err != nil || !applied {
+				alreadyApplied = !applied
+
+				return err
+			}
 		}
 
 		preview, err := txRepo.PreviewImport(ctx, workspaceID, req.Package)
@@ -115,7 +152,12 @@ func (r *Repository) Import(
 
 	methods = append(methods, referenceLocalizationMutationCacheMethods...)
 
-	return result, r.bumpReferenceCacheVersions(workspaceID, methods...)
+	cacheErr := r.bumpReferenceCacheVersions(workspaceID, methods...)
+	if alreadyApplied {
+		return ImportResult{}, cacheErr
+	}
+
+	return result, cacheErr
 }
 
 func (r *Repository) lockWorkspaceMutation(

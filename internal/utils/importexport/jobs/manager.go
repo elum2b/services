@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -15,17 +16,22 @@ import (
 )
 
 type Manager struct {
-	store         *store
-	archive       Archive
-	handler       Handler
-	retention     time.Duration
-	idleDelay     time.Duration
-	cleanupPeriod time.Duration
-	workers       *goroutine.Manager
-	rootCtx       context.Context
-	cancel        context.CancelFunc
-	startMu       sync.Mutex
-	started       bool
+	store          *store
+	archive        Archive
+	handler        Handler
+	retention      time.Duration
+	idleDelay      time.Duration
+	cleanupPeriod  time.Duration
+	maxUploadBytes int64
+	zipLimits      ZIPLimits
+	maxAttempts    int
+	retryBackoff   time.Duration
+	handlerTimeout time.Duration
+	workers        *goroutine.Manager
+	rootCtx        context.Context
+	cancel         context.CancelFunc
+	startMu        sync.Mutex
+	started        bool
 }
 
 func New(
@@ -48,6 +54,10 @@ func New(
 
 	if handler == nil {
 		return nil, errors.New("importexport jobs: handler is required")
+	}
+
+	if strings.TrimSpace(options.Service) == "" {
+		return nil, errors.New("importexport jobs: service is required")
 	}
 
 	if options.TableName == "" {
@@ -74,6 +84,22 @@ func New(
 		options.CleanupPeriod = DefaultCleanupPeriod
 	}
 
+	if options.MaxUploadBytes <= 0 {
+		options.MaxUploadBytes = DefaultMaxUploadBytes
+	}
+
+	if options.MaxAttempts <= 0 {
+		options.MaxAttempts = DefaultMaxAttempts
+	}
+
+	if options.RetryBackoff <= 0 {
+		options.RetryBackoff = DefaultRetryBackoff
+	}
+
+	if options.HandlerTimeout <= 0 {
+		options.HandlerTimeout = DefaultHandlerTimeout
+	}
+
 	rootCtx, cancel := context.WithCancel(context.Background())
 
 	return &Manager{
@@ -81,17 +107,23 @@ func New(
 			db:        db,
 			table:     normalizeTableName(options.TableName),
 			history:   normalizeTableName(options.TableName) + "_history",
+			service:   options.Service,
 			workerID:  options.WorkerID,
 			leaseTime: options.LeaseTimeout,
 		},
-		archive:       archive,
-		handler:       handler,
-		retention:     options.Retention,
-		idleDelay:     options.IdleDelay,
-		cleanupPeriod: options.CleanupPeriod,
-		workers:       goroutine.New(),
-		rootCtx:       rootCtx,
-		cancel:        cancel,
+		archive:        archive,
+		handler:        handler,
+		retention:      options.Retention,
+		idleDelay:      options.IdleDelay,
+		cleanupPeriod:  options.CleanupPeriod,
+		maxUploadBytes: options.MaxUploadBytes,
+		zipLimits:      normalizedZIPLimits(options.ZIPLimits),
+		maxAttempts:    options.MaxAttempts,
+		retryBackoff:   options.RetryBackoff,
+		handlerTimeout: options.HandlerTimeout,
+		workers:        goroutine.New(),
+		rootCtx:        rootCtx,
+		cancel:         cancel,
 	}, nil
 }
 
@@ -140,6 +172,44 @@ func (m *Manager) QueueImport(
 		return Job{}, errors.New("importexport jobs: import dump is required")
 	}
 
+	temporary, err := os.CreateTemp("", "importexport-upload-*.zip")
+	if err != nil {
+		return Job{}, fmt.Errorf("create import upload: %w", err)
+	}
+
+	path := temporary.Name()
+
+	defer os.Remove(path)
+
+	if err := copyUpload(
+		ctx,
+		temporary,
+		params.Dump,
+		m.maxUploadBytes,
+	); err != nil {
+		_ = temporary.Close()
+		return Job{}, err
+	}
+
+	if err := temporary.Close(); err != nil {
+		return Job{}, fmt.Errorf("close import upload: %w", err)
+	}
+
+	if err := validateZIPFile(
+		ctx,
+		path,
+		m.zipLimits,
+		params.ManifestName,
+	); err != nil {
+		return Job{}, err
+	}
+
+	source, err := os.Open(path)
+	if err != nil {
+		return Job{}, fmt.Errorf("open import upload: %w", err)
+	}
+	defer source.Close()
+
 	key, err := m.archive.Store(
 		ctx,
 		ArchiveObject{
@@ -148,7 +218,7 @@ func (m *Manager) QueueImport(
 			Type:        TypeImport,
 			FileName:    params.FileName,
 		},
-		params.Dump,
+		source,
 	)
 	if err != nil {
 		return Job{}, fmt.Errorf("store import dump: %w", err)
@@ -238,7 +308,8 @@ func (m *Manager) Download(
 		return nil, Job{}, err
 	}
 
-	if job.ArchiveKey == "" {
+	if job.Type != TypeExport || job.Status != StatusCompleted ||
+		job.ArchiveKey == "" {
 		return nil, job, ErrArchiveNotReady
 	}
 
@@ -338,24 +409,40 @@ func (m *Manager) Run(ctx context.Context) error {
 }
 
 func (m *Manager) handle(ctx context.Context, job Job) {
-	var err error
-
-	switch job.Type {
-	case TypeExport:
-		err = m.handleExport(ctx, job)
-	case TypeImport:
-		err = m.handleImport(ctx, job)
-	default:
-		err = fmt.Errorf("unsupported job type %q", job.Type)
+	err := m.withLease(ctx, job, func(workCtx context.Context) error {
+		switch job.Type {
+		case TypeExport:
+			return m.handleExport(workCtx, ctx, job)
+		case TypeImport:
+			return m.handleImport(workCtx, ctx, job)
+		default:
+			return fmt.Errorf("unsupported job type %q", job.Type)
+		}
+	})
+	if err == nil {
+		return
 	}
 
-	if err != nil {
-		_ = m.store.fail(ctx, job.ID, job.LeaseToken, err.Error(), m.retention)
+	if isTransient(err) && job.Attempt+1 < m.maxAttempts {
+		_ = m.store.retry(
+			ctx,
+			job.ID,
+			job.LeaseToken,
+			err.Error(),
+			retryDelay(m.retryBackoff, job.Attempt),
+		)
+
+		return
 	}
+
+	_ = m.store.fail(ctx, job.ID, job.LeaseToken, err.Error(), m.retention)
 }
 
-func (m *Manager) handleExport(ctx context.Context, job Job) error {
-	dump, err := m.handler.Export(ctx, job)
+func (m *Manager) handleExport(
+	workCtx, stateCtx context.Context,
+	job Job,
+) error {
+	dump, err := m.handler.Export(workCtx, job)
 	if err != nil {
 		return err
 	}
@@ -369,55 +456,128 @@ func (m *Manager) handleExport(ctx context.Context, job Job) error {
 	defer dump.Close()
 
 	key, err := m.archive.Store(
-		ctx,
+		workCtx,
 		ArchiveObject{
 			Service:     job.Service,
 			WorkspaceID: job.WorkspaceID,
 			Type:        TypeExport,
 			FileName:    job.FileName,
 		},
-		dump,
+		&maxReader{reader: dump, remaining: m.maxUploadBytes},
 	)
 	if err != nil {
 		return fmt.Errorf("store export dump: %w", err)
 	}
 
 	if err := m.store.complete(
-		ctx,
+		stateCtx,
 		job.ID,
 		job.LeaseToken,
 		key,
 		m.retention,
 	); err != nil {
-		_ = m.archive.Delete(ctx, key)
+		_ = m.archive.Delete(stateCtx, key)
 		return err
 	}
 
 	return nil
 }
 
-func (m *Manager) handleImport(ctx context.Context, job Job) error {
+func (m *Manager) handleImport(
+	workCtx, stateCtx context.Context,
+	job Job,
+) error {
 	if job.ArchiveKey == "" {
 		return ErrArchiveNotReady
 	}
 
-	dump, err := m.archive.Open(ctx, job.ArchiveKey)
+	dump, err := m.archive.Open(workCtx, job.ArchiveKey)
 	if err != nil {
 		return fmt.Errorf("open import dump: %w", err)
 	}
 	defer dump.Close()
 
-	if err := m.handler.Import(ctx, job, dump); err != nil {
+	if err := m.handler.Import(workCtx, job, dump); err != nil {
 		return err
 	}
 
 	return m.store.complete(
-		ctx,
+		stateCtx,
 		job.ID,
 		job.LeaseToken,
 		job.ArchiveKey,
 		m.retention,
 	)
+}
+
+func (m *Manager) withLease(
+	ctx context.Context,
+	job Job,
+	run func(context.Context) error,
+) error {
+	workCtx, cancel := context.WithTimeout(ctx, m.handlerTimeout)
+	defer cancel()
+
+	result := make(chan error, 1)
+
+	go func() { result <- run(workCtx) }()
+
+	interval := m.store.leaseTime / 3
+	if interval < time.Millisecond {
+		interval = time.Millisecond
+	}
+
+	ticker := time.NewTicker(interval)
+
+	defer ticker.Stop()
+
+	for {
+		select {
+		case err := <-result:
+			return err
+		case <-workCtx.Done():
+			// A cooperative handler returns promptly. Wait for it so this worker
+			// cannot apply another job while an expired handler is still running.
+			return <-result
+		case <-ticker.C:
+			if err := m.store.renew(ctx, job.ID, job.LeaseToken); err != nil {
+				cancel()
+			}
+		}
+	}
+}
+
+func retryDelay(base time.Duration, attempt int) time.Duration {
+	if attempt > 10 {
+		attempt = 10
+	}
+
+	return base * time.Duration(1<<attempt)
+}
+
+type maxReader struct {
+	reader    io.Reader
+	remaining int64
+}
+
+func (r *maxReader) Read(data []byte) (int, error) {
+	if r.remaining < 0 {
+		return 0, ErrArchiveTooLarge
+	}
+
+	if int64(len(data)) > r.remaining+1 {
+		data = data[:r.remaining+1]
+	}
+
+	n, err := r.reader.Read(data)
+
+	r.remaining -= int64(n)
+
+	if r.remaining < 0 {
+		return n, ErrArchiveTooLarge
+	}
+
+	return n, err
 }
 
 // Cleanup deletes expired dumps only. Completed and failed job records remain.
@@ -460,6 +620,54 @@ func (m *Manager) Cleanup(ctx context.Context, limit int32) (int, error) {
 	return deleted, nil
 }
 
+// SweepOrphans deletes old listed archive objects which are no longer
+// referenced by a job. It is available only for archives implementing
+// ArchiveLister; callers choose a grace period large enough for in-flight
+// QueueImport and export completion.
+func (m *Manager) SweepOrphans(
+	ctx context.Context,
+	olderThan time.Time,
+	limit int32,
+) (int, error) {
+	lister, ok := m.archive.(ArchiveLister)
+	if !ok {
+		return 0, nil
+	}
+
+	if limit <= 0 {
+		limit = DefaultCleanupLimit
+	}
+
+	archives, err := lister.List(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	deleted := 0
+	for _, archive := range archives {
+		if deleted >= int(limit) || archive.CreatedAt.After(olderThan) {
+			continue
+		}
+
+		exists, err := m.store.hasArchive(ctx, archive.Key)
+		if err != nil {
+			return deleted, err
+		}
+
+		if exists {
+			continue
+		}
+
+		if err := m.archive.Delete(ctx, archive.Key); err != nil {
+			return deleted, err
+		}
+
+		deleted++
+	}
+
+	return deleted, nil
+}
+
 func (m *Manager) cleanupLoop(ctx context.Context) {
 	ticker := time.NewTicker(m.cleanupPeriod)
 	defer ticker.Stop()
@@ -472,6 +680,12 @@ func (m *Manager) cleanupLoop(ctx context.Context) {
 		}
 
 		_, _ = m.Cleanup(ctx, DefaultCleanupLimit)
+		_, _ = m.SweepOrphans(
+			ctx,
+			time.Now().Add(-m.retention),
+			DefaultCleanupLimit,
+		)
+
 		select {
 		case <-ctx.Done():
 			return

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"time"
 
 	json "github.com/goccy/go-json"
@@ -105,6 +106,30 @@ type ExportTONWallet struct {
 type ImportRequest struct {
 	Package          ExportPackage `json:"package"`
 	ConflictStrategy string        `json:"conflict_strategy,omitempty"`
+}
+
+// ReferenceItemDependencyChecker verifies item keys against Reference when the
+// embedding application has that integration available.
+type ReferenceItemDependencyChecker interface {
+	MissingReferenceItemKeys(
+		ctx context.Context,
+		workspaceID string,
+		keys []string,
+	) ([]string, error)
+}
+
+type ImportDependencyReport struct {
+	RequiredAssets       []string        `json:"required_assets,omitempty"`
+	RequiredRates        []ImportRateKey `json:"required_rates,omitempty"`
+	RequiredReferenceIDs []string        `json:"required_reference_item_keys,omitempty"`
+	MissingAssets        []string        `json:"missing_assets,omitempty"`
+	MissingRates         []ImportRateKey `json:"missing_rates,omitempty"`
+	MissingReferenceIDs  []string        `json:"missing_reference_item_keys,omitempty"`
+}
+
+type ImportRateKey struct {
+	AssetCode          string `json:"asset_code"`
+	ReferenceAssetCode string `json:"reference_asset_code"`
 }
 
 type ImportPreview struct {

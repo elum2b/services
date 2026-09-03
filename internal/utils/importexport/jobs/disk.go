@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // DiskArchive stores job dumps below one private directory. Keys are generated
@@ -107,6 +109,49 @@ func (a *DiskArchive) Delete(ctx context.Context, key string) error {
 	}
 
 	return nil
+}
+
+func (a *DiskArchive) List(ctx context.Context) ([]ArchiveInfo, error) {
+	if a == nil {
+		return nil, fmt.Errorf("importexport jobs: archive is required")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	entries, err := os.ReadDir(a.directory)
+	if err != nil {
+		return nil, fmt.Errorf("list importexport archives: %w", err)
+	}
+
+	archives := make([]ArchiveInfo, 0, len(entries))
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".zip") {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("stat importexport archive: %w", err)
+		}
+
+		archives = append(
+			archives,
+			ArchiveInfo{Key: entry.Name(), CreatedAt: info.ModTime()},
+		)
+	}
+
+	sort.Slice(
+		archives,
+		func(i, j int) bool { return archives[i].CreatedAt.Before(archives[j].CreatedAt) },
+	)
+
+	return archives, nil
 }
 
 func (a *DiskArchive) path(key string) (string, error) {

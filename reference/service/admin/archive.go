@@ -186,11 +186,10 @@ func writeArchiveFile(writer *zip.Writer, name string, data []byte) error {
 	return err
 }
 
-// importZIP restores an archive produced by exportZIP. IncludeMedia=false
-// deliberately ignores every resource record, media object, and link.
-func (a *Admin) importZIP(
+func (a *Admin) importZIPJob(
 	ctx context.Context,
 	workspaceID string,
+	jobID int64,
 	archive *zip.Reader,
 	req ArchiveImportRequest,
 ) (ImportResult, error) {
@@ -233,13 +232,23 @@ func (a *Admin) importZIP(
 	}
 
 	if !req.IncludeMedia {
+		importRequest := repository.ImportRequest{
+			Package:          manifest.Package,
+			ConflictStrategy: req.ConflictStrategy,
+		}
+		if jobID != 0 {
+			return a.repository.ImportJob(
+				mergedCtx,
+				workspaceID,
+				jobID,
+				importRequest,
+			)
+		}
+
 		return a.repository.Import(
 			mergedCtx,
 			workspaceID,
-			repository.ImportRequest{
-				Package:          manifest.Package,
-				ConflictStrategy: req.ConflictStrategy,
-			},
+			importRequest,
 		)
 	}
 
@@ -294,37 +303,56 @@ func (a *Admin) importZIP(
 		filesByKey[value.Key] = mediaFiles[index]
 	}
 
-	result, err := a.repository.ImportArchiveWithMedia(
-		mergedCtx,
-		workspaceID,
-		repository.ImportRequest{
-			Package:          manifest.Package,
-			ConflictStrategy: req.ConflictStrategy,
-		},
-		resources,
-		manifest.Links,
-		a.importTimeout(),
-		func(ctx context.Context, values []*repository.Resource) error {
-			for _, value := range values {
-				objects, err := a.store.Replace(
-					ctx,
-					workspaceID,
-					value.Key,
-					value.MediaVersion,
-					filesByKey[value.Key],
-				)
-				if err != nil {
-					return fmt.Errorf("restore resource %s: %w", value.Key, err)
-				}
-
-				value.OriginalRef, value.PlaceholderRef = objects.Original, objects.Placeholder
-				value.Preview61Ref, value.Preview128Ref = objects.Previews[61], objects.Previews[128]
-				value.Preview256Ref, value.Preview512Ref = objects.Previews[256], objects.Previews[512]
+	importRequest := repository.ImportRequest{
+		Package:          manifest.Package,
+		ConflictStrategy: req.ConflictStrategy,
+	}
+	upload := func(ctx context.Context, values []*repository.Resource) error {
+		for _, value := range values {
+			objects, err := a.store.Replace(
+				ctx,
+				workspaceID,
+				value.Key,
+				value.MediaVersion,
+				filesByKey[value.Key],
+			)
+			if err != nil {
+				return fmt.Errorf("restore resource %s: %w", value.Key, err)
 			}
 
-			return nil
-		},
-	)
+			value.OriginalRef, value.PlaceholderRef = objects.Original, objects.Placeholder
+			value.Preview61Ref, value.Preview128Ref = objects.Previews[61], objects.Previews[128]
+			value.Preview256Ref, value.Preview512Ref = objects.Previews[256], objects.Previews[512]
+		}
+
+		return nil
+	}
+
+	var result ImportResult
+
+	if jobID != 0 {
+		result, err = a.repository.ImportArchiveWithMediaJob(
+			mergedCtx,
+			workspaceID,
+			jobID,
+			importRequest,
+			resources,
+			manifest.Links,
+			a.importTimeout(),
+			upload,
+		)
+	} else {
+		result, err = a.repository.ImportArchiveWithMedia(
+			mergedCtx,
+			workspaceID,
+			importRequest,
+			resources,
+			manifest.Links,
+			a.importTimeout(),
+			upload,
+		)
+	}
+
 	if err != nil {
 		a.cleanupArchiveVersions(workspaceID, resources)
 

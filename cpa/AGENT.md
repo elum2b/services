@@ -38,6 +38,11 @@
   Reference.
 - Export читает полный каталог без pagination limit и в одном consistent
   snapshot.
+- Archive использует единственный формат `cpa.export.v1`: catalog, personal-code
+  pool/state, assignments keyed by raw unified identity, reward snapshots and
+  assignment events are transferred without source serial IDs or callback outbox.
+  Existing target codes and activation identities are replaced and daily stats
+  are rebuilt. Catalog-only legacy formats не поддерживаются.
 - Import preflight сообщает `offers[index].field`, пишет bulk batches и при
   `update_existing` полностью заменяет localization/reward/code snapshot.
 

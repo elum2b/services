@@ -35,7 +35,7 @@ func (a *Admin) ConfigureArchiveJobs(
 		db,
 		archive,
 		archiveJobHandler{admin: a},
-		jobs.Options{LeaseTimeout: leaseTimeout},
+		jobs.Options{Service: "reference", LeaseTimeout: leaseTimeout},
 	)
 	if err != nil {
 		return err
@@ -108,7 +108,13 @@ func (h archiveJobHandler) Import(
 	importCtx, cancel := context.WithTimeout(ctx, h.admin.importTimeout())
 	defer cancel()
 
-	_, err = h.admin.importZIP(importCtx, job.WorkspaceID, archive, request)
+	_, err = h.admin.importZIPJob(
+		importCtx,
+		job.WorkspaceID,
+		job.ID,
+		archive,
+		request,
+	)
 
 	return err
 }

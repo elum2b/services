@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	importexport "github.com/elum2b/services/internal/utils/importexport"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	"github.com/elum2b/services/internal/utils/target"
 	tasksqlc "github.com/elum2b/services/tasks/sqlc"
 )
@@ -143,6 +144,19 @@ func (r *Repository) Import(
 	workspaceID string,
 	req ImportRequest,
 ) (ImportResult, error) {
+	return r.importWithJob(ctx, workspaceID, req, 0)
+}
+
+// ImportJob applies an archive-job import at most once after its transaction commits.
+func (r *Repository) ImportJob(
+	ctx context.Context, workspaceID string, jobID int64, req ImportRequest,
+) (ImportResult, error) {
+	return r.importWithJob(ctx, workspaceID, req, jobID)
+}
+
+func (r *Repository) importWithJob(
+	ctx context.Context, workspaceID string, req ImportRequest, jobID int64,
+) (ImportResult, error) {
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return ImportResult{}, err
 	}
@@ -169,10 +183,25 @@ func (r *Repository) Import(
 	}
 
 	result := ImportResult{}
+	alreadyApplied := false
 
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
+		}
+
+		if jobID != 0 {
+			applied, err := jobs.ClaimImportReceipt(
+				ctx,
+				txRepo.executor,
+				jobID,
+				"tasks",
+				workspaceID,
+			)
+			if err != nil || !applied {
+				alreadyApplied = !applied
+				return err
+			}
 		}
 
 		preview, err := txRepo.PreviewImport(ctx, workspaceID, req.Package)
@@ -198,6 +227,10 @@ func (r *Repository) Import(
 	})
 	if err != nil {
 		return ImportResult{}, err
+	}
+
+	if alreadyApplied {
+		return ImportResult{}, nil
 	}
 
 	return result, r.invalidateTaskCache(ctx, workspaceID)
@@ -522,13 +555,15 @@ func (r *Repository) importTasksBulk(
 
 	for _, group := range groups {
 		for _, task := range group.Tasks {
+			// Conditions on new complex tasks may reference existing skipped tasks.
+			needed[task.Key] = struct{}{}
+
 			exists := previewHasConflict(preview, "task", task.Key)
 			if exists && strategy == ImportConflictSkip {
 				result.Skipped.Tasks++
 				continue
 			}
 
-			needed[task.Key] = struct{}{}
 			rows = append(rows, []any{
 				workspaceID,
 				task.Key,
@@ -829,6 +864,14 @@ func (r *Repository) importPartnerConfigsBulk(
 			}
 
 			webhookSecret := importSecretValue(config.WebhookSecret, secrets)
+			if webhookSecret.Valid {
+				encrypted, err := r.encryptPartnerSecret(webhookSecret.String)
+				if err != nil {
+					return err
+				}
+
+				webhookSecret.String = encrypted
+			}
 
 			rows = append(rows, []any{
 				workspaceID,

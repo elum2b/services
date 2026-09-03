@@ -3,6 +3,7 @@ package tasks
 import (
 	"time"
 
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	taskruntime "github.com/elum2b/services/tasks/runtime"
 	"github.com/elum2b/services/tasks/service/integration"
@@ -46,6 +47,12 @@ type Options struct {
 	Runtime                   taskruntime.Options
 	PartnerProviders          map[string]user.PartnerProvider
 	PartnerStartLeaseDuration time.Duration
+	// Archive stores async import/export ZIPs. Set this to shared durable
+	// storage when workers run on more than one node.
+	Archive jobs.Archive
+	// ArchiveDirectory overrides the local disk archive directory when Archive
+	// is nil. The executable-relative development directory remains the default.
+	ArchiveDirectory string
 }
 
 type DatabaseParams struct {

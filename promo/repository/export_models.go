@@ -25,15 +25,18 @@ type ExportPackage struct {
 }
 
 type ExportPromo struct {
-	Code           string                `json:"code"`
-	Payload        json.RawMessage       `json:"payload"`
-	Target         json.RawMessage       `json:"target,omitempty"`
-	MaxActivations uint64                `json:"max_activations"`
-	IsActive       bool                  `json:"is_active"`
-	StartAt        *time.Time            `json:"start_at,omitempty"`
-	EndAt          *time.Time            `json:"end_at,omitempty"`
-	Localization   map[string]ExportText `json:"localization,omitempty"`
-	Rewards        []ExportReward        `json:"rewards,omitempty"`
+	Code           string          `json:"code"`
+	Payload        json.RawMessage `json:"payload"`
+	Target         json.RawMessage `json:"target,omitempty"`
+	MaxActivations uint64          `json:"max_activations"`
+	// ActivationCount preserves aggregate global-limit state only.
+	// Redemptions and user-specific reward snapshots are not archived.
+	ActivationCount uint64                `json:"activation_count"`
+	IsActive        bool                  `json:"is_active"`
+	StartAt         *time.Time            `json:"start_at,omitempty"`
+	EndAt           *time.Time            `json:"end_at,omitempty"`
+	Localization    map[string]ExportText `json:"localization,omitempty"`
+	Rewards         []ExportReward        `json:"rewards,omitempty"`
 }
 
 type ExportText struct {

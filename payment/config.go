@@ -4,9 +4,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/payment/adapters/platega"
+	"github.com/elum2b/services/payment/repository"
 )
+
+type ReferenceItemDependencyChecker = repository.ReferenceItemDependencyChecker
 
 type Storage interface {
 	GetWithTTL(key string) (val []byte, ttl time.Duration, err error)
@@ -60,6 +64,13 @@ type Options struct {
 
 	TONWalletSyncInterval    time.Duration
 	OnCacheInvalidationError func(error)
+	ReferenceItemChecker     ReferenceItemDependencyChecker
+	// Archive stores async import/export ZIPs. Set this to shared durable
+	// storage when workers run on more than one node.
+	Archive jobs.Archive
+	// ArchiveDirectory overrides the local disk archive directory when Archive
+	// is nil. The executable-relative development directory remains the default.
+	ArchiveDirectory string
 }
 
 type DatabaseParams struct {

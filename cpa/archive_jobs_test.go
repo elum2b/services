@@ -7,12 +7,30 @@ import (
 
 	"github.com/elum2b/services/cpa"
 	"github.com/elum2b/services/cpa/service/admin"
+	"github.com/elum2b/services/cpa/service/user"
 	"github.com/elum2b/services/internal/utils/importexport/jobs"
 )
 
 func TestCPAArchiveJobsRoundTrip(t *testing.T) {
-	env := newCPATestEnvironment(t, testCPAOptions())
+	options := testCPAOptions()
+
+	options.ArchiveDirectory = t.TempDir()
+
+	env := newCPATestEnvironment(t, options)
 	upsertSharedOffer(t, env, "archive-offer", true)
+
+	identity := user.Identity{
+		WorkspaceID:    cpaTestWorkspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "archive-user",
+	}
+	if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
+		Identity: identity,
+		CPAID:    "archive-offer",
+	}); err != nil {
+		t.Fatalf("issue source assignment: %v", err)
+	}
 
 	export, err := env.Service.Admin.QueueArchiveExport(
 		env.Context,
@@ -29,7 +47,7 @@ func TestCPAArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatalf("export status = %s, want queued", export.Status)
 	}
 
-	worker := startCPAArchiveWorker(t, env.Name)
+	worker := startCPAArchiveWorker(t, env.Name, options)
 
 	waitCPAArchiveJob(t, worker, cpaTestWorkspaceID, export.ID)
 
@@ -68,9 +86,28 @@ func TestCPAArchiveJobsRoundTrip(t *testing.T) {
 	if err != nil || len(pkg.Offers) != 1 {
 		t.Fatalf("imported package = %+v, err = %v", pkg, err)
 	}
+
+	identity.WorkspaceID = cpaImportWorkspaceID
+
+	issued, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
+		Identity: identity,
+		CPAID:    "archive-offer",
+	})
+
+	if err != nil || !issued.AlreadyIssued {
+		t.Fatalf(
+			"import must restore assignment history: result=%+v err=%v",
+			issued,
+			err,
+		)
+	}
 }
 
-func startCPAArchiveWorker(t *testing.T, database string) *cpa.CPA {
+func startCPAArchiveWorker(
+	t *testing.T,
+	database string,
+	options cpa.Options,
+) *cpa.CPA {
 	t.Helper()
 
 	service := cpa.New()
@@ -84,9 +121,27 @@ func startCPAArchiveWorker(t *testing.T, database string) *cpa.CPA {
 			Database: database,
 			Host:     cpaTestPGHost,
 			Port:     cpaTestPGPort,
-			Options:  testCPAOptions(),
+			Options:  options,
 		})
 	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for !service.IsReady() {
+		select {
+		case err := <-done:
+			cancel()
+			t.Fatalf("start CPA archive worker: %v", err)
+		default:
+		}
+
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("CPA archive worker did not become ready")
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	t.Cleanup(func() {
 		cancel()

@@ -55,7 +55,7 @@ func NewWithDatabase(
 	}
 
 	service := newPromo(ctx, client, false, options)
-	if err := configureArchiveJobs(ctx, service); err != nil {
+	if err := configureArchiveJobs(ctx, service, options); err != nil {
 		_ = service.Close()
 		return nil, err
 	}
@@ -176,7 +176,7 @@ func open(ctx context.Context, params DatabaseParams) (*Promo, error) {
 	}
 
 	service := newPromo(ctx, client, true, params.Options)
-	if err := configureArchiveJobs(ctx, service); err != nil {
+	if err := configureArchiveJobs(ctx, service, params.Options); err != nil {
 		_ = service.Close()
 		return nil, err
 	}
@@ -184,21 +184,37 @@ func open(ctx context.Context, params DatabaseParams) (*Promo, error) {
 	return service, nil
 }
 
-func configureArchiveJobs(ctx context.Context, service *Promo) error {
+func configureArchiveJobs(
+	ctx context.Context,
+	service *Promo,
+	options Options,
+) error {
 	if err := jobs.Bootstrap(ctx, service.client.DB()); err != nil {
 		return fmt.Errorf("bootstrap promo archive jobs: %w", err)
 	}
 
-	binaryPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("resolve promo archive directory: %w", err)
-	}
+	archive := options.Archive
+	if archive == nil {
+		directory := options.ArchiveDirectory
+		if directory == "" {
+			binaryPath, err := os.Executable()
+			if err != nil {
+				return fmt.Errorf("resolve promo archive directory: %w", err)
+			}
 
-	archive, err := jobs.NewDiskArchive(
-		filepath.Join(filepath.Dir(binaryPath), "promo", "importexport"),
-	)
-	if err != nil {
-		return err
+			directory = filepath.Join(
+				filepath.Dir(binaryPath),
+				"promo",
+				"importexport",
+			)
+		}
+
+		var err error
+
+		archive, err = jobs.NewDiskArchive(directory)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := service.Admin.ConfigureArchiveJobs(

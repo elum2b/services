@@ -8,14 +8,12 @@ import (
 )
 
 func TestDiscordExchangesCodeAndLoadsCurrentUser(t *testing.T) {
-
 	t.Parallel()
 
 	var tokenRequestSeen bool
 
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 			switch r.URL.Path {
 			case "/token":
 				tokenRequestSeen = true
@@ -47,7 +45,9 @@ func TestDiscordExchangesCodeAndLoadsCurrentUser(t *testing.T) {
 				}
 
 				_, _ = w.Write(
-					[]byte(`{"id":"123","global_name":"Root Admin","username":"root"}`),
+					[]byte(
+						`{"id":"123","global_name":"Root Admin","username":"root"}`,
+					),
 				)
 			default:
 				http.NotFound(w, r)
@@ -79,7 +79,6 @@ func TestDiscordExchangesCodeAndLoadsCurrentUser(t *testing.T) {
 }
 
 func TestDiscordConstructorUsesStableProviderKey(t *testing.T) {
-
 	t.Parallel()
 
 	provider, err := NewDiscord(OAuth2ProviderConfig{

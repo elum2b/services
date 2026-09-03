@@ -12,7 +12,11 @@ import (
 )
 
 func TestPaymentArchiveJobsRoundTrip(t *testing.T) {
-	env := setupPaymentIntegrationTest(t)
+	options := paymentTestOptions()
+
+	options.ArchiveDirectory = t.TempDir()
+
+	env := setupPaymentIntegrationTestWithOptions(t, options)
 	source := testsupport.WorkspaceID("payment-archive-source")
 	target := testsupport.WorkspaceID("payment-archive-target")
 	createPaymentProduct(t, env, testProductOptions{WorkspaceID: source})
@@ -32,7 +36,7 @@ func TestPaymentArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatalf("export status = %s, want queued", export.Status)
 	}
 
-	worker := startPaymentArchiveWorker(t)
+	worker := startPaymentArchiveWorker(t, options)
 
 	waitPaymentArchiveJob(t, worker, source, export.ID)
 
@@ -70,7 +74,7 @@ func TestPaymentArchiveJobsRoundTrip(t *testing.T) {
 	}
 }
 
-func startPaymentArchiveWorker(t *testing.T) *Payment {
+func startPaymentArchiveWorker(t *testing.T, options Options) *Payment {
 	t.Helper()
 
 	service := New()
@@ -84,9 +88,27 @@ func startPaymentArchiveWorker(t *testing.T) *Payment {
 			Database: paymentTestDB,
 			Host:     paymentPostgresHost,
 			Port:     paymentPostgresPort,
-			Options:  paymentTestOptions(),
+			Options:  options,
 		})
 	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for !service.IsReady() {
+		select {
+		case err := <-done:
+			cancel()
+			t.Fatalf("start payment archive worker: %v", err)
+		default:
+		}
+
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("payment archive worker did not become ready")
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	t.Cleanup(func() {
 		cancel()

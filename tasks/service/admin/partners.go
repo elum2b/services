@@ -166,16 +166,14 @@ func (a *Admin) ListPartnerDailyStats(
 
 func mapPartnerConfig(config repository.PartnerConfig) PartnerConfigModel {
 	return PartnerConfigModel{
-		WorkspaceID:   config.WorkspaceID,
-		Provider:      config.Provider,
-		GroupKey:      config.GroupKey,
-		Platform:      config.Platform,
-		IsEnabled:     config.IsEnabled,
-		Secret:        config.Secret,
-		WebhookSecret: config.WebhookSecret,
-		Target:        config.Target,
-		Settings:      config.Settings,
-		CreatedAt:     config.CreatedAt,
-		UpdatedAt:     config.UpdatedAt,
+		WorkspaceID: config.WorkspaceID,
+		Provider:    config.Provider,
+		GroupKey:    config.GroupKey,
+		Platform:    config.Platform,
+		IsEnabled:   config.IsEnabled,
+		Target:      config.Target,
+		Settings:    config.Settings,
+		CreatedAt:   config.CreatedAt,
+		UpdatedAt:   config.UpdatedAt,
 	}
 }

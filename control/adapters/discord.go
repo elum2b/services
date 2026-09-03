@@ -11,7 +11,6 @@ const ProviderDiscord = "discord"
 // NewDiscord creates an OAuth2 identity provider for Discord user accounts.
 // The identify scope is sufficient to obtain the immutable Discord user ID.
 func NewDiscord(config OAuth2ProviderConfig) (*OAuth2, error) {
-
 	config.TokenURL = firstNonEmpty(
 		config.TokenURL,
 		"https://discord.com/api/oauth2/token",
@@ -43,7 +42,6 @@ func Discord(
 	ctx context.Context,
 	params OAuth2AuthParams,
 ) (admin.AuthIdentityParams, error) {
-
 	provider, err := NewDiscord(oAuth2ProviderConfigFromAuthParams(params))
 	if err != nil {
 		return admin.AuthIdentityParams{}, err

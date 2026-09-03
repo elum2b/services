@@ -3,6 +3,7 @@ WITH due AS (
     SELECT id FROM importexport_job
     WHERE status IN ('queued', 'processing')
       AND (locked_until IS NULL OR locked_until <= now())
+      AND (next_attempt_at IS NULL OR next_attempt_at <= now())
     ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
 )
 UPDATE importexport_job AS job
@@ -11,9 +12,15 @@ SET status = 'processing', locked_by = $1, lease_token = $2,
     started_at = COALESCE(started_at, now()), updated_at = now()
 FROM due WHERE job.id = due.id
 RETURNING job.id, job.service, job.workspace_id, job.type, job.status, job.file_name,
-          job.archive_key, job.archive_expires_at, job.error, job.locked_by,
-          job.lease_token, job.locked_until, job.created_at, job.started_at,
-          job.finished_at, job.updated_at;
+	       job.options, job.archive_key, job.archive_expires_at, job.error, job.locked_by,
+	       job.lease_token, job.locked_until, job.created_at, job.started_at,
+	       job.finished_at, job.updated_at, job.attempt, job.next_attempt_at;
+
+-- name: RenewJobLease :execrows
+UPDATE importexport_job
+SET locked_until = now() + ($1 * interval '1 microsecond'), updated_at = now()
+WHERE id = $2 AND status = 'processing' AND locked_by = $3 AND lease_token = $4
+  AND locked_until > now();
 
 -- name: CompleteJob :execrows
 UPDATE importexport_job
@@ -26,6 +33,14 @@ UPDATE importexport_job
 SET status = 'failed', error = $1, locked_by = NULL, lease_token = NULL, locked_until = NULL,
     finished_at = now(), updated_at = now()
 WHERE id = $2 AND status = 'processing' AND locked_by = $3 AND lease_token = $4 AND locked_until > now();
+
+-- name: RetryJob :execrows
+UPDATE importexport_job
+SET status = 'queued', error = $1, attempt = attempt + 1,
+    next_attempt_at = now() + ($2 * interval '1 microsecond'), locked_by = NULL,
+    lease_token = NULL, locked_until = NULL, updated_at = now()
+WHERE id = $3 AND status = 'processing' AND locked_by = $4 AND lease_token = $5
+  AND locked_until > now();
 
 -- name: ClaimExpiredArchives :many
 WITH due AS (

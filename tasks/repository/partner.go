@@ -97,6 +97,15 @@ func (r *Repository) SavePartnerConfig(
 		params.Secret = &encrypted
 	}
 
+	if params.WebhookSecret != nil {
+		encrypted, err := r.encryptPartnerSecret(*params.WebhookSecret)
+		if err != nil {
+			return err
+		}
+
+		params.WebhookSecret = &encrypted
+	}
+
 	target := params.Target
 	if len(target) == 0 {
 		target = []byte("null")
@@ -192,21 +201,23 @@ func (r *Repository) GetPartnerConfigByWebhookSecret(
 		CacheL2Delay:      r.cacheL2Delay,
 		CacheVersionScope: partnerConfigCacheScope(workspaceID),
 	}, func(ctx context.Context) (PartnerConfig, error) {
-		row, err := r.q.GetPartnerConfigByWebhookSecret(
-			ctx,
-			tasksqlc.GetPartnerConfigByWebhookSecretParams{
-				WorkspaceID: workspaceID,
-				WebhookSecret: sql.NullString{
-					String: secret,
-					Valid:  secret != "",
-				},
-			},
-		)
+		rows, err := r.q.AdminListPartnerConfigs(ctx, workspaceID)
 		if err != nil {
 			return PartnerConfig{}, err
 		}
 
-		return r.mapPartnerConfig(row)
+		for _, row := range rows {
+			config, err := r.mapPartnerConfig(row)
+			if err != nil {
+				return PartnerConfig{}, err
+			}
+
+			if config.WebhookSecret != nil && *config.WebhookSecret == secret {
+				return config, nil
+			}
+		}
+
+		return PartnerConfig{}, sql.ErrNoRows
 	})
 	if err != nil {
 		if isNoRows(err) {
@@ -1917,6 +1928,13 @@ func (r *Repository) mapPartnerConfig(
 		return PartnerConfig{}, err
 	}
 
+	webhookSecret, err := r.decryptPartnerSecret(
+		stringPtrFromNull(row.WebhookSecret),
+	)
+	if err != nil {
+		return PartnerConfig{}, err
+	}
+
 	return PartnerConfig{
 		WorkspaceID:   row.WorkspaceID,
 		Provider:      row.Provider,
@@ -1924,7 +1942,7 @@ func (r *Repository) mapPartnerConfig(
 		Platform:      row.Platform,
 		IsEnabled:     row.IsEnabled,
 		Secret:        secret,
-		WebhookSecret: stringPtrFromNull(row.WebhookSecret),
+		WebhookSecret: webhookSecret,
 		Target:        nullRawMessage(row.Target),
 		Settings:      nullRawMessage(row.Settings),
 		CreatedAt:     row.CreatedAt,

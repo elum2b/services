@@ -9,10 +9,15 @@ import (
 	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	"github.com/elum2b/services/promo/repository"
 	"github.com/elum2b/services/promo/service/admin"
+	"github.com/elum2b/services/promo/service/user"
 )
 
 func TestPromoArchiveJobsRoundTrip(t *testing.T) {
-	service := newPromoTestService(t)
+	options := promoTestOptions()
+
+	options.ArchiveDirectory = t.TempDir()
+
+	service := newPromoTestServiceWithOptions(t, options)
 	ctx := context.Background()
 	source := testsupport.WorkspaceID("archive-source")
 	target := testsupport.WorkspaceID("archive-target")
@@ -30,6 +35,19 @@ func TestPromoArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	applied, err := service.User.Apply(ctx, user.ApplyParams{
+		Identity: user.Identity{
+			WorkspaceID:    source,
+			AppID:          1,
+			PlatformID:     1,
+			PlatformUserID: "archive-user",
+		},
+		Code: "ARCHIVE",
+	})
+	if err != nil || applied.Status != repository.StatusSuccess {
+		t.Fatalf("apply source promo: result=%+v err=%v", applied, err)
+	}
+
 	export, err := service.Admin.QueueArchiveExport(
 		ctx,
 		admin.QueueArchiveExportParams{
@@ -45,7 +63,7 @@ func TestPromoArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatalf("export status = %s, want queued", export.Status)
 	}
 
-	worker := startPromoArchiveWorker(t)
+	worker := startPromoArchiveWorker(t, options)
 
 	waitPromoArchiveJob(t, worker, source, export.ID)
 
@@ -74,12 +92,13 @@ func TestPromoArchiveJobsRoundTrip(t *testing.T) {
 
 	pkg, err := repository.New(service.client).
 		Export(ctx, target, admin.ExportRequest{})
-	if err != nil || len(pkg.Promos) != 1 {
+	if err != nil || len(pkg.Promos) != 1 ||
+		pkg.Promos[0].ActivationCount != 1 {
 		t.Fatalf("imported package = %+v, err = %v", pkg, err)
 	}
 }
 
-func startPromoArchiveWorker(t *testing.T) *Promo {
+func startPromoArchiveWorker(t *testing.T, options Options) *Promo {
 	t.Helper()
 
 	service := New()
@@ -93,9 +112,27 @@ func startPromoArchiveWorker(t *testing.T) *Promo {
 			Database: promoTestDB,
 			Host:     promoTestPGHost,
 			Port:     promoTestPGPort,
-			Options:  promoTestOptions(),
+			Options:  options,
 		})
 	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for !service.IsReady() {
+		select {
+		case err := <-done:
+			cancel()
+			t.Fatalf("start promo archive worker: %v", err)
+		default:
+		}
+
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("promo archive worker did not become ready")
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	t.Cleanup(func() {
 		cancel()

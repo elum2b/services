@@ -25,8 +25,8 @@
 | `Admin.GetReward(ctx, workspaceID, promoID, key)` | `workspaceID`, `promoID`, `key`. | Возвращает награду. |
 | `Admin.ListRewards(ctx, workspaceID, promoID)` | `workspaceID`, `promoID`. | Возвращает награды промокода. |
 | `Admin.DeleteReward(ctx, workspaceID, promoID, key)` | `workspaceID`, `promoID`, `key`. | Удаляет награду. |
-| `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, ExportRequest}`. | Ставит ZIP-экспорт в асинхронную очередь. |
-| `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, ImportRequest, Archive}`. | Ставит ZIP-импорт в асинхронную очередь; асинхронный импорт не предоставляет `PreviewImport`. |
+| `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, ExportRequest}`. | Ставит ZIP-экспорт единственного формата `promo.export.v1`: catalog и aggregate `activation_count`; не полный backup redemption history. |
+| `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, ImportRequest, Archive}`. | Ставит ZIP-импорт единственного формата `promo.export.v1`, восстанавливающий catalog и aggregate `activation_count`; redemptions, reward snapshots, events и stats не импортируются. Асинхронный импорт не предоставляет `PreviewImport`. |
 | `Admin.ArchiveJob(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Возвращает текущий статус задачи. |
 | `Admin.ArchiveHistory(ctx, workspaceID, page)` | `workspaceID`, `Page`. | Возвращает историю задач workspace. |
 | `Admin.DownloadArchive(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Скачивает результат завершенного export job. |

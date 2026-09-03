@@ -2120,6 +2120,315 @@ func TestCPA_AdminExportAndImportPreserveOffer(t *testing.T) {
 	}
 }
 
+func TestCPA_AdminImportRuntimeCodeCollisionRollsBackForeignAssignment(
+	t *testing.T,
+) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	if err := env.Service.Admin.UpsertOffer(
+		env.Context,
+		admin.UpsertOfferParams{
+			WorkspaceID: cpaImportWorkspaceID,
+			ID:          "runtime-collision",
+			Payload:     json.RawMessage(`{}`),
+			CodeMode:    repository.CodeModePersonal,
+			CodeSource:  stringPointer(repository.CodeSourcePool),
+			IsActive:    true,
+		},
+	); err != nil {
+		t.Fatalf("seed target offer: %v", err)
+	}
+
+	if _, err := env.Service.Admin.AddCodes(env.Context, admin.AddCodesParams{
+		WorkspaceID: cpaImportWorkspaceID,
+		CPAID:       "runtime-collision",
+		Codes:       []string{"COLLISION"},
+	}); err != nil {
+		t.Fatalf("seed target code: %v", err)
+	}
+
+	foreign := user.Identity{
+		WorkspaceID:    cpaImportWorkspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "target-user",
+	}
+	if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
+		Identity: foreign,
+		CPAID:    "runtime-collision",
+	}); err != nil {
+		t.Fatalf("issue target assignment: %v", err)
+	}
+
+	now := time.Now().UTC()
+	_, err := env.Repository.Import(
+		env.Context,
+		cpaImportWorkspaceID,
+		admin.ImportRequest{
+			Package: runtimeImportPackage(
+				now,
+				"runtime-collision",
+				"source-user",
+			),
+			ConflictStrategy: repository.ImportConflictUpdate,
+		},
+	)
+
+	if err == nil || !strings.Contains(err.Error(), "different identity") {
+		t.Fatalf(
+			"foreign code collision error = %v, want identity conflict",
+			err,
+		)
+	}
+
+	assignment, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
+		Identity: foreign,
+		CPAID:    "runtime-collision",
+	})
+	if err != nil || !assignment.AlreadyIssued ||
+		assignment.Assignment.Code != "COLLISION" {
+		t.Fatalf(
+			"foreign target assignment was not preserved: result=%+v err=%v",
+			assignment,
+			err,
+		)
+	}
+}
+
+func TestCPA_AdminImportRejectsIncoherentRuntimeState(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	for name, mutate := range map[string]func(*admin.ExportPackage){
+		"completed_without_completion_state": func(pkg *admin.ExportPackage) {
+			pkg.Assignments[0].Status = "completed"
+		},
+		"reward_snapshot_is_not_array": func(pkg *admin.ExportPackage) {
+			pkg.Assignments[0].RewardsSnapshot = json.RawMessage(`{}`)
+		},
+		"reward_snapshot_contains_invalid_reward": func(pkg *admin.ExportPackage) {
+			pkg.Assignments[0].RewardsSnapshot = json.RawMessage(
+				`[{"key":"stars","quantity":0}]`,
+			)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			pkg := runtimeImportPackage(
+				time.Now().UTC(),
+				"invalid-runtime",
+				"runtime-user",
+			)
+			mutate(&pkg)
+
+			_, err := env.Repository.Import(
+				env.Context,
+				cpaImportWorkspaceID,
+				admin.ImportRequest{
+					Package:          pkg,
+					ConflictStrategy: repository.ImportConflictUpdate,
+				},
+			)
+			if err == nil {
+				t.Fatal("incoherent runtime import unexpectedly succeeded")
+			}
+		})
+	}
+}
+
+func TestCPA_AdminImportUpdateReplacesFullRuntimeSnapshot(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+
+	const offerID = "replace-runtime-offer"
+
+	if err := env.Service.Admin.UpsertOffer(
+		env.Context,
+		admin.UpsertOfferParams{
+			WorkspaceID: cpaImportWorkspaceID,
+			ID:          offerID,
+			Payload:     json.RawMessage(`{}`),
+			CodeMode:    repository.CodeModePersonal,
+			CodeSource:  stringPointer(repository.CodeSourcePool),
+			IsActive:    true,
+		},
+	); err != nil {
+		t.Fatalf("seed target offer: %v", err)
+	}
+
+	if _, err := env.Service.Admin.AddCodes(env.Context, admin.AddCodesParams{
+		WorkspaceID: cpaImportWorkspaceID,
+		CPAID:       offerID,
+		Codes:       []string{"OLD"},
+	}); err != nil {
+		t.Fatalf("seed target code: %v", err)
+	}
+
+	identity := user.Identity{
+		WorkspaceID:    cpaImportWorkspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "snapshot-user",
+	}
+	issueCode(t, env, identity, offerID)
+
+	if _, err := env.Service.Admin.Complete(
+		env.Context,
+		admin.CompleteParams{Identity: identity, CPAID: offerID},
+	); err != nil {
+		t.Fatalf("complete target assignment: %v", err)
+	}
+
+	pkg := runtimeImportPackage(
+		time.Now().UTC(),
+		offerID,
+		identity.PlatformUserID,
+	)
+
+	pkg.Codes[0].Code = "NEW"
+	pkg.Assignments[0].Code = "NEW"
+	pkg.Assignments[0].CodeRef = stringPointer("NEW")
+
+	if _, err := env.Repository.Import(
+		env.Context,
+		cpaImportWorkspaceID,
+		admin.ImportRequest{
+			Package:          pkg,
+			ConflictStrategy: repository.ImportConflictUpdate,
+		},
+	); err != nil {
+		t.Fatalf("replace runtime snapshot: %v", err)
+	}
+
+	assignment, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
+		Identity: identity,
+		CPAID:    offerID,
+	})
+	if err != nil || !assignment.AlreadyIssued ||
+		assignment.Assignment.Code != "NEW" {
+		t.Fatalf("replacement assignment: result=%+v err=%v", assignment, err)
+	}
+
+	var oldCodeRows, oldAssignmentRows, eventRows int
+
+	if err := env.Database.QueryRowContext(env.Context, `
+SELECT
+    (SELECT COUNT(*) FROM cpa_code WHERE workspace_id=$1 AND cpa_id=$2 AND code='OLD'),
+    (SELECT COUNT(*) FROM cpa_assignment WHERE workspace_id=$1 AND cpa_id=$2 AND code='OLD'),
+    (SELECT COUNT(*) FROM cpa_assignment_event WHERE workspace_id=$1 AND cpa_id=$2)`,
+		cpaImportWorkspaceID,
+		offerID,
+	).Scan(&oldCodeRows, &oldAssignmentRows, &eventRows); err != nil {
+		t.Fatalf("count replaced runtime rows: %v", err)
+	}
+
+	if oldCodeRows != 0 || oldAssignmentRows != 0 || eventRows != 1 {
+		t.Fatalf(
+			"stale runtime survived replacement: old codes=%d old assignments=%d events=%d",
+			oldCodeRows,
+			oldAssignmentRows,
+			eventRows,
+		)
+	}
+}
+
+func TestCPA_ImportJobReplayInvalidatesCache(t *testing.T) {
+	cache := newCPATestCache()
+	env := newCPATestEnvironment(t, testCPAOptions())
+
+	db, err := openCPATestPostgres(env.Name)
+	if err != nil {
+		t.Fatalf("open cached repository database: %v", err)
+	}
+
+	client, err := sqlwrap.New(db, sqlwrap.Options{
+		Cache:        cache,
+		CacheEnabled: true,
+	})
+	if err != nil {
+		_ = db.Close()
+
+		t.Fatalf("create cached repository client: %v", err)
+	}
+
+	t.Cleanup(func() { _ = client.Close() })
+
+	repo := repository.New(client)
+
+	t.Cleanup(func() { _ = repo.Close() })
+
+	req := admin.ImportRequest{
+		Package: admin.ExportPackage{
+			Format:  repository.ExportFormat,
+			Service: "cpa",
+			Offers: []admin.ExportOffer{
+				cpaTestExportOffer("receipt-cache-offer"),
+			},
+		},
+		ConflictStrategy: repository.ImportConflictUpdate,
+	}
+
+	if _, err := repo.ImportJob(
+		env.Context,
+		cpaImportWorkspaceID,
+		1,
+		req,
+	); err != nil {
+		t.Fatalf("apply import job: %v", err)
+	}
+
+	beforeReplay := cache.SetCalls()
+
+	if _, err := repo.ImportJob(
+		env.Context,
+		cpaImportWorkspaceID,
+		1,
+		req,
+	); err != nil {
+		t.Fatalf("replay import job: %v", err)
+	}
+
+	if cache.SetCalls() <= beforeReplay {
+		t.Fatal("already-applied import job did not invalidate cache")
+	}
+}
+
+func runtimeImportPackage(
+	now time.Time,
+	offerID, platformUserID string,
+) admin.ExportPackage {
+	return admin.ExportPackage{
+		Format:  repository.ExportFormat,
+		Service: "cpa",
+		Offers: []admin.ExportOffer{{
+			ID:         offerID,
+			Payload:    json.RawMessage(`{}`),
+			CodeMode:   repository.CodeModePersonal,
+			CodeSource: stringPointer(repository.CodeSourcePool),
+			IsActive:   true,
+		}},
+		Codes: []repository.ExportCode{{
+			CPAID:     offerID,
+			Code:      "COLLISION",
+			Source:    repository.CodeSourcePool,
+			Status:    "issued",
+			CreatedAt: now,
+			UpdatedAt: now,
+		}},
+		Assignments: []repository.ExportAssignment{{
+			CPAID:           offerID,
+			AppID:           1,
+			PlatformID:      1,
+			PlatformUserID:  platformUserID,
+			Code:            "COLLISION",
+			CodeMode:        repository.CodeModePersonal,
+			CodeRef:         stringPointer("COLLISION"),
+			RewardsSnapshot: json.RawMessage(`[]`),
+			Status:          "issued",
+			IssuedAt:        now,
+			Events: []repository.ExportAssignmentEvent{{
+				EventType:  "issued",
+				OccurredAt: now,
+			}},
+		}},
+	}
+}
+
 func TestCPA_AdminImportUpdateReplacesNestedOfferSnapshot(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 	if err := env.Service.Admin.UpsertOffer(

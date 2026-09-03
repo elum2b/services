@@ -12,6 +12,7 @@ import (
 
 	services "github.com/elum2b/services"
 	importexport "github.com/elum2b/services/internal/utils/importexport"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	"github.com/elum2b/services/internal/utils/target"
 )
 
@@ -53,6 +54,19 @@ func (r *Repository) Import(
 	workspaceID string,
 	req ImportRequest,
 ) (ImportResult, error) {
+	return r.importWithJob(ctx, workspaceID, req, 0)
+}
+
+// ImportJob applies an archive-job import at most once after its transaction commits.
+func (r *Repository) ImportJob(
+	ctx context.Context, workspaceID string, jobID int64, req ImportRequest,
+) (ImportResult, error) {
+	return r.importWithJob(ctx, workspaceID, req, jobID)
+}
+
+func (r *Repository) importWithJob(
+	ctx context.Context, workspaceID string, req ImportRequest, jobID int64,
+) (ImportResult, error) {
 	if err := validateExportPackage(workspaceID, req.Package); err != nil {
 		return ImportResult{}, err
 	}
@@ -71,10 +85,25 @@ func (r *Repository) Import(
 	}
 
 	result := ImportResult{}
+	alreadyApplied := false
 
 	err := r.WithTx(ctx, func(txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
+		}
+
+		if jobID != 0 {
+			applied, err := jobs.ClaimImportReceipt(
+				ctx,
+				txRepo.executor,
+				jobID,
+				"promo",
+				workspaceID,
+			)
+			if err != nil || !applied {
+				alreadyApplied = !applied
+				return err
+			}
 		}
 
 		preview, err := txRepo.PreviewImport(ctx, workspaceID, req.Package)
@@ -100,6 +129,10 @@ func (r *Repository) Import(
 	})
 	if err != nil {
 		return ImportResult{}, err
+	}
+
+	if alreadyApplied {
+		return ImportResult{}, nil
 	}
 
 	return result, r.invalidatePromoCache(workspaceID)
@@ -269,6 +302,7 @@ func (r *Repository) importPromosBulk(
 			defaultJSON(promo.Payload, "{}"),
 			defaultJSON(promo.Target, "null"),
 			promo.MaxActivations,
+			promo.ActivationCount,
 			promo.IsActive,
 			nullTime(promo.StartAt),
 			nullTime(promo.EndAt),
@@ -286,13 +320,14 @@ func (r *Repository) importPromosBulk(
 			"payload",
 			"target",
 			"max_activations",
+			"activation_count",
 			"is_active",
 			"start_at",
 			"end_at",
 		},
 		rows,
 		"(workspace_id, code_normalized)",
-		"code = EXCLUDED.code, payload = EXCLUDED.payload, target = EXCLUDED.target, max_activations = EXCLUDED.max_activations, "+
+		"code = EXCLUDED.code, payload = EXCLUDED.payload, target = EXCLUDED.target, max_activations = EXCLUDED.max_activations, activation_count = EXCLUDED.activation_count, "+
 			"is_active = EXCLUDED.is_active, start_at = EXCLUDED.start_at, end_at = EXCLUDED.end_at, deleted_at = NULL, updated_at = now()",
 		strategy,
 	)
@@ -547,6 +582,13 @@ func validateExportPackage(workspaceID string, pkg ExportPackage) error {
 		if promo.MaxActivations > math.MaxInt64 {
 			return fmt.Errorf(
 				"%s.max_activations: numeric value is out of database range",
+				prefix,
+			)
+		}
+
+		if promo.ActivationCount > math.MaxInt64 {
+			return fmt.Errorf(
+				"%s.activation_count: numeric value is out of database range",
 				prefix,
 			)
 		}

@@ -72,27 +72,26 @@ func (h archiveJobHandler) Import(
 		return fmt.Errorf("open import ZIP: %w", err)
 	}
 
-	for _, file := range archive.File {
-		if file.Name != archiveManifestName {
-			continue
-		}
-
-		reader, err := file.Open()
-		if err != nil {
-			return err
-		}
-		defer reader.Close()
-
-		if err := json.NewDecoder(reader).Decode(&request.Package); err != nil {
-			return fmt.Errorf("decode import manifest: %w", err)
-		}
-
-		_, err = h.admin.repository.Import(ctx, job.WorkspaceID, request)
-
-		return err
+	if len(archive.File) != 1 || archive.File[0].Name != archiveManifestName {
+		return fmt.Errorf(
+			"import ZIP must contain exactly one %s",
+			archiveManifestName,
+		)
 	}
 
-	return fmt.Errorf("import ZIP is missing %s", archiveManifestName)
+	reader, err := archive.File[0].Open()
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	if err := json.NewDecoder(reader).Decode(&request.Package); err != nil {
+		return fmt.Errorf("decode import manifest: %w", err)
+	}
+
+	_, err = h.admin.repository.ImportJob(ctx, job.WorkspaceID, job.ID, request)
+
+	return err
 }
 
 func (a *Admin) QueueArchiveExport(
@@ -135,11 +134,12 @@ func (a *Admin) QueueArchiveImport(
 	return a.jobs.QueueImport(
 		ctx,
 		jobs.QueueImportParams{
-			Service:     "payment",
-			WorkspaceID: params.WorkspaceID,
-			FileName:    params.FileName,
-			Options:     options,
-			Dump:        params.Archive,
+			Service:      "payment",
+			WorkspaceID:  params.WorkspaceID,
+			FileName:     params.FileName,
+			ManifestName: archiveManifestName,
+			Options:      options,
+			Dump:         params.Archive,
 		},
 	)
 }

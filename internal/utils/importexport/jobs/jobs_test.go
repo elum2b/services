@@ -1,6 +1,8 @@
 package jobs
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -27,6 +29,181 @@ func TestNormalizeTableName(t *testing.T) {
 		"abcdefghijklmnopqrstuvwxyzabcdefghijklmno",
 	); got != DefaultTable {
 		t.Fatalf("too-long table = %q", got)
+	}
+}
+
+func TestValidateManifestZIPLimits(t *testing.T) {
+	makeZIP := func(names ...string) []byte {
+		var data bytes.Buffer
+
+		writer := zip.NewWriter(&data)
+
+		for _, name := range names {
+			entry, err := writer.Create(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := entry.Write([]byte("manifest")); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		return data.Bytes()
+	}
+
+	limits := ZIPLimits{
+		MaxEntries:           1,
+		MaxCompressedBytes:   1024,
+		MaxUncompressedBytes: 1024,
+		MaxCompressionRatio:  100,
+	}
+	if err := ValidateManifestZIP(
+		t.Context(),
+		bytes.NewReader(makeZIP("manifest.json")),
+		limits,
+		"manifest.json",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ValidateManifestZIP(
+		t.Context(),
+		bytes.NewReader(makeZIP("manifest.json", "other.json")),
+		ZIPLimits{},
+		"manifest.json",
+	); !errors.Is(err, ErrInvalidZIP) {
+		t.Fatalf("extra manifest entry error = %v", err)
+	}
+
+	if err := ValidateManifestZIP(
+		t.Context(),
+		bytes.NewReader(makeZIP("manifest.json", "other")),
+		limits,
+		"manifest.json",
+	); !errors.Is(
+		err,
+		ErrInvalidZIP,
+	) {
+		t.Fatalf("entry limit error = %v", err)
+	}
+
+	if err := ValidateManifestZIP(
+		t.Context(),
+		bytes.NewReader(makeZIP("manifest.json", "manifest.json")),
+		ZIPLimits{},
+		"manifest.json",
+	); !errors.Is(
+		err,
+		ErrInvalidZIP,
+	) {
+		t.Fatalf("duplicate manifest error = %v", err)
+	}
+
+	if err := ValidateManifestZIP(
+		t.Context(),
+		bytes.NewReader(makeZIP("other")),
+		ZIPLimits{},
+		"manifest.json",
+	); !errors.Is(
+		err,
+		ErrInvalidZIP,
+	) {
+		t.Fatalf("missing manifest error = %v", err)
+	}
+}
+
+func TestValidateManifestZIPRejectsCompressionBomb(t *testing.T) {
+	var data bytes.Buffer
+
+	writer := zip.NewWriter(&data)
+
+	entry, err := writer.Create("manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := entry.Write(bytes.Repeat([]byte("a"), 4096)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	err = ValidateManifestZIP(
+		t.Context(),
+		bytes.NewReader(data.Bytes()),
+		ZIPLimits{MaxCompressionRatio: 2},
+		"manifest.json",
+	)
+	if !errors.Is(err, ErrInvalidZIP) {
+		t.Fatalf("compression bomb error = %v", err)
+	}
+}
+
+func TestCopyUploadLimit(t *testing.T) {
+	var destination bytes.Buffer
+
+	if err := copyUpload(
+		t.Context(),
+		&destination,
+		strings.NewReader("1234"),
+		3,
+	); !errors.Is(
+		err,
+		ErrArchiveTooLarge,
+	) {
+		t.Fatalf("oversized upload error = %v", err)
+	}
+
+	if err := copyUpload(
+		t.Context(),
+		&destination,
+		strings.NewReader("123"),
+		3,
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type temporaryError struct{}
+
+func (temporaryError) Error() string   { return "temporary" }
+func (temporaryError) Temporary() bool { return true }
+
+func TestRetryHelpers(t *testing.T) {
+	if !isTransient(temporaryError{}) || isTransient(context.DeadlineExceeded) {
+		t.Fatal("transient classification is incorrect")
+	}
+
+	if got := retryDelay(time.Second, 2); got != 4*time.Second {
+		t.Fatalf("retry delay = %s", got)
+	}
+}
+
+func TestDiskArchiveListsZIPObjects(t *testing.T) {
+	archive, err := NewDiskArchive(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := archive.Store(
+		t.Context(),
+		ArchiveObject{},
+		strings.NewReader("data"),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	archives, err := archive.List(t.Context())
+	if err != nil || len(archives) != 1 || archives[0].Key == "" ||
+		archives[0].CreatedAt.IsZero() {
+		t.Fatalf("archives = %#v, err = %v", archives, err)
 	}
 }
 

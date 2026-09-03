@@ -12,7 +12,11 @@ import (
 )
 
 func TestCalendarArchiveJobsRoundTrip(t *testing.T) {
-	service := newCalendarTestService(t)
+	options := calendarTestOptions()
+
+	options.ArchiveDirectory = t.TempDir()
+
+	service := newCalendarTestServiceWithOptions(t, options)
 	ctx := context.Background()
 	source := testsupport.WorkspaceID("archive-source")
 	target := testsupport.WorkspaceID("archive-target")
@@ -47,7 +51,7 @@ func TestCalendarArchiveJobsRoundTrip(t *testing.T) {
 		t.Fatalf("export status = %s, want queued", export.Status)
 	}
 
-	worker := startCalendarArchiveWorker(t)
+	worker := startCalendarArchiveWorker(t, options)
 
 	waitCalendarArchiveJob(t, worker, source, export.ID)
 
@@ -81,7 +85,7 @@ func TestCalendarArchiveJobsRoundTrip(t *testing.T) {
 	}
 }
 
-func startCalendarArchiveWorker(t *testing.T) *Calendar {
+func startCalendarArchiveWorker(t *testing.T, options Options) *Calendar {
 	t.Helper()
 
 	service := New()
@@ -95,9 +99,27 @@ func startCalendarArchiveWorker(t *testing.T) *Calendar {
 			Database: calendarTestDB,
 			Host:     calendarTestPGHost,
 			Port:     calendarTestPGPort,
-			Options:  calendarTestOptions(),
+			Options:  options,
 		})
 	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for !service.IsReady() {
+		select {
+		case err := <-done:
+			cancel()
+			t.Fatalf("start calendar archive worker: %v", err)
+		default:
+		}
+
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("calendar archive worker did not become ready")
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	t.Cleanup(func() {
 		cancel()

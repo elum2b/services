@@ -434,14 +434,11 @@ func (r *Repository) exportSnapshot(
 		out.Groups[index].PartnerConfigs = append(
 			out.Groups[index].PartnerConfigs,
 			ExportPartnerConfig{
-				Provider:  config.Provider,
-				Platform:  config.Platform,
-				IsEnabled: config.IsEnabled,
-				Secret: exportSecret(
-					config,
-					req.IncludeSecrets,
-				),
-				WebhookSecret: exportWebhookSecret(config, req.IncludeSecrets),
+				Provider:      config.Provider,
+				Platform:      config.Platform,
+				IsEnabled:     config.IsEnabled,
+				Secret:        exportSecret(config),
+				WebhookSecret: exportWebhookSecret(config),
 				Target:        target,
 				Settings:      nullableRaw(config.Settings),
 			},
@@ -510,7 +507,7 @@ func exportSections(values []string) map[string]bool {
 	return out
 }
 
-func exportSecret(config PartnerConfig, includeValue bool) *ExportSecret {
+func exportSecret(config PartnerConfig) *ExportSecret {
 	if config.Secret == nil || *config.Secret == "" {
 		return nil
 	}
@@ -523,17 +520,11 @@ func exportSecret(config PartnerConfig, includeValue bool) *ExportSecret {
 			config.Platform,
 		),
 	}
-	if includeValue {
-		secret.Value = config.Secret
-	}
 
 	return secret
 }
 
-func exportWebhookSecret(
-	config PartnerConfig,
-	includeValue bool,
-) *ExportSecret {
+func exportWebhookSecret(config PartnerConfig) *ExportSecret {
 	if config.WebhookSecret == nil || *config.WebhookSecret == "" {
 		return nil
 	}
@@ -545,9 +536,6 @@ func exportWebhookSecret(
 			config.GroupKey,
 			config.Platform,
 		),
-	}
-	if includeValue {
-		secret.Value = config.WebhookSecret
 	}
 
 	return secret

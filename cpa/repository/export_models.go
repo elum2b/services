@@ -18,10 +18,44 @@ type ExportRequest struct {
 }
 
 type ExportPackage struct {
-	Format    string        `json:"format"`
-	Service   string        `json:"service"`
-	CreatedAt time.Time     `json:"created_at"`
-	Offers    []ExportOffer `json:"offers"`
+	Format      string             `json:"format"`
+	Service     string             `json:"service"`
+	CreatedAt   time.Time          `json:"created_at"`
+	Offers      []ExportOffer      `json:"offers"`
+	Codes       []ExportCode       `json:"codes,omitempty"`
+	Assignments []ExportAssignment `json:"assignments,omitempty"`
+}
+
+// ExportCode is keyed by offer and code rather than the source database ID.
+type ExportCode struct {
+	CPAID     string     `json:"cpa_id"`
+	Code      string     `json:"code"`
+	Source    string     `json:"source"`
+	Status    string     `json:"status"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+}
+
+// ExportAssignment intentionally carries the raw unified identity and no source IDs.
+type ExportAssignment struct {
+	CPAID           string                  `json:"cpa_id"`
+	AppID           int64                   `json:"app_id"`
+	PlatformID      int64                   `json:"platform_id"`
+	PlatformUserID  string                  `json:"platform_user_id"`
+	Code            string                  `json:"code"`
+	CodeMode        string                  `json:"code_mode"`
+	CodeRef         *string                 `json:"code_ref,omitempty"`
+	RewardsSnapshot json.RawMessage         `json:"rewards_snapshot"`
+	Status          string                  `json:"status"`
+	IssuedAt        time.Time               `json:"issued_at"`
+	CompletedAt     *time.Time              `json:"completed_at,omitempty"`
+	Events          []ExportAssignmentEvent `json:"events,omitempty"`
+}
+
+type ExportAssignmentEvent struct {
+	EventType  string    `json:"event_type"`
+	OccurredAt time.Time `json:"occurred_at"`
 }
 
 type ExportOffer struct {

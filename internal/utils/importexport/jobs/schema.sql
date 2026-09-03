@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS importexport_job (
     type VARCHAR(16) NOT NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'queued',
     file_name TEXT NOT NULL DEFAULT '',
+    options JSONB NOT NULL DEFAULT '{}'::jsonb,
     archive_key TEXT NULL,
     archive_expires_at TIMESTAMPTZ NULL,
     error TEXT NULL,
@@ -17,6 +18,8 @@ CREATE TABLE IF NOT EXISTS importexport_job (
     started_at TIMESTAMPTZ NULL,
     finished_at TIMESTAMPTZ NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    attempt INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ NULL,
     CONSTRAINT importexport_job_type_chk CHECK (type IN ('export', 'import')),
     CONSTRAINT importexport_job_status_chk CHECK (status IN ('queued', 'processing', 'completed', 'failed'))
 );
@@ -45,3 +48,11 @@ CREATE TABLE IF NOT EXISTS importexport_job_history (
 
 CREATE INDEX IF NOT EXISTS importexport_job_history_job_idx
     ON importexport_job_history (job_id, id);
+
+CREATE TABLE IF NOT EXISTS importexport_job_import_receipt (
+    job_id BIGINT NOT NULL,
+    service VARCHAR(64) NOT NULL,
+    workspace_id VARCHAR(36) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (job_id, service, workspace_id)
+);

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 )
 
 // ExportArchiveData returns only current, non-deleted resources and links.
@@ -240,6 +242,52 @@ func (r *Repository) ImportArchiveWithMedia(
 	timeout time.Duration,
 	upload func(context.Context, []*Resource) error,
 ) (result ImportResult, err error) {
+	return r.importArchiveWithMedia(
+		ctx,
+		workspaceID,
+		0,
+		req,
+		resources,
+		links,
+		timeout,
+		upload,
+	)
+}
+
+// ImportArchiveWithMediaJob applies an archive-job media import at most once
+// after its transaction commits.
+func (r *Repository) ImportArchiveWithMediaJob(
+	ctx context.Context,
+	workspaceID string,
+	jobID int64,
+	req ImportRequest,
+	resources []*Resource,
+	links []ExportResourceLink,
+	timeout time.Duration,
+	upload func(context.Context, []*Resource) error,
+) (result ImportResult, err error) {
+	return r.importArchiveWithMedia(
+		ctx,
+		workspaceID,
+		jobID,
+		req,
+		resources,
+		links,
+		timeout,
+		upload,
+	)
+}
+
+func (r *Repository) importArchiveWithMedia(
+	ctx context.Context,
+	workspaceID string,
+	jobID int64,
+	req ImportRequest,
+	resources []*Resource,
+	links []ExportResourceLink,
+	timeout time.Duration,
+	upload func(context.Context, []*Resource) error,
+) (result ImportResult, err error) {
 	if err = requireWorkspace(workspaceID); err != nil {
 		return result, err
 	}
@@ -268,6 +316,19 @@ func (r *Repository) ImportArchiveWithMedia(
 	err = r.WithTxTimeout(ctx, timeout, func(tx *Repository) error {
 		if err := tx.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
+		}
+
+		if jobID != 0 {
+			applied, err := jobs.ClaimImportReceipt(
+				ctx,
+				tx.executor,
+				jobID,
+				"reference",
+				workspaceID,
+			)
+			if err != nil || !applied {
+				return err
+			}
 		}
 
 		preview, err := tx.PreviewImport(ctx, workspaceID, req.Package)

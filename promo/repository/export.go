@@ -68,15 +68,16 @@ func (r *Repository) Export(
 	for _, row := range promoRows {
 		promo := mapPromo(row)
 		item := ExportPromo{
-			Code:           promo.Code,
-			Payload:        promo.Payload,
-			Target:         nullableJSON(promo.Target),
-			MaxActivations: promo.MaxActivations,
-			IsActive:       promo.IsActive,
-			StartAt:        promo.StartAt,
-			EndAt:          promo.EndAt,
-			Localization:   make(map[string]ExportText),
-			Rewards:        make([]ExportReward, 0),
+			Code:            promo.Code,
+			Payload:         promo.Payload,
+			Target:          nullableJSON(promo.Target),
+			MaxActivations:  promo.MaxActivations,
+			ActivationCount: promo.ActivationCount,
+			IsActive:        promo.IsActive,
+			StartAt:         promo.StartAt,
+			EndAt:           promo.EndAt,
+			Localization:    make(map[string]ExportText),
+			Rewards:         make([]ExportReward, 0),
 		}
 
 		promoIndexByID[row.ID] = len(out.Promos)
