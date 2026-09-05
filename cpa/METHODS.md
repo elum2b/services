@@ -28,8 +28,8 @@
 | `Admin.ListRewards(ctx, workspaceID, cpaID)` | `workspaceID`, `cpaID`. | Возвращает награды оффера. |
 | `Admin.DeleteReward(ctx, workspaceID, cpaID, rewardKey)` | `workspaceID`, `cpaID`, `rewardKey`. | Удаляет награду оффера. |
 | `Admin.QueueArchiveExport(ctx, params)` | `QueueArchiveExportParams{WorkspaceID, FileName, ExportRequest}`. | Ставит ZIP-экспорт `cpa.export.v1`: catalog, personal-code pool/status, assignments с raw unified identity, reward snapshots и assignment events. Source serial IDs и callback outbox не переносятся; daily stats пересчитываются при import. |
-| `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, ImportRequest, Archive}`. | Ставит ZIP-импорт единственного формата `cpa.export.v1` в одной transaction. Existing codes и assignments импортируемых identities заменяются, но import отклоняется и откатывается, если replacement code связан с assignment другой target identity. Асинхронный импорт не предоставляет `PreviewImport`. |
-| `Admin.ArchiveJob(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Возвращает текущий статус задачи. |
+| `Admin.QueueArchiveImport(ctx, params)` | `QueueArchiveImportParams{WorkspaceID, FileName, ImportRequest, Archive}`. | Ставит ZIP-импорт `cpa.export.v1` в одной transaction. Незавершённый runtime заменяется; completed assignments, их ID, коды, награды и события сохраняются даже при отсутствии в архиве. Конфликт владения кодом отклоняется и откатывается. Асинхронный импорт не предоставляет `PreviewImport`. |
+| `Admin.ArchiveJob(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Возвращает публичный статус без Options, ArchiveKey и lease fields; технические ошибки санитизированы. |
 | `Admin.ArchiveHistory(ctx, workspaceID, page)` | `workspaceID`, `Page`. | Возвращает историю задач workspace. |
 | `Admin.DownloadArchive(ctx, workspaceID, id)` | `workspaceID`, job `id`. | Скачивает результат завершенного export job. |
 | `Admin.ArchiveJobHistory(ctx, workspaceID, id, page)` | `workspaceID`, job `id`, `Page`. | Возвращает историю состояний задачи. |
@@ -44,10 +44,12 @@
 | `Admin.Complete(ctx, params)` | `CompleteParams{Identity, CPAID}`. | Завершает assignment пользователя и возвращает выданные награды. |
 | `Admin.GetStats(ctx, workspaceID, cpaID)` | `workspaceID`, `cpaID`. | Возвращает агрегированную статистику оффера. |
 | `Admin.ListDailyStats(ctx, workspaceID, cpaID, from, until)` | `workspaceID`, `cpaID`, `from`, `until`. | Возвращает дневную статистику оффера. |
-| `Admin.RefreshDailyStats(ctx, workspaceID, from, until)` | `workspaceID`, `from`, `until`. | Пересчитывает дневную статистику только указанной workspace. |
+| `Admin.RefreshDailyStats(ctx, workspaceID, from, until)` | `workspaceID`, `from`, `until`. | Пересчитывает полные UTC-дни, затронутые интервалом [from, until), только указанной workspace. При равных границах пересчитывается их день. |
 | `Admin.ListCallbackEvents(ctx, params)` | `CallbackEventListParams{WorkspaceID, EventType, Status, Page}`. | Возвращает callback-события CPA только указанной workspace. |
 | `Admin.GetCallbackEvent(ctx, workspaceID, id)` | `workspaceID`, `id`. | Возвращает callback-событие указанной workspace. |
 | `Admin.RetryCallbackEventNow(ctx, workspaceID, id)` | `workspaceID`, `id`. | Отправляет callback-событие workspace на повторную обработку. |
 | `Admin.MarkCallbackEventOK(ctx, workspaceID, id)` | `workspaceID`, `id`. | Помечает callback-событие workspace успешным. |
 | `Admin.MarkCallbackEventReject(ctx, workspaceID, id, reason)` | `workspaceID`, `id`, `reason`. | Помечает callback-событие workspace отклоненным. |
 | `Admin.ResetExpiredCallbackProcessing(ctx, workspaceID)` | `workspaceID`. | Сбрасывает зависшие callback-события workspace. |
+
+Архивные лимиты, storage для монолита/реплик и поведение callback при импорте: [ARCHIVES.md](ARCHIVES.md).

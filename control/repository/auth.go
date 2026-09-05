@@ -49,6 +49,9 @@ func (r *Repository) Initialize(
 	identity IdentityInput,
 	metadata SessionInput,
 ) (AuthCompletion, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
 	if err := required(identity.Provider, identity.Subject); err != nil {
 		return AuthCompletion{}, err
 	}
@@ -174,6 +177,9 @@ func (r *Repository) CompleteAuth(
 	inviteToken string,
 	metadata SessionInput,
 ) (AuthCompletion, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
 	if err := required(identity.Provider, identity.Subject); err != nil {
 		return AuthCompletion{}, err
 	}
@@ -607,7 +613,7 @@ func (r *Repository) BindIdentity(
 		return err
 	}
 
-	return r.withAuditDBTx(ctx, func(tx *sql.Tx, q *controlsqlc.Queries) error {
+	return r.withAuditDBTx(ctx, func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 		if err := lockAccountIdentities(ctx, tx, accountID); err != nil {
 			return err
 		}
@@ -707,7 +713,7 @@ func (r *Repository) UnbindIdentity(
 
 	err := r.withAuditDBTx(
 		ctx,
-		func(tx *sql.Tx, q *controlsqlc.Queries) error {
+		func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 			if err := lockAccountIdentities(ctx, tx, accountID); err != nil {
 				return err
 			}
@@ -815,7 +821,7 @@ func (r *Repository) RevokeSession(
 ) (int64, error) {
 	var affected int64
 
-	err := r.withAuditDBTx(ctx, func(tx *sql.Tx, q *controlsqlc.Queries) error {
+	err := r.withAuditDBTx(ctx, func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 		if err := lockAccountAuthentication(ctx, tx, accountID); err != nil {
 			return err
 		}
@@ -840,7 +846,7 @@ func (r *Repository) RevokeAllSessions(
 ) (int64, error) {
 	var affected int64
 
-	err := r.withAuditDBTx(ctx, func(tx *sql.Tx, q *controlsqlc.Queries) error {
+	err := r.withAuditDBTx(ctx, func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 		if err := lockAccountAuthentication(ctx, tx, accountID); err != nil {
 			return err
 		}

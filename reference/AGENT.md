@@ -13,8 +13,9 @@
 ## Доменные инварианты
 
 - Item key стабилен внутри workspace и не переиспользуется для другого смысла.
-- Обычный update не меняет type. Опасная смена type доступна только отдельным
-  методом с точным confirmation token.
+- Обычный update не меняет type. Вне импорта опасная смена type доступна только
+  отдельным методом с точным confirmation token. Импорт имеет право заменить
+  type существующего item без отдельного подтверждения.
 - Удаление soft: исторические reward/order/task snapshots продолжают хранить
   key и разрешаются согласно явно выбранному read contract.
 - Restore не создаёт новый item и сохраняет identity исходного key.
@@ -31,8 +32,10 @@
   затронутые scopes workspace после commit.
 - Reference — единственный сервис, чей export/import содержит полный `items`
   catalog и localization.
-- Import пишет items раньше localization; `update_existing` не оставляет
-  устаревшие вложенные localization.
+- Основной сценарий import — пустая целевая база. Если соответствующие данные
+  уже существуют, приоритет имеет импортируемый пакет: он перезаписывает их.
+  Import пишет items раньше localization; `update_existing` не оставляет
+  устаревшие вложенные localization и links, включая пустые наборы в пакете.
 - Resource media имеет immutable `media_version` из восьми ASCII букв. Create и
   update пишут новый version prefix; старые и soft-deleted versions остаются
   доступными до policy-based garbage collection.
@@ -52,6 +55,8 @@
 - Resource export/import в текущем виде не расширяется. Целевой контракт —
   asynchronous ZIP dump job с постепенной подготовкой и download retention 24
   hours; этот workflow не смешивается с текущим синхронным import/export API.
+- После физического удаления media GC разрешено выдавать ранее закэшированные
+  bytes до истечения их TTL; немедленная инвалидация media cache не требуется.
 - GC удаляет только unreferenced immutable media version prefixes старше одного
   часа, ограниченным batch за запуск. Update и soft-delete никогда не
   удаляют storage synchronously.

@@ -245,6 +245,21 @@ func configureArchiveJobs(
 	}
 
 	archive := options.Archive
+	if options.ArchiveS3 != nil {
+		if archive != nil || options.ArchiveDirectory != "" {
+			return fmt.Errorf("ArchiveS3 conflicts with Archive or ArchiveDirectory")
+		}
+		cfg := *options.ArchiveS3
+		if cfg.Prefix == "" {
+			cfg.Prefix = "payment/importexport/"
+		}
+		var err error
+		archive, err = jobs.NewS3Archive(ctx, cfg)
+		if err != nil {
+			return err
+		}
+	}
+
 	if archive == nil {
 		directory := options.ArchiveDirectory
 		if directory == "" {

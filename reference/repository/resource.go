@@ -81,7 +81,7 @@ func (r *Repository) CreateResourceWithSave(
 	err := r.withWorkspaceMutation(
 		ctx,
 		value.WorkspaceID,
-		func(tx *Repository) error {
+		func(ctx context.Context, tx *Repository) error {
 			if err := tx.q.ResourceCreate(
 				ctx,
 				resourceParams(initial),
@@ -155,7 +155,7 @@ func (r *Repository) UpdateResourceWithSave(
 	err := r.withWorkspaceMutation(
 		ctx,
 		value.WorkspaceID,
-		func(tx *Repository) error {
+		func(ctx context.Context, tx *Repository) error {
 			_, e := tx.q.ResourceGet(ctx, refsqlc.ResourceGetParams{
 				WorkspaceID: value.WorkspaceID,
 				Key:         value.Key,
@@ -220,31 +220,8 @@ func (r *Repository) UpdateResourceWithSave(
 	)
 }
 
-const updateResourceObjectRefs = `
-UPDATE reference_resource
-SET original_ref = $1, preview_61_ref = $2, preview_128_ref = $3,
-    preview_256_ref = $4, preview_512_ref = $5, placeholder_ref = $6
-WHERE workspace_id = $7 AND key = $8 AND deleted_at IS NULL
-`
-
-func (r *Repository) updateResourceObjectRefs(
-	ctx context.Context,
-	value Resource,
-) error {
-	_, err := r.executor.ExecContext(
-		ctx,
-		updateResourceObjectRefs,
-		value.OriginalRef,
-		value.Preview61Ref,
-		value.Preview128Ref,
-		value.Preview256Ref,
-		value.Preview512Ref,
-		value.PlaceholderRef,
-		value.WorkspaceID,
-		value.Key,
-	)
-
-	return err
+func (r *Repository) updateResourceObjectRefs(ctx context.Context, value Resource) error {
+	return r.q.UpdateResourceObjectRefs(ctx, refsqlc.UpdateResourceObjectRefsParams{WorkspaceID: value.WorkspaceID, Key: value.Key, OriginalRef: value.OriginalRef, Preview61Ref: value.Preview61Ref, Preview128Ref: value.Preview128Ref, Preview256Ref: value.Preview256Ref, Preview512Ref: value.Preview512Ref, PlaceholderRef: value.PlaceholderRef, MediaVersion: value.MediaVersion})
 }
 
 func clearResourceObjectRefs(value *Resource) {
@@ -333,7 +310,7 @@ func (r *Repository) SoftDeleteResource(
 
 	var rows int64
 
-	e := r.withWorkspaceMutation(ctx, workspaceID, func(tx *Repository) error {
+	e := r.withWorkspaceMutation(ctx, workspaceID, func(ctx context.Context, tx *Repository) error {
 		var err error
 
 		rows, err = tx.q.ResourceSoftDelete(
@@ -436,13 +413,12 @@ func (r *Repository) PurgeDeletedResource(
 		return 0, err
 	}
 
-	rows, err := r.q.ResourcePurgeDeleted(
-		ctx,
-		refsqlc.ResourcePurgeDeletedParams{
-			WorkspaceID: workspaceID,
-			Key:         key,
-		},
-	)
+	var rows int64
+	err := r.withWorkspaceMutation(ctx, workspaceID, func(ctx context.Context, tx *Repository) error {
+		var err error
+		rows, err = tx.q.ResourcePurgeDeleted(ctx, refsqlc.ResourcePurgeDeletedParams{WorkspaceID: workspaceID, Key: key})
+		return err
+	})
 	if err != nil || rows == 0 {
 		return rows, err
 	}
@@ -538,7 +514,7 @@ func (r *Repository) orderResourceAfter(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *Repository) error {
+		func(ctx context.Context, tx *Repository) error {
 			var exists bool
 
 			if err := tx.executor.QueryRowContext(ctx, `

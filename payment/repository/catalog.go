@@ -130,7 +130,7 @@ func (r *PaymentRepository) UpsertProductGroup(
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *PaymentRepository) error {
+		func(ctx context.Context, tx *PaymentRepository) error {
 			return tx.q.UpsertProductGroup(
 				ctx,
 				paymentsqlc.UpsertProductGroupParams{
@@ -176,7 +176,7 @@ func (r *PaymentRepository) DeleteProductGroup(
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *PaymentRepository) error {
+		func(ctx context.Context, tx *PaymentRepository) error {
 			var err error
 
 			rows, err = tx.q.DeleteProductGroup(
@@ -263,7 +263,7 @@ func (r *PaymentRepository) UpsertProduct(
 	return r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *PaymentRepository) error {
+		func(ctx context.Context, tx *PaymentRepository) error {
 			if err := tx.q.UpsertProduct(ctx, paymentsqlc.UpsertProductParams{
 				WorkspaceID: workspaceID,
 				ID:          params.ID,
@@ -353,7 +353,7 @@ func (r *PaymentRepository) DeleteProduct(
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *PaymentRepository) error {
+		func(ctx context.Context, tx *PaymentRepository) error {
 			var err error
 
 			rows, err = tx.q.DeleteProduct(ctx, paymentsqlc.DeleteProductParams{
@@ -394,7 +394,7 @@ func (r *PaymentRepository) UpsertLocalization(
 	return r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *PaymentRepository) error {
+		func(ctx context.Context, tx *PaymentRepository) error {
 			if err := tx.q.UpsertLocalization(
 				ctx,
 				paymentsqlc.UpsertLocalizationParams{
@@ -428,7 +428,7 @@ func (r *PaymentRepository) DeleteLocalization(
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *PaymentRepository) error {
+		func(ctx context.Context, tx *PaymentRepository) error {
 			var err error
 
 			rows, err = tx.q.DeleteLocalization(
@@ -475,7 +475,7 @@ func (r *PaymentRepository) UpsertProductItem(
 	return r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *PaymentRepository) error {
+		func(ctx context.Context, tx *PaymentRepository) error {
 			if err := tx.q.UpsertProductItem(
 				ctx,
 				paymentsqlc.UpsertProductItemParams{
@@ -544,7 +544,7 @@ func (r *PaymentRepository) DeleteProductItem(
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *PaymentRepository) error {
+		func(ctx context.Context, tx *PaymentRepository) error {
 			var err error
 
 			rows, err = tx.q.DeleteProductItem(
@@ -596,7 +596,7 @@ func (r *PaymentRepository) CreateProductPrice(
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *PaymentRepository) error {
+		func(ctx context.Context, tx *PaymentRepository) error {
 			amounts, err := tx.resolveProductPriceAmounts(
 				ctx,
 				workspaceID,
@@ -686,7 +686,7 @@ func (r *PaymentRepository) UpdateProductPrice(
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *PaymentRepository) error {
+		func(ctx context.Context, tx *PaymentRepository) error {
 			productID, err := tx.q.GetProductPriceProductID(
 				ctx,
 				paymentsqlc.GetProductPriceProductIDParams{
@@ -775,7 +775,7 @@ func (r *PaymentRepository) DeleteProductPrice(
 	err = r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *PaymentRepository) error {
+		func(ctx context.Context, tx *PaymentRepository) error {
 			productID, err := tx.q.GetProductPriceProductID(
 				ctx,
 				paymentsqlc.GetProductPriceProductIDParams{

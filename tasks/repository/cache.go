@@ -174,6 +174,20 @@ func (r *Repository) bumpPartnerScriptCache() error {
 
 func (r *Repository) reportCacheInvalidationError(err error) {
 	if err != nil && r != nil && r.onCacheInvalidationError != nil {
+		defer func() { _ = recover() }()
 		r.onCacheInvalidationError(err)
 	}
+}
+
+func (r *Repository) ReconcileArchiveImport(ctx context.Context, workspaceID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := r.invalidateTaskCache(ctx, workspaceID); err != nil {
+		return err
+	}
+	if err := r.bumpPartnerConfigCache(workspaceID); err != nil {
+		return err
+	}
+	return r.bumpPartnerScriptCache()
 }

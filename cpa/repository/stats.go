@@ -99,9 +99,23 @@ func (r *Repository) RefreshDailyStats(
 		return ErrInvalidDateRange
 	}
 
-	return r.q.RefreshDailyStats(ctx, cpasqlc.RefreshDailyStatsParams{
-		RefreshWorkspaceID: workspaceID,
-		OccurredAt:         from,
-		OccurredAt_2:       until,
+	// The storage unit is a UTC day. A partial interval must never replace a
+	// full day's aggregate with only part of its events.
+	start := from.UTC().Truncate(24 * time.Hour)
+	end := until.UTC().Truncate(24 * time.Hour)
+	if until.After(end) || !end.After(start) {
+		end = end.Add(24 * time.Hour)
+	}
+
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
+		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
+			return err
+		}
+
+		return txRepo.q.RefreshDailyStats(ctx, cpasqlc.RefreshDailyStatsParams{
+			RefreshWorkspaceID: workspaceID,
+			OccurredAt:         start,
+			OccurredAt_2:       end,
+		})
 	})
 }

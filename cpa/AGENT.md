@@ -41,8 +41,12 @@
 - Archive использует единственный формат `cpa.export.v1`: catalog, personal-code
   pool/state, assignments keyed by raw unified identity, reward snapshots and
   assignment events are transferred without source serial IDs or callback outbox.
-  Existing target codes and activation identities are replaced and daily stats
-  are rebuilt. Catalog-only legacy formats не поддерживаются.
+  Existing unfinished target runtime is replaced and daily stats are rebuilt.
+  Completed assignments, their IDs, codes, rewards and events are irreversible
+  and survive import even when absent from the source snapshot. Different incoming
+  codes for those identities are retained as deleted to prevent reissue.
+  Historical code modes/sources/shared codes need not match the current catalog.
+  Catalog-only legacy formats не поддерживаются.
 - Import preflight сообщает `offers[index].field`, пишет bulk batches и при
   `update_existing` полностью заменяет localization/reward/code snapshot.
 

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	json "github.com/goccy/go-json"
 
@@ -89,7 +90,7 @@ func (r *Repository) importWithJob(
 
 	strategy := req.ConflictStrategy
 	if strategy == "" {
-		strategy = ImportConflictFail
+		strategy = ImportConflictUpdate
 	}
 
 	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
@@ -103,7 +104,7 @@ func (r *Repository) importWithJob(
 	result := ImportResult{}
 	alreadyApplied := false
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTxTimeout(ctx, 15*time.Minute, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -176,18 +177,18 @@ func (r *Repository) lockWorkspaceMutation(
 func (r *Repository) withWorkspaceMutation(
 	ctx context.Context,
 	workspaceID string,
-	fn func(*Repository) error,
+	fn func(context.Context, *Repository) error,
 ) error {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return err
 	}
 
-	return r.WithTx(ctx, func(txRepo *Repository) error {
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
 
-		return fn(txRepo)
+		return fn(ctx, txRepo)
 	})
 }
 
@@ -475,11 +476,11 @@ func validateExportPackage(pkg ExportPackage) error {
 		}
 
 		for locale, text := range item.Localization {
-			if strings.TrimSpace(locale) == "" {
+			if strings.TrimSpace(locale) == "" || utf8.RuneCountInString(locale) > 16 {
 				return fmt.Errorf("%s.localization: locale is required", prefix)
 			}
 
-			if strings.TrimSpace(text.Title) == "" {
+			if strings.TrimSpace(text.Title) == "" || utf8.RuneCountInString(text.Title) > 255 {
 				return fmt.Errorf(
 					"%s.localization.%s.title: title is required",
 					prefix,

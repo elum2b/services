@@ -153,6 +153,9 @@ func open(ctx context.Context, params DatabaseParams) (*CPA, error) {
 	}
 
 	bootstrap := repository.NewWithOptions(client, repository.Options{
+		ArchiveTimeout:           options.ArchiveTimeout,
+		ArchiveMaxRows:           options.ArchiveMaxRows,
+		ArchiveMaxBytes:          options.ArchiveMaxBytes,
 		QueryTimeout:             options.QueryTimeout,
 		CacheL1Delay:             options.CacheL1Delay,
 		CacheL2Delay:             options.CacheL2Delay,
@@ -198,6 +201,16 @@ func configureArchiveJobs(
 	}
 
 	archive := options.Archive
+	if options.ArchiveS3 != nil {
+		if archive != nil || options.ArchiveDirectory != "" {
+			return errors.New("configure exactly one CPA archive backend")
+		}
+		var err error
+		archive, err = jobs.NewS3Archive(ctx, *options.ArchiveS3)
+		if err != nil {
+			return err
+		}
+	}
 	if archive == nil {
 		directory := options.ArchiveDirectory
 		if directory == "" {
@@ -219,6 +232,10 @@ func configureArchiveJobs(
 		if err != nil {
 			return err
 		}
+	}
+
+	if _, ok := archive.(jobs.ArchiveLister); !ok {
+		return errors.New("CPA archive must implement List for orphan recovery")
 	}
 
 	if err := service.Admin.ConfigureArchiveJobs(
@@ -292,6 +309,9 @@ func newCPA(
 
 	rootCtx, rootCancel := context.WithCancel(contextutil.Normalize(ctx))
 	repositoryOptions := repository.Options{
+		ArchiveTimeout:           options.ArchiveTimeout,
+		ArchiveMaxRows:           options.ArchiveMaxRows,
+		ArchiveMaxBytes:          options.ArchiveMaxBytes,
 		QueryTimeout:             options.QueryTimeout,
 		CacheL1Delay:             options.CacheL1Delay,
 		CacheL2Delay:             options.CacheL2Delay,

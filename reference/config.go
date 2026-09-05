@@ -46,7 +46,7 @@ type Options struct {
 	// ResourceStorage selects S3/MinIO when Bucket is set; otherwise resources
 	// are saved beside the executable in the reference directory.
 	// Async import/export archives use <Directory>/importexport. S3 resource
-	// storage is rejected until a shared S3 archive adapter is configured.
+	// storage uses the same S3-compatible bucket for shared archive jobs.
 	ResourceStorage     resourcestorage.Config
 	ResourceMediaCache  resourcecache.Config
 	ResourceGCInterval  time.Duration

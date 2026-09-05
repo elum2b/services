@@ -121,7 +121,7 @@ func (r *Repository) Close() error {
 
 func (r *Repository) WithTx(
 	ctx context.Context,
-	fn func(*Repository) error,
+	fn func(context.Context, *Repository) error,
 ) error {
 	_, err := sqlwrap.Transaction(
 		ctx,
@@ -138,7 +138,7 @@ func (r *Repository) WithTx(
 				onCacheInvalidationError: r.onCacheInvalidationError,
 			}
 
-			return struct{}{}, fn(txRepo)
+			return struct{}{}, fn(ctx, txRepo)
 		},
 	)
 
@@ -150,7 +150,7 @@ func (r *Repository) WithTx(
 func (r *Repository) WithTxTimeout(
 	ctx context.Context,
 	timeout time.Duration,
-	fn func(*Repository) error,
+	fn func(context.Context, *Repository) error,
 ) error {
 	_, err := sqlwrap.Transaction(
 		ctx,
@@ -167,7 +167,7 @@ func (r *Repository) WithTxTimeout(
 				onCacheInvalidationError: r.onCacheInvalidationError,
 			}
 
-			return struct{}{}, fn(txRepo)
+			return struct{}{}, fn(ctx, txRepo)
 		},
 	)
 

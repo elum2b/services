@@ -369,6 +369,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getEnabledTONWalletForWorkspaceStmt, err = db.PrepareContext(ctx, getEnabledTONWalletForWorkspace); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEnabledTONWalletForWorkspace: %w", err)
 	}
+	if q.getExportFootprintStmt, err = db.PrepareContext(ctx, getExportFootprint); err != nil {
+		return nil, fmt.Errorf("error preparing query GetExportFootprint: %w", err)
+	}
 	if q.getFulfilledAttemptResultStmt, err = db.PrepareContext(ctx, getFulfilledAttemptResult); err != nil {
 		return nil, fmt.Errorf("error preparing query GetFulfilledAttemptResult: %w", err)
 	}
@@ -1237,6 +1240,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getEnabledTONWalletForWorkspaceStmt: %w", cerr)
 		}
 	}
+	if q.getExportFootprintStmt != nil {
+		if cerr := q.getExportFootprintStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getExportFootprintStmt: %w", cerr)
+		}
+	}
 	if q.getFulfilledAttemptResultStmt != nil {
 		if cerr := q.getFulfilledAttemptResultStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getFulfilledAttemptResultStmt: %w", cerr)
@@ -1871,6 +1879,7 @@ type Queries struct {
 	getCurrentProductPriceStmt                            *sql.Stmt
 	getEnabledTONConnectManifestStmt                      *sql.Stmt
 	getEnabledTONWalletForWorkspaceStmt                   *sql.Stmt
+	getExportFootprintStmt                                *sql.Stmt
 	getFulfilledAttemptResultStmt                         *sql.Stmt
 	getFulfillmentForOrderStmt                            *sql.Stmt
 	getFulfillmentItemsForOrderStmt                       *sql.Stmt
@@ -2088,6 +2097,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getCurrentProductPriceStmt:                            q.getCurrentProductPriceStmt,
 		getEnabledTONConnectManifestStmt:                      q.getEnabledTONConnectManifestStmt,
 		getEnabledTONWalletForWorkspaceStmt:                   q.getEnabledTONWalletForWorkspaceStmt,
+		getExportFootprintStmt:                                q.getExportFootprintStmt,
 		getFulfilledAttemptResultStmt:                         q.getFulfilledAttemptResultStmt,
 		getFulfillmentForOrderStmt:                            q.getFulfillmentForOrderStmt,
 		getFulfillmentItemsForOrderStmt:                       q.getFulfillmentItemsForOrderStmt,

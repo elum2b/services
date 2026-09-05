@@ -18,6 +18,9 @@ func (r *Repository) RegisterMethods(
 	ctx context.Context,
 	methods []Method,
 ) error {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
 	if len(methods) == 0 {
 		return nil
 	}

@@ -60,8 +60,20 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.adminUpsertLocalizationStmt, err = db.PrepareContext(ctx, adminUpsertLocalization); err != nil {
 		return nil, fmt.Errorf("error preparing query AdminUpsertLocalization: %w", err)
 	}
+	if q.deleteImportedItemLinksStmt, err = db.PrepareContext(ctx, deleteImportedItemLinks); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteImportedItemLinks: %w", err)
+	}
 	if q.getItemBundleStmt, err = db.PrepareContext(ctx, getItemBundle); err != nil {
 		return nil, fmt.Errorf("error preparing query GetItemBundle: %w", err)
+	}
+	if q.importResourceStmt, err = db.PrepareContext(ctx, importResource); err != nil {
+		return nil, fmt.Errorf("error preparing query ImportResource: %w", err)
+	}
+	if q.listArchiveLinksStmt, err = db.PrepareContext(ctx, listArchiveLinks); err != nil {
+		return nil, fmt.Errorf("error preparing query ListArchiveLinks: %w", err)
+	}
+	if q.listArchiveResourcesStmt, err = db.PrepareContext(ctx, listArchiveResources); err != nil {
+		return nil, fmt.Errorf("error preparing query ListArchiveResources: %w", err)
 	}
 	if q.listExportItemsStmt, err = db.PrepareContext(ctx, listExportItems); err != nil {
 		return nil, fmt.Errorf("error preparing query ListExportItems: %w", err)
@@ -71,6 +83,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listImportItemKeysStmt, err = db.PrepareContext(ctx, listImportItemKeys); err != nil {
 		return nil, fmt.Errorf("error preparing query ListImportItemKeys: %w", err)
+	}
+	if q.listImportResourceKeysStmt, err = db.PrepareContext(ctx, listImportResourceKeys); err != nil {
+		return nil, fmt.Errorf("error preparing query ListImportResourceKeys: %w", err)
 	}
 	if q.listItemBundlesStmt, err = db.PrepareContext(ctx, listItemBundles); err != nil {
 		return nil, fmt.Errorf("error preparing query ListItemBundles: %w", err)
@@ -108,6 +123,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.resourceMediaVersionCreateStmt, err = db.PrepareContext(ctx, resourceMediaVersionCreate); err != nil {
 		return nil, fmt.Errorf("error preparing query ResourceMediaVersionCreate: %w", err)
 	}
+	if q.resourceMediaVersionDurableStmt, err = db.PrepareContext(ctx, resourceMediaVersionDurable); err != nil {
+		return nil, fmt.Errorf("error preparing query ResourceMediaVersionDurable: %w", err)
+	}
 	if q.resourceMediaVersionRetireActiveStmt, err = db.PrepareContext(ctx, resourceMediaVersionRetireActive); err != nil {
 		return nil, fmt.Errorf("error preparing query ResourceMediaVersionRetireActive: %w", err)
 	}
@@ -119,6 +137,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.resourceUpdateStmt, err = db.PrepareContext(ctx, resourceUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query ResourceUpdate: %w", err)
+	}
+	if q.updateResourceObjectRefsStmt, err = db.PrepareContext(ctx, updateResourceObjectRefs); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateResourceObjectRefs: %w", err)
 	}
 	return &q, nil
 }
@@ -185,9 +206,29 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing adminUpsertLocalizationStmt: %w", cerr)
 		}
 	}
+	if q.deleteImportedItemLinksStmt != nil {
+		if cerr := q.deleteImportedItemLinksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteImportedItemLinksStmt: %w", cerr)
+		}
+	}
 	if q.getItemBundleStmt != nil {
 		if cerr := q.getItemBundleStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getItemBundleStmt: %w", cerr)
+		}
+	}
+	if q.importResourceStmt != nil {
+		if cerr := q.importResourceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing importResourceStmt: %w", cerr)
+		}
+	}
+	if q.listArchiveLinksStmt != nil {
+		if cerr := q.listArchiveLinksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listArchiveLinksStmt: %w", cerr)
+		}
+	}
+	if q.listArchiveResourcesStmt != nil {
+		if cerr := q.listArchiveResourcesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listArchiveResourcesStmt: %w", cerr)
 		}
 	}
 	if q.listExportItemsStmt != nil {
@@ -203,6 +244,11 @@ func (q *Queries) Close() error {
 	if q.listImportItemKeysStmt != nil {
 		if cerr := q.listImportItemKeysStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listImportItemKeysStmt: %w", cerr)
+		}
+	}
+	if q.listImportResourceKeysStmt != nil {
+		if cerr := q.listImportResourceKeysStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listImportResourceKeysStmt: %w", cerr)
 		}
 	}
 	if q.listItemBundlesStmt != nil {
@@ -265,6 +311,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing resourceMediaVersionCreateStmt: %w", cerr)
 		}
 	}
+	if q.resourceMediaVersionDurableStmt != nil {
+		if cerr := q.resourceMediaVersionDurableStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resourceMediaVersionDurableStmt: %w", cerr)
+		}
+	}
 	if q.resourceMediaVersionRetireActiveStmt != nil {
 		if cerr := q.resourceMediaVersionRetireActiveStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing resourceMediaVersionRetireActiveStmt: %w", cerr)
@@ -283,6 +334,11 @@ func (q *Queries) Close() error {
 	if q.resourceUpdateStmt != nil {
 		if cerr := q.resourceUpdateStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing resourceUpdateStmt: %w", cerr)
+		}
+	}
+	if q.updateResourceObjectRefsStmt != nil {
+		if cerr := q.updateResourceObjectRefsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateResourceObjectRefsStmt: %w", cerr)
 		}
 	}
 	return err
@@ -336,10 +392,15 @@ type Queries struct {
 	adminSoftDeleteItemStmt              *sql.Stmt
 	adminUpdateItemStmt                  *sql.Stmt
 	adminUpsertLocalizationStmt          *sql.Stmt
+	deleteImportedItemLinksStmt          *sql.Stmt
 	getItemBundleStmt                    *sql.Stmt
+	importResourceStmt                   *sql.Stmt
+	listArchiveLinksStmt                 *sql.Stmt
+	listArchiveResourcesStmt             *sql.Stmt
 	listExportItemsStmt                  *sql.Stmt
 	listExportLocalizationsStmt          *sql.Stmt
 	listImportItemKeysStmt               *sql.Stmt
+	listImportResourceKeysStmt           *sql.Stmt
 	listItemBundlesStmt                  *sql.Stmt
 	resolveItemBundlesStmt               *sql.Stmt
 	resourceAttachStmt                   *sql.Stmt
@@ -352,10 +413,12 @@ type Queries struct {
 	resourceListGarbageMediaVersionsStmt *sql.Stmt
 	resourceListItemResourcesStmt        *sql.Stmt
 	resourceMediaVersionCreateStmt       *sql.Stmt
+	resourceMediaVersionDurableStmt      *sql.Stmt
 	resourceMediaVersionRetireActiveStmt *sql.Stmt
 	resourcePurgeDeletedStmt             *sql.Stmt
 	resourceSoftDeleteStmt               *sql.Stmt
 	resourceUpdateStmt                   *sql.Stmt
+	updateResourceObjectRefsStmt         *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -374,10 +437,15 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		adminSoftDeleteItemStmt:              q.adminSoftDeleteItemStmt,
 		adminUpdateItemStmt:                  q.adminUpdateItemStmt,
 		adminUpsertLocalizationStmt:          q.adminUpsertLocalizationStmt,
+		deleteImportedItemLinksStmt:          q.deleteImportedItemLinksStmt,
 		getItemBundleStmt:                    q.getItemBundleStmt,
+		importResourceStmt:                   q.importResourceStmt,
+		listArchiveLinksStmt:                 q.listArchiveLinksStmt,
+		listArchiveResourcesStmt:             q.listArchiveResourcesStmt,
 		listExportItemsStmt:                  q.listExportItemsStmt,
 		listExportLocalizationsStmt:          q.listExportLocalizationsStmt,
 		listImportItemKeysStmt:               q.listImportItemKeysStmt,
+		listImportResourceKeysStmt:           q.listImportResourceKeysStmt,
 		listItemBundlesStmt:                  q.listItemBundlesStmt,
 		resolveItemBundlesStmt:               q.resolveItemBundlesStmt,
 		resourceAttachStmt:                   q.resourceAttachStmt,
@@ -390,9 +458,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		resourceListGarbageMediaVersionsStmt: q.resourceListGarbageMediaVersionsStmt,
 		resourceListItemResourcesStmt:        q.resourceListItemResourcesStmt,
 		resourceMediaVersionCreateStmt:       q.resourceMediaVersionCreateStmt,
+		resourceMediaVersionDurableStmt:      q.resourceMediaVersionDurableStmt,
 		resourceMediaVersionRetireActiveStmt: q.resourceMediaVersionRetireActiveStmt,
 		resourcePurgeDeletedStmt:             q.resourcePurgeDeletedStmt,
 		resourceSoftDeleteStmt:               q.resourceSoftDeleteStmt,
 		resourceUpdateStmt:                   q.resourceUpdateStmt,
+		updateResourceObjectRefsStmt:         q.updateResourceObjectRefsStmt,
 	}
 }

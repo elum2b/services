@@ -105,6 +105,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getCalendarBundleStmt, err = db.PrepareContext(ctx, getCalendarBundle); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCalendarBundle: %w", err)
 	}
+	if q.getExportFootprintStmt, err = db.PrepareContext(ctx, getExportFootprint); err != nil {
+		return nil, fmt.Errorf("error preparing query GetExportFootprint: %w", err)
+	}
 	if q.getProgressStmt, err = db.PrepareContext(ctx, getProgress); err != nil {
 		return nil, fmt.Errorf("error preparing query GetProgress: %w", err)
 	}
@@ -278,6 +281,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getCalendarBundleStmt: %w", cerr)
 		}
 	}
+	if q.getExportFootprintStmt != nil {
+		if cerr := q.getExportFootprintStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getExportFootprintStmt: %w", cerr)
+		}
+	}
 	if q.getProgressStmt != nil {
 		if cerr := q.getProgressStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getProgressStmt: %w", cerr)
@@ -399,6 +407,7 @@ type Queries struct {
 	createOperationStmt            *sql.Stmt
 	ensureProgressForUpdateStmt    *sql.Stmt
 	getCalendarBundleStmt          *sql.Stmt
+	getExportFootprintStmt         *sql.Stmt
 	getProgressStmt                *sql.Stmt
 	getRecordBundleForUpdateStmt   *sql.Stmt
 	listActiveCalendarsStmt        *sql.Stmt
@@ -443,6 +452,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createOperationStmt:            q.createOperationStmt,
 		ensureProgressForUpdateStmt:    q.ensureProgressForUpdateStmt,
 		getCalendarBundleStmt:          q.getCalendarBundleStmt,
+		getExportFootprintStmt:         q.getExportFootprintStmt,
 		getProgressStmt:                q.getProgressStmt,
 		getRecordBundleForUpdateStmt:   q.getRecordBundleForUpdateStmt,
 		listActiveCalendarsStmt:        q.listActiveCalendarsStmt,

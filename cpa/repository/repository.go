@@ -57,6 +57,9 @@ var (
 )
 
 type Repository struct {
+	archiveTimeout           time.Duration
+	archiveMaxRows           int64
+	archiveMaxBytes          int64
 	db                       *sqlwrap.Client
 	q                        *cpasqlc.Queries
 	callbacks                *callbackutil.Store
@@ -68,6 +71,9 @@ type Repository struct {
 }
 
 type Options struct {
+	ArchiveTimeout           time.Duration
+	ArchiveMaxRows           int64
+	ArchiveMaxBytes          int64
 	QueryTimeout             time.Duration
 	CacheL1Delay             time.Duration
 	CacheL2Delay             time.Duration
@@ -88,8 +94,11 @@ func NewWithOptions(db *sqlwrap.Client, options Options) *Repository {
 	executor := db.WithQueryTimeout(timeout)
 
 	return &Repository{
-		db: db,
-		q:  cpasqlc.New(executor),
+		archiveTimeout:  options.ArchiveTimeout,
+		archiveMaxRows:  options.ArchiveMaxRows,
+		archiveMaxBytes: options.ArchiveMaxBytes,
+		db:              db,
+		q:               cpasqlc.New(executor),
 		callbacks: callbackutil.NewWithTable(
 			db.DB(),
 			callbackutil.CPATable,
@@ -134,7 +143,7 @@ func (r *Repository) Close() error {
 
 func (r *Repository) WithTx(
 	ctx context.Context,
-	fn func(*Repository) error,
+	fn func(context.Context, *Repository) error,
 ) error {
 	_, err := sqlwrap.Transaction(
 		ctx,
@@ -154,7 +163,7 @@ func (r *Repository) WithTx(
 				onCacheInvalidationError: r.onCacheInvalidationError,
 			}
 
-			return struct{}{}, fn(txRepo)
+			return struct{}{}, fn(ctx, txRepo)
 		},
 	)
 
@@ -163,9 +172,9 @@ func (r *Repository) WithTx(
 
 func (r *Repository) WithReadOnlySnapshot(
 	ctx context.Context,
-	fn func(*Repository) error,
+	fn func(context.Context, *Repository) error,
 ) error {
-	return r.WithTx(ctx, func(txRepo *Repository) error {
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if _, err := txRepo.executor.ExecContext(
 			ctx,
 			"SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
@@ -173,7 +182,7 @@ func (r *Repository) WithReadOnlySnapshot(
 			return err
 		}
 
-		return fn(txRepo)
+		return fn(ctx, txRepo)
 	})
 }
 

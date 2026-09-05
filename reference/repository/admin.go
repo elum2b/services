@@ -18,7 +18,7 @@ func (r *Repository) CreateItem(
 	err := r.withWorkspaceMutation(
 		ctx,
 		params.WorkspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminCreateItem(ctx, refsqlc.AdminCreateItemParams{
 				WorkspaceID: params.WorkspaceID,
 				Key:         params.Key,
@@ -50,7 +50,7 @@ func (r *Repository) UpdateItem(
 	err := r.withWorkspaceMutation(
 		ctx,
 		params.WorkspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminUpdateItem(
@@ -89,7 +89,7 @@ func (r *Repository) DangerousChangeType(
 	err := r.withWorkspaceMutation(
 		ctx,
 		params.WorkspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminDangerousChangeType(
@@ -128,7 +128,7 @@ func (r *Repository) SoftDeleteItem(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminSoftDeleteItem(
@@ -166,7 +166,7 @@ func (r *Repository) RestoreItem(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminRestoreItem(
@@ -326,7 +326,7 @@ func (r *Repository) UpsertLocalization(
 	err := r.withWorkspaceMutation(
 		ctx,
 		value.WorkspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminUpsertLocalization(
 				ctx,
 				refsqlc.AdminUpsertLocalizationParams{
@@ -446,7 +446,7 @@ func (r *Repository) DeleteLocalization(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminDeleteLocalization(

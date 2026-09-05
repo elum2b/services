@@ -1,3 +1,5 @@
+> Повторная проверка 2026-09-05: актуальные статусы и исправления — в [SECURITY_RELIABILITY_AUDIT.md](SECURITY_RELIABILITY_AUDIT.md). Ниже сохранён исторический отчёт; его строки кода и утверждения о недостающих защитах не описывают текущую версию.
+
 # Аудит асинхронного archive import/export Payment
 
 Проверка актуального кода `payment` и общего `internal/utils/importexport/jobs`.

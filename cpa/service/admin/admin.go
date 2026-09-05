@@ -14,10 +14,13 @@ import (
 )
 
 type Admin struct {
-	repository *repository.Repository
-	callbacks  *callbackutil.Store
-	rootCtx    context.Context
-	jobs       *jobs.Manager
+	archiveMaxBytes int64
+	archiveMaxRows  int64
+	archiveTimeout  time.Duration
+	repository      *repository.Repository
+	callbacks       *callbackutil.Store
+	rootCtx         context.Context
+	jobs            *jobs.Manager
 }
 
 func New(ctx context.Context, db *sqlwrap.Client) *Admin {
@@ -48,10 +51,22 @@ func NewWithRepositoryOptions(
 		repo = repository.NewWithOptions(db, options)
 	}
 
+	if options.ArchiveMaxBytes <= 0 {
+		options.ArchiveMaxBytes = repository.DefaultArchiveMaxBytes
+	}
+	if options.ArchiveMaxRows <= 0 {
+		options.ArchiveMaxRows = repository.DefaultArchiveMaxRows
+	}
+	if options.ArchiveTimeout <= 0 {
+		options.ArchiveTimeout = repository.DefaultArchiveTimeout
+	}
 	return &Admin{
-		repository: repo,
-		callbacks:  callbackutil.NewWithTable(db.DB(), callbackutil.CPATable),
-		rootCtx:    contextutil.Normalize(ctx),
+		archiveMaxBytes: options.ArchiveMaxBytes,
+		archiveMaxRows:  options.ArchiveMaxRows,
+		archiveTimeout:  options.ArchiveTimeout,
+		repository:      repo,
+		callbacks:       callbackutil.NewWithTable(db.DB(), callbackutil.CPATable),
+		rootCtx:         contextutil.Normalize(ctx),
 	}
 }
 
@@ -83,7 +98,7 @@ func (a *Admin) ConfigureArchiveJobs(db *sql.DB, archive jobs.Archive) error {
 		db,
 		archive,
 		archiveJobHandler{admin: a},
-		jobs.Options{Service: "cpa"},
+		jobs.Options{Service: "cpa", HandlerTimeout: a.archiveTimeout + time.Minute, ZIPLimits: jobs.ZIPLimits{MaxUncompressedBytes: a.archiveMaxBytes}},
 	)
 	if err != nil {
 		return err

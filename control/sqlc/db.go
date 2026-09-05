@@ -345,6 +345,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.resolveLimitRequestStmt, err = db.PrepareContext(ctx, resolveLimitRequest); err != nil {
 		return nil, fmt.Errorf("error preparing query ResolveLimitRequest: %w", err)
 	}
+	if q.revokeAllMCPTokensStmt, err = db.PrepareContext(ctx, revokeAllMCPTokens); err != nil {
+		return nil, fmt.Errorf("error preparing query RevokeAllMCPTokens: %w", err)
+	}
 	if q.revokeAllSessionsStmt, err = db.PrepareContext(ctx, revokeAllSessions); err != nil {
 		return nil, fmt.Errorf("error preparing query RevokeAllSessions: %w", err)
 	}
@@ -957,6 +960,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing resolveLimitRequestStmt: %w", cerr)
 		}
 	}
+	if q.revokeAllMCPTokensStmt != nil {
+		if cerr := q.revokeAllMCPTokensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing revokeAllMCPTokensStmt: %w", cerr)
+		}
+	}
 	if q.revokeAllSessionsStmt != nil {
 		if cerr := q.revokeAllSessionsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing revokeAllSessionsStmt: %w", cerr)
@@ -1223,6 +1231,7 @@ type Queries struct {
 	replaceGlobalRolePermissionsStmt             *sql.Stmt
 	replaceWorkspaceRolePermissionsStmt          *sql.Stmt
 	resolveLimitRequestStmt                      *sql.Stmt
+	revokeAllMCPTokensStmt                       *sql.Stmt
 	revokeAllSessionsStmt                        *sql.Stmt
 	revokeInviteStmt                             *sql.Stmt
 	revokeMCPTokenStmt                           *sql.Stmt
@@ -1360,6 +1369,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		replaceGlobalRolePermissionsStmt:             q.replaceGlobalRolePermissionsStmt,
 		replaceWorkspaceRolePermissionsStmt:          q.replaceWorkspaceRolePermissionsStmt,
 		resolveLimitRequestStmt:                      q.resolveLimitRequestStmt,
+		revokeAllMCPTokensStmt:                       q.revokeAllMCPTokensStmt,
 		revokeAllSessionsStmt:                        q.revokeAllSessionsStmt,
 		revokeInviteStmt:                             q.revokeInviteStmt,
 		revokeMCPTokenStmt:                           q.revokeMCPTokenStmt,

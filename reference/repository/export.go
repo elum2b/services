@@ -16,47 +16,54 @@ func (r *Repository) Export(
 		return ExportPackage{}, err
 	}
 
+	var result ExportPackage
+	err := r.WithTxTimeout(ctx, 15*time.Minute, func(ctx context.Context, tx *Repository) error {
+		if _, err := tx.executor.ExecContext(ctx, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"); err != nil {
+			return err
+		}
+		var err error
+		result, err = tx.exportPackage(ctx, workspaceID, req)
+		return err
+	})
+	return result, err
+}
+
+// ExportArchive captures the entire manifest in one PostgreSQL snapshot.
+func (r *Repository) ExportArchive(ctx context.Context, workspaceID string, includeMedia bool) (ArchivePackage, error) {
+	if err := requireWorkspace(workspaceID); err != nil {
+		return ArchivePackage{}, err
+	}
+	var result ArchivePackage
+	err := r.WithTxTimeout(ctx, 15*time.Minute, func(ctx context.Context, tx *Repository) error {
+		if _, err := tx.executor.ExecContext(ctx, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"); err != nil {
+			return err
+		}
+		var err error
+		result.Package, err = tx.exportPackage(ctx, workspaceID, ExportRequest{OnlyNotDeleted: true})
+		if err != nil {
+			return err
+		}
+		if includeMedia {
+			result.Resources, result.Links, err = tx.ExportArchiveData(ctx, workspaceID)
+		}
+		return err
+	})
+	return result, err
+}
+
+func (r *Repository) exportPackage(ctx context.Context, workspaceID string, req ExportRequest) (ExportPackage, error) {
 	now := req.Now
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-
-	var (
-		items            []refsqlc.ListExportItemsRow
-		localizationRows []refsqlc.ReferenceLocalization
-	)
-
-	if err := r.WithTx(ctx, func(txRepo *Repository) error {
-		if _, err := txRepo.executor.ExecContext(
-			ctx,
-			"SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
-		); err != nil {
-			return err
-		}
-
-		var err error
-
-		items, err = txRepo.q.ListExportItems(
-			ctx,
-			refsqlc.ListExportItemsParams{
-				WorkspaceID: workspaceID,
-				Column2:     req.OnlyNotDeleted,
-			},
-		)
-		if err != nil {
-			return err
-		}
-
-		localizationRows, err = txRepo.q.ListExportLocalizations(
-			ctx,
-			workspaceID,
-		)
-
-		return err
-	}); err != nil {
+	items, err := r.q.ListExportItems(ctx, refsqlc.ListExportItemsParams{WorkspaceID: workspaceID, Column2: req.OnlyNotDeleted})
+	if err != nil {
 		return ExportPackage{}, err
 	}
-
+	localizationRows, err := r.q.ListExportLocalizations(ctx, workspaceID)
+	if err != nil {
+		return ExportPackage{}, err
+	}
 	localizations := mapExportLocalizations(localizationRows)
 	out := ExportPackage{
 		Format:    ExportFormat,

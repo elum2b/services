@@ -3293,6 +3293,20 @@ func (q *Queries) ResolveLimitRequest(ctx context.Context, arg ResolveLimitReque
 	return result.RowsAffected()
 }
 
+const revokeAllMCPTokens = `-- name: RevokeAllMCPTokens :execrows
+UPDATE control_mcp_token
+SET revoked_at = now()
+WHERE account_id = $1 AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeAllMCPTokens(ctx context.Context, accountID string) (int64, error) {
+	result, err := q.exec(ctx, q.revokeAllMCPTokensStmt, revokeAllMCPTokens, accountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const revokeAllSessions = `-- name: RevokeAllSessions :execrows
 UPDATE control_session
 SET revoked_at = now()

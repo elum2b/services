@@ -109,7 +109,7 @@ func (r *PaymentRepository) ApplyProviderRefund(
 
 	var result ProviderRefundResult
 
-	err = r.inTransaction(ctx, func(txRepo *PaymentRepository) error {
+	err = r.inTransaction(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttemptByProviderPaymentID(
 			ctx,
 			sqlc.LockPaymentAttemptByProviderPaymentIDParams{
@@ -402,7 +402,7 @@ func (r *PaymentRepository) CreateRefund(
 
 	var refundID uint64
 
-	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttempt(
 			ctx,
 			int64(params.AttemptID),
@@ -534,7 +534,7 @@ func (r *PaymentRepository) CreateIdempotentRefund(
 
 	var result IdempotentRefund
 
-	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttempt(
 			ctx,
 			int64(params.AttemptID),
@@ -670,7 +670,7 @@ func (r *PaymentRepository) FinalizeRefund(
 		return ErrOrderStateInvalid
 	}
 
-	return r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		refundSnapshot, err := txRepo.q.AdminGetRefund(
 			ctx,
 			int64(params.RefundID),
@@ -945,7 +945,7 @@ func (r *PaymentRepository) UpdateOrderStatus(
 
 	var rows int64
 
-	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		order, err := txRepo.q.LockPaymentOrder(ctx, int64(id))
 		if err != nil {
 			return err

@@ -268,19 +268,20 @@ DELETE FROM reference_resource_media_version
 WHERE workspace_id = $1 AND resource_key = $2 AND media_version = $3 AND retired_at <= $4;
 
 -- name: ResourcePurgeDeleted :execrows
-WITH removed_links AS (
-    DELETE FROM reference_item_resource
-    WHERE workspace_id = $1 AND resource_key = $2
+WITH candidate AS (
+    SELECT r.workspace_id, r.key FROM reference_resource r
+    WHERE r.workspace_id = $1 AND r.key = $2 AND r.deleted_at IS NOT NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM reference_resource_media_version v
+          WHERE v.workspace_id = r.workspace_id AND v.resource_key = r.key
+      )
+    FOR UPDATE
+), removed_links AS (
+    DELETE FROM reference_item_resource ir USING candidate c
+    WHERE ir.workspace_id = c.workspace_id AND ir.resource_key = c.key
 )
-DELETE FROM reference_resource
-WHERE reference_resource.workspace_id = $1
-  AND reference_resource.key = $2
-  AND reference_resource.deleted_at IS NOT NULL
-  AND NOT EXISTS (
-      SELECT 1
-      FROM reference_resource_media_version
-      WHERE workspace_id = $1 AND resource_key = $2
-  );
+DELETE FROM reference_resource r USING candidate c
+WHERE r.workspace_id = c.workspace_id AND r.key = c.key;
 
 -- name: ResourceGet :one
 SELECT * FROM reference_resource
@@ -316,3 +317,36 @@ JOIN reference_resource r ON r.workspace_id = ir.workspace_id AND r.key = ir.res
 WHERE ir.workspace_id = $1 AND ir.item_key = ANY($2::text[])
   AND r.deleted_at IS NULL AND r.is_active = TRUE
 ORDER BY ir.item_key, ir.position;
+
+-- name: ResourceMediaVersionDurable :one
+SELECT EXISTS (SELECT 1 FROM reference_resource_media_version WHERE workspace_id=$1 AND resource_key=$2 AND media_version=$3);
+
+-- name: DeleteImportedItemLinks :exec
+DELETE FROM reference_item_resource WHERE workspace_id=$1 AND item_key = ANY($2::text[]);
+
+-- name: ListArchiveResources :many
+SELECT key, resource_type, payload, is_active, format, content_type,
+       source_sha256, media_version, source_size, width, height, placeholder_ref
+FROM reference_resource
+WHERE workspace_id=$1 AND deleted_at IS NULL
+ORDER BY key;
+
+-- name: ListArchiveLinks :many
+SELECT ir.item_key, ir.resource_key, ir.position
+FROM reference_item_resource ir
+JOIN reference_item i ON i.workspace_id=ir.workspace_id AND i.key=ir.item_key
+JOIN reference_resource r ON r.workspace_id=ir.workspace_id AND r.key=ir.resource_key
+WHERE ir.workspace_id=$1 AND i.deleted_at IS NULL AND r.deleted_at IS NULL
+ORDER BY ir.item_key, ir.position;
+
+-- name: ListImportResourceKeys :many
+SELECT key FROM reference_resource WHERE workspace_id=$1;
+
+-- name: ImportResource :exec
+INSERT INTO reference_resource (workspace_id,key,resource_type,payload,is_active,format,content_type,source_size,source_sha256,media_version,width,height,original_ref,preview_61_ref,preview_128_ref,preview_256_ref,preview_512_ref,placeholder_ref)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'','','','','','')
+ON CONFLICT (workspace_id,key) DO UPDATE SET resource_type=EXCLUDED.resource_type,payload=EXCLUDED.payload,is_active=EXCLUDED.is_active,deleted_at=NULL,format=EXCLUDED.format,content_type=EXCLUDED.content_type,source_size=EXCLUDED.source_size,source_sha256=EXCLUDED.source_sha256,media_version=EXCLUDED.media_version,width=EXCLUDED.width,height=EXCLUDED.height,updated_at=now();
+
+-- name: UpdateResourceObjectRefs :exec
+UPDATE reference_resource SET original_ref=$3,preview_61_ref=$4,preview_128_ref=$5,preview_256_ref=$6,preview_512_ref=$7,placeholder_ref=$8
+WHERE workspace_id=$1 AND key=$2 AND media_version=$9 AND deleted_at IS NULL;

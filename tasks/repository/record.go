@@ -154,7 +154,7 @@ func (r *Repository) recordInTx(
 	amount uint64,
 	result *RecordResult,
 ) error {
-	return r.WithTx(ctx, func(txRepo *Repository) error {
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockTaskUser(ctx, params.Identity); err != nil {
 			return err
 		}
@@ -503,7 +503,7 @@ func (r *Repository) Claim(
 
 	result := ClaimResult{Status: ClaimStatusNotFound}
 
-	err = r.WithTx(ctx, func(txRepo *Repository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockTaskUser(ctx, params.Identity); err != nil {
 			return err
 		}
@@ -632,7 +632,7 @@ func (r *Repository) StartTask(
 	}
 
 	result := StartTaskResult{Status: ClaimStatusNotFound}
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockTaskUser(ctx, params.Identity); err != nil {
 			return err
 		}
@@ -757,7 +757,7 @@ func (r *Repository) GetClaimTask(
 	var result Task
 
 	found := false
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockTaskUser(ctx, identity); err != nil {
 			return err
 		}

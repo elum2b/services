@@ -133,6 +133,8 @@ func (r *PaymentRepository) ImportJob(
 func (r *PaymentRepository) importWithJob(
 	ctx context.Context, workspaceID string, req ImportRequest, jobID int64,
 ) (ImportResult, error) {
+	r = r.archiveRepository()
+
 	workspaceID, err := requireWorkspaceID(workspaceID)
 	if err != nil {
 		return ImportResult{}, err
@@ -145,7 +147,7 @@ func (r *PaymentRepository) importWithJob(
 
 	strategy := req.ConflictStrategy
 	if strategy == "" {
-		strategy = ImportConflictFail
+		strategy = ImportConflictUpdate
 	}
 
 	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
@@ -159,7 +161,7 @@ func (r *PaymentRepository) importWithJob(
 	result := ImportResult{}
 	alreadyApplied := false
 
-	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -443,14 +445,14 @@ func (r *PaymentRepository) lockWorkspaceMutation(
 func (r *PaymentRepository) withWorkspaceMutation(
 	ctx context.Context,
 	workspaceID string,
-	fn func(*PaymentRepository) error,
+	fn func(context.Context, *PaymentRepository) error,
 ) error {
-	return r.inTransaction(ctx, func(txRepo *PaymentRepository) error {
+	return r.inTransaction(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
 
-		return fn(txRepo)
+		return fn(ctx, txRepo)
 	})
 }
 

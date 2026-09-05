@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/sqlc-dev/pqtype"
 )
 
@@ -901,6 +902,7 @@ func (q *Queries) CreateAssignmentEvent(ctx context.Context, arg CreateAssignmen
 const createGeneratedCode = `-- name: CreateGeneratedCode :one
 INSERT INTO cpa_code (workspace_id, cpa_id, code, source)
 VALUES ($1, $2, $3, 'generated')
+ON CONFLICT (workspace_id, cpa_id, code) DO NOTHING
 RETURNING id
 `
 
@@ -915,6 +917,62 @@ func (q *Queries) CreateGeneratedCode(ctx context.Context, arg CreateGeneratedCo
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const deleteImportAssignmentEvents = `-- name: DeleteImportAssignmentEvents :exec
+DELETE FROM cpa_assignment_event e USING cpa_assignment a
+WHERE e.assignment_id = a.id AND a.workspace_id = $1
+  AND a.cpa_id = ANY($2::text[]) AND a.status <> 'completed'
+`
+
+type DeleteImportAssignmentEventsParams struct {
+	WorkspaceID string   `json:"workspace_id"`
+	Column2     []string `json:"column_2"`
+}
+
+func (q *Queries) DeleteImportAssignmentEvents(ctx context.Context, arg DeleteImportAssignmentEventsParams) error {
+	_, err := q.exec(ctx, q.deleteImportAssignmentEventsStmt, deleteImportAssignmentEvents, arg.WorkspaceID, pq.Array(arg.Column2))
+	return err
+}
+
+const deleteImportAssignments = `-- name: DeleteImportAssignments :exec
+DELETE FROM cpa_assignment
+WHERE workspace_id = $1 AND cpa_id = ANY($2::text[]) AND status <> 'completed'
+`
+
+type DeleteImportAssignmentsParams struct {
+	WorkspaceID string   `json:"workspace_id"`
+	Column2     []string `json:"column_2"`
+}
+
+func (q *Queries) DeleteImportAssignments(ctx context.Context, arg DeleteImportAssignmentsParams) error {
+	_, err := q.exec(ctx, q.deleteImportAssignmentsStmt, deleteImportAssignments, arg.WorkspaceID, pq.Array(arg.Column2))
+	return err
+}
+
+const deleteImportCodes = `-- name: DeleteImportCodes :exec
+DELETE FROM cpa_code c
+WHERE c.workspace_id = $1 AND c.cpa_id = ANY($2::text[])
+  AND NOT EXISTS (SELECT 1 FROM cpa_assignment a WHERE a.code_id = c.id)
+`
+
+type DeleteImportCodesParams struct {
+	WorkspaceID string   `json:"workspace_id"`
+	Column2     []string `json:"column_2"`
+}
+
+func (q *Queries) DeleteImportCodes(ctx context.Context, arg DeleteImportCodesParams) error {
+	_, err := q.exec(ctx, q.deleteImportCodesStmt, deleteImportCodes, arg.WorkspaceID, pq.Array(arg.Column2))
+	return err
+}
+
+const deleteWorkspaceDailyStats = `-- name: DeleteWorkspaceDailyStats :exec
+DELETE FROM cpa_stats_daily WHERE workspace_id = $1
+`
+
+func (q *Queries) DeleteWorkspaceDailyStats(ctx context.Context, workspaceID string) error {
+	_, err := q.exec(ctx, q.deleteWorkspaceDailyStatsStmt, deleteWorkspaceDailyStats, workspaceID)
+	return err
 }
 
 const getActiveOffer = `-- name: GetActiveOffer :one
@@ -1151,6 +1209,30 @@ func (q *Queries) GetCodeByValue(ctx context.Context, arg GetCodeByValueParams) 
 	return i, err
 }
 
+const getExportFootprint = `-- name: GetExportFootprint :one
+WITH footprint AS (
+ SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM cpa_offer t WHERE t.workspace_id=$1
+ UNION ALL SELECT count(*), COALESCE(sum(octet_length(row_to_json(t)::text)),0) FROM cpa_localization t WHERE t.workspace_id=$1
+ UNION ALL SELECT count(*), COALESCE(sum(octet_length(row_to_json(t)::text)),0) FROM cpa_reward t WHERE t.workspace_id=$1
+ UNION ALL SELECT count(*), COALESCE(sum(octet_length(row_to_json(t)::text)),0) FROM cpa_code t WHERE t.workspace_id=$1
+ UNION ALL SELECT count(*), COALESCE(sum(octet_length(row_to_json(t)::text)),0) FROM cpa_assignment t WHERE t.workspace_id=$1
+ UNION ALL SELECT count(*), COALESCE(sum(octet_length(row_to_json(t)::text)),0) FROM cpa_assignment_event t WHERE t.workspace_id=$1
+)
+SELECT sum(records)::bigint AS records, sum(bytes)::bigint AS bytes FROM footprint
+`
+
+type GetExportFootprintRow struct {
+	Records int64 `json:"records"`
+	Bytes   int64 `json:"bytes"`
+}
+
+func (q *Queries) GetExportFootprint(ctx context.Context, workspaceID string) (GetExportFootprintRow, error) {
+	row := q.queryRow(ctx, q.getExportFootprintStmt, getExportFootprint, workspaceID)
+	var i GetExportFootprintRow
+	err := row.Scan(&i.Records, &i.Bytes)
+	return i, err
+}
+
 const getLocalization = `-- name: GetLocalization :one
 SELECT workspace_id, cpa_id, locale, title, description, created_at, updated_at
 FROM cpa_localization
@@ -1283,6 +1365,98 @@ func (q *Queries) ListActiveOfferCatalog(ctx context.Context, arg ListActiveOffe
 			&i.RewardScale,
 			&i.DurationUnit,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listImportAssignments = `-- name: ListImportAssignments :many
+SELECT a.id, a.cpa_id, a.app_id, a.platform_id, a.platform_user_id, a.status, c.code AS code_ref
+FROM cpa_assignment a
+LEFT JOIN cpa_code c ON c.id = a.code_id
+WHERE a.workspace_id = $1 AND a.cpa_id = ANY($2::text[])
+`
+
+type ListImportAssignmentsParams struct {
+	WorkspaceID string   `json:"workspace_id"`
+	Column2     []string `json:"column_2"`
+}
+
+type ListImportAssignmentsRow struct {
+	ID             int64               `json:"id"`
+	CpaID          string              `json:"cpa_id"`
+	AppID          int64               `json:"app_id"`
+	PlatformID     int64               `json:"platform_id"`
+	PlatformUserID string              `json:"platform_user_id"`
+	Status         CpaAssignmentStatus `json:"status"`
+	CodeRef        sql.NullString      `json:"code_ref"`
+}
+
+func (q *Queries) ListImportAssignments(ctx context.Context, arg ListImportAssignmentsParams) ([]ListImportAssignmentsRow, error) {
+	rows, err := q.query(ctx, q.listImportAssignmentsStmt, listImportAssignments, arg.WorkspaceID, pq.Array(arg.Column2))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListImportAssignmentsRow
+	for rows.Next() {
+		var i ListImportAssignmentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CpaID,
+			&i.AppID,
+			&i.PlatformID,
+			&i.PlatformUserID,
+			&i.Status,
+			&i.CodeRef,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listImportCodes = `-- name: ListImportCodes :many
+SELECT id, cpa_id, code FROM cpa_code
+WHERE workspace_id = $1 AND cpa_id = ANY($2::text[])
+`
+
+type ListImportCodesParams struct {
+	WorkspaceID string   `json:"workspace_id"`
+	Column2     []string `json:"column_2"`
+}
+
+type ListImportCodesRow struct {
+	ID    int64  `json:"id"`
+	CpaID string `json:"cpa_id"`
+	Code  string `json:"code"`
+}
+
+func (q *Queries) ListImportCodes(ctx context.Context, arg ListImportCodesParams) ([]ListImportCodesRow, error) {
+	rows, err := q.query(ctx, q.listImportCodesStmt, listImportCodes, arg.WorkspaceID, pq.Array(arg.Column2))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListImportCodesRow
+	for rows.Next() {
+		var i ListImportCodesRow
+		if err := rows.Scan(&i.ID, &i.CpaID, &i.Code); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1472,6 +1646,20 @@ func (q *Queries) MarkCodeIssued(ctx context.Context, id int64) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const rebuildWorkspaceDailyStats = `-- name: RebuildWorkspaceDailyStats :exec
+INSERT INTO cpa_stats_daily (workspace_id,cpa_id,stats_date,issued_count,completed_count,unique_users)
+SELECT workspace_id,cpa_id,(occurred_at AT TIME ZONE 'UTC')::date,
+       SUM((event_type='issued')::int)::bigint,SUM((event_type='completed')::int)::bigint,
+       COUNT(DISTINCT assignment_id)::bigint
+FROM cpa_assignment_event WHERE cpa_assignment_event.workspace_id=$1
+GROUP BY workspace_id,cpa_id,(occurred_at AT TIME ZONE 'UTC')::date
+`
+
+func (q *Queries) RebuildWorkspaceDailyStats(ctx context.Context, workspaceID string) error {
+	_, err := q.exec(ctx, q.rebuildWorkspaceDailyStatsStmt, rebuildWorkspaceDailyStats, workspaceID)
+	return err
 }
 
 const refreshDailyStats = `-- name: RefreshDailyStats :exec

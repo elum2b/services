@@ -112,6 +112,10 @@ func (r *Repository) ImportJob(
 func (r *Repository) importWithJob(
 	ctx context.Context, workspaceID string, req ImportRequest, jobID int64,
 ) (ImportResult, error) {
+	r = r.archiveRepository()
+	if err := r.validateArchiveBudget(ctx, req.Package); err != nil {
+		return ImportResult{}, err
+	}
 	if err := validateExportPackage(workspaceID, req.Package); err != nil {
 		return ImportResult{}, err
 	}
@@ -132,7 +136,7 @@ func (r *Repository) importWithJob(
 	result := ImportResult{}
 	alreadyApplied := false
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -645,7 +649,7 @@ func validateRuntimePackage(
 ) error {
 	codes := make(map[string]ExportCode, len(pkg.Codes))
 	for index, code := range pkg.Codes {
-		offerIndex, ok := offers[code.CPAID]
+		_, ok := offers[code.CPAID]
 		if !ok || code.Code == "" ||
 			(code.Source != CodeSourcePool && code.Source != CodeSourceGenerated) ||
 			(code.Status != "available" && code.Status != "issued" && code.Status != "completed" && code.Status != "deleted") ||
@@ -655,15 +659,6 @@ func validateRuntimePackage(
 			(code.DeletedAt != nil && code.DeletedAt.Before(code.CreatedAt)) {
 			return fmt.Errorf(
 				"cpa import codes[%d]: invalid code record",
-				index,
-			)
-		}
-
-		offer := pkg.Offers[offerIndex]
-		if offer.CodeMode != CodeModePersonal || offer.CodeSource == nil ||
-			code.Source != *offer.CodeSource {
-			return fmt.Errorf(
-				"cpa import codes[%d]: incompatible offer code configuration",
 				index,
 			)
 		}
@@ -743,17 +738,8 @@ func validateRuntimePackage(
 			)
 		}
 
-		offer := pkg.Offers[offerIndex]
-		if assignment.CodeMode != offer.CodeMode {
-			return fmt.Errorf(
-				"cpa import assignments[%d]: code mode does not match offer",
-				index,
-			)
-		}
-
 		if assignment.CodeMode == CodeModeShared {
-			if assignment.CodeRef != nil || offer.SharedCode == nil ||
-				assignment.Code != *offer.SharedCode {
+			if assignment.CodeRef != nil {
 				return fmt.Errorf(
 					"cpa import assignments[%d]: invalid shared code linkage",
 					index,
@@ -770,9 +756,9 @@ func validateRuntimePackage(
 
 			codeKey := assignment.CPAID + "\x00" + *assignment.CodeRef
 
-			code, exists := codes[codeKey]
+			_, exists := codes[codeKey]
 
-			if !exists || code.Source != *offer.CodeSource {
+			if !exists {
 				return fmt.Errorf(
 					"cpa import assignments[%d]: code reference missing or incompatible",
 					index,
@@ -972,187 +958,6 @@ func validateRewardsSnapshot(
 
 // importRuntime never touches the callback outbox. Runtime rows are keyed by
 // stable business values and target serial IDs are resolved inside this transaction.
-func (r *Repository) importRuntime(
-	ctx context.Context,
-	workspaceID string,
-	pkg ExportPackage,
-	strategy string,
-	preview ImportPreview,
-) error {
-	include := func(cpaID string) bool {
-		return strategy != ImportConflictSkip ||
-			!previewHasConflict(preview, "offer", cpaID)
-	}
-	identities := make(map[string]bool, len(pkg.Assignments))
-
-	for _, assignment := range pkg.Assignments {
-		if include(assignment.CPAID) {
-			identities[fmt.Sprintf("%s\x00%d\x00%d\x00%s", assignment.CPAID, assignment.AppID, assignment.PlatformID, assignment.PlatformUserID)] = true
-		}
-	}
-
-	for _, code := range pkg.Codes {
-		if !include(code.CPAID) {
-			continue
-		}
-
-		var (
-			appID, platformID int64
-			platformUserID    string
-		)
-
-		err := r.executor.QueryRowContext(ctx, `SELECT a.app_id, a.platform_id, a.platform_user_id FROM cpa_assignment a JOIN cpa_code c ON c.id = a.code_id WHERE c.workspace_id=$1 AND c.cpa_id=$2 AND c.code=$3`, workspaceID, code.CPAID, code.Code).
-			Scan(&appID, &platformID, &platformUserID)
-
-		if isNoRows(err) {
-			continue
-		}
-
-		if err != nil {
-			return err
-		}
-
-		key := fmt.Sprintf(
-			"%s\x00%d\x00%d\x00%s",
-			code.CPAID,
-			appID,
-			platformID,
-			platformUserID,
-		)
-		if !identities[key] {
-			return fmt.Errorf(
-				"cpa import cannot replace code %q for offer %q: target assignment belongs to a different identity",
-				code.Code,
-				code.CPAID,
-			)
-		}
-	}
-
-	if strategy == ImportConflictUpdate {
-		if err := r.replaceImportedOfferRuntime(
-			ctx,
-			workspaceID,
-			preview,
-		); err != nil {
-			return err
-		}
-	}
-
-	for _, code := range pkg.Codes {
-		if include(code.CPAID) {
-			if _, err := r.executor.ExecContext(
-				ctx,
-				`INSERT INTO cpa_code (workspace_id,cpa_id,code,source,status,created_at,updated_at,deleted_at) VALUES ($1,$2,$3,$4::cpa_code_source,$5::cpa_code_status,$6,$7,$8) ON CONFLICT (workspace_id,cpa_id,code) DO UPDATE SET source=EXCLUDED.source,status=EXCLUDED.status,created_at=EXCLUDED.created_at,updated_at=EXCLUDED.updated_at,deleted_at=EXCLUDED.deleted_at`,
-				workspaceID,
-				code.CPAID,
-				code.Code,
-				code.Source,
-				code.Status,
-				code.CreatedAt,
-				code.UpdatedAt,
-				nullTime(code.DeletedAt),
-			); err != nil {
-				return err
-			}
-		}
-	}
-
-	for _, assignment := range pkg.Assignments {
-		if !include(assignment.CPAID) {
-			continue
-		}
-
-		var (
-			id     int64
-			codeID sql.NullInt64
-		)
-
-		if assignment.CodeRef != nil {
-			if err := r.executor.QueryRowContext(ctx, `SELECT id FROM cpa_code WHERE workspace_id=$1 AND cpa_id=$2 AND code=$3`, workspaceID, assignment.CPAID, *assignment.CodeRef).
-				Scan(&codeID); err != nil {
-				return err
-			}
-		}
-
-		if err := r.executor.QueryRowContext(ctx, `INSERT INTO cpa_assignment (workspace_id,cpa_id,app_id,platform_id,platform_user_id,code_id,code,code_mode,rewards_snapshot,status,issued_at,completed_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::cpa_code_mode,$9,$10::cpa_assignment_status,$11,$12,now()) RETURNING id`, workspaceID, assignment.CPAID, assignment.AppID, assignment.PlatformID, assignment.PlatformUserID, codeID, assignment.Code, assignment.CodeMode, assignment.RewardsSnapshot, assignment.Status, assignment.IssuedAt, nullTime(assignment.CompletedAt)).
-			Scan(&id); err != nil {
-			return err
-		}
-
-		for _, event := range assignment.Events {
-			if _, err := r.executor.ExecContext(
-				ctx,
-				`INSERT INTO cpa_assignment_event (workspace_id,cpa_id,assignment_id,event_type,occurred_at) VALUES ($1,$2,$3,$4::cpa_assignment_event_type,$5)`,
-				workspaceID,
-				assignment.CPAID,
-				id,
-				event.EventType,
-				event.OccurredAt,
-			); err != nil {
-				return err
-			}
-		}
-	}
-
-	if _, err := r.executor.ExecContext(
-		ctx,
-		`DELETE FROM cpa_stats_daily WHERE workspace_id=$1`,
-		workspaceID,
-	); err != nil {
-		return err
-	}
-
-	_, err := r.executor.ExecContext(
-		ctx,
-		`INSERT INTO cpa_stats_daily (workspace_id,cpa_id,stats_date,issued_count,completed_count,unique_users) SELECT workspace_id,cpa_id,(occurred_at AT TIME ZONE 'UTC')::date,SUM((event_type='issued')::int)::bigint,SUM((event_type='completed')::int)::bigint,COUNT(DISTINCT assignment_id)::bigint FROM cpa_assignment_event WHERE workspace_id=$1 GROUP BY workspace_id,cpa_id,(occurred_at AT TIME ZONE 'UTC')::date`,
-		workspaceID,
-	)
-
-	return err
-}
-
-// replaceImportedOfferRuntime makes update_existing an authoritative runtime
-// snapshot, after collision checks have protected foreign user assignments.
-func (r *Repository) replaceImportedOfferRuntime(
-	ctx context.Context,
-	workspaceID string,
-	preview ImportPreview,
-) error {
-	offerIDs := make([]string, 0, len(preview.Conflicts))
-	for _, conflict := range preview.Conflicts {
-		if conflict.Type == "offer" {
-			offerIDs = append(offerIDs, conflict.Key)
-		}
-	}
-
-	return importexport.ForEachBatch(
-		len(offerIDs),
-		1,
-		importexport.DefaultBatchLimits,
-		func(start, end int) error {
-			for _, table := range []string{
-				"cpa_assignment_event",
-				"cpa_assignment",
-				"cpa_code",
-			} {
-				query, args := compileImportChildrenDelete(
-					table,
-					workspaceID,
-					offerIDs[start:end],
-				)
-				if _, err := r.executor.ExecContext(
-					ctx,
-					query,
-					args...); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		},
-	)
-}
-
 func defaultJSON(value []byte, fallback string) string {
 	if len(value) == 0 {
 		return fallback

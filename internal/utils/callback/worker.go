@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"sync"
 	"time"
 
 	serviceerrors "github.com/elum2b/services/errors"
+	goroutinemanager "github.com/elum2b/services/internal/utils/goroutine"
 )
 
 const (
@@ -112,9 +112,8 @@ func (s *Store) On(ctx context.Context, handler Handler, opts ...Option) error {
 	scheduler := newRouteScheduler()
 	completions := make(chan callbackCompletion, maxWorkerConcurrency)
 
-	var waitGroup sync.WaitGroup
-
-	defer waitGroup.Wait()
+	workers := goroutinemanager.New()
+	defer workers.Close()
 
 	for {
 		if err := drainCallbackCompletions(scheduler, completions); err != nil {
@@ -168,21 +167,18 @@ func (s *Store) On(ctx context.Context, handler Handler, opts ...Option) error {
 				)
 			}
 
-			waitGroup.Add(1)
-
-			go func() {
-				defer waitGroup.Done()
+			workers.Go("callback.handler", func() {
 
 				completions <- callbackCompletion{
 					route: route,
 					err: s.handleEvent(
 						ctx,
 						event,
-						options.workerID,
+						event.LockedBy.String,
 						handler,
 					),
 				}
-			}()
+			})
 		}
 	}
 }
@@ -263,7 +259,7 @@ func (s *Store) handleEvent(
 		workerID:           workerID,
 		marked:             &marked,
 	}
-	err := handler(callbackCtx)
+	err := invokeHandler(handler, callbackCtx)
 
 	if marked {
 		return err
@@ -399,4 +395,13 @@ func waitForCallbackWork(
 	case <-timer.C:
 		return nil
 	}
+}
+
+func invokeHandler(handler Handler, ctx Context) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = errors.New("callback handler panicked")
+		}
+	}()
+	return handler(ctx)
 }

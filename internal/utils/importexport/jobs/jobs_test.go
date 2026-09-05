@@ -6,14 +6,20 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/elum2b/services/internal/utils/goroutine"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestNormalizeTableName(t *testing.T) {
@@ -29,6 +35,196 @@ func TestNormalizeTableName(t *testing.T) {
 		"abcdefghijklmnopqrstuvwxyzabcdefghijklmno",
 	); got != DefaultTable {
 		t.Fatalf("too-long table = %q", got)
+	}
+}
+
+func TestManifestSpoolingLimitsAndRoundTrip(t *testing.T) {
+	payload := strings.Repeat("a", 4096)
+	archive, err := WriteManifestZIP(t.Context(), "manifest.json", 5000, func(w io.Writer) error { _, err := io.WriteString(w, payload); return err })
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := archive.(*temporaryArchive).Name()
+	if err := ReadManifestZIP(t.Context(), archive, "manifest.json", ZIPLimits{MaxUncompressedBytes: 5000}, func(r io.Reader) error {
+		data, err := io.ReadAll(r)
+		if string(data) != payload {
+			t.Fatal("manifest changed")
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = archive.Close()
+	if _, err := os.Stat(name); !os.IsNotExist(err) {
+		t.Fatal("spooled archive survived Close")
+	}
+	if _, err := WriteManifestZIP(t.Context(), "manifest.json", 10, func(w io.Writer) error { _, err := io.WriteString(w, payload); return err }); !errors.Is(err, ErrArchiveTooLarge) {
+		t.Fatalf("limit: %v", err)
+	}
+}
+
+func TestManifestShapeRejectsAllocationAmplification(t *testing.T) {
+	if err := ValidateJSONShape(t.Context(), strings.NewReader(`[`+strings.Repeat(`null,`, 100)+`null]`), 10); !errors.Is(err, ErrArchiveTooLarge) {
+		t.Fatalf("array allocation budget: %v", err)
+	}
+	if err := ValidateJSONShape(t.Context(), strings.NewReader(strings.Repeat(`[`, 200)+`0`+strings.Repeat(`]`, 200)), 1000); !errors.Is(err, ErrArchiveTooLarge) {
+		t.Fatalf("nesting budget: %v", err)
+	}
+	if err := ValidateJSONShape(t.Context(), strings.NewReader(`{"offers":[{"id":"test"}]}`), 10); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStagingSweepKeepsLiveFiles(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	live, err := NewStagingFile("importexport-live-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer live.Close()
+	stale, err := NewStagingFile("importexport-stale-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = stale.Close()
+	if err := sweepStaging(t.Context(), time.Now().Add(time.Hour), 100); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(live.Name()); err != nil {
+		t.Fatal("live file deleted")
+	}
+	if _, err := os.Stat(stale.Name()); !os.IsNotExist(err) {
+		t.Fatal("stale spool survived cleanup")
+	}
+}
+
+func TestDiskArchiveCleansAbandonedStagingButNotActiveWrite(t *testing.T) {
+	a, err := NewDiskArchive(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.CreateTemp(a.directory, ".archive-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	key := filepath.Base(f.Name())
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_SH); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := a.List(t.Context())
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("staging not listed: %v %v", entries, err)
+	}
+	if err := a.Delete(t.Context(), key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(f.Name()); err != nil {
+		t.Fatal("active staging was deleted")
+	}
+	_ = f.Close()
+	if err := a.Delete(t.Context(), key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(f.Name()); !os.IsNotExist(err) {
+		t.Fatal("abandoned staging survived cleanup")
+	}
+}
+
+func TestPostgresRetryClassification(t *testing.T) {
+	for _, code := range []string{"40001", "40P01", "55P03", "53300", "57P01", "08006"} {
+		if !isTransient(&pgconn.PgError{Code: code}) {
+			t.Fatalf("retryable SQLSTATE %s rejected", code)
+		}
+	}
+	if isTransient(&pgconn.PgError{Code: "23505"}) {
+		t.Fatal("unique constraint is not a transient failure")
+	}
+}
+
+func TestHandlerPanicDoesNotHangWorker(t *testing.T) {
+	manager := &Manager{workers: goroutine.New(), store: &store{leaseTime: time.Minute}, handlerTimeout: time.Second}
+	defer manager.Close()
+	if err := manager.withLease(t.Context(), Job{}, func(context.Context) error { panic("test panic") }); err == nil {
+		t.Fatal("handler panic was not converted to an error")
+	}
+}
+
+func TestS3ArchiveSharesObjectsAcrossInstances(t *testing.T) {
+	var mu sync.Mutex
+	objects := map[string][]byte{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.Method {
+		case http.MethodHead:
+			w.WriteHeader(http.StatusOK)
+		case http.MethodPut:
+			data, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "read", 500)
+				return
+			}
+			objects[r.URL.Path] = data
+			w.Header().Set("ETag", `"test"`)
+		case http.MethodGet:
+			if r.URL.Query().Get("list-type") == "2" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = io.WriteString(w, `<ListBucketResult><IsTruncated>false</IsTruncated>`)
+				for key := range objects {
+					_, _ = io.WriteString(w, `<Contents><Key>`+strings.TrimPrefix(key, "/bucket/")+`</Key><LastModified>2026-01-01T00:00:00Z</LastModified></Contents>`)
+				}
+				_, _ = io.WriteString(w, `</ListBucketResult>`)
+				return
+			}
+			data, ok := objects[r.URL.Path]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write(data)
+		case http.MethodDelete:
+			delete(objects, r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	defer server.Close()
+	options := S3Options{Bucket: "bucket", Endpoint: server.URL, Prefix: "test/", AccessKeyID: "test", SecretAccessKey: "test", UsePathStyle: true}
+	first, err := NewS3Archive(t.Context(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewS3Archive(t.Context(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This fixture emulates object APIs, not AWS's optional trailer checksums.
+	first.client = s3.New(first.client.Options(), func(o *s3.Options) { o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired })
+	key, err := first.Store(t.Context(), ArchiveObject{}, strings.NewReader("shared archive"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := second.Open(t.Context(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(reader)
+	_ = reader.Close()
+	if err != nil || string(data) != "shared archive" {
+		t.Fatalf("shared object: %q %v", data, err)
+	}
+	listed, err := second.List(t.Context())
+	if err != nil || len(listed) != 1 || listed[0].Key != key {
+		t.Fatalf("list: %v %v", listed, err)
+	}
+	if err := second.Delete(t.Context(), key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.Open(t.Context(), key); err == nil {
+		t.Fatal("deleted object remains")
+	}
+	if _, err := second.Open(t.Context(), "../unsafe.zip"); err == nil {
+		t.Fatal("unsafe key accepted")
 	}
 }
 
@@ -359,4 +555,18 @@ func TestStartIsIdempotent(t *testing.T) {
 	}
 
 	manager.Close()
+}
+
+func TestWriteManifestZIPRejectsUnimportableShape(t *testing.T) {
+	dump, err := WriteManifestZIP(context.Background(), "manifest.json", 1024, func(w io.Writer) error {
+		_, err := io.WriteString(w, `{"rows":[{},{},{},{},{}]}`)
+		return err
+	}, func(r io.Reader) error { return ValidateJSONShape(context.Background(), r, 1) })
+	if dump != nil {
+		dump.Close()
+		t.Fatal("oversized shape returned an archive")
+	}
+	if err == nil {
+		t.Fatal("export bypassed import shape budget")
+	}
 }

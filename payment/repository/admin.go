@@ -124,7 +124,7 @@ func (r *PaymentRepository) AdminDeleteAsset(
 ) (int64, error) {
 	var rows int64
 
-	err := r.inTransaction(ctx, func(tx *PaymentRepository) error {
+	err := r.inTransaction(ctx, func(ctx context.Context, tx *PaymentRepository) error {
 		if _, err := tx.q.DeleteAssetRatesForAsset(
 			ctx,
 			paymentsqlc.DeleteAssetRatesForAssetParams{

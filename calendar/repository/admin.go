@@ -30,7 +30,7 @@ func (r *Repository) CreateCalendar(
 	ctx context.Context,
 	params SaveCalendarParams,
 ) error {
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(
 			ctx,
 			params.WorkspaceID,
@@ -73,7 +73,7 @@ func (r *Repository) UpdateCalendar(
 ) (int64, error) {
 	var rows int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(
 			ctx,
 			params.WorkspaceID,
@@ -201,7 +201,7 @@ func (r *Repository) SetCalendarActive(
 ) (int64, error) {
 	var rows int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -235,7 +235,7 @@ func (r *Repository) DeleteCalendar(
 ) (int64, error) {
 	var rows int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -269,7 +269,7 @@ func (r *Repository) UpsertLocalization(
 	err := r.withWorkspaceMutation(
 		ctx,
 		value.WorkspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminUpsertLocalization(
 				ctx,
 				calendarsqlc.AdminUpsertLocalizationParams{
@@ -393,7 +393,7 @@ func (r *Repository) DeleteLocalization(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminDeleteLocalization(
@@ -428,7 +428,7 @@ func (r *Repository) CreateStep(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			id, err = txRepo.q.AdminCreateStep(
@@ -463,7 +463,7 @@ func (r *Repository) UpdateStep(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminUpdateStep(
@@ -499,7 +499,7 @@ func (r *Repository) DeleteStep(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminDeleteStep(
@@ -582,7 +582,7 @@ func (r *Repository) UpsertReward(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			id, err = txRepo.q.AdminUpsertReward(
@@ -624,7 +624,7 @@ func (r *Repository) UpdateReward(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminUpdateReward(
@@ -743,7 +743,7 @@ func (r *Repository) DeleteReward(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminDeleteReward(

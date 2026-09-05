@@ -96,7 +96,7 @@ func (r *Repository) Close() error {
 
 func (r *Repository) WithTx(
 	ctx context.Context,
-	fn func(*Repository) error,
+	fn func(context.Context, *Repository) error,
 ) error {
 	_, err := sqlwrap.Transaction(
 		ctx,
@@ -114,7 +114,7 @@ func (r *Repository) WithTx(
 				onCacheInvalidationError: r.onCacheInvalidationError,
 			}
 
-			return struct{}{}, fn(txRepo)
+			return struct{}{}, fn(ctx, txRepo)
 		},
 	)
 
@@ -196,4 +196,11 @@ func normalizePage(limit, offset int32) (int32, int32) {
 	}
 
 	return limit, offset
+}
+
+// archiveRepository reserves a bounded budget independently of hot-path queries.
+func (r *Repository) archiveRepository() *Repository {
+	copy := *r
+	copy.timeout = 5 * time.Minute
+	return &copy
 }

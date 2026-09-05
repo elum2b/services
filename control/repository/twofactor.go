@@ -50,7 +50,7 @@ func (r *Repository) BeginTwoFactor(
 
 	err = r.withAuditDBTx(
 		ctx,
-		func(tx *sql.Tx, q *controlsqlc.Queries) error {
+		func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 			if err := lockTwoFactorAccount(ctx, tx, accountID); err != nil {
 				return err
 			}
@@ -111,7 +111,7 @@ func (r *Repository) ConfirmTwoFactor(
 
 	err = r.withAuditDBTx(
 		ctx,
-		func(tx *sql.Tx, q *controlsqlc.Queries) error {
+		func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 			if err := lockAccountAuthentication(
 				ctx,
 				tx,
@@ -187,6 +187,9 @@ func (r *Repository) VerifyTwoFactor(
 	accountID, code string,
 	now time.Time,
 ) error {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
 	return sqlwrap.WithTx(
 		ctx,
 		r.db.DB(),
@@ -202,6 +205,9 @@ func (r *Repository) CompleteTwoFactorChallenge(
 	rawChallenge, code, ip string,
 	now time.Time,
 ) (Session, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
 	var (
 		session    Session
 		rawSession string
@@ -517,7 +523,7 @@ func (r *Repository) DisableTwoFactor(
 
 	err := r.withAuditTx(
 		ctx,
-		func(q *controlsqlc.Queries) error {
+		func(ctx context.Context, q *controlsqlc.Queries) error {
 			if err := r.verifyTwoFactorWithQueries(
 				ctx,
 				q,

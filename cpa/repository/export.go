@@ -18,6 +18,7 @@ func (r *Repository) Export(
 		return ExportPackage{}, err
 	}
 
+	r = r.archiveRepository()
 	now := req.Now
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -29,8 +30,14 @@ func (r *Repository) Export(
 		outAssignments []ExportAssignment
 	)
 
-	if err := r.WithReadOnlySnapshot(ctx, func(txRepo *Repository) error {
-		var err error
+	if err := r.WithReadOnlySnapshot(ctx, func(ctx context.Context, txRepo *Repository) error {
+		footprint, err := txRepo.q.GetExportFootprint(ctx, workspaceID)
+		if err != nil {
+			return err
+		}
+		if footprint.Records > r.archiveMaxRows || footprint.Bytes > r.archiveMaxBytes {
+			return ErrArchiveBudget
+		}
 
 		bundles, err = txRepo.ListAllOfferBundles(ctx, workspaceID)
 		if err != nil {
@@ -93,6 +100,9 @@ func (r *Repository) Export(
 		out.Offers = append(out.Offers, offer)
 	}
 
+	if err := r.validateArchiveBudget(ctx, out); err != nil {
+		return ExportPackage{}, err
+	}
 	return out, nil
 }
 

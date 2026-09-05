@@ -25,6 +25,7 @@ import (
 	services "github.com/elum2b/services"
 	"github.com/elum2b/services/internal/testsupport"
 	"github.com/elum2b/services/internal/utils/apiflow"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/tasks/repository"
 	taskruntime "github.com/elum2b/services/tasks/runtime"
@@ -1760,6 +1761,16 @@ func TestRequireImportSecrets(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("secret should satisfy import requirement: %v", err)
+	}
+
+	if _, err := repo.Import(context.Background(), workspaceID, repository.ImportRequest{
+		Package: pkg, ConflictStrategy: repository.ImportConflictSkip,
+	}); err != nil {
+		t.Fatalf("skipped config must not require replacement secrets: %v", err)
+	}
+	kept, found, err := repo.GetPartnerConfig(context.Background(), workspaceID, "tgrass", "daily", "telegram")
+	if err != nil || !found || kept.Secret == nil || *kept.Secret != "token" {
+		t.Fatalf("skipped config secret changed: found=%t err=%v", found, err)
 	}
 
 	pkg.Groups[0].PartnerConfigs[0].Secret.Value = &embedded
@@ -7967,8 +7978,8 @@ func TestTasksStatisticsFullCycle(t *testing.T) {
 	if err := service.Admin.RefreshDailyStats(
 		ctx,
 		workspaceID,
-		from,
-		until,
+		now,
+		now,
 	); err != nil {
 		t.Fatalf("refresh daily stats: %v", err)
 	}
@@ -10681,4 +10692,419 @@ func TestTgrassProviderLiveManual(t *testing.T) {
 		check.Status,
 		string(check.Payload),
 	)
+}
+
+func TestTasksDefaultImportMergesCatalog(t *testing.T) {
+	repo := newExportImportRepository(t)
+	ctx := context.Background()
+	workspace := testsupport.WorkspaceID("audit-catalog-merge")
+	makePackage := func(keys []string, active bool) repository.ExportPackage {
+		pkg := repository.ExportPackage{Format: repository.ExportFormat, Service: "tasks"}
+		for _, key := range keys {
+			pkg.Groups = append(pkg.Groups, repository.ExportGroup{Key: key, IsActive: active})
+		}
+		return pkg
+	}
+	for _, pkg := range []repository.ExportPackage{makePackage([]string{"A", "B", "C"}, true), makePackage([]string{"B", "C", "D"}, false)} {
+		if _, err := repo.Import(ctx, workspace, repository.ImportRequest{Package: pkg}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := repo.Export(ctx, workspace, repository.ExportRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Groups) != 4 {
+		t.Fatalf("catalog size = %d, want 4", len(got.Groups))
+	}
+	seen := map[string]bool{}
+	for _, item := range got.Groups {
+		seen[item.Key] = true
+		if item.IsActive != (item.Key == "A") {
+			t.Fatalf("import priority wrong for %s", item.Key)
+		}
+	}
+	for _, key := range []string{"A", "B", "C", "D"} {
+		if !seen[key] {
+			t.Fatalf("missing catalog key %s", key)
+		}
+	}
+}
+
+func TestTasksArchiveJobsRoundTrip(t *testing.T) {
+	options := tasksTestOptions(Options{})
+
+	options.ArchiveDirectory = t.TempDir()
+
+	service := newTasksTestService(t, options)
+	ctx := context.Background()
+	source := testsupport.WorkspaceID("tasks-archive-source")
+	target := testsupport.WorkspaceID("tasks-archive-target")
+
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		source,
+		"archive",
+		1,
+		true,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
+		WorkspaceID: source,
+		Key:         "archive_task",
+		GroupKey:    "archive",
+		TaskKind:    repository.TaskKindInternal,
+		ActionKey:   "archive.task",
+		ActionKind:  repository.ActionKindAppAction,
+		ClaimMode:   repository.ClaimModeManual,
+		TargetCount: 1,
+		ResetUnit:   repository.ResetNever,
+		ResetEvery:  1,
+		Position:    1,
+		IsVisible:   true,
+		IsActive:    true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sourceSecret := "archive-source-secret"
+	sourceWebhookSecret := "archive-source-webhook-secret"
+
+	if err := service.Admin.SavePartnerConfig(ctx, admin.PartnerConfigModel{
+		WorkspaceID:   source,
+		Provider:      "archive-provider",
+		GroupKey:      "archive",
+		Platform:      "telegram",
+		Secret:        &sourceSecret,
+		WebhookSecret: &sourceWebhookSecret,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.Admin.UpsertGroup(
+		ctx,
+		target,
+		"archive",
+		1,
+		true,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	previousSecret := "archive-previous-secret"
+	previousWebhookSecret := "archive-previous-webhook-secret"
+
+	if err := service.Admin.SavePartnerConfig(ctx, admin.PartnerConfigModel{
+		WorkspaceID:   target,
+		Provider:      "archive-provider",
+		GroupKey:      "archive",
+		Platform:      "telegram",
+		Secret:        &previousSecret,
+		WebhookSecret: &previousWebhookSecret,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	export, err := service.Admin.QueueArchiveExport(
+		ctx,
+		admin.QueueArchiveExportParams{
+			WorkspaceID: source,
+			FileName:    "tasks.zip",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if export.Status != jobs.StatusQueued {
+		t.Fatalf("export status = %s, want queued", export.Status)
+	}
+
+	worker := startTasksArchiveWorker(t, options)
+
+	waitTasksArchiveJob(t, worker, source, export.ID)
+
+	dump, _, err := service.Admin.DownloadArchive(ctx, source, export.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dump.Close()
+
+	importSecret := "archive-import-secret"
+	importWebhookSecret := "archive-import-webhook-secret"
+
+	importJob, err := service.Admin.QueueArchiveImport(
+		ctx,
+		admin.QueueArchiveImportParams{
+			WorkspaceID: target,
+			FileName:    "tasks.zip",
+			ImportRequest: admin.ImportRequest{
+				ConflictStrategy: repository.ImportConflictUpdate,
+				Secrets: map[string]string{
+					"tasks.partner.archive-provider.archive.telegram.secret":         importSecret,
+					"tasks.partner.archive-provider.archive.telegram.webhook_secret": importWebhookSecret,
+				},
+			},
+			Archive: dump,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	publicJob, err := json.Marshal(importJob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{importSecret, importWebhookSecret, sourceSecret, `"options"`, `"archive_key"`} {
+		if strings.Contains(string(publicJob), forbidden) {
+			t.Fatalf("archive job exposes private field %q", forbidden)
+		}
+	}
+
+	var persistedOptions []byte
+	if err := service.client.DB().QueryRowContext(ctx,
+		"SELECT options FROM importexport_job WHERE id=$1 AND workspace_id=$2",
+		importJob.ID, target).Scan(&persistedOptions); err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{importSecret, importWebhookSecret, sourceSecret} {
+		if strings.Contains(string(persistedOptions), secret) {
+			t.Fatal("job options persist a plaintext secret")
+		}
+	}
+	var decodedOptions struct {
+		Secrets map[string]string `json:"secrets"`
+	}
+	if err := json.Unmarshal(persistedOptions, &decodedOptions); err != nil {
+		t.Fatal(err)
+	}
+	if len(decodedOptions.Secrets) != 2 {
+		t.Fatal("job lost encrypted secrets")
+	}
+	for _, encrypted := range decodedOptions.Secrets {
+		if !strings.HasPrefix(encrypted, "v1:") {
+			t.Fatal("job secret is not encrypted")
+		}
+	}
+
+	waitTasksArchiveJob(t, worker, target, importJob.ID)
+
+	status, err := service.Admin.ArchiveJob(ctx, target, importJob.ID)
+	statusJSON, marshalErr := json.Marshal(status)
+	if err != nil || marshalErr != nil || strings.Contains(string(statusJSON), importSecret) || strings.Contains(string(statusJSON), `"options"`) {
+		t.Fatalf(
+			"archive job status exposed a secret: %#v, err=%v",
+			status,
+			err,
+		)
+	}
+
+	history, err := service.Admin.ArchiveJobHistory(
+		ctx,
+		target,
+		importJob.ID,
+		admin.Page{},
+	)
+	if err != nil || strings.Contains(fmt.Sprint(history), importSecret) {
+		t.Fatalf(
+			"archive job history exposed a secret: %#v, err=%v",
+			history,
+			err,
+		)
+	}
+
+	repo := repository.NewWithOptions(service.client, repository.Options{
+		SecretEncryptionKey: []byte("0123456789abcdef0123456789abcdef"),
+	})
+	pkg, err := repo.Export(ctx, target, admin.ExportRequest{})
+
+	if err != nil || len(pkg.Groups) != 1 || len(pkg.Groups[0].Tasks) != 1 {
+		t.Fatalf("imported package = %+v, err = %v", pkg, err)
+	}
+
+	var stored, storedWebhookSecret string
+
+	if err := service.client.DB().QueryRowContext(ctx, `
+		SELECT secret, webhook_secret FROM task_partner_config
+WHERE workspace_id = $1 AND provider = $2 AND group_key = $3 AND platform = $4`,
+		target, "archive-provider", "archive", "telegram").
+		Scan(&stored, &storedWebhookSecret); err != nil {
+		t.Fatal(err)
+	}
+
+	if stored == importSecret || !strings.HasPrefix(stored, "v1:") {
+		t.Fatalf(
+			"archive import did not store the supplied secret securely: %q",
+			stored,
+		)
+	}
+
+	if storedWebhookSecret == importWebhookSecret ||
+		!strings.HasPrefix(storedWebhookSecret, "v1:") {
+		t.Fatalf(
+			"archive import did not store the supplied webhook secret securely: %q",
+			storedWebhookSecret,
+		)
+	}
+
+	config, found, err := repo.GetPartnerConfig(
+		ctx,
+		target,
+		"archive-provider",
+		"archive",
+		"telegram",
+	)
+	if err != nil || !found || config.Secret == nil ||
+		*config.Secret != importSecret || config.WebhookSecret == nil ||
+		*config.WebhookSecret != importWebhookSecret {
+		t.Fatalf(
+			"archive import did not overwrite the secret: %#v, found=%v, err=%v",
+			config,
+			found,
+			err,
+		)
+	}
+
+	webhookConfig, found, err := repo.GetPartnerConfigByWebhookSecret(
+		ctx,
+		target,
+		importWebhookSecret,
+	)
+	if err != nil || !found || webhookConfig.Provider != "archive-provider" {
+		t.Fatalf(
+			"encrypted webhook lookup = %#v, found=%v, err=%v",
+			webhookConfig,
+			found,
+			err,
+		)
+	}
+
+	adminConfig, found, err := service.Admin.GetPartnerConfig(
+		ctx,
+		target,
+		"archive-provider",
+		"archive",
+		"telegram",
+	)
+	if err != nil || !found || adminConfig.Secret != nil ||
+		adminConfig.WebhookSecret != nil {
+		t.Fatalf(
+			"admin partner config exposes write-only secrets: %#v, found=%v, err=%v",
+			adminConfig,
+			found,
+			err,
+		)
+	}
+
+	if _, err := service.client.DB().ExecContext(ctx, `
+UPDATE task_partner_config SET webhook_secret = $1
+WHERE workspace_id = $2 AND provider = $3 AND group_key = $4 AND platform = $5`,
+		"legacy-webhook-secret",
+		target,
+		"archive-provider",
+		"archive",
+		"telegram",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.Bootstrap(ctx); err != nil {
+		t.Fatalf("migrate legacy webhook secret: %v", err)
+	}
+
+	if err := service.client.DB().QueryRowContext(ctx, `
+SELECT webhook_secret FROM task_partner_config
+WHERE workspace_id = $1 AND provider = $2 AND group_key = $3 AND platform = $4`,
+		target,
+		"archive-provider",
+		"archive",
+		"telegram",
+	).Scan(&storedWebhookSecret); err != nil {
+		t.Fatal(err)
+	}
+
+	if storedWebhookSecret == "legacy-webhook-secret" ||
+		!strings.HasPrefix(storedWebhookSecret, "v1:") {
+		t.Fatalf(
+			"legacy webhook secret was not migrated: %q",
+			storedWebhookSecret,
+		)
+	}
+
+	if _, _, err := service.Admin.DownloadArchive(
+		ctx,
+		target,
+		importJob.ID,
+	); err == nil {
+		t.Fatal("task import archive must not be downloadable")
+	}
+}
+
+func startTasksArchiveWorker(t *testing.T, options Options) *Tasks {
+	t.Helper()
+
+	service := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- service.Run(ctx, DatabaseParams{
+			User:     pgUser,
+			Password: pgPassword,
+			Database: tasksTestDB,
+			Host:     pgHost,
+			Port:     pgPort,
+			Options:  options,
+		})
+	}()
+
+	t.Cleanup(func() {
+		cancel()
+
+		if err := <-done; err != nil {
+			t.Errorf("stop tasks archive worker: %v", err)
+		}
+	})
+
+	return service
+}
+
+func waitTasksArchiveJob(
+	t *testing.T,
+	service *Tasks,
+	workspaceID string,
+	id int64,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for !service.IsReady() {
+		if time.Now().After(deadline) {
+			t.Fatal("tasks archive worker did not become ready")
+		}
+
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	for time.Now().Before(deadline) {
+		job, err := service.Admin.ArchiveJob(
+			context.Background(),
+			workspaceID,
+			id,
+		)
+		if err == nil && job.Status == jobs.StatusCompleted {
+			return
+		}
+
+		if err == nil && job.Status == jobs.StatusFailed {
+			t.Fatalf("archive job failed: %s", job.Error)
+		}
+
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	t.Fatal("archive job did not complete")
 }

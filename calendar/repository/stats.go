@@ -158,6 +158,13 @@ func (r *Repository) RefreshDailyStats(
 		return fmt.Errorf("calendar stats workspace or date range is invalid")
 	}
 
+	// Daily aggregates must always be recomputed from complete UTC days.
+	from = from.UTC().Truncate(24 * time.Hour)
+	end := until.UTC().Truncate(24 * time.Hour)
+	if until.After(end) || !end.After(from) {
+		end = end.Add(24 * time.Hour)
+	}
+	until = end
 	return r.q.RefreshDailyStats(ctx, calendarsqlc.RefreshDailyStatsParams{
 		RefreshWorkspaceID: workspaceID,
 		OccurredAt:         from,

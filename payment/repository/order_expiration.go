@@ -45,7 +45,7 @@ func (r *PaymentRepository) ExpireStaleOrders(
 
 	expired := 0
 
-	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		for _, candidate := range candidates {
 			if _, err := txRepo.q.LockPaymentAttemptsForOrder(
 				ctx,

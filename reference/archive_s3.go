@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -78,11 +79,28 @@ func (a *s3Archive) Store(
 		return "", err
 	}
 
+	f, err := jobs.NewStagingFile("importexport-reference-s3-*.zip")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	n, err := io.Copy(f, io.LimitReader(&archiveContextReader{ctx: ctx, reader: source}, jobs.DefaultMaxUploadBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if n > jobs.DefaultMaxUploadBytes {
+		return "", fmt.Errorf("archive exceeds upload limit")
+	}
+	if _, err = f.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
 	_, err = a.client.PutObject(ctx, &awss3.PutObjectInput{
-		Bucket:      aws.String(a.bucket),
-		Key:         aws.String(key),
-		Body:        &archiveContextReader{ctx: ctx, reader: source},
-		ContentType: aws.String("application/zip"),
+		Bucket:        aws.String(a.bucket),
+		Key:           aws.String(key),
+		Body:          f,
+		ContentLength: aws.Int64(n),
+		ContentType:   aws.String("application/zip"),
 	})
 	if err != nil {
 		return "", fmt.Errorf("store reference archive: %w", err)
@@ -171,3 +189,37 @@ func (r *archiveContextReader) Read(data []byte) (int, error) {
 
 	return r.reader.Read(data)
 }
+
+// List enables recovery of archive objects left behind before their job commit.
+func (a *s3Archive) List(ctx context.Context) ([]jobs.ArchiveInfo, error) {
+	var result []jobs.ArchiveInfo
+	client, ok := a.client.(interface {
+		ListObjectsV2(context.Context, *awss3.ListObjectsV2Input, ...func(*awss3.Options)) (*awss3.ListObjectsV2Output, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("S3 archive client does not support listing")
+	}
+	var token *string
+	for {
+		output, err := client.ListObjectsV2(ctx, &awss3.ListObjectsV2Input{Bucket: aws.String(a.bucket), Prefix: aws.String(archivePrefix), ContinuationToken: token})
+		if err != nil {
+			return nil, err
+		}
+		for _, object := range output.Contents {
+			key := aws.ToString(object.Key)
+			if !validArchiveKey(key) {
+				continue
+			}
+			result = append(result, jobs.ArchiveInfo{Key: key, CreatedAt: aws.ToTime(object.LastModified)})
+		}
+		if !aws.ToBool(output.IsTruncated) {
+			return result, nil
+		}
+		token = output.NextContinuationToken
+		if token == nil {
+			return nil, fmt.Errorf("truncated S3 listing without continuation token")
+		}
+	}
+}
+
+var _ jobs.ArchiveLister = (*s3Archive)(nil)

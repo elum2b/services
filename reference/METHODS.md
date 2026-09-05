@@ -49,3 +49,15 @@
 | `Resource.Detach(ctx, workspaceID, itemKey, resourceKey)` | workspace, keys. | Отвязывает resource от item. |
 | `Resource.ListItemResources(ctx, workspaceID, itemKey)` | workspace, item key. | Возвращает resources, привязанные к item, в порядке position. |
 | `Resource.GetContent(ctx, params)` | `ContentParams{WorkspaceID, Key, Version, Format, Size}`. | Возвращает bytes original (`Size=0`) или PNG preview (`61`, `128`, `256`, `512`) через bounded in-memory media cache. |
+
+## Контракт импорта и архивов
+
+Без `ConflictStrategy` используется `update_existing`. Импорт добавляет новые ключи и заменяет соответствующие существующие данные: `A B C` + импорт `B C D` → `A B C D`. Данные A остаются прежними, B/C берутся из пакета, D создаётся. Отсутствие ключа в пакете не удаляет его из workspace. Type импортируемого item может измениться без confirmation token; требование подтверждения относится к отдельному `DangerousChangeType`.
+
+Вложенные localization импортируемого item заменяются целиком, включая пустой набор. При `IncludeMedia=true` так же заменяются его links; links items вне пакета сохраняются. Явный `skip_existing` сохраняет связи пропущенного item, а `fail_on_conflict` отклоняет конфликт атомарно. Media versions всегда создаются заново, прежние versions передаются GC по retention.
+
+ZIP manifest собирается в одном PostgreSQL snapshot. Архивные операции используют отдельный длительный transaction budget (по умолчанию 15 минут), обычные операции — `QueryTimeout`. ZIP обрабатывается через защищённые временные файлы. Лимиты экспорта/импорта согласованы: 100 MiB ZIP, 512 MiB распакованных данных, 10 000 entries, 16 MiB manifest; структура manifest дополнительно ограничена перед typed decode. Превышение лимитов завершает job ошибкой, не создавая успешный непринимаемый архив.
+
+`ArchiveJob` возвращает публичный статус без storage key, options, worker/lease token и raw SQL errors. Методы queue/status/history/download учитывают закрытие сервиса; download reader нужно закрывать. Уже committed import может завершить согласование job status по receipt без повторной загрузки source ZIP.
+
+GC старой version не удаляет links активного resource. После физического удаления допускается выдавать ранее закэшированные bytes до истечения TTL. При неизвестном результате проверки commit media не удаляются компенсацией; требуется последующее согласование состояния. Ошибка invalidation кэша сообщается в `OnCacheInvalidationError` и не превращает committed mutation в API failure.

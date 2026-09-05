@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -23,7 +24,18 @@ func (r *Repository) Apply(
 	}
 
 	result := ApplyResult{Status: StatusNotFound}
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
+		// The joined redemption/rewards must be read after any lock wait.
+		// A single SELECT FOR UPDATE retains its pre-wait join snapshot.
+		if _, err := txRepo.q.LockApplyOffer(ctx, promosqlc.LockApplyOfferParams{
+			WorkspaceID: identity.WorkspaceID, CodeNormalized: normalizeCode(code),
+		}); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil
+			}
+			return err
+		}
+
 		rows, err := txRepo.q.GetApplyBundleForUpdate(
 			ctx,
 			promosqlc.GetApplyBundleForUpdateParams{

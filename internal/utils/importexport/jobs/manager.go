@@ -172,13 +172,13 @@ func (m *Manager) QueueImport(
 		return Job{}, errors.New("importexport jobs: import dump is required")
 	}
 
-	temporary, err := os.CreateTemp("", "importexport-upload-*.zip")
+	temporary, err := NewStagingFile("importexport-upload-*.zip")
 	if err != nil {
 		return Job{}, fmt.Errorf("create import upload: %w", err)
 	}
 
 	path := temporary.Name()
-
+	defer temporary.Close()
 	defer os.Remove(path)
 
 	if err := copyUpload(
@@ -191,7 +191,7 @@ func (m *Manager) QueueImport(
 		return Job{}, err
 	}
 
-	if err := temporary.Close(); err != nil {
+	if err := temporary.Sync(); err != nil {
 		return Job{}, fmt.Errorf("close import upload: %w", err)
 	}
 
@@ -422,6 +422,23 @@ func (m *Manager) handle(ctx context.Context, job Job) {
 	if err == nil {
 		return
 	}
+	if ctx.Err() != nil {
+		return
+	}
+	var committed *importCompletionPending
+	if !errors.As(err, &committed) && job.Type == TypeImport {
+		applied, receiptErr := m.store.importApplied(ctx, job)
+		if applied || receiptErr != nil {
+			committed = &importCompletionPending{err: errors.Join(err, receiptErr)}
+		}
+	}
+	if committed != nil {
+		// The receipt has committed or its state is temporarily unknown. Never
+		// guess a failed outcome. If this DB update fails too,
+		// expiry will recover the processing job and the receipt prevents replay.
+		_ = m.store.retry(ctx, job.ID, job.LeaseToken, "Reconciling import receipt and status", retryDelay(m.retryBackoff, job.Attempt))
+		return
+	}
 
 	if isTransient(err) && job.Attempt+1 < m.maxAttempts {
 		_ = m.store.retry(
@@ -487,28 +504,75 @@ func (m *Manager) handleImport(
 	workCtx, stateCtx context.Context,
 	job Job,
 ) error {
-	if job.ArchiveKey == "" {
-		return ErrArchiveNotReady
-	}
-
-	dump, err := m.archive.Open(workCtx, job.ArchiveKey)
+	applied, err := m.store.importApplied(workCtx, job)
 	if err != nil {
-		return fmt.Errorf("open import dump: %w", err)
+		return &importCompletionPending{err: err}
 	}
-	defer dump.Close()
-
-	if err := m.handler.Import(workCtx, job, dump); err != nil {
-		return err
+	if applied {
+		if reconciler, ok := m.handler.(AppliedImportReconciler); ok {
+			if err := reconciler.ReconcileImport(workCtx, job); err != nil {
+				return &importCompletionPending{err: err}
+			}
+			return m.finishImport(stateCtx, job)
+		}
 	}
+	{
+		if job.ArchiveKey == "" {
+			if applied {
+				return &importCompletionPending{err: ErrArchiveNotReady}
+			}
+			return ErrArchiveNotReady
+		}
+		dump, err := m.archive.Open(workCtx, job.ArchiveKey)
+		if err != nil {
+			if applied {
+				return &importCompletionPending{err: err}
+			}
+			return fmt.Errorf("open import dump: %w", err)
+		}
+		defer dump.Close()
+		if importErr := m.handler.Import(workCtx, job, dump); importErr != nil {
+			// COMMIT may succeed even when its response is lost. Resolve the
+			// durable receipt before reporting any business failure.
+			applied, err = m.store.importApplied(stateCtx, job)
+			if err != nil {
+				return &importCompletionPending{err: err}
+			}
+			if !applied {
+				return importErr
+			}
+		}
+	}
+	if applied {
+		if reconciler, ok := m.handler.(AppliedImportReconciler); ok {
+			if err := reconciler.ReconcileImport(workCtx, job); err != nil {
+				return &importCompletionPending{err: err}
+			}
+		}
+	}
+	return m.finishImport(stateCtx, job)
+}
 
-	return m.store.complete(
+func (m *Manager) finishImport(stateCtx context.Context, job Job) error {
+	err := m.store.complete(
 		stateCtx,
 		job.ID,
 		job.LeaseToken,
 		job.ArchiveKey,
 		m.retention,
 	)
+	if err != nil {
+		return &importCompletionPending{err: err}
+	}
+	return nil
 }
+
+type importCompletionPending struct{ err error }
+
+func (e *importCompletionPending) Error() string {
+	return "import receipt/status reconciliation pending"
+}
+func (e *importCompletionPending) Unwrap() error { return e.err }
 
 func (m *Manager) withLease(
 	ctx context.Context,
@@ -520,7 +584,18 @@ func (m *Manager) withLease(
 
 	result := make(chan error, 1)
 
-	go func() { result <- run(workCtx) }()
+	if !m.workers.Go("importexport.handler", func() {
+		var err error
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err = errors.New("archive handler panicked")
+			}
+			result <- err
+		}()
+		err = run(workCtx)
+	}) {
+		return context.Canceled
+	}
 
 	interval := m.store.leaseTime / 3
 	if interval < time.Millisecond {
@@ -680,6 +755,7 @@ func (m *Manager) cleanupLoop(ctx context.Context) {
 		}
 
 		_, _ = m.Cleanup(ctx, DefaultCleanupLimit)
+		_ = sweepStaging(ctx, time.Now().Add(-m.retention), int(DefaultCleanupLimit))
 		_, _ = m.SweepOrphans(
 			ctx,
 			time.Now().Add(-m.retention),

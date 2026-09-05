@@ -25,17 +25,20 @@ func auditFromContext(ctx context.Context) (AuditEvent, bool) {
 
 func (r *Repository) withAuditTx(
 	ctx context.Context,
-	write func(*controlsqlc.Queries) error,
+	write func(context.Context, *controlsqlc.Queries) error,
 ) error {
-	return r.withAuditDBTx(ctx, func(_ *sql.Tx, q *controlsqlc.Queries) error {
-		return write(q)
+	return r.withAuditDBTx(ctx, func(ctx context.Context, _ *sql.Tx, q *controlsqlc.Queries) error {
+		return write(ctx, q)
 	})
 }
 
 func (r *Repository) withAuditDBTx(
 	ctx context.Context,
-	write func(*sql.Tx, *controlsqlc.Queries) error,
+	write func(context.Context, *sql.Tx, *controlsqlc.Queries) error,
 ) error {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
 	event, hasAudit := auditFromContext(ctx)
 
 	return sqlwrap.WithTx(
@@ -45,7 +48,7 @@ func (r *Repository) withAuditDBTx(
 			return controlsqlc.New(tx)
 		},
 		func(tx *sql.Tx, q *controlsqlc.Queries) error {
-			if err := write(tx, q); err != nil {
+			if err := write(ctx, tx, q); err != nil {
 				return err
 			}
 

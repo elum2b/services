@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,8 @@ import (
 	"github.com/elum2b/services/cpa/service/admin"
 	"github.com/elum2b/services/cpa/service/user"
 	serviceerrors "github.com/elum2b/services/errors"
+	callbackutil "github.com/elum2b/services/internal/utils/callback"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 )
 
@@ -2255,7 +2258,7 @@ func TestCPA_AdminImportRejectsIncoherentRuntimeState(t *testing.T) {
 	}
 }
 
-func TestCPA_AdminImportUpdateReplacesFullRuntimeSnapshot(t *testing.T) {
+func TestCPA_AdminImportUpdatePreservesCompletedRuntimeSnapshot(t *testing.T) {
 	env := newCPATestEnvironment(t, testCPAOptions())
 
 	const offerID = "replace-runtime-offer"
@@ -2323,7 +2326,7 @@ func TestCPA_AdminImportUpdateReplacesFullRuntimeSnapshot(t *testing.T) {
 		CPAID:    offerID,
 	})
 	if err != nil || !assignment.AlreadyIssued ||
-		assignment.Assignment.Code != "NEW" {
+		assignment.Assignment.Code != "OLD" {
 		t.Fatalf("replacement assignment: result=%+v err=%v", assignment, err)
 	}
 
@@ -2340,9 +2343,9 @@ SELECT
 		t.Fatalf("count replaced runtime rows: %v", err)
 	}
 
-	if oldCodeRows != 0 || oldAssignmentRows != 0 || eventRows != 1 {
+	if oldCodeRows != 1 || oldAssignmentRows != 1 || eventRows != 2 {
 		t.Fatalf(
-			"stale runtime survived replacement: old codes=%d old assignments=%d events=%d",
+			"completed runtime changed during replacement: old codes=%d old assignments=%d events=%d",
 			oldCodeRows,
 			oldAssignmentRows,
 			eventRows,
@@ -3313,6 +3316,279 @@ func cpaTestIdentity(platformUserID string) user.Identity {
 	}
 }
 
+// Regression tests for the security and reliability audit.
+func TestCPAAuditStaleCallbackWorkerCannotAckNewLease(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	upsertSharedOffer(t, env, "audit-lease", true)
+	issueCode(t, env, cpaTestIdentity("audit-user"), "audit-lease")
+	first := callbackutil.NewWithTable(env.Database, callbackutil.CPATable)
+	second := callbackutil.NewWithTable(env.Database, callbackutil.CPATable)
+	defer first.Close()
+	defer second.Close()
+	params := callbackutil.LeaseParams{SourceService: "cpa", Limit: 1, LeaseTimeout: time.Minute}
+	leased, err := first.LeaseEvents(env.Context, params)
+	if err != nil || len(leased) != 1 {
+		t.Fatalf("first lease: len=%d err=%v", len(leased), err)
+	}
+	id := leased[0].ID
+	if _, err := env.Database.ExecContext(env.Context,
+		`UPDATE cpa_clb_event SET locked_until=now()-interval '1 second' WHERE id=$1`, id); err != nil {
+		t.Fatal(err)
+	}
+	leasedAgain, err := second.LeaseEvents(env.Context, params)
+	if err != nil || len(leasedAgain) != 1 || leasedAgain[0].ID != id {
+		t.Fatalf("second lease: len=%d err=%v", len(leasedAgain), err)
+	}
+	if err := first.MarkOK(env.Context, uint64(id), leased[0].LockedBy.String); !errors.Is(err, callbackutil.ErrNotLeased) {
+		t.Fatalf("stale ACK must be rejected: %v", err)
+	}
+	if err := second.MarkOK(env.Context, uint64(id), leasedAgain[0].LockedBy.String); err != nil {
+		t.Fatal(err)
+	}
+	event, err := second.GetEvent(env.Context, cpaTestWorkspaceID, uint64(id))
+	if err != nil || event.Status != "ok" {
+		t.Fatalf("status=%s err=%v", event.Status, err)
+	}
+}
+
+func TestCPAAuditPartialRefreshPreservesWholeDay(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	const offerID = "audit-partial-stats"
+	upsertSharedOffer(t, env, offerID, true)
+	issueCode(t, env, cpaTestIdentity("audit-first"), offerID)
+	var boundary time.Time
+	if err := env.Database.QueryRowContext(env.Context, `SELECT clock_timestamp()`).Scan(&boundary); err != nil {
+		t.Fatal(err)
+	}
+	issueCode(t, env, cpaTestIdentity("audit-second"), offerID)
+	from := boundary.Truncate(24 * time.Hour)
+	until := from.Add(24 * time.Hour)
+	refresh := func(start, end time.Time) uint64 {
+		t.Helper()
+		if err := env.Service.Admin.RefreshDailyStats(env.Context, cpaTestWorkspaceID, start, end); err != nil {
+			t.Fatal(err)
+		}
+		stats, err := env.Service.Admin.ListDailyStats(env.Context, cpaTestWorkspaceID, offerID, from, from)
+		if err != nil || len(stats) != 1 {
+			t.Fatalf("stats=%+v err=%v", stats, err)
+		}
+		return stats[0].IssuedCount
+	}
+	if count := refresh(from, until); count != 2 {
+		t.Fatalf("full day count=%d", count)
+	}
+	if count := refresh(boundary, until); count != 2 {
+		t.Fatalf("audit hypothesis changed: partial refresh count=%d", count)
+	}
+}
+
+func TestCPAAuditArchiveQueueRejectsWorkAfterClose(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	if err := env.Service.Close(); err != nil {
+		t.Fatal(err)
+	}
+	job, err := env.Service.Admin.QueueArchiveExport(context.Background(), admin.QueueArchiveExportParams{
+		WorkspaceID: cpaTestWorkspaceID, FileName: "audit-after-close.zip",
+	})
+	if !errors.Is(err, context.Canceled) || job.ID != 0 {
+		t.Fatalf("closed CPA accepted work: job=%d err=%v", job.ID, err)
+	}
+}
+
+func TestCPAAuditSharedCodeChangePreservesArchiveRoundTrip(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	const offerID = "audit-shared-change"
+	upsertSharedOffer(t, env, offerID, true)
+	issueCode(t, env, cpaTestIdentity("audit-user"), offerID)
+	if err := env.Service.Admin.UpsertOffer(env.Context, admin.UpsertOfferParams{
+		WorkspaceID: cpaTestWorkspaceID, ID: offerID, Payload: json.RawMessage(`{}`),
+		CodeMode: repository.CodeModeShared, SharedCode: stringPointer("NEW-CODE"), IsActive: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := env.Repository.Export(env.Context, cpaTestWorkspaceID, admin.ExportRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = env.Repository.Import(env.Context, cpaImportWorkspaceID, admin.ImportRequest{Package: pkg})
+	if err != nil {
+		t.Fatalf("historical shared code import: %v", err)
+	}
+}
+
+func TestCPAAuditRestorePreventsSecondCompletionCallback(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	const offerID = "audit-restore-completion"
+	upsertSharedOffer(t, env, offerID, true)
+	upsertReward(t, env, offerID, "stars", 25, 0)
+	identity := cpaTestIdentity("audit-user")
+	issued := issueCode(t, env, identity, offerID)
+	pkg, err := env.Repository.Export(env.Context, cpaTestWorkspaceID, admin.ExportRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := admin.CompleteParams{Identity: identity, CPAID: offerID}
+	if _, err := env.Service.Admin.Complete(env.Context, params); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.Repository.Import(env.Context, cpaTestWorkspaceID, admin.ImportRequest{
+		Package: pkg, ConflictStrategy: repository.ImportConflictUpdate,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	completed, err := env.Service.Admin.Complete(env.Context, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := env.Database.QueryRowContext(env.Context,
+		`SELECT count(*) FROM cpa_clb_event WHERE workspace_id=$1 AND event_type='cpa.completed'`,
+		cpaTestWorkspaceID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if !completed.AlreadyDone || count != 1 || completed.Assignment.ID != issued.Assignment.ID {
+		t.Fatalf("audit hypothesis changed: already_done=%v callbacks=%d old=%d new=%d", completed.AlreadyDone, count, issued.Assignment.ID, completed.Assignment.ID)
+	}
+	// Omitting a completed identity from the archive must not erase its history.
+	pkg.Assignments = nil
+	if _, err := env.Repository.Import(env.Context, cpaTestWorkspaceID, admin.ImportRequest{Package: pkg, ConflictStrategy: repository.ImportConflictUpdate}); err != nil {
+		t.Fatal(err)
+	}
+	retained := issueCode(t, env, identity, offerID)
+	if retained.Assignment.ID != issued.Assignment.ID || retained.Assignment.Status != cpa.AssignmentStatusCompleted {
+		t.Fatal("import removed completed identity absent from archive")
+	}
+}
+
+func TestCPAImportedIssuedAssignmentCompletesOnce(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	pkg := runtimeImportPackage(time.Now().UTC(), "import-first-completion", "import-user")
+	if _, err := env.Repository.Import(env.Context, cpaImportWorkspaceID, admin.ImportRequest{Package: pkg}); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := env.Database.QueryRowContext(env.Context, `SELECT count(*) FROM cpa_clb_event WHERE workspace_id=$1`, cpaImportWorkspaceID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("import emitted callbacks: %d %v", count, err)
+	}
+	params := admin.CompleteParams{Identity: user.Identity{WorkspaceID: cpaImportWorkspaceID, AppID: 1, PlatformID: 1, PlatformUserID: "import-user"}, CPAID: "import-first-completion"}
+	first, err := env.Service.Admin.Complete(env.Context, params)
+	if err != nil || first.AlreadyDone {
+		t.Fatalf("first completion: %+v %v", first, err)
+	}
+	second, err := env.Service.Admin.Complete(env.Context, params)
+	if err != nil || !second.AlreadyDone {
+		t.Fatalf("repeat completion: %+v %v", second, err)
+	}
+	if err := env.Database.QueryRowContext(env.Context, `SELECT count(*) FROM cpa_clb_event WHERE workspace_id=$1 AND event_type='cpa.completed'`, cpaImportWorkspaceID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("completion callbacks: %d %v", count, err)
+	}
+}
+
+func TestCPAArchiveRuntimeBulkAndHistoricalMode(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	pkg := runtimeImportPackage(time.Now().UTC(), "runtime-bulk", "user-0")
+	code, assignment := pkg.Codes[0], pkg.Assignments[0]
+	pkg.Codes = nil
+	pkg.Assignments = nil
+	for i := 0; i < 1001; i++ {
+		c, a := code, assignment
+		c.Code = fmt.Sprintf("CODE-%d", i)
+		a.Code = c.Code
+		a.CodeRef = stringPointer(c.Code)
+		a.PlatformUserID = fmt.Sprintf("user-%d", i)
+		pkg.Codes = append(pkg.Codes, c)
+		pkg.Assignments = append(pkg.Assignments, a)
+	}
+	if _, err := env.Repository.Import(env.Context, cpaImportWorkspaceID, admin.ImportRequest{Package: pkg}); err != nil {
+		t.Fatal(err)
+	}
+	// Current catalog mode can differ from all historical personal assignments.
+	if err := env.Service.Admin.UpsertOffer(env.Context, admin.UpsertOfferParams{WorkspaceID: cpaImportWorkspaceID, ID: "runtime-bulk", Payload: json.RawMessage(`{}`), CodeMode: repository.CodeModeShared, SharedCode: stringPointer("NEW"), IsActive: true}); err != nil {
+		t.Fatal(err)
+	}
+	exported, err := env.Repository.Export(env.Context, cpaImportWorkspaceID, admin.ExportRequest{})
+	if err != nil || len(exported.Assignments) != 1001 {
+		t.Fatalf("export: %d %v", len(exported.Assignments), err)
+	}
+	if _, err := env.Repository.Import(env.Context, cpaTestWorkspaceID, admin.ImportRequest{Package: exported}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCPAArchiveBudgetRejectsBeforeMutation(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	client, err := sqlwrap.New(env.Database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := repository.NewWithOptions(client, repository.Options{ArchiveMaxRows: 1, ArchiveMaxBytes: 128})
+	pkg := runtimeImportPackage(time.Now().UTC(), "budget", "user")
+	if _, err := repo.Import(env.Context, cpaImportWorkspaceID, admin.ImportRequest{Package: pkg}); !errors.Is(err, repository.ErrArchiveBudget) {
+		t.Fatalf("budget error: %v", err)
+	}
+	var count int
+	if err := env.Database.QueryRowContext(env.Context, `SELECT count(*) FROM cpa_offer WHERE workspace_id=$1`, cpaImportWorkspaceID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("partial import: %d %v", count, err)
+	}
+	upsertSharedOffer(t, env, "large-offer", true)
+	if _, err := repo.Export(env.Context, cpaTestWorkspaceID, admin.ExportRequest{}); !errors.Is(err, repository.ErrArchiveBudget) {
+		t.Fatalf("export budget error: %v", err)
+	}
+}
+
+func TestCPAArchiveTimeoutIsIndependentAndCancelsSQL(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	if _, err := env.Database.ExecContext(env.Context, `CREATE FUNCTION audit_slow_offer() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(2); RETURN NEW; END $$; CREATE TRIGGER audit_slow_offer BEFORE INSERT ON cpa_offer FOR EACH ROW EXECUTE FUNCTION audit_slow_offer()`); err != nil {
+		t.Fatal(err)
+	}
+	client, err := sqlwrap.New(env.Database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := repository.NewWithOptions(client, repository.Options{QueryTimeout: 100 * time.Millisecond, ArchiveTimeout: 5 * time.Second})
+	start := time.Now()
+	err = repo.UpsertOffer(env.Context, repository.UpsertOfferParams{WorkspaceID: cpaTestWorkspaceID, ID: "slow", Payload: json.RawMessage(`{}`), CodeMode: repository.CodeModeShared, SharedCode: stringPointer("CODE")})
+	if err == nil || time.Since(start) > time.Second {
+		t.Fatalf("query timeout did not interrupt PostgreSQL: elapsed=%v err=%v", time.Since(start), err)
+	}
+	if _, err := repo.Import(env.Context, cpaTestWorkspaceID, admin.ImportRequest{Package: admin.ExportPackage{Format: repository.ExportFormat, Service: "cpa", Offers: []admin.ExportOffer{cpaTestExportOffer("archive-slow")}}}); err != nil {
+		t.Fatalf("archive incorrectly inherited 100ms query timeout: %v", err)
+	}
+}
+
+func TestCPAArchiveOptionsAndPublicStatusExcludePrivateData(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+	pkg := admin.ExportPackage{Format: repository.ExportFormat, Service: "cpa", Offers: []admin.ExportOffer{cpaTestExportOffer("private-options")}}
+	archive, err := jobs.WriteManifestZIP(env.Context, "manifest.json", 1<<20, func(w io.Writer) error { return json.NewEncoder(w).Encode(pkg) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	job, err := env.Service.Admin.QueueArchiveImport(env.Context, admin.QueueArchiveImportParams{
+		WorkspaceID: cpaTestWorkspaceID, FileName: "test.zip", Archive: archive,
+		ImportRequest: admin.ImportRequest{ConflictStrategy: repository.ImportConflictUpdate, Package: admin.ExportPackage{Offers: []admin.ExportOffer{{Payload: json.RawMessage(`invalid`)}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var options string
+	if err := env.Database.QueryRowContext(env.Context, `SELECT options::text FROM importexport_job WHERE id=$1 AND workspace_id=$2`, job.ID, cpaTestWorkspaceID).Scan(&options); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(options, "package") {
+		t.Fatal("unused package persisted in job options")
+	}
+	raw, err := json.Marshal(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, private := range []string{"options", "archive_key", "locked_by", "lease_token", "Options", "ArchiveKey", "LockedBy", "LeaseToken"} {
+		if strings.Contains(string(raw), private) {
+			t.Fatalf("private job field %s was serialized", private)
+		}
+	}
+}
+
 func upsertSharedOffer(
 	tb testing.TB,
 	env cpaTestEnvironment,
@@ -3631,4 +3907,176 @@ func (c *cpaTestCache) DataLastTTL() time.Duration {
 	defer c.mu.Unlock()
 
 	return c.dataLastTTL
+}
+
+func TestCPAArchiveJobsRoundTrip(t *testing.T) {
+	options := testCPAOptions()
+
+	options.ArchiveDirectory = t.TempDir()
+
+	env := newCPATestEnvironment(t, options)
+	upsertSharedOffer(t, env, "archive-offer", true)
+
+	identity := user.Identity{
+		WorkspaceID:    cpaTestWorkspaceID,
+		AppID:          1,
+		PlatformID:     1,
+		PlatformUserID: "archive-user",
+	}
+	if _, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
+		Identity: identity,
+		CPAID:    "archive-offer",
+	}); err != nil {
+		t.Fatalf("issue source assignment: %v", err)
+	}
+
+	export, err := env.Service.Admin.QueueArchiveExport(
+		env.Context,
+		admin.QueueArchiveExportParams{
+			WorkspaceID: cpaTestWorkspaceID,
+			FileName:    "cpa.zip",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if export.Status != jobs.StatusQueued {
+		t.Fatalf("export status = %s, want queued", export.Status)
+	}
+
+	worker := startCPAArchiveWorker(t, env.Name, options)
+
+	waitCPAArchiveJob(t, worker, cpaTestWorkspaceID, export.ID)
+
+	dump, _, err := env.Service.Admin.DownloadArchive(
+		env.Context,
+		cpaTestWorkspaceID,
+		export.ID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dump.Close()
+
+	importJob, err := env.Service.Admin.QueueArchiveImport(
+		env.Context,
+		admin.QueueArchiveImportParams{
+			WorkspaceID: cpaImportWorkspaceID,
+			FileName:    "cpa.zip",
+			ImportRequest: admin.ImportRequest{
+				ConflictStrategy: "update_existing",
+			},
+			Archive: dump,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waitCPAArchiveJob(t, worker, cpaImportWorkspaceID, importJob.ID)
+
+	pkg, err := env.Repository.Export(
+		context.Background(),
+		cpaImportWorkspaceID,
+		admin.ExportRequest{},
+	)
+	if err != nil || len(pkg.Offers) != 1 {
+		t.Fatalf("imported package = %+v, err = %v", pkg, err)
+	}
+
+	identity.WorkspaceID = cpaImportWorkspaceID
+
+	issued, err := env.Service.User.GetCode(env.Context, user.GetCodeParams{
+		Identity: identity,
+		CPAID:    "archive-offer",
+	})
+
+	if err != nil || !issued.AlreadyIssued {
+		t.Fatalf(
+			"import must restore assignment history: result=%+v err=%v",
+			issued,
+			err,
+		)
+	}
+}
+
+func startCPAArchiveWorker(
+	t *testing.T,
+	database string,
+	options cpa.Options,
+) *cpa.CPA {
+	t.Helper()
+
+	service := cpa.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- service.Run(ctx, cpa.DatabaseParams{
+			User:     cpaTestPGUser,
+			Password: cpaTestPGPassword,
+			Database: database,
+			Host:     cpaTestPGHost,
+			Port:     cpaTestPGPort,
+			Options:  options,
+		})
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for !service.IsReady() {
+		select {
+		case err := <-done:
+			cancel()
+			t.Fatalf("start CPA archive worker: %v", err)
+		default:
+		}
+
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("CPA archive worker did not become ready")
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Cleanup(func() {
+		cancel()
+
+		if err := <-done; err != nil {
+			t.Errorf("stop CPA archive worker: %v", err)
+		}
+	})
+
+	return service
+}
+
+func waitCPAArchiveJob(
+	t *testing.T,
+	service *cpa.CPA,
+	workspaceID string,
+	id int64,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		job, err := service.Admin.ArchiveJob(
+			context.Background(),
+			workspaceID,
+			id,
+		)
+		if err == nil && job.Status == jobs.StatusCompleted {
+			return
+		}
+
+		if err == nil && job.Status == jobs.StatusFailed {
+			t.Fatalf("archive job failed: %s", job.Error)
+		}
+
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	t.Fatal("archive job did not complete")
 }

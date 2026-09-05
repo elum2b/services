@@ -1,11 +1,10 @@
 package admin
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	json "github.com/goccy/go-json"
 
@@ -23,10 +22,17 @@ type archiveImportOptions struct {
 	Secrets          map[string]string `json:"secrets,omitempty"`
 }
 
+func (h archiveJobHandler) ReconcileImport(ctx context.Context, job jobs.Job) error {
+	return h.admin.repository.ReconcileArchiveImport(ctx, job.WorkspaceID)
+}
+
 func (h archiveJobHandler) Export(
 	ctx context.Context,
 	job jobs.Job,
 ) (io.ReadCloser, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
 	var request ExportRequest
 
 	if err := json.Unmarshal(job.Options, &request); err != nil {
@@ -38,24 +44,9 @@ func (h archiveJobHandler) Export(
 		return nil, err
 	}
 
-	var data bytes.Buffer
-
-	writer := zip.NewWriter(&data)
-
-	manifest, err := writer.Create(archiveManifestName)
-	if err == nil {
-		err = json.NewEncoder(manifest).Encode(pkg)
-	}
-
-	if closeErr := writer.Close(); err == nil {
-		err = closeErr
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("write export ZIP: %w", err)
-	}
-
-	return io.NopCloser(bytes.NewReader(data.Bytes())), nil
+	return jobs.WriteManifestZIP(ctx, archiveManifestName, int64(32<<20), func(w io.Writer) error {
+		return json.NewEncoder(w).Encode(pkg)
+	}, func(reader io.Reader) error { return jobs.ValidateJSONShape(ctx, reader, 100000) })
 }
 
 func (h archiveJobHandler) Import(
@@ -63,47 +54,33 @@ func (h archiveJobHandler) Import(
 	job jobs.Job,
 	source io.Reader,
 ) error {
-	var options archiveImportOptions
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
 
+	var options archiveImportOptions
 	if err := json.Unmarshal(job.Options, &options); err != nil {
 		return fmt.Errorf("decode import job options: %w", err)
 	}
-
 	secrets, err := h.admin.repository.DecryptImportSecrets(options.Secrets)
 	if err != nil {
 		return fmt.Errorf("decrypt import job secrets: %w", err)
 	}
-
-	request := ImportRequest{
-		ConflictStrategy: options.ConflictStrategy,
-		Secrets:          secrets,
-	}
-
-	data, err := io.ReadAll(source)
-	if err != nil {
-		return fmt.Errorf("read import ZIP: %w", err)
-	}
-
-	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return fmt.Errorf("open import ZIP: %w", err)
-	}
-
-	if len(archive.File) != 1 || archive.File[0].Name != archiveManifestName {
-		return fmt.Errorf(
-			"import ZIP must contain exactly one %s",
-			archiveManifestName,
-		)
-	}
-
-	reader, err := archive.File[0].Open()
+	request := ImportRequest{ConflictStrategy: options.ConflictStrategy, Secrets: secrets}
+	err = jobs.ReadManifestZIP(ctx, source, archiveManifestName, jobs.ZIPLimits{MaxUncompressedBytes: int64(32 << 20)}, func(reader io.Reader) error {
+		decoder := json.NewDecoder(reader)
+		if err := decoder.Decode(&request.Package); err != nil {
+			return err
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			return fmt.Errorf("manifest must contain exactly one JSON document")
+		}
+		return nil
+	}, func(reader io.Reader) error {
+		return jobs.ValidateJSONShape(ctx, reader, 100000)
+	})
 	if err != nil {
 		return err
-	}
-	defer reader.Close()
-
-	if err := json.NewDecoder(reader).Decode(&request.Package); err != nil {
-		return fmt.Errorf("decode import manifest: %w", err)
 	}
 
 	_, err = h.admin.repository.ImportJob(ctx, job.WorkspaceID, job.ID, request)
@@ -116,12 +93,14 @@ func (a *Admin) QueueArchiveExport(
 	params QueueArchiveExportParams,
 ) (ArchiveJob, error) {
 	if a == nil || a.jobs == nil {
-		return jobs.Job{}, ErrArchiveJobsNotConfigured
+		return ArchiveJob{}, ErrArchiveJobsNotConfigured
 	}
+	ctx, cancel := a.withContext(ctx)
+	defer cancel()
 
 	options, err := json.Marshal(params.ExportRequest)
 	if err != nil {
-		return jobs.Job{}, err
+		return ArchiveJob{}, err
 	}
 
 	job, err := a.jobs.QueueExport(
@@ -133,11 +112,7 @@ func (a *Admin) QueueArchiveExport(
 			Options:     options,
 		},
 	)
-	if err != nil {
-		return jobs.Job{}, err
-	}
-
-	return publicArchiveJob(job), nil
+	return publicArchiveJob(job), err
 }
 
 func (a *Admin) QueueArchiveImport(
@@ -145,20 +120,18 @@ func (a *Admin) QueueArchiveImport(
 	params QueueArchiveImportParams,
 ) (ArchiveJob, error) {
 	if a == nil || a.jobs == nil {
-		return jobs.Job{}, ErrArchiveJobsNotConfigured
+		return ArchiveJob{}, ErrArchiveJobsNotConfigured
 	}
+	ctx, cancel := a.withContext(ctx)
+	defer cancel()
 
 	secrets, err := a.repository.EncryptImportSecrets(params.Secrets)
 	if err != nil {
-		return jobs.Job{}, err
+		return ArchiveJob{}, err
 	}
-
-	options, err := json.Marshal(archiveImportOptions{
-		ConflictStrategy: params.ConflictStrategy,
-		Secrets:          secrets,
-	})
+	options, err := json.Marshal(archiveImportOptions{ConflictStrategy: params.ConflictStrategy, Secrets: secrets})
 	if err != nil {
-		return jobs.Job{}, err
+		return ArchiveJob{}, err
 	}
 
 	job, err := a.jobs.QueueImport(
@@ -172,11 +145,7 @@ func (a *Admin) QueueArchiveImport(
 			Dump:         params.Archive,
 		},
 	)
-	if err != nil {
-		return jobs.Job{}, err
-	}
-
-	return publicArchiveJob(job), nil
+	return publicArchiveJob(job), err
 }
 
 func (a *Admin) ArchiveJob(
@@ -185,18 +154,16 @@ func (a *Admin) ArchiveJob(
 	id int64,
 ) (ArchiveJob, error) {
 	if a == nil || a.jobs == nil {
-		return jobs.Job{}, ErrArchiveJobsNotConfigured
+		return ArchiveJob{}, ErrArchiveJobsNotConfigured
 	}
+	ctx, cancel := a.withContext(ctx)
+	defer cancel()
 
 	job, err := a.jobs.Status(
 		ctx,
 		jobs.StatusParams{Service: "tasks", WorkspaceID: workspaceID, ID: id},
 	)
-	if err != nil {
-		return jobs.Job{}, err
-	}
-
-	return publicArchiveJob(job), nil
+	return publicArchiveJob(job), err
 }
 
 func (a *Admin) ArchiveHistory(
@@ -207,10 +174,12 @@ func (a *Admin) ArchiveHistory(
 	if a == nil || a.jobs == nil {
 		return nil, ErrArchiveJobsNotConfigured
 	}
+	ctx, cancel := a.withContext(ctx)
+	defer cancel()
 
 	limit, offset := normalizePage(page)
 
-	items, err := a.jobs.History(
+	values, err := a.jobs.History(
 		ctx,
 		jobs.HistoryParams{
 			Service:     "tasks",
@@ -219,15 +188,11 @@ func (a *Admin) ArchiveHistory(
 			Offset:      offset,
 		},
 	)
-	if err != nil {
-		return nil, err
+	result := make([]ArchiveJob, 0, len(values))
+	for _, value := range values {
+		result = append(result, publicArchiveJob(value))
 	}
-
-	for index := range items {
-		items[index] = publicArchiveJob(items[index])
-	}
-
-	return items, nil
+	return result, err
 }
 
 func (a *Admin) DownloadArchive(
@@ -236,30 +201,20 @@ func (a *Admin) DownloadArchive(
 	id int64,
 ) (io.ReadCloser, ArchiveJob, error) {
 	if a == nil || a.jobs == nil {
-		return nil, jobs.Job{}, ErrArchiveJobsNotConfigured
+		return nil, ArchiveJob{}, ErrArchiveJobsNotConfigured
 	}
 
-	job, err := a.jobs.Status(
-		ctx,
-		jobs.StatusParams{Service: "tasks", WorkspaceID: workspaceID, ID: id},
-	)
-	if err != nil {
-		return nil, jobs.Job{}, err
-	}
-
-	if job.Type == jobs.TypeImport {
-		return nil, jobs.Job{}, jobs.ErrArchiveNotReady
-	}
-
+	mergedCtx, cancel := a.withContext(ctx)
 	dump, job, err := a.jobs.Download(
-		ctx,
+		mergedCtx,
 		jobs.DownloadParams{Service: "tasks", WorkspaceID: workspaceID, ID: id},
 	)
 	if err != nil {
-		return nil, jobs.Job{}, err
+		cancel()
+		return nil, publicArchiveJob(job), err
 	}
+	return &archiveDownload{ReadCloser: dump, ctx: mergedCtx, cancel: cancel}, publicArchiveJob(job), nil
 
-	return dump, publicArchiveJob(job), nil
 }
 
 func (a *Admin) ArchiveJobHistory(
@@ -271,10 +226,12 @@ func (a *Admin) ArchiveJobHistory(
 	if a == nil || a.jobs == nil {
 		return nil, ErrArchiveJobsNotConfigured
 	}
+	ctx, cancel := a.withContext(ctx)
+	defer cancel()
 
 	limit, offset := normalizePage(page)
 
-	return a.jobs.JobHistory(
+	values, err := a.jobs.JobHistory(
 		ctx,
 		jobs.JobHistoryParams{
 			Service:     "tasks",
@@ -284,32 +241,60 @@ func (a *Admin) ArchiveJobHistory(
 			Offset:      offset,
 		},
 	)
+	for i := range values {
+		if values[i].Message != "" {
+			values[i].Message = "Archive operation status changed"
+		}
+	}
+	return values, err
+}
+
+type archiveDownload struct {
+	io.ReadCloser
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func (r *archiveDownload) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.ReadCloser.Read(p)
+}
+func (r *archiveDownload) Close() error { r.cancel(); return r.ReadCloser.Close() }
+
+func publicArchiveJob(job jobs.Job) ArchiveJob {
+	message := ""
+	if job.Error != "" {
+		message = "Archive operation failed; inspect server diagnostics"
+	}
+	return ArchiveJob{
+		ID:             job.ID,
+		Service:        job.Service,
+		WorkspaceID:    job.WorkspaceID,
+		Type:           job.Type,
+		Status:         job.Status,
+		FileName:       job.FileName,
+		ArchiveExpires: job.ArchiveExpires,
+		Error:          message,
+		CreatedAt:      job.CreatedAt,
+		StartedAt:      job.StartedAt,
+		FinishedAt:     job.FinishedAt,
+		UpdatedAt:      job.UpdatedAt,
+		Attempt:        job.Attempt,
+		NextAttemptAt:  job.NextAttemptAt,
+	}
 }
 
 func normalizePage(page Page) (int32, int32) {
 	if page.Limit <= 0 {
 		page.Limit = 100
 	}
-
 	if page.Limit > 1000 {
 		page.Limit = 1000
 	}
-
 	if page.Offset < 0 {
 		page.Offset = 0
 	}
-
 	return page.Limit, page.Offset
-}
-
-// publicArchiveJob prevents asynchronous import options and worker internals
-// from becoming a read channel for write-only partner secrets.
-func publicArchiveJob(job jobs.Job) jobs.Job {
-	job.Options = nil
-	job.ArchiveKey = ""
-	job.LockedBy = ""
-	job.LeaseToken = ""
-	job.LockedUntil = nil
-
-	return job
 }

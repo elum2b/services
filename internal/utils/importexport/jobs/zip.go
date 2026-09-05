@@ -3,11 +3,15 @@ package jobs
 import (
 	"archive/zip"
 	"context"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func normalizedZIPLimits(limits ZIPLimits) ZIPLimits {
@@ -45,7 +49,7 @@ func ValidateManifestZIP(
 
 	limits = normalizedZIPLimits(limits)
 
-	temporary, err := os.CreateTemp("", "importexport-validate-*.zip")
+	temporary, err := NewStagingFile("importexport-validate-*.zip")
 	if err != nil {
 		return fmt.Errorf("create ZIP validation file: %w", err)
 	}
@@ -64,7 +68,7 @@ func ValidateManifestZIP(
 		return fmt.Errorf("copy ZIP for validation: %w", err)
 	}
 
-	if err := temporary.Close(); err != nil {
+	if err := temporary.Sync(); err != nil {
 		return fmt.Errorf("close ZIP validation file: %w", err)
 	}
 
@@ -183,6 +187,15 @@ func isTransient(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) ||
 		errors.Is(err, context.DeadlineExceeded) {
 		return false
+	}
+	if errors.Is(err, driver.ErrBadConn) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+		return true
+	}
+	var postgres *pgconn.PgError
+	if errors.As(err, &postgres) {
+		return strings.HasPrefix(postgres.Code, "08") || postgres.Code == "40001" ||
+			postgres.Code == "40P01" || postgres.Code == "55P03" || postgres.Code == "53300" ||
+			postgres.Code == "57P01" || postgres.Code == "57P02" || postgres.Code == "57P03"
 	}
 
 	type temporary interface{ Temporary() bool }

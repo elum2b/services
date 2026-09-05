@@ -84,7 +84,7 @@ func (r *PaymentRepository) StoreProviderTransaction(
 ) (uint64, error) {
 	var id uint64
 
-	err := r.WithTx(ctx, func(tx *PaymentRepository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, tx *PaymentRepository) error {
 		var err error
 
 		createdID, err := tx.CreateProviderTransaction(ctx, transaction)
@@ -108,7 +108,7 @@ func (r *PaymentRepository) RecoverFailedProviderTransaction(
 ) (bool, error) {
 	var recovered bool
 
-	err := r.WithTx(ctx, func(tx *PaymentRepository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, tx *PaymentRepository) error {
 		updated, err := tx.q.RecoverProviderTransaction(ctx, transaction)
 		if err != nil {
 			return err

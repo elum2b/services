@@ -127,7 +127,7 @@ func (r *Repository) Close() error {
 
 func (r *Repository) WithTx(
 	ctx context.Context,
-	fn func(*Repository) error,
+	fn func(context.Context, *Repository) error,
 ) error {
 	_, err := sqlwrap.Transaction(
 		ctx,
@@ -146,7 +146,7 @@ func (r *Repository) WithTx(
 				secretEncryptionKey:      r.secretEncryptionKey,
 			}
 
-			return struct{}{}, fn(txRepo)
+			return struct{}{}, fn(ctx, txRepo)
 		},
 	)
 
@@ -173,14 +173,14 @@ func (r *Repository) lockWorkspaceMutation(
 func (r *Repository) withWorkspaceMutation(
 	ctx context.Context,
 	workspaceID string,
-	fn func(*Repository) error,
+	fn func(context.Context, *Repository) error,
 ) error {
-	return r.WithTx(ctx, func(txRepo *Repository) error {
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
 
-		return fn(txRepo)
+		return fn(ctx, txRepo)
 	})
 }
 
@@ -331,3 +331,10 @@ func normalizePage(limit, offset int32) (int32, int32) {
 }
 
 func isNoRows(err error) bool { return errors.Is(err, sql.ErrNoRows) }
+
+// archiveRepository reserves a bounded budget independently of hot-path queries.
+func (r *Repository) archiveRepository() *Repository {
+	copy := *r
+	copy.queryTimeout = 5 * time.Minute
+	return &copy
+}

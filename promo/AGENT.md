@@ -36,6 +36,8 @@
   `activation_count`, чтобы сохранить global activation limit. Redemptions,
   user-specific reward snapshots, events и daily statistics не переносятся;
   это не полный backup activation history.
+- Импорт не уменьшает `activation_count`: при конфликте сохраняется максимум
+  текущего и импортированного значений атомарно в UPSERT.
 - `update_existing` полностью заменяет вложенные localization/rewards, а не
   смешивает старый и импортированный catalog.
 - Export и conflict preview соблюдают общий consistent snapshot/advisory lock

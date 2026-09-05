@@ -370,7 +370,7 @@ func (r *Repository) UpsertOffer(
 		target = []byte("null")
 	}
 
-	if err := r.WithTx(ctx, func(txRepo *Repository) error {
+	if err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(
 			ctx,
 			params.WorkspaceID,
@@ -453,7 +453,7 @@ func (r *Repository) GetOfferBundle(
 	}, func(ctx context.Context) (OfferBundle, error) {
 		var result OfferBundle
 
-		err := r.WithReadOnlySnapshot(ctx, func(txRepo *Repository) error {
+		err := r.WithReadOnlySnapshot(ctx, func(ctx context.Context, txRepo *Repository) error {
 			offer, err := txRepo.q.AdminGetOffer(
 				ctx,
 				cpasqlc.AdminGetOfferParams{
@@ -519,7 +519,7 @@ func (r *Repository) ListOfferBundles(
 	}, func(ctx context.Context) ([]OfferBundle, error) {
 		var result []OfferBundle
 
-		err := r.WithReadOnlySnapshot(ctx, func(txRepo *Repository) error {
+		err := r.WithReadOnlySnapshot(ctx, func(ctx context.Context, txRepo *Repository) error {
 			rows, err := txRepo.q.AdminListOfferBundles(
 				ctx,
 				cpasqlc.AdminListOfferBundlesParams{
@@ -706,7 +706,7 @@ func (r *Repository) DeleteOffer(
 
 	var rows int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -745,7 +745,7 @@ func (r *Repository) UpsertLocalization(
 		return err
 	}
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(
 			ctx,
 			value.WorkspaceID,
@@ -878,7 +878,7 @@ func (r *Repository) DeleteLocalization(
 
 	var rows int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -912,7 +912,7 @@ func (r *Repository) UpsertReward(ctx context.Context, value Reward) error {
 		return err
 	}
 
-	err = r.WithTx(ctx, func(txRepo *Repository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(
 			ctx,
 			value.WorkspaceID,
@@ -1012,7 +1012,7 @@ func (r *Repository) DeleteReward(
 
 	var rows int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}

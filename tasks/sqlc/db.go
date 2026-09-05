@@ -213,6 +213,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getEnabledPartnerScriptStmt, err = db.PrepareContext(ctx, getEnabledPartnerScript); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEnabledPartnerScript: %w", err)
 	}
+	if q.getExportFootprintStmt, err = db.PrepareContext(ctx, getExportFootprint); err != nil {
+		return nil, fmt.Errorf("error preparing query GetExportFootprint: %w", err)
+	}
 	if q.getIntegrationCheckTaskByIDStmt, err = db.PrepareContext(ctx, getIntegrationCheckTaskByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetIntegrationCheckTaskByID: %w", err)
 	}
@@ -671,6 +674,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getEnabledPartnerScriptStmt: %w", cerr)
 		}
 	}
+	if q.getExportFootprintStmt != nil {
+		if cerr := q.getExportFootprintStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getExportFootprintStmt: %w", cerr)
+		}
+	}
 	if q.getIntegrationCheckTaskByIDStmt != nil {
 		if cerr := q.getIntegrationCheckTaskByIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getIntegrationCheckTaskByIDStmt: %w", cerr)
@@ -1003,6 +1011,7 @@ type Queries struct {
 	getClaimCatalogByKeyStmt                  *sql.Stmt
 	getCurrentProgressForUpdateStmt           *sql.Stmt
 	getEnabledPartnerScriptStmt               *sql.Stmt
+	getExportFootprintStmt                    *sql.Stmt
 	getIntegrationCheckTaskByIDStmt           *sql.Stmt
 	getIntegrationCheckTaskByKeyStmt          *sql.Stmt
 	getNextActiveSequenceTaskAfterCurrentStmt *sql.Stmt
@@ -1118,6 +1127,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getClaimCatalogByKeyStmt:                  q.getClaimCatalogByKeyStmt,
 		getCurrentProgressForUpdateStmt:           q.getCurrentProgressForUpdateStmt,
 		getEnabledPartnerScriptStmt:               q.getEnabledPartnerScriptStmt,
+		getExportFootprintStmt:                    q.getExportFootprintStmt,
 		getIntegrationCheckTaskByIDStmt:           q.getIntegrationCheckTaskByIDStmt,
 		getIntegrationCheckTaskByKeyStmt:          q.getIntegrationCheckTaskByKeyStmt,
 		getNextActiveSequenceTaskAfterCurrentStmt: q.getNextActiveSequenceTaskAfterCurrentStmt,

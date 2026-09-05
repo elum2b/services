@@ -27,7 +27,7 @@ func (r *Repository) Record(
 
 	var result RecordResult
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		refID, calendarType := calendarReference(params.CalendarRef)
 
 		rows, err := txRepo.q.GetRecordBundleForUpdate(

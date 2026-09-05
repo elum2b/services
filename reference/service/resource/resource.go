@@ -13,6 +13,7 @@ import (
 	json "github.com/goccy/go-json"
 
 	services "github.com/elum2b/services"
+	"github.com/elum2b/services/internal/utils/contextutil"
 	"github.com/elum2b/services/internal/utils/media"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/reference/repository"
@@ -89,6 +90,9 @@ func (s *Resource) Create(
 	ctx context.Context,
 	p SaveParams,
 ) (repository.Resource, error) {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+
 	prepared, e := s.prepare(ctx, p)
 	if e != nil {
 		return repository.Resource{}, e
@@ -101,7 +105,7 @@ func (s *Resource) Create(
 	)
 	if e != nil {
 		if written {
-			s.deleteVersion(ctx, prepared.resource)
+			e = errors.Join(e, s.deleteVersion(prepared.resource))
 		}
 
 		return repository.Resource{}, e
@@ -118,6 +122,9 @@ func (s *Resource) Update(
 	ctx context.Context,
 	p SaveParams,
 ) (repository.Resource, error) {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+
 	prepared, e := s.prepare(ctx, p)
 	if e != nil {
 		return repository.Resource{}, e
@@ -130,7 +137,7 @@ func (s *Resource) Update(
 	)
 	if e != nil {
 		if written {
-			s.deleteVersion(ctx, prepared.resource)
+			e = errors.Join(e, s.deleteVersion(prepared.resource))
 		}
 
 		return repository.Resource{}, e
@@ -154,6 +161,9 @@ func (s *Resource) Get(
 	ctx context.Context,
 	p GetParams,
 ) (repository.Resource, error) {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+
 	return s.repository.GetResource(
 		ctx,
 		p.WorkspaceID,
@@ -161,6 +171,9 @@ func (s *Resource) Get(
 	)
 }
 func (s *Resource) Delete(ctx context.Context, p GetParams) error {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+
 	_, e := s.repository.SoftDeleteResource(
 		ctx,
 		p.WorkspaceID,
@@ -182,6 +195,9 @@ func (s *Resource) CollectGarbage(
 	ctx context.Context,
 	p CollectGarbageParams,
 ) (int, error) {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+
 	if s.store == nil || p.Limit <= 0 {
 		return 0, nil
 	}
@@ -239,6 +255,12 @@ func (s *Resource) GetContent(
 	ctx context.Context,
 	p ContentParams,
 ) (Content, error) {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return Content{}, err
+	}
+
 	p.Key = strings.ToLower(strings.TrimSpace(p.Key))
 	if err := services.ValidateWorkspaceID(
 		p.WorkspaceID,
@@ -308,6 +330,9 @@ func (s *Resource) List(
 	ctx context.Context,
 	p ListParams,
 ) ([]repository.Resource, error) {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+
 	if err := services.ValidateWorkspaceID(p.WorkspaceID); err != nil {
 		return nil, err
 	}
@@ -337,6 +362,9 @@ func (s *Resource) Attach(
 	workspaceID, itemKey, resourceKey string,
 	position int32,
 ) error {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+
 	return s.repository.AttachResource(
 		ctx,
 		workspaceID,
@@ -350,6 +378,9 @@ func (s *Resource) Detach(
 	ctx context.Context,
 	workspaceID, itemKey, resourceKey string,
 ) (int64, error) {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+
 	return s.repository.DetachResource(
 		ctx,
 		workspaceID,
@@ -364,6 +395,9 @@ func (s *Resource) InsertAfter(
 	ctx context.Context,
 	workspaceID, itemKey, resourceKey, afterResourceKey string,
 ) error {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+
 	return s.repository.InsertResourceAfter(
 		ctx, workspaceID, strings.ToLower(strings.TrimSpace(itemKey)),
 		strings.ToLower(strings.TrimSpace(resourceKey)),
@@ -377,6 +411,9 @@ func (s *Resource) MoveAfter(
 	ctx context.Context,
 	workspaceID, itemKey, resourceKey, afterResourceKey string,
 ) error {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+
 	return s.repository.MoveResourceAfter(
 		ctx, workspaceID, strings.ToLower(strings.TrimSpace(itemKey)),
 		strings.ToLower(strings.TrimSpace(resourceKey)),
@@ -388,6 +425,9 @@ func (s *Resource) ListItemResources(
 	ctx context.Context,
 	workspaceID, itemKey string,
 ) ([]repository.Resource, error) {
+	ctx, cancel := contextutil.Merge(s.root, ctx)
+	defer cancel()
+
 	return s.repository.ListItemResources(
 		ctx,
 		workspaceID,
@@ -484,8 +524,10 @@ func (s *Resource) replace(files storage.Files) repository.ResourceSave {
 			files,
 		)
 		if err != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
 			cleanupErr := s.store.DeleteVersion(
-				ctx,
+				cleanupCtx,
 				value.WorkspaceID,
 				value.Key,
 				value.MediaVersion,
@@ -505,16 +547,17 @@ func (s *Resource) replace(files storage.Files) repository.ResourceSave {
 	}
 }
 
-func (s *Resource) deleteVersion(
-	ctx context.Context,
-	value repository.Resource,
-) {
-	_ = s.store.DeleteVersion(
-		ctx,
-		value.WorkspaceID,
-		value.Key,
-		value.MediaVersion,
-	)
+func (s *Resource) deleteVersion(value repository.Resource) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	durable, err := s.repository.ArchiveMediaVersionDurable(ctx, value.WorkspaceID, value.Key, value.MediaVersion)
+	if err != nil {
+		return fmt.Errorf("media cleanup postponed: durability unknown: %w", err)
+	}
+	if durable {
+		return nil
+	}
+	return s.store.DeleteVersion(ctx, value.WorkspaceID, value.Key, value.MediaVersion)
 }
 
 func contentType(f media.Format) string {

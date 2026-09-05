@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
@@ -58,4 +59,11 @@ func (r *Repository) reportCacheInvalidationError(err error) {
 	}()
 
 	r.onCacheInvalidationError(err)
+}
+
+func (r *Repository) ReconcileArchiveImport(ctx context.Context, workspaceID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return r.invalidatePromoCache(workspaceID)
 }

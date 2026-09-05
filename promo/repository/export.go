@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	promosqlc "github.com/elum2b/services/promo/sqlc"
@@ -12,6 +13,8 @@ func (r *Repository) Export(
 	workspaceID string,
 	req ExportRequest,
 ) (ExportPackage, error) {
+	r = r.archiveRepository()
+
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return ExportPackage{}, err
 	}
@@ -27,12 +30,20 @@ func (r *Repository) Export(
 		rewardRows       []promosqlc.PromoReward
 	)
 
-	if err := r.WithTx(ctx, func(txRepo *Repository) error {
+	if err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if _, err := txRepo.executor.ExecContext(
 			ctx,
 			"SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
 		); err != nil {
 			return err
+		}
+
+		footprint, budgetErr := txRepo.q.GetExportFootprint(ctx, workspaceID)
+		if budgetErr != nil {
+			return budgetErr
+		}
+		if footprint.Records > 100000 || footprint.Bytes > 32<<20 {
+			return fmt.Errorf("promo export exceeds archive record or byte budget")
 		}
 
 		var err error

@@ -28,7 +28,7 @@ func (r *Repository) UpsertGroup(
 	if err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminUpsertGroup(
 				ctx,
 				tasksqlc.AdminUpsertGroupParams{
@@ -64,7 +64,7 @@ func (r *Repository) UpsertGroupLocalization(
 	if err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminUpsertGroupLocalization(
 				ctx,
 				tasksqlc.AdminUpsertGroupLocalizationParams{
@@ -100,7 +100,7 @@ func (r *Repository) UpsertSequence(
 	if err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminUpsertSequence(
 				ctx,
 				tasksqlc.AdminUpsertSequenceParams{
@@ -167,7 +167,7 @@ func (r *Repository) DeleteGroup(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *Repository) error {
+		func(ctx context.Context, tx *Repository) error {
 			var err error
 
 			rows, err = tx.q.AdminSoftDeleteGroup(
@@ -238,7 +238,7 @@ func (r *Repository) DeleteSequence(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *Repository) error {
+		func(ctx context.Context, tx *Repository) error {
 			var err error
 
 			rows, err = tx.q.AdminSoftDeleteSequence(
@@ -285,7 +285,7 @@ func (r *Repository) SaveTask(
 		err := r.withWorkspaceMutation(
 			ctx,
 			params.WorkspaceID,
-			func(txRepo *Repository) error {
+			func(ctx context.Context, txRepo *Repository) error {
 				var err error
 
 				id, err = txRepo.q.AdminCreateTask(
@@ -341,7 +341,7 @@ func (r *Repository) SaveTask(
 	err := r.withWorkspaceMutation(
 		ctx,
 		params.WorkspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			_, err := txRepo.q.AdminUpdateTask(
 				ctx,
 				tasksqlc.AdminUpdateTaskParams{
@@ -406,7 +406,7 @@ func (r *Repository) DeleteTask(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminDeleteTask(
@@ -553,7 +553,7 @@ func (r *Repository) UpsertTaskLocalization(
 	if err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminUpsertTaskLocalization(
 				ctx,
 				tasksqlc.AdminUpsertTaskLocalizationParams{
@@ -634,7 +634,7 @@ func (r *Repository) DeleteGroupLocalization(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *Repository) error {
+		func(ctx context.Context, tx *Repository) error {
 			var err error
 
 			rows, err = tx.q.AdminDeleteGroupLocalization(
@@ -724,7 +724,7 @@ func (r *Repository) DeleteTaskLocalization(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(tx *Repository) error {
+		func(ctx context.Context, tx *Repository) error {
 			var err error
 
 			rows, err = tx.q.AdminDeleteTaskLocalization(
@@ -857,7 +857,7 @@ func (r *Repository) UpsertReward(
 	if err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminUpsertReward(
 				ctx,
 				tasksqlc.AdminUpsertRewardParams{
@@ -902,7 +902,7 @@ func (r *Repository) DeleteReward(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminDeleteReward(
@@ -940,7 +940,7 @@ func (r *Repository) UpsertComplexCondition(
 		return err
 	}
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(
 			ctx,
 			params.WorkspaceID,
@@ -1050,7 +1050,7 @@ func (r *Repository) DeleteComplexCondition(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminDeleteComplexCondition(

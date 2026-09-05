@@ -289,23 +289,32 @@ func (r *Repository) RefreshDailyStats(
 		return fmt.Errorf("tasks stats workspace or date range is invalid")
 	}
 
-	if err := r.q.RefreshTaskDailyStats(
-		ctx,
-		tasksqlc.RefreshTaskDailyStatsParams{
-			RefreshWorkspaceID: workspaceID,
-			OccurredAt:         from,
-			OccurredAt_2:       until,
-		},
-	); err != nil {
-		return err
+	// Recompute complete UTC days; the two materializations commit together.
+	from = from.UTC().Truncate(24 * time.Hour)
+	end := until.UTC().Truncate(24 * time.Hour)
+	if until.After(end) || !end.After(from) {
+		end = end.Add(24 * time.Hour)
 	}
+	until = end
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
+		if err := txRepo.q.RefreshTaskDailyStats(
+			ctx,
+			tasksqlc.RefreshTaskDailyStatsParams{
+				RefreshWorkspaceID: workspaceID,
+				OccurredAt:         from,
+				OccurredAt_2:       until,
+			},
+		); err != nil {
+			return err
+		}
 
-	return r.q.RefreshTaskDailyOverview(
-		ctx,
-		tasksqlc.RefreshTaskDailyOverviewParams{
-			RefreshWorkspaceID: workspaceID,
-			OccurredAt:         from,
-			OccurredAt_2:       until,
-		},
-	)
+		return txRepo.q.RefreshTaskDailyOverview(
+			ctx,
+			tasksqlc.RefreshTaskDailyOverviewParams{
+				RefreshWorkspaceID: workspaceID,
+				OccurredAt:         from,
+				OccurredAt_2:       until,
+			},
+		)
+	})
 }

@@ -119,7 +119,7 @@ func (r *Repository) SavePartnerConfig(
 	if err := r.withWorkspaceMutation(
 		ctx,
 		params.WorkspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminUpsertPartnerConfig(
 				ctx,
 				tasksqlc.AdminUpsertPartnerConfigParams{
@@ -547,7 +547,7 @@ func (r *Repository) SavePartnerRewardRule(
 	return r.withWorkspaceMutation(
 		ctx,
 		params.WorkspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminUpsertPartnerRewardRule(
 				ctx,
 				tasksqlc.AdminUpsertPartnerRewardRuleParams{
@@ -584,7 +584,7 @@ func (r *Repository) DeletePartnerRewardRule(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminDeletePartnerRewardRule(
@@ -703,7 +703,7 @@ func (r *Repository) CreatePartnerIssue(
 		inserted bool
 	)
 
-	err = r.WithTx(ctx, func(txRepo *Repository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		id, err := txRepo.q.CreatePartnerIssue(
 			ctx,
 			tasksqlc.CreatePartnerIssueParams{
@@ -933,7 +933,7 @@ func (r *Repository) UpdatePartnerIssueStart(
 
 	changed := false
 
-	err = r.WithTx(ctx, func(txRepo *Repository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		affected, err := txRepo.q.UpdatePartnerIssueStart(
 			ctx,
 			tasksqlc.UpdatePartnerIssueStartParams{
@@ -1126,7 +1126,7 @@ func (r *Repository) CompletePartnerIssue(
 
 	completed := false
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		row, err := txRepo.q.GetPartnerIssueByIDForUpdate(
 			ctx,
 			tasksqlc.GetPartnerIssueByIDForUpdateParams{
@@ -1244,7 +1244,7 @@ func (r *Repository) ExpirePartnerIssue(
 
 	expired := false
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		row, err := txRepo.q.GetPartnerIssueByIDForUpdate(
 			ctx,
 			tasksqlc.GetPartnerIssueByIDForUpdateParams{
@@ -1345,7 +1345,7 @@ func (r *Repository) RevokePartnerIssue(
 
 	revoked := false
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		row, err := txRepo.q.GetPartnerIssueByIDForUpdate(
 			ctx,
 			tasksqlc.GetPartnerIssueByIDForUpdateParams{
@@ -1485,7 +1485,7 @@ func (r *Repository) ClaimPartnerIssue(
 		OperationID: operationID,
 	}
 
-	err = r.WithTx(ctx, func(txRepo *Repository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		row, err := txRepo.q.GetPartnerIssueByIDForUpdate(
 			ctx,
 			tasksqlc.GetPartnerIssueByIDForUpdateParams{

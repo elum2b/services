@@ -5,13 +5,18 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
+	json "github.com/goccy/go-json"
 	"image"
 	"image/color"
 	"image/png"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -2937,4 +2942,449 @@ func openReferencePostgres(database string) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func TestReferenceImportDefaultMergesCatalog(t *testing.T) {
+	s := newReferenceTestServiceWithOptions(t, "elum_reference_merge_test", Options{})
+	repo := repository.New(s.client)
+	defer repo.Close()
+	ws := testsupport.WorkspaceID("import-merge")
+	makeItem := func(key, payload string) repository.ExportItem {
+		return repository.ExportItem{Key: key, Type: repository.ItemTypeQuantity, Payload: []byte(payload), IsActive: true, Localization: map[string]repository.ExportText{"en": {Title: key}}}
+	}
+	pkg := repository.ExportPackage{Format: repository.ExportFormat, Service: "reference", Items: []repository.ExportItem{makeItem("a", `{"old":true}`), makeItem("b", `{"old":true}`), makeItem("c", `{"old":true}`)}}
+	if _, err := repo.Import(t.Context(), ws, repository.ImportRequest{Package: pkg}); err != nil {
+		t.Fatal(err)
+	}
+	pkg.Items = []repository.ExportItem{makeItem("b", `{"new":true}`), makeItem("c", `{"new":true}`), makeItem("d", `{"new":true}`)}
+	pkg.Items[0].Type = repository.ItemTypeDuration
+	pkg.Items[0].Localization = nil
+	result, err := repo.Import(t.Context(), ws, repository.ImportRequest{Package: pkg})
+	if err != nil || result.Imported.Items != 3 {
+		t.Fatalf("import: %+v %v", result, err)
+	}
+	exported, err := repo.Export(t.Context(), ws, repository.ExportRequest{})
+	if err != nil || len(exported.Items) != 4 {
+		t.Fatalf("A B C + B C D must produce A B C D: %+v %v", exported, err)
+	}
+	for i, key := range []string{"a", "b", "c", "d"} {
+		if exported.Items[i].Key != key {
+			t.Fatal(exported.Items)
+		}
+	}
+	if !bytes.Contains(exported.Items[0].Payload, []byte("old")) || exported.Items[0].Localization["en"].Title != "a" {
+		t.Fatal("A was modified")
+	}
+	if exported.Items[1].Type != repository.ItemTypeDuration || len(exported.Items[1].Localization) != 0 {
+		t.Fatal("import did not replace B type/localizations")
+	}
+	for _, item := range exported.Items[1:] {
+		if !bytes.Contains(item.Payload, []byte("new")) {
+			t.Fatal("B/C/D payload mismatch")
+		}
+	}
+	// Explicit conflict strategy remains available and atomic.
+	pkg.Items[0].Payload = []byte(`{"fail":true}`)
+	if _, err := repo.Import(t.Context(), ws, repository.ImportRequest{Package: pkg, ConflictStrategy: repository.ImportConflictFail}); err == nil {
+		t.Fatal("explicit fail_on_conflict accepted")
+	}
+}
+
+func TestReferenceArchiveLinksAndActiveGCRegression(t *testing.T) {
+	s := newReferenceTestServiceWithOptions(t, "elum_reference_links_test", Options{})
+	repo := repository.New(s.client)
+	defer repo.Close()
+	ctx := t.Context()
+	ws := testsupport.WorkspaceID("links-regression")
+	pkg := repository.ExportPackage{Format: repository.ExportFormat, Service: "reference", Items: []repository.ExportItem{{Key: "a", Type: "quantity", Payload: []byte(`{}`), IsActive: true}, {Key: "b", Type: "quantity", Payload: []byte(`{}`), IsActive: true}}}
+	if _, err := repo.Import(ctx, ws, repository.ImportRequest{Package: pkg}); err != nil {
+		t.Fatal(err)
+	}
+	resource := repository.Resource{WorkspaceID: ws, Key: "media", Type: "image", Payload: []byte(`{}`), IsActive: true, Format: "png", ContentType: "image/png", SHA256: strings.Repeat("a", 64), MediaVersion: "abcdefgh", Size: 1, Width: 1, Height: 1}
+	if err := repo.CreateResource(ctx, resource); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"a", "b"} {
+		if err := repo.AttachResource(ctx, ws, key, "media", 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pkg.Items = pkg.Items[1:]
+	upload := func(context.Context, []*repository.Resource) error { return nil }
+	// Empty links clear imported B, preserving non-imported A.
+	if _, err := repo.ImportArchiveWithMedia(ctx, ws, repository.ImportRequest{Package: pkg}, nil, nil, time.Second, upload); err != nil {
+		t.Fatal(err)
+	}
+	check := func(key string, want int) {
+		t.Helper()
+		var count int
+		if err := s.client.DB().QueryRowContext(ctx, `SELECT count(*) FROM reference_item_resource WHERE workspace_id=$1 AND item_key=$2`, ws, key).Scan(&count); err != nil || count != want {
+			t.Fatalf("links %s: %d want %d err=%v", key, count, want, err)
+		}
+	}
+	check("a", 1)
+	check("b", 0)
+	if err := repo.AttachResource(ctx, ws, "b", "media", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.ImportArchiveWithMedia(ctx, ws, repository.ImportRequest{Package: pkg, ConflictStrategy: repository.ImportConflictSkip}, nil, []repository.ExportResourceLink{{ItemKey: "b", ResourceKey: "media", Position: 5}}, time.Second, upload); err != nil {
+		t.Fatal(err)
+	}
+	var position int
+	if err := s.client.DB().QueryRowContext(ctx, `SELECT position FROM reference_item_resource WHERE workspace_id=$1 AND item_key='b'`, ws).Scan(&position); err != nil || position != 0 {
+		t.Fatalf("skipped link changed: %d %v", position, err)
+	}
+	// Retiring an old version must not detach either item from the live resource.
+	resource.MediaVersion = "ijklmnop"
+	if _, err := repo.UpdateResource(ctx, resource); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.client.DB().ExecContext(ctx, `UPDATE reference_resource_media_version SET retired_at=now()-interval '2 hours' WHERE workspace_id=$1 AND media_version='abcdefgh'`, ws); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := s.Resource.CollectGarbage(ctx, resourceservice.CollectGarbageParams{Limit: 10}); err != nil || count != 1 {
+		t.Fatalf("GC: %d %v", count, err)
+	}
+	check("a", 1)
+	check("b", 1)
+	if _, err := repo.GetResource(ctx, ws, "media"); err != nil {
+		t.Fatal("live resource purged", err)
+	}
+}
+
+func TestReferenceTransactionTimeoutAndShutdownRegression(t *testing.T) {
+	s := newReferenceTestServiceWithOptions(t, "elum_reference_timeout_test", Options{})
+	ctx := t.Context()
+	ws := testsupport.WorkspaceID("timeout-regression")
+	if _, err := s.client.DB().ExecContext(ctx, `CREATE FUNCTION reference_delay() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(0.5); RETURN NEW; END $$`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.client.DB().ExecContext(ctx, `CREATE TRIGGER reference_delay BEFORE INSERT ON reference_item FOR EACH ROW EXECUTE FUNCTION reference_delay()`); err != nil {
+		t.Fatal(err)
+	}
+	repo := repository.NewWithOptions(s.client, repository.Options{QueryTimeout: 50 * time.Millisecond})
+	defer repo.Close()
+	start := time.Now()
+	err := repo.CreateItem(ctx, repository.SaveItemParams{WorkspaceID: ws, Key: "slow", Type: "quantity", Payload: []byte(`{}`), IsActive: true})
+	if err == nil || time.Since(start) > 350*time.Millisecond {
+		t.Fatalf("SQL failed to cancel promptly: %s %v", time.Since(start), err)
+	}
+	var count int
+	if err := s.client.DB().QueryRowContext(ctx, `SELECT count(*) FROM reference_item WHERE workspace_id=$1`, ws).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("partial write: %d %v", count, err)
+	}
+	// Archive uses its own budget rather than the ordinary 50ms timeout.
+	pkg := repository.ExportPackage{Format: repository.ExportFormat, Service: "reference", Items: []repository.ExportItem{{Key: "archive", Type: "quantity", Payload: []byte(`{}`), IsActive: true}}}
+	if _, err := repo.Import(ctx, ws, repository.ImportRequest{Package: pkg}); err != nil {
+		t.Fatal("archive inherited short query timeout", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Admin.QueueArchiveExport(context.Background(), admin.QueueArchiveExportParams{WorkspaceID: ws, FileName: "closed.zip"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("queue after close: %v", err)
+	}
+	if _, err := s.Admin.QueueArchiveImport(context.Background(), admin.QueueArchiveImportParams{WorkspaceID: ws, FileName: "closed.zip", Archive: strings.NewReader("ignored")}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("import queue after close: %v", err)
+	}
+}
+
+type referenceFailCache struct {
+	*referenceSharedCache
+	fail bool
+}
+
+func (c *referenceFailCache) Set(key string, value []byte, ttl time.Duration) error {
+	if c.fail {
+		return errors.New("test cache unavailable")
+	}
+	return c.referenceSharedCache.Set(key, value, ttl)
+}
+func TestReferenceCommittedWriteSurvivesCacheFailure(t *testing.T) {
+	cache := &referenceFailCache{referenceSharedCache: newReferenceSharedCache()}
+	var diagnostic error
+	s := newReferenceTestServiceWithOptions(t, "elum_reference_cache_failure_test", Options{Cache: cache, CacheEnabled: true, OnCacheInvalidationError: func(err error) { diagnostic = err }})
+	cache.fail = true
+	ws := testsupport.WorkspaceID("cache-failure")
+	if err := s.Admin.CreateItem(t.Context(), admin.SaveItemParams{WorkspaceID: ws, Key: "item", Type: "quantity", Payload: []byte(`{}`), IsActive: true}); err != nil {
+		t.Fatal("committed write returned error", err)
+	}
+	var count int
+	if err := s.client.DB().QueryRowContext(t.Context(), `SELECT count(*) FROM reference_item WHERE workspace_id=$1`, ws).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("write: %d %v", count, err)
+	}
+	if diagnostic == nil {
+		t.Fatal("cache failure was not diagnosed")
+	}
+}
+
+func TestArchiveMediaFixtures(t *testing.T) {
+	directory := filepath.Join("testdata", "archive-media")
+
+	original, err := os.ReadFile(filepath.Join(directory, "original.json"))
+	if err != nil {
+		t.Fatalf("read original fixture: %v", err)
+	}
+
+	if !json.Valid(original) {
+		t.Fatal("original fixture is not valid JSON")
+	}
+
+	placeholder, err := os.ReadFile(filepath.Join(directory, "placeholder.svg"))
+	if err != nil {
+		t.Fatalf("read placeholder fixture: %v", err)
+	}
+
+	if !bytes.Contains(placeholder, []byte("<svg")) {
+		t.Fatal("placeholder fixture is not SVG")
+	}
+
+	preview, err := os.ReadFile(filepath.Join(directory, "preview-512.webp"))
+	if err != nil {
+		t.Fatalf("read preview fixture: %v", err)
+	}
+
+	if len(preview) < 12 || !bytes.Equal(preview[:4], []byte("RIFF")) ||
+		!bytes.Equal(preview[8:12], []byte("WEBP")) {
+		t.Fatal("preview fixture is not WebP")
+	}
+}
+
+func TestS3ArchiveStoreOpenDelete(t *testing.T) {
+	client := &fakeArchiveClient{objects: make(map[string][]byte)}
+
+	archive, err := newS3ArchiveWithClient(client, "archives")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key, err := archive.Store(
+		t.Context(),
+		jobs.ArchiveObject{},
+		strings.NewReader("archive"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !validArchiveKey(key) || !strings.HasPrefix(key, archivePrefix) {
+		t.Fatalf("archive key = %q", key)
+	}
+
+	if client.contentType != "application/zip" {
+		t.Fatalf("content type = %q", client.contentType)
+	}
+
+	reader, err := archive.Open(t.Context(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := io.ReadAll(reader)
+
+	_ = reader.Close()
+
+	if err != nil || string(data) != "archive" {
+		t.Fatalf("archive data = %q, err = %v", data, err)
+	}
+
+	if err := archive.Delete(t.Context(), key); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, exists := client.objects[key]; exists {
+		t.Fatal("archive remains after delete")
+	}
+
+	if _, err := archive.Open(
+		t.Context(),
+		"importexport/../archive.zip",
+	); err == nil {
+		t.Fatal("invalid archive key accepted")
+	}
+}
+
+type fakeArchiveClient struct {
+	objects     map[string][]byte
+	contentType string
+}
+
+func (c *fakeArchiveClient) PutObject(
+	_ context.Context,
+	input *awss3.PutObjectInput,
+	_ ...func(*awss3.Options),
+) (*awss3.PutObjectOutput, error) {
+	data, err := io.ReadAll(input.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	c.objects[aws.ToString(input.Key)] = bytes.Clone(data)
+	c.contentType = aws.ToString(input.ContentType)
+
+	return &awss3.PutObjectOutput{}, nil
+}
+
+func (c *fakeArchiveClient) GetObject(
+	_ context.Context,
+	input *awss3.GetObjectInput,
+	_ ...func(*awss3.Options),
+) (*awss3.GetObjectOutput, error) {
+	data, exists := c.objects[aws.ToString(input.Key)]
+	if !exists {
+		return nil, errors.New("not found")
+	}
+
+	return &awss3.GetObjectOutput{
+		Body: io.NopCloser(bytes.NewReader(data)),
+	}, nil
+}
+
+func (c *fakeArchiveClient) DeleteObject(
+	_ context.Context,
+	input *awss3.DeleteObjectInput,
+	_ ...func(*awss3.Options),
+) (*awss3.DeleteObjectOutput, error) {
+	delete(c.objects, aws.ToString(input.Key))
+
+	return &awss3.DeleteObjectOutput{}, nil
+}
+
+func TestReferenceS3ArchiveUsesSeekableUpload(t *testing.T) {
+	payloads := make(chan []byte, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(500)
+			return
+		}
+		payloads <- body
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+	archive, err := newS3Archive(resourcestorage.Config{Endpoint: server.URL, Bucket: "test", AccessKey: "fixture", SecretKey: "fixture", UsePathStyle: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := archive.Store(t.Context(), jobs.ArchiveObject{}, strings.NewReader("archive payload"))
+	if err != nil || !validArchiveKey(key) {
+		t.Fatalf("HTTP S3 upload: %s %v", key, err)
+	}
+	body := <-payloads
+	if string(body) != "archive payload" {
+		t.Fatalf("stored bytes: %q", body)
+	}
+}
+
+func TestReferenceArchiveManifestConcurrentMutation(t *testing.T) {
+	s := newReferenceTestServiceWithOptions(t, "elum_reference_export_snapshot_test", Options{})
+	repo := repository.New(s.client)
+	defer repo.Close()
+	ctx := t.Context()
+	ws := testsupport.WorkspaceID("export-snapshot")
+	value := repository.Resource{WorkspaceID: ws, Key: "media", Type: "image", Payload: []byte(`{}`), IsActive: true, Format: "png", ContentType: "image/png", SHA256: strings.Repeat("a", 64), MediaVersion: "abcdefgh", Size: 1, Width: 1, Height: 1}
+	if err := repo.CreateResource(ctx, value); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		for i := 0; i < 30; i++ {
+			key := fmt.Sprintf("item-%03d", i)
+			if err := repo.CreateItem(ctx, repository.SaveItemParams{WorkspaceID: ws, Key: key, Type: "quantity", Payload: []byte(`{}`), IsActive: true}); err != nil {
+				done <- err
+				return
+			}
+			if err := repo.AttachResource(ctx, ws, key, "media", 0); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
+	}()
+	for i := 0; i < 60; i++ {
+		manifest, err := repo.ExportArchive(ctx, ws, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys := make(map[string]bool)
+		for _, item := range manifest.Package.Items {
+			keys[item.Key] = true
+		}
+		resources := make(map[string]bool)
+		for _, resource := range manifest.Resources {
+			resources[resource.Key] = true
+		}
+		for _, link := range manifest.Links {
+			if !keys[link.ItemKey] || !resources[link.ResourceKey] {
+				t.Fatalf("mixed snapshot: %+v", link)
+			}
+		}
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReferenceGCKeepsCachedMediaUntilTTL(t *testing.T) {
+	s := newReferenceTestServiceWithOptions(t, "elum_reference_gc_cache_test", Options{})
+	ctx := t.Context()
+	ws := testsupport.WorkspaceID("gc-cache")
+	params := resourceservice.SaveParams{WorkspaceID: ws, Key: "media", Type: "image", Payload: []byte(`{}`), IsActive: true, File: referencePNG(t, color.NRGBA{R: 255, A: 255})}
+	original, err := s.Resource.Create(ctx, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contentParams := resourceservice.ContentParams{WorkspaceID: ws, Key: "media", Version: original.MediaVersion, Format: original.Format}
+	cached, err := s.Resource.GetContent(ctx, contentParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params.File = referencePNG(t, color.NRGBA{B: 255, A: 255})
+	if _, err := s.Resource.Update(ctx, params); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.client.DB().ExecContext(ctx, `UPDATE reference_resource_media_version SET retired_at=now()-interval '2 hours' WHERE workspace_id=$1 AND media_version=$2`, ws, original.MediaVersion); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Resource.CollectGarbage(ctx, resourceservice.CollectGarbageParams{Limit: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.storage.ReadVersion(ctx, ws, "media", original.MediaVersion, "image.png", 0); err == nil {
+		t.Fatal("GC did not remove physical media")
+	}
+	content, err := s.Resource.GetContent(ctx, contentParams)
+	if err != nil || !bytes.Equal(content.Data, cached.Data) {
+		t.Fatalf("TTL grace was not preserved: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Resource.GetContent(context.Background(), contentParams); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cached read after Close: %v", err)
+	}
+}
+
+func TestReferenceDurabilityWaitsForPendingCommit(t *testing.T) {
+	s := newReferenceTestServiceWithOptions(t, "elum_reference_pending_commit_test", Options{})
+	ws := testsupport.WorkspaceID("pending-commit")
+	tx, err := s.client.DB().BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(t.Context(), `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "reference:"+ws); err != nil {
+		t.Fatal(err)
+	}
+	// The prior upload transaction has not resolved yet. Absence is not a verdict.
+	repo := repository.NewWithOptions(s.client, repository.Options{QueryTimeout: 50 * time.Millisecond})
+	defer repo.Close()
+	if durable, err := repo.ArchiveMediaVersionDurable(t.Context(), ws, "media", "abcdefgh"); err == nil || durable {
+		t.Fatalf("unresolved transaction was interpreted as absence: %t %v", durable, err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if durable, err := repo.ArchiveMediaVersionDurable(t.Context(), ws, "media", "abcdefgh"); err != nil || durable {
+		t.Fatalf("resolved absent version: %t %v", durable, err)
+	}
 }

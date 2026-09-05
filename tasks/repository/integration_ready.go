@@ -27,7 +27,7 @@ func (r *Repository) MarkIntegrationTaskReady(
 	}
 
 	for attempt := 0; attempt < 3; attempt++ {
-		err := r.WithTx(ctx, func(txRepo *Repository) error {
+		err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 			if err := txRepo.lockTaskUser(ctx, params.Identity); err != nil {
 				return err
 			}

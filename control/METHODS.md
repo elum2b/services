@@ -13,7 +13,7 @@
 |---|---|---|
 | `Admin.IsInitialized` | `context` | Проверяет, создан ли первый владелец платформы. |
 | `Admin.Initialize` | Проверенную identity и metadata session | Атомарно создает первого глобального владельца. Доступен один раз. |
-| `Admin.CompleteAuth` | Проверенную identity, optional `InviteToken`, metadata session | Авторизует существующий account или регистрирует новый только по одноразовому invite. |
+| `Admin.CompleteAuth` | Проверенную identity, optional `InviteToken`, metadata session | При первом входе атомарно создает владельца платформы; затем авторизует существующий account или регистрирует новый только по одноразовому invite. |
 | `Admin.CompleteTwoFactor` | Challenge, TOTP/backup code, IP | Завершает 2FA, атомарно расходует TOTP counter либо backup code, принимает отложенный invite и создает session. |
 | `Admin.GetAccount` | Account ID | Возвращает account без секретных данных. |
 | `Admin.BindIdentity` / `UnbindIdentity` | Account и provider identity | Добавляет или удаляет способ входа; последний способ удалить нельзя. Операции сериализуются с auth, identity другого account отклоняется. |

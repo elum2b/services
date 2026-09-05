@@ -75,7 +75,7 @@ func (r *Repository) createInvite(
 		ctx = WithAudit(ctx, event)
 	}
 
-	err = r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err = r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		if kind == InviteKindGlobal {
 			bundle, err := q.GetGlobalAuthorizationForUpdate(
 				ctx,
@@ -207,6 +207,9 @@ func (r *Repository) AcceptInvite(
 	accountID string,
 	rawToken string,
 ) (Invite, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
 	if err := required(accountID, rawToken); err != nil {
 		return Invite{}, err
 	}
@@ -434,6 +437,9 @@ func (r *Repository) RevokeInvite(
 	actorID string,
 	inviteID string,
 ) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
 	var rows int64
 
 	err := sqlwrap.WithTx(

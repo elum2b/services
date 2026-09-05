@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 // DiskArchive stores job dumps below one private directory. Keys are generated
@@ -47,6 +48,11 @@ func (a *DiskArchive) Store(
 	}
 
 	temporaryPath := temporary.Name()
+	if err := syscall.Flock(int(temporary.Fd()), syscall.LOCK_SH); err != nil {
+		_ = temporary.Close()
+		_ = os.Remove(temporaryPath)
+		return "", err
+	}
 
 	defer os.Remove(temporaryPath)
 
@@ -58,8 +64,9 @@ func (a *DiskArchive) Store(
 		return "", fmt.Errorf("write importexport archive: %w", err)
 	}
 
-	if err := temporary.Close(); err != nil {
-		return "", fmt.Errorf("close importexport archive: %w", err)
+	defer temporary.Close()
+	if err := temporary.Sync(); err != nil {
+		return "", err
 	}
 
 	key := newToken() + ".zip"
@@ -99,6 +106,21 @@ func (a *DiskArchive) Delete(ctx context.Context, key string) error {
 		return err
 	}
 
+	if strings.HasPrefix(key, ".archive-") && filepath.Base(key) == key {
+		file, err := os.Open(filepath.Join(a.directory, key))
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		// Never delete a staging file still being written by another process.
+		if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			return nil
+		}
+		return os.Remove(file.Name())
+	}
 	path, err := a.path(key)
 	if err != nil {
 		return err
@@ -131,7 +153,7 @@ func (a *DiskArchive) List(ctx context.Context) ([]ArchiveInfo, error) {
 			return nil, err
 		}
 
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".zip") {
+		if entry.IsDir() || (!strings.HasSuffix(entry.Name(), ".zip") && !strings.HasPrefix(entry.Name(), ".archive-")) {
 			continue
 		}
 

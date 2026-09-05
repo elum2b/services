@@ -70,7 +70,8 @@ func (r *Repository) bumpReferenceCacheVersions(
 
 	r.reportCacheInvalidationError(result)
 
-	return result
+	// A committed mutation must not become a false API failure.
+	return nil
 }
 
 func (r *Repository) reportCacheInvalidationError(err error) {

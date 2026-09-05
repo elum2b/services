@@ -294,7 +294,7 @@ func (r *PaymentRepository) CreateOrder(
 
 	var order Order
 
-	err = r.inTransaction(ctx, func(txRepo *PaymentRepository) error {
+	err = r.inTransaction(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		product, err := txRepo.getCheckoutProduct(ctx, ProductGetParams{
 			AppID:          params.AppID,
 			WorkspaceID:    workspaceID,
@@ -608,7 +608,7 @@ func (r *PaymentRepository) CreateOrderByKey(
 ) (Order, error) {
 	var order Order
 
-	err := r.inTransaction(ctx, func(txRepo *PaymentRepository) error {
+	err := r.inTransaction(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		now := params.Now
 		if now.IsZero() {
 			now = time.Now()
@@ -830,7 +830,7 @@ func (r *PaymentRepository) ValidatePendingAttempt(
 
 	var result Attempt
 
-	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttemptByProviderPaymentID(
 			ctx,
 			sqlc.LockPaymentAttemptByProviderPaymentIDParams{
@@ -924,7 +924,7 @@ func (r *PaymentRepository) CreateProviderAttempt(
 
 	var result ProviderAttemptCreateResult
 
-	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		lockParams := sqlc.LockPaymentProviderIdempotencyParams{
 			WorkspaceID:    workspaceID,
 			ProviderCode:   params.ProviderCode,
@@ -1016,7 +1016,7 @@ func (r *PaymentRepository) BindProviderAttempt(
 
 	var result Attempt
 
-	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		rows, err := txRepo.q.BindPaymentAttemptProviderResult(
 			ctx,
 			sqlc.BindPaymentAttemptProviderResultParams{
@@ -1256,7 +1256,7 @@ func (r *PaymentRepository) FailProviderAttempt(
 		return ErrAttemptFieldsInvalid
 	}
 
-	return r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttempt(ctx, int64(attemptID))
 		if err != nil {
 			return err
@@ -1380,7 +1380,7 @@ func (r *PaymentRepository) createAttempt(
 
 	var attempt Attempt
 
-	err := r.inTransaction(ctx, func(txRepo *PaymentRepository) error {
+	err := r.inTransaction(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		status := sqlc.PaymentAttemptStatus(params.Status)
 		if status == "" {
 			status = sqlc.PaymentAttemptStatusPending
@@ -1751,7 +1751,7 @@ func (r *PaymentRepository) CompleteAttempt(
 
 	var result CompleteAttemptResult
 
-	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttempt(
 			ctx,
 			int64(params.AttemptID),

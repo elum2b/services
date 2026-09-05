@@ -11,6 +11,15 @@ type ImportReceiptExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
+func (s *store) importApplied(ctx context.Context, job Job) (bool, error) {
+	var applied bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS (
+SELECT 1 FROM importexport_job_import_receipt
+WHERE job_id=$1 AND service=$2 AND workspace_id=$3
+)`, job.ID, job.Service, job.WorkspaceID).Scan(&applied)
+	return applied, err
+}
+
 // ClaimImportReceipt records an import application. It must be called from the
 // same transaction that applies the domain import. A false result means a
 // previous attempt has already committed that application.

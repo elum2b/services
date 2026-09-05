@@ -793,6 +793,28 @@ func (q *Queries) GetApplyBundleForUpdate(ctx context.Context, arg GetApplyBundl
 	return items, nil
 }
 
+const getExportFootprint = `-- name: GetExportFootprint :one
+WITH footprint AS (
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM promo_offer t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM promo_localization t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM promo_reward t WHERE t.workspace_id=$1
+) SELECT sum(records)::bigint AS records, sum(bytes)::bigint AS bytes FROM footprint
+`
+
+type GetExportFootprintRow struct {
+	Records int64 `json:"records"`
+	Bytes   int64 `json:"bytes"`
+}
+
+func (q *Queries) GetExportFootprint(ctx context.Context, workspaceID string) (GetExportFootprintRow, error) {
+	row := q.queryRow(ctx, q.getExportFootprintStmt, getExportFootprint, workspaceID)
+	var i GetExportFootprintRow
+	err := row.Scan(&i.Records, &i.Bytes)
+	return i, err
+}
+
 const getRedemption = `-- name: GetRedemption :one
 SELECT id, workspace_id, promo_id, app_id, platform_id, platform_user_id, reward_snapshot, redeemed_at, created_at
 FROM promo_redemption
@@ -1072,6 +1094,24 @@ func (q *Queries) ListRewards(ctx context.Context, arg ListRewardsParams) ([]Pro
 	return items, nil
 }
 
+const lockApplyOffer = `-- name: LockApplyOffer :one
+SELECT id FROM promo_offer
+WHERE workspace_id = $1 AND code_normalized = $2
+FOR UPDATE
+`
+
+type LockApplyOfferParams struct {
+	WorkspaceID    string `json:"workspace_id"`
+	CodeNormalized string `json:"code_normalized"`
+}
+
+func (q *Queries) LockApplyOffer(ctx context.Context, arg LockApplyOfferParams) (int64, error) {
+	row := q.queryRow(ctx, q.lockApplyOfferStmt, lockApplyOffer, arg.WorkspaceID, arg.CodeNormalized)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const refreshDailyStats = `-- name: RefreshDailyStats :exec
 INSERT INTO promo_stats_daily (
     workspace_id, promo_id, stats_date, redemption_count, unique_users
@@ -1079,13 +1119,13 @@ INSERT INTO promo_stats_daily (
 SELECT
     e.workspace_id,
     e.promo_id,
-    e.occurred_at::date,
+    (e.occurred_at AT TIME ZONE 'UTC')::date,
     COUNT(*),
     COUNT(*)
 FROM promo_redemption_event e
 WHERE e.workspace_id = $3
   AND e.occurred_at >= $1 AND e.occurred_at < $2
-GROUP BY e.workspace_id, e.promo_id, e.occurred_at::date
+GROUP BY e.workspace_id, e.promo_id, (e.occurred_at AT TIME ZONE 'UTC')::date
 ON CONFLICT (workspace_id, promo_id, stats_date) DO UPDATE SET
     redemption_count = EXCLUDED.redemption_count,
     unique_users = EXCLUDED.unique_users,

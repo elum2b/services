@@ -75,6 +75,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getApplyBundleForUpdateStmt, err = db.PrepareContext(ctx, getApplyBundleForUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query GetApplyBundleForUpdate: %w", err)
 	}
+	if q.getExportFootprintStmt, err = db.PrepareContext(ctx, getExportFootprint); err != nil {
+		return nil, fmt.Errorf("error preparing query GetExportFootprint: %w", err)
+	}
 	if q.getRedemptionStmt, err = db.PrepareContext(ctx, getRedemption); err != nil {
 		return nil, fmt.Errorf("error preparing query GetRedemption: %w", err)
 	}
@@ -95,6 +98,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listRewardsStmt, err = db.PrepareContext(ctx, listRewards); err != nil {
 		return nil, fmt.Errorf("error preparing query ListRewards: %w", err)
+	}
+	if q.lockApplyOfferStmt, err = db.PrepareContext(ctx, lockApplyOffer); err != nil {
+		return nil, fmt.Errorf("error preparing query LockApplyOffer: %w", err)
 	}
 	if q.refreshDailyStatsStmt, err = db.PrepareContext(ctx, refreshDailyStats); err != nil {
 		return nil, fmt.Errorf("error preparing query RefreshDailyStats: %w", err)
@@ -189,6 +195,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getApplyBundleForUpdateStmt: %w", cerr)
 		}
 	}
+	if q.getExportFootprintStmt != nil {
+		if cerr := q.getExportFootprintStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getExportFootprintStmt: %w", cerr)
+		}
+	}
 	if q.getRedemptionStmt != nil {
 		if cerr := q.getRedemptionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getRedemptionStmt: %w", cerr)
@@ -222,6 +233,11 @@ func (q *Queries) Close() error {
 	if q.listRewardsStmt != nil {
 		if cerr := q.listRewardsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listRewardsStmt: %w", cerr)
+		}
+	}
+	if q.lockApplyOfferStmt != nil {
+		if cerr := q.lockApplyOfferStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing lockApplyOfferStmt: %w", cerr)
 		}
 	}
 	if q.refreshDailyStatsStmt != nil {
@@ -285,6 +301,7 @@ type Queries struct {
 	adminUpsertRewardStmt       *sql.Stmt
 	createRedemptionStmt        *sql.Stmt
 	getApplyBundleForUpdateStmt *sql.Stmt
+	getExportFootprintStmt      *sql.Stmt
 	getRedemptionStmt           *sql.Stmt
 	listExportLocalizationsStmt *sql.Stmt
 	listExportPromosStmt        *sql.Stmt
@@ -292,6 +309,7 @@ type Queries struct {
 	listImportPromoCodesStmt    *sql.Stmt
 	listImportPromoIDsStmt      *sql.Stmt
 	listRewardsStmt             *sql.Stmt
+	lockApplyOfferStmt          *sql.Stmt
 	refreshDailyStatsStmt       *sql.Stmt
 }
 
@@ -316,6 +334,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		adminUpsertRewardStmt:       q.adminUpsertRewardStmt,
 		createRedemptionStmt:        q.createRedemptionStmt,
 		getApplyBundleForUpdateStmt: q.getApplyBundleForUpdateStmt,
+		getExportFootprintStmt:      q.getExportFootprintStmt,
 		getRedemptionStmt:           q.getRedemptionStmt,
 		listExportLocalizationsStmt: q.listExportLocalizationsStmt,
 		listExportPromosStmt:        q.listExportPromosStmt,
@@ -323,6 +342,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listImportPromoCodesStmt:    q.listImportPromoCodesStmt,
 		listImportPromoIDsStmt:      q.listImportPromoIDsStmt,
 		listRewardsStmt:             q.listRewardsStmt,
+		lockApplyOfferStmt:          q.lockApplyOfferStmt,
 		refreshDailyStatsStmt:       q.refreshDailyStatsStmt,
 	}
 }

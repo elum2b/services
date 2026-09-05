@@ -5,11 +5,14 @@ WebSocket, Fiber-контроллеры и проверка provider proof ос�
 
 ## Инициализация
 
-Пока строка `control_platform(id = 1)` отсутствует, внешний API может показать
-единственный сценарий `Admin.Initialize`. Метод под advisory lock атомарно
-создает первый account, identity, platform member, владельца платформы и
-session. Повторная и параллельная инициализация возвращает
-`ErrAlreadyInitialized`.
+Первый успешный `Admin.CompleteAuth` с проверенной provider identity создаёт
+владельца платформы и session, если `control_platform(id = 1)` отсутствует.
+Создание выполняется `Initialize` под PostgreSQL advisory lock: account,
+identity, platform member, owner и session фиксируются одной транзакцией.
+При одновременных первых входах владелец создаётся один раз; остальные вызовы
+переходят к обычной авторизации. Повтор той же identity получает session,
+другая identity требует invitation. Явный `Admin.Initialize` также доступен,
+но повторный вызов возвращает `ErrAlreadyInitialized`.
 
 После инициализации новая identity не создает account без одноразового
 глобального или workspace invitation. Существующие identities продолжают

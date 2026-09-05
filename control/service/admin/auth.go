@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -17,26 +18,53 @@ func (a *Admin) CompleteAuth(
 	mergedCtx, cancel := a.withContext(ctx)
 	defer cancel()
 
-	result, err := a.repository.CompleteAuth(
-		mergedCtx,
-		repository.IdentityInput{
-			Provider:    strings.TrimSpace(params.Provider),
-			Subject:     strings.TrimSpace(params.Subject),
-			DisplayName: strings.TrimSpace(params.DisplayName),
-			Payload:     params.Payload,
-		},
-		strings.TrimSpace(params.InviteToken),
-		repository.SessionInput{
-			IP:        strings.TrimSpace(params.IP),
-			UserAgent: strings.TrimSpace(params.UserAgent),
-			BindToIP:  params.BindToIP,
-			ExpiresAt: params.ExpiresAt,
-		},
-	)
+	identity := repository.IdentityInput{
+		Provider:    strings.TrimSpace(params.Provider),
+		Subject:     strings.TrimSpace(params.Subject),
+		DisplayName: strings.TrimSpace(params.DisplayName),
+		Payload:     params.Payload,
+	}
+	metadata := repository.SessionInput{
+		IP:        strings.TrimSpace(params.IP),
+		UserAgent: strings.TrimSpace(params.UserAgent),
+		BindToIP:  params.BindToIP,
+		ExpiresAt: params.ExpiresAt,
+	}
+
+	initialized, err := a.repository.IsInitialized(mergedCtx)
 	if err != nil {
 		return AuthResult{}, err
 	}
 
+	var result repository.AuthCompletion
+
+	if initialized {
+		result, err = a.repository.CompleteAuth(
+			mergedCtx,
+			identity,
+			strings.TrimSpace(params.InviteToken),
+			metadata,
+		)
+	} else {
+		result, err = a.repository.Initialize(mergedCtx, identity, metadata)
+		if errors.Is(err, repository.ErrAlreadyInitialized) {
+			result, err = a.repository.CompleteAuth(
+				mergedCtx,
+				identity,
+				strings.TrimSpace(params.InviteToken),
+				metadata,
+			)
+		}
+	}
+
+	if err != nil {
+		return AuthResult{}, err
+	}
+
+	return authResult(result), nil
+}
+
+func authResult(result repository.AuthCompletion) AuthResult {
 	return AuthResult{
 		Account:            mapAccount(result.Account),
 		Session:            mapSession(result.Session),
@@ -44,7 +72,7 @@ func (a *Admin) CompleteAuth(
 		TwoFactorRequired:  result.TwoFactorRequired,
 		TwoFactorChallenge: result.TwoFactorChallenge,
 		Created:            result.Created,
-	}, nil
+	}
 }
 
 func (a *Admin) IsInitialized(ctx context.Context) (bool, error) {
@@ -80,12 +108,7 @@ func (a *Admin) Initialize(
 		return AuthResult{}, err
 	}
 
-	return AuthResult{
-		Account:      mapAccount(result.Account),
-		Session:      mapSession(result.Session),
-		SessionToken: result.SessionToken,
-		Created:      result.Created,
-	}, nil
+	return authResult(result), nil
 }
 
 func (a *Admin) CompleteTwoFactor(

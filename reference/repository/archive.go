@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/elum2b/services/internal/utils/importexport/jobs"
+	refsqlc "github.com/elum2b/services/reference/sqlc"
 )
 
 // ExportArchiveData returns only current, non-deleted resources and links.
@@ -18,217 +19,23 @@ func (r *Repository) ExportArchiveData(
 		return nil, nil, err
 	}
 
-	rows, err := r.executor.QueryContext(ctx, `
-SELECT key, resource_type, payload, is_active, format, content_type,
-       source_sha256, media_version, source_size, width, height, placeholder_ref
-FROM reference_resource
-WHERE workspace_id = $1 AND deleted_at IS NULL
-ORDER BY key`, workspaceID)
+	rows, err := r.q.ListArchiveResources(ctx, workspaceID)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
-
-	resources := make([]ExportResource, 0)
-
-	for rows.Next() {
-		var value ExportResource
-
-		if err := rows.Scan(
-			&value.Key,
-			&value.Type,
-			&value.Payload,
-			&value.IsActive,
-			&value.Format,
-			&value.ContentType,
-			&value.SHA256,
-			&value.MediaVersion,
-			&value.Size,
-			&value.Width,
-			&value.Height,
-			&value.PlaceholderRef,
-		); err != nil {
-			return nil, nil, err
-		}
-
-		resources = append(resources, value)
+	resources := make([]ExportResource, 0, len(rows))
+	for _, v := range rows {
+		resources = append(resources, ExportResource{Key: v.Key, Type: v.ResourceType, Payload: v.Payload, IsActive: v.IsActive, Format: v.Format, ContentType: v.ContentType, SHA256: v.SourceSha256, MediaVersion: v.MediaVersion, Size: v.SourceSize, Width: int(v.Width), Height: int(v.Height), PlaceholderRef: v.PlaceholderRef})
 	}
-
-	if err := rows.Err(); err != nil {
-		return nil, nil, err
-	}
-
-	links, err := r.executor.QueryContext(ctx, `
-SELECT ir.item_key, ir.resource_key, ir.position
-FROM reference_item_resource ir
-JOIN reference_item i ON i.workspace_id = ir.workspace_id AND i.key = ir.item_key
-JOIN reference_resource r ON r.workspace_id = ir.workspace_id AND r.key = ir.resource_key
-WHERE ir.workspace_id = $1 AND i.deleted_at IS NULL AND r.deleted_at IS NULL
-ORDER BY ir.item_key, ir.position`, workspaceID)
+	rowsLinks, err := r.q.ListArchiveLinks(ctx, workspaceID)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer links.Close()
-
-	result := make([]ExportResourceLink, 0)
-
-	for links.Next() {
-		var link ExportResourceLink
-
-		if err := links.Scan(
-			&link.ItemKey,
-			&link.ResourceKey,
-			&link.Position,
-		); err != nil {
-			return nil, nil, err
-		}
-
-		result = append(result, link)
+	links := make([]ExportResourceLink, 0, len(rowsLinks))
+	for _, v := range rowsLinks {
+		links = append(links, ExportResourceLink{ItemKey: v.ItemKey, ResourceKey: v.ResourceKey, Position: v.Position})
 	}
-
-	return resources, result, links.Err()
-}
-
-// ImportArchiveResources persists media-backed resource metadata and links.
-// Callers must write media to storage before calling this method.
-func (r *Repository) ImportArchiveResources(
-	ctx context.Context,
-	workspaceID string,
-	resources []Resource,
-	links []ExportResourceLink,
-	strategy string,
-) error {
-	if err := requireWorkspace(workspaceID); err != nil {
-		return err
-	}
-
-	if len(resources) == 0 && len(links) == 0 {
-		return nil
-	}
-
-	err := r.withWorkspaceMutation(
-		ctx,
-		workspaceID,
-		func(tx *Repository) error {
-			for _, value := range resources {
-				var exists bool
-
-				if err := tx.executor.QueryRowContext(
-					ctx,
-					"SELECT EXISTS (SELECT 1 FROM reference_resource WHERE workspace_id = $1 AND key = $2)",
-					workspaceID,
-					value.Key,
-				).Scan(&exists); err != nil {
-					return err
-				}
-
-				if exists && strategy == ImportConflictFail {
-					return fmt.Errorf("import conflict: resource %s", value.Key)
-				}
-
-				if exists && strategy == ImportConflictSkip {
-					continue
-				}
-
-				if exists {
-					if _, err := tx.executor.ExecContext(
-						ctx,
-						`UPDATE reference_resource_media_version
-SET retired_at = now() WHERE workspace_id = $1 AND resource_key = $2 AND retired_at IS NULL`,
-						workspaceID,
-						value.Key,
-					); err != nil {
-						return err
-					}
-				}
-
-				if _, err := tx.executor.ExecContext(
-					ctx,
-					`
-INSERT INTO reference_resource (workspace_id, key, resource_type, payload, is_active, format, content_type, source_size, source_sha256, media_version, width, height, original_ref, preview_61_ref, preview_128_ref, preview_256_ref, preview_512_ref, placeholder_ref)
-VALUES ($1::varchar,$2::varchar,$3::varchar,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-ON CONFLICT (workspace_id, key) DO UPDATE SET resource_type=EXCLUDED.resource_type, payload=EXCLUDED.payload, is_active=EXCLUDED.is_active, deleted_at=NULL, format=EXCLUDED.format, content_type=EXCLUDED.content_type, source_size=EXCLUDED.source_size, source_sha256=EXCLUDED.source_sha256, media_version=EXCLUDED.media_version, width=EXCLUDED.width, height=EXCLUDED.height, original_ref=EXCLUDED.original_ref, preview_61_ref=EXCLUDED.preview_61_ref, preview_128_ref=EXCLUDED.preview_128_ref, preview_256_ref=EXCLUDED.preview_256_ref, preview_512_ref=EXCLUDED.preview_512_ref, placeholder_ref=EXCLUDED.placeholder_ref, updated_at=now()`,
-					workspaceID,
-					value.Key,
-					value.Type,
-					value.Payload,
-					value.IsActive,
-					value.Format,
-					value.ContentType,
-					value.Size,
-					value.SHA256,
-					value.MediaVersion,
-					value.Width,
-					value.Height,
-					value.OriginalRef,
-					value.Preview61Ref,
-					value.Preview128Ref,
-					value.Preview256Ref,
-					value.Preview512Ref,
-					value.PlaceholderRef,
-				); err != nil {
-					return err
-				}
-
-				if _, err := tx.executor.ExecContext(
-					ctx,
-					`INSERT INTO reference_resource_media_version (workspace_id, resource_key, media_version)
-VALUES ($1, $2, $3) ON CONFLICT (workspace_id, resource_key, media_version) DO UPDATE SET retired_at = NULL`,
-					workspaceID,
-					value.Key,
-					value.MediaVersion,
-				); err != nil {
-					return err
-				}
-			}
-
-			if strategy == ImportConflictUpdate && len(links) > 0 {
-				keys := make([]string, 0, len(links))
-				for _, link := range links {
-					keys = append(keys, link.ItemKey)
-				}
-
-				if _, err := tx.executor.ExecContext(
-					ctx,
-					`DELETE FROM reference_item_resource WHERE workspace_id = $1 AND item_key = ANY($2::text[])`,
-					workspaceID,
-					keys,
-				); err != nil {
-					return err
-				}
-			}
-
-			for _, link := range links {
-				if _, err := tx.executor.ExecContext(
-					ctx,
-					`INSERT INTO reference_item_resource (workspace_id, item_key, resource_key, position)
-SELECT $1::varchar, $2::varchar, $3::varchar, $4 WHERE EXISTS (SELECT 1 FROM reference_item WHERE workspace_id=$1::varchar AND key=$2::varchar AND deleted_at IS NULL) AND EXISTS (SELECT 1 FROM reference_resource WHERE workspace_id=$1::varchar AND key=$3::varchar AND deleted_at IS NULL)
-ON CONFLICT (workspace_id, item_key, resource_key) DO UPDATE SET position=EXCLUDED.position`,
-					workspaceID,
-					link.ItemKey,
-					link.ResourceKey,
-					link.Position,
-				); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	return r.bumpReferenceCacheVersions(
-		workspaceID,
-		"resource_get",
-		"resource_list",
-		"resource_item_list",
-		referenceCacheGet,
-		referenceCacheResolve,
-		referenceCacheList,
-	)
+	return resources, links, nil
 }
 
 // ImportArchiveWithMedia keeps package data, media bookkeeping, uploads, and
@@ -298,7 +105,7 @@ func (r *Repository) importArchiveWithMedia(
 
 	strategy := req.ConflictStrategy
 	if strategy == "" {
-		strategy = ImportConflictFail
+		strategy = ImportConflictUpdate
 	}
 
 	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
@@ -313,7 +120,7 @@ func (r *Repository) importArchiveWithMedia(
 		return result, fmt.Errorf("archive media uploader is required")
 	}
 
-	err = r.WithTxTimeout(ctx, timeout, func(tx *Repository) error {
+	err = r.WithTxTimeout(ctx, timeout, func(ctx context.Context, tx *Repository) error {
 		if err := tx.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -354,114 +161,67 @@ func (r *Repository) importArchiveWithMedia(
 			return err
 		}
 
+		existingKeys, err := tx.q.ListImportResourceKeys(ctx, workspaceID)
+		if err != nil {
+			return err
+		}
+		existing := make(map[string]bool, len(existingKeys))
+		for _, key := range existingKeys {
+			existing[key] = true
+		}
 		accepted := make([]*Resource, 0, len(resources))
 		for _, value := range resources {
-			var exists bool
-
-			if err := tx.executor.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM reference_resource WHERE workspace_id = $1 AND key = $2)", workspaceID, value.Key).
-				Scan(&exists); err != nil {
-				return err
-			}
-
+			exists := existing[value.Key]
 			if exists && strategy == ImportConflictFail {
 				return fmt.Errorf("import conflict: resource %s", value.Key)
 			}
-
 			if exists && strategy == ImportConflictSkip {
 				continue
 			}
-
 			if exists {
-				if _, err := tx.executor.ExecContext(
-					ctx,
-					`UPDATE reference_resource_media_version SET retired_at = now() WHERE workspace_id = $1 AND resource_key = $2 AND retired_at IS NULL`,
-					workspaceID,
-					value.Key,
-				); err != nil {
+				if err := tx.q.ResourceMediaVersionRetireActive(ctx, refsqlc.ResourceMediaVersionRetireActiveParams{WorkspaceID: workspaceID, ResourceKey: value.Key}); err != nil {
 					return err
 				}
 			}
-
-			// References are intentionally populated only after storage succeeds.
-			if _, err := tx.executor.ExecContext(
-				ctx,
-				`INSERT INTO reference_resource (workspace_id,key,resource_type,payload,is_active,format,content_type,source_size,source_sha256,media_version,width,height,original_ref,preview_61_ref,preview_128_ref,preview_256_ref,preview_512_ref,placeholder_ref) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'','','','','','') ON CONFLICT (workspace_id,key) DO UPDATE SET resource_type=EXCLUDED.resource_type,payload=EXCLUDED.payload,is_active=EXCLUDED.is_active,deleted_at=NULL,format=EXCLUDED.format,content_type=EXCLUDED.content_type,source_size=EXCLUDED.source_size,source_sha256=EXCLUDED.source_sha256,media_version=EXCLUDED.media_version,width=EXCLUDED.width,height=EXCLUDED.height,updated_at=now()`,
-				workspaceID,
-				value.Key,
-				value.Type,
-				value.Payload,
-				value.IsActive,
-				value.Format,
-				value.ContentType,
-				value.Size,
-				value.SHA256,
-				value.MediaVersion,
-				value.Width,
-				value.Height,
-			); err != nil {
+			if err := tx.q.ImportResource(ctx, refsqlc.ImportResourceParams{WorkspaceID: workspaceID, Key: value.Key, ResourceType: value.Type, Payload: value.Payload, IsActive: value.IsActive, Format: value.Format, ContentType: value.ContentType, SourceSize: value.Size, SourceSha256: value.SHA256, MediaVersion: value.MediaVersion, Width: int32(value.Width), Height: int32(value.Height)}); err != nil {
 				return err
 			}
-
-			if _, err := tx.executor.ExecContext(
-				ctx,
-				`INSERT INTO reference_resource_media_version (workspace_id,resource_key,media_version) VALUES ($1,$2,$3)`,
-				workspaceID,
-				value.Key,
-				value.MediaVersion,
-			); err != nil {
+			if err := tx.q.ResourceMediaVersionCreate(ctx, refsqlc.ResourceMediaVersionCreateParams{WorkspaceID: workspaceID, ResourceKey: value.Key, MediaVersion: value.MediaVersion}); err != nil {
 				return err
 			}
-
 			accepted = append(accepted, value)
 		}
-
 		if err := upload(ctx, accepted); err != nil {
 			return err
 		}
 
 		for _, value := range accepted {
-			if _, err := tx.executor.ExecContext(
-				ctx,
-				`UPDATE reference_resource SET original_ref=$3,preview_61_ref=$4,preview_128_ref=$5,preview_256_ref=$6,preview_512_ref=$7,placeholder_ref=$8 WHERE workspace_id=$1 AND key=$2 AND media_version=$9`,
-				workspaceID,
-				value.Key,
-				value.OriginalRef,
-				value.Preview61Ref,
-				value.Preview128Ref,
-				value.Preview256Ref,
-				value.Preview512Ref,
-				value.PlaceholderRef,
-				value.MediaVersion,
-			); err != nil {
+			if err := tx.updateResourceObjectRefs(ctx, *value); err != nil {
 				return err
 			}
 		}
 
-		if strategy == ImportConflictUpdate && len(links) > 0 {
-			keys := make([]string, 0, len(links))
-			for _, link := range links {
-				keys = append(keys, link.ItemKey)
+		acceptedItems := make(map[string]bool, len(req.Package.Items))
+		conflicts := importConflictSet(preview)
+		keys := make([]string, 0, len(req.Package.Items))
+		for _, item := range req.Package.Items {
+			if strategy == ImportConflictSkip && hasImportConflict(conflicts, "item", item.Key) {
+				continue
 			}
-
-			if _, err := tx.executor.ExecContext(
-				ctx,
-				`DELETE FROM reference_item_resource WHERE workspace_id=$1 AND item_key = ANY($2::text[])`,
-				workspaceID,
-				keys,
-			); err != nil {
+			acceptedItems[item.Key] = true
+			keys = append(keys, item.Key)
+		}
+		if strategy == ImportConflictUpdate {
+			if err := tx.q.DeleteImportedItemLinks(ctx, refsqlc.DeleteImportedItemLinksParams{WorkspaceID: workspaceID, Column2: keys}); err != nil {
 				return err
 			}
 		}
 
 		for _, link := range links {
-			if _, err := tx.executor.ExecContext(
-				ctx,
-				`INSERT INTO reference_item_resource (workspace_id,item_key,resource_key,position) SELECT $1::varchar,$2::varchar,$3::varchar,$4 WHERE EXISTS (SELECT 1 FROM reference_item WHERE workspace_id=$1::varchar AND key=$2::varchar AND deleted_at IS NULL) AND EXISTS (SELECT 1 FROM reference_resource WHERE workspace_id=$1::varchar AND key=$3::varchar AND deleted_at IS NULL) ON CONFLICT (workspace_id,item_key,resource_key) DO UPDATE SET position=EXCLUDED.position`,
-				workspaceID,
-				link.ItemKey,
-				link.ResourceKey,
-				link.Position,
-			); err != nil {
+			if !acceptedItems[link.ItemKey] {
+				continue
+			}
+			if _, err := tx.q.ResourceAttach(ctx, refsqlc.ResourceAttachParams{WorkspaceID: workspaceID, ItemKey: link.ItemKey, ResourceKey: link.ResourceKey, Position: link.Position}); err != nil {
 				return err
 			}
 		}
@@ -489,14 +249,25 @@ func (r *Repository) importArchiveWithMedia(
 
 // ArchiveMediaVersionDurable reports whether a planned version survived an
 // ambiguous commit result and must therefore not be compensated.
-func (r *Repository) ArchiveMediaVersionDurable(
-	ctx context.Context,
-	workspaceID, key, version string,
-) (bool, error) {
-	var exists bool
+func (r *Repository) ArchiveMediaVersionDurable(ctx context.Context, workspaceID, key, version string) (bool, error) {
+	var durable bool
+	// A lost COMMIT response can precede server-side transaction completion.
+	// Wait for its workspace lock before interpreting absence as safe to delete.
+	err := r.withWorkspaceMutation(ctx, workspaceID, func(ctx context.Context, tx *Repository) error {
+		var err error
+		durable, err = tx.q.ResourceMediaVersionDurable(ctx, refsqlc.ResourceMediaVersionDurableParams{WorkspaceID: workspaceID, ResourceKey: key, MediaVersion: version})
+		return err
+	})
+	return durable, err
+}
 
-	err := r.executor.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM reference_resource_media_version WHERE workspace_id=$1 AND resource_key=$2 AND media_version=$3)`, workspaceID, key, version).
-		Scan(&exists)
-
-	return exists, err
+// ReconcileArchiveImport refreshes all read scopes without needing the source ZIP.
+func (r *Repository) ReconcileArchiveImport(workspaceID string) error {
+	if err := requireWorkspace(workspaceID); err != nil {
+		return err
+	}
+	methods := append([]string{}, referenceItemMutationCacheMethods...)
+	methods = append(methods, referenceLocalizationMutationCacheMethods...)
+	methods = append(methods, "resource_get", "resource_list", "resource_item_list")
+	return r.bumpReferenceCacheVersions(workspaceID, methods...)
 }

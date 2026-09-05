@@ -139,7 +139,7 @@ func (r *PaymentRepository) Close() error {
 
 func (r *PaymentRepository) WithTx(
 	ctx context.Context,
-	fn func(*PaymentRepository) error,
+	fn func(context.Context, *PaymentRepository) error,
 ) error {
 	pendingWorkspaces := make(map[string]struct{})
 	pendingTONManifests := make(map[string]struct{})
@@ -164,7 +164,7 @@ func (r *PaymentRepository) WithTx(
 				onCacheInvalidationError:        r.onCacheInvalidationError,
 				referenceItemChecker:            r.referenceItemChecker,
 			}
-			callbackErr := fn(txRepo)
+			callbackErr := fn(ctx, txRepo)
 
 			pendingInvalidateAll = txRepo.pendingInvalidateAll
 
@@ -202,10 +202,10 @@ func (r *PaymentRepository) WithTx(
 
 func (r *PaymentRepository) inTransaction(
 	ctx context.Context,
-	fn func(*PaymentRepository) error,
+	fn func(context.Context, *PaymentRepository) error,
 ) error {
 	if r.inTx {
-		return fn(r)
+		return fn(ctx, r)
 	}
 
 	return r.WithTx(ctx, fn)
@@ -608,4 +608,11 @@ func validAssetKind(value string) bool {
 	default:
 		return false
 	}
+}
+
+// archiveRepository reserves a bounded budget independently of hot-path queries.
+func (r *PaymentRepository) archiveRepository() *PaymentRepository {
+	copy := *r
+	copy.timeout = 5 * time.Minute
+	return &copy
 }

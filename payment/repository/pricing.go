@@ -282,7 +282,7 @@ func (r *PaymentRepository) UpdateAssetRate(
 
 	affectedWorkspaces := make(map[string]struct{})
 
-	err := r.inTransaction(ctx, func(tx *PaymentRepository) error {
+	err := r.inTransaction(ctx, func(ctx context.Context, tx *PaymentRepository) error {
 		if err := tx.q.UpsertAssetRate(ctx, paymentsqlc.UpsertAssetRateParams{
 			AssetCode:              params.AssetCode,
 			ReferenceAssetCode:     params.ReferenceAssetCode,

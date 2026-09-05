@@ -1,8 +1,6 @@
 package admin
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -15,6 +13,10 @@ import (
 const archiveManifestName = "manifest.json"
 
 type archiveJobHandler struct{ admin *Admin }
+
+func (h archiveJobHandler) ReconcileImport(ctx context.Context, job jobs.Job) error {
+	return h.admin.repository.RefreshArchiveCache(ctx, job.WorkspaceID)
+}
 
 func (h archiveJobHandler) Export(
 	ctx context.Context,
@@ -31,24 +33,9 @@ func (h archiveJobHandler) Export(
 		return nil, err
 	}
 
-	var data bytes.Buffer
-
-	writer := zip.NewWriter(&data)
-
-	manifest, err := writer.Create(archiveManifestName)
-	if err == nil {
-		err = json.NewEncoder(manifest).Encode(pkg)
-	}
-
-	if closeErr := writer.Close(); err == nil {
-		err = closeErr
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("write export ZIP: %w", err)
-	}
-
-	return io.NopCloser(bytes.NewReader(data.Bytes())), nil
+	return jobs.WriteManifestZIP(ctx, archiveManifestName, h.admin.archiveMaxBytes, func(w io.Writer) error {
+		return json.NewEncoder(w).Encode(pkg)
+	})
 }
 
 func (h archiveJobHandler) Import(
@@ -62,31 +49,21 @@ func (h archiveJobHandler) Import(
 		return fmt.Errorf("decode import job options: %w", err)
 	}
 
-	data, err := io.ReadAll(source)
-	if err != nil {
-		return fmt.Errorf("read import ZIP: %w", err)
-	}
-
-	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return fmt.Errorf("open import ZIP: %w", err)
-	}
-
-	if len(archive.File) != 1 || archive.File[0].Name != archiveManifestName {
-		return fmt.Errorf(
-			"import ZIP must contain exactly one %s",
-			archiveManifestName,
-		)
-	}
-
-	reader, err := archive.File[0].Open()
+	err := jobs.ReadManifestZIP(ctx, source, archiveManifestName, jobs.ZIPLimits{MaxUncompressedBytes: h.admin.archiveMaxBytes}, func(reader io.Reader) error {
+		decoder := json.NewDecoder(reader)
+		if err := decoder.Decode(&request.Package); err != nil {
+			return err
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			return fmt.Errorf("manifest must contain exactly one JSON document")
+		}
+		return nil
+	}, func(reader io.Reader) error {
+		return jobs.ValidateJSONShape(ctx, reader, h.admin.archiveMaxRows)
+	})
 	if err != nil {
 		return err
-	}
-	defer reader.Close()
-
-	if err := json.NewDecoder(reader).Decode(&request.Package); err != nil {
-		return fmt.Errorf("decode import manifest: %w", err)
 	}
 
 	_, err = h.admin.repository.ImportJob(ctx, job.WorkspaceID, job.ID, request)
@@ -99,15 +76,17 @@ func (a *Admin) QueueArchiveExport(
 	params QueueArchiveExportParams,
 ) (ArchiveJob, error) {
 	if a == nil || a.jobs == nil {
-		return jobs.Job{}, ErrArchiveJobsNotConfigured
+		return ArchiveJob{}, ErrArchiveJobsNotConfigured
 	}
+	ctx, cancel := a.withContext(ctx)
+	defer cancel()
 
 	options, err := json.Marshal(params.ExportRequest)
 	if err != nil {
-		return jobs.Job{}, err
+		return ArchiveJob{}, err
 	}
 
-	return a.jobs.QueueExport(
+	job, err := a.jobs.QueueExport(
 		ctx,
 		jobs.QueueExportParams{
 			Service:     "cpa",
@@ -116,6 +95,7 @@ func (a *Admin) QueueArchiveExport(
 			Options:     options,
 		},
 	)
+	return publicArchiveJob(job), err
 }
 
 func (a *Admin) QueueArchiveImport(
@@ -123,15 +103,19 @@ func (a *Admin) QueueArchiveImport(
 	params QueueArchiveImportParams,
 ) (ArchiveJob, error) {
 	if a == nil || a.jobs == nil {
-		return jobs.Job{}, ErrArchiveJobsNotConfigured
+		return ArchiveJob{}, ErrArchiveJobsNotConfigured
 	}
+	ctx, cancel := a.withContext(ctx)
+	defer cancel()
 
-	options, err := json.Marshal(params.ImportRequest)
+	options, err := json.Marshal(struct {
+		ConflictStrategy string `json:"conflict_strategy,omitempty"`
+	}{ConflictStrategy: params.ConflictStrategy})
 	if err != nil {
-		return jobs.Job{}, err
+		return ArchiveJob{}, err
 	}
 
-	return a.jobs.QueueImport(
+	job, err := a.jobs.QueueImport(
 		ctx,
 		jobs.QueueImportParams{
 			Service:      "cpa",
@@ -142,6 +126,7 @@ func (a *Admin) QueueArchiveImport(
 			Dump:         params.Archive,
 		},
 	)
+	return publicArchiveJob(job), err
 }
 
 func (a *Admin) ArchiveJob(
@@ -150,13 +135,16 @@ func (a *Admin) ArchiveJob(
 	id int64,
 ) (ArchiveJob, error) {
 	if a == nil || a.jobs == nil {
-		return jobs.Job{}, ErrArchiveJobsNotConfigured
+		return ArchiveJob{}, ErrArchiveJobsNotConfigured
 	}
+	ctx, cancel := a.withContext(ctx)
+	defer cancel()
 
-	return a.jobs.Status(
+	job, err := a.jobs.Status(
 		ctx,
 		jobs.StatusParams{Service: "cpa", WorkspaceID: workspaceID, ID: id},
 	)
+	return publicArchiveJob(job), err
 }
 
 func (a *Admin) ArchiveHistory(
@@ -167,10 +155,12 @@ func (a *Admin) ArchiveHistory(
 	if a == nil || a.jobs == nil {
 		return nil, ErrArchiveJobsNotConfigured
 	}
+	ctx, cancel := a.withContext(ctx)
+	defer cancel()
 
 	limit, offset := normalizePage(page)
 
-	return a.jobs.History(
+	values, err := a.jobs.History(
 		ctx,
 		jobs.HistoryParams{
 			Service:     "cpa",
@@ -179,6 +169,11 @@ func (a *Admin) ArchiveHistory(
 			Offset:      offset,
 		},
 	)
+	result := make([]ArchiveJob, 0, len(values))
+	for _, value := range values {
+		result = append(result, publicArchiveJob(value))
+	}
+	return result, err
 }
 
 func (a *Admin) DownloadArchive(
@@ -187,13 +182,20 @@ func (a *Admin) DownloadArchive(
 	id int64,
 ) (io.ReadCloser, ArchiveJob, error) {
 	if a == nil || a.jobs == nil {
-		return nil, jobs.Job{}, ErrArchiveJobsNotConfigured
+		return nil, ArchiveJob{}, ErrArchiveJobsNotConfigured
 	}
 
-	return a.jobs.Download(
-		ctx,
+	mergedCtx, cancel := a.withContext(ctx)
+	dump, job, err := a.jobs.Download(
+		mergedCtx,
 		jobs.DownloadParams{Service: "cpa", WorkspaceID: workspaceID, ID: id},
 	)
+	if err != nil {
+		cancel()
+		return nil, publicArchiveJob(job), err
+	}
+	return &archiveDownload{ReadCloser: dump, ctx: mergedCtx, cancel: cancel}, publicArchiveJob(job), nil
+
 }
 
 func (a *Admin) ArchiveJobHistory(
@@ -205,10 +207,12 @@ func (a *Admin) ArchiveJobHistory(
 	if a == nil || a.jobs == nil {
 		return nil, ErrArchiveJobsNotConfigured
 	}
+	ctx, cancel := a.withContext(ctx)
+	defer cancel()
 
 	limit, offset := normalizePage(page)
 
-	return a.jobs.JobHistory(
+	values, err := a.jobs.JobHistory(
 		ctx,
 		jobs.JobHistoryParams{
 			Service:     "cpa",
@@ -218,4 +222,47 @@ func (a *Admin) ArchiveJobHistory(
 			Offset:      offset,
 		},
 	)
+	for i := range values {
+		if values[i].Message != "" {
+			values[i].Message = "Archive operation status changed"
+		}
+	}
+	return values, err
+}
+
+type archiveDownload struct {
+	io.ReadCloser
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func (r *archiveDownload) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.ReadCloser.Read(p)
+}
+func (r *archiveDownload) Close() error { r.cancel(); return r.ReadCloser.Close() }
+
+func publicArchiveJob(job jobs.Job) ArchiveJob {
+	message := ""
+	if job.Error != "" {
+		message = "Archive operation failed; inspect server diagnostics"
+	}
+	return ArchiveJob{
+		ID:             job.ID,
+		Service:        job.Service,
+		WorkspaceID:    job.WorkspaceID,
+		Type:           job.Type,
+		Status:         job.Status,
+		FileName:       job.FileName,
+		ArchiveExpires: job.ArchiveExpires,
+		Error:          message,
+		CreatedAt:      job.CreatedAt,
+		StartedAt:      job.StartedAt,
+		FinishedAt:     job.FinishedAt,
+		UpdatedAt:      job.UpdatedAt,
+		Attempt:        job.Attempt,
+		NextAttemptAt:  job.NextAttemptAt,
+	}
 }

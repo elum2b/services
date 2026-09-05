@@ -35,7 +35,7 @@ func (r *Repository) CreatePromo(
 
 	var id int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(
 			ctx,
 			params.WorkspaceID,
@@ -90,7 +90,7 @@ func (r *Repository) UpdatePromo(
 
 	var rows int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(
 			ctx,
 			params.WorkspaceID,
@@ -211,7 +211,7 @@ func (r *Repository) SoftDeletePromo(
 ) (int64, error) {
 	var rows int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -243,7 +243,7 @@ func (r *Repository) UpsertLocalization(
 	err := r.withWorkspaceMutation(
 		ctx,
 		value.WorkspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminUpsertLocalization(
 				ctx,
 				promosqlc.AdminUpsertLocalizationParams{
@@ -350,7 +350,7 @@ func (r *Repository) DeleteLocalization(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminDeleteLocalization(
@@ -382,7 +382,7 @@ func (r *Repository) UpsertReward(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			return txRepo.q.AdminUpsertReward(
 				ctx,
 				promosqlc.AdminUpsertRewardParams{
@@ -515,7 +515,7 @@ func (r *Repository) DeleteReward(
 	err := r.withWorkspaceMutation(
 		ctx,
 		workspaceID,
-		func(txRepo *Repository) error {
+		func(ctx context.Context, txRepo *Repository) error {
 			var err error
 
 			rows, err = txRepo.q.AdminDeleteReward(

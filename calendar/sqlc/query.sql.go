@@ -1124,6 +1124,30 @@ func (q *Queries) GetCalendarBundle(ctx context.Context, arg GetCalendarBundlePa
 	return items, nil
 }
 
+const getExportFootprint = `-- name: GetExportFootprint :one
+WITH footprint AS (
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM calendar_definition t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM calendar_localization t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM calendar_step t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM calendar_reward t WHERE t.workspace_id=$1
+) SELECT sum(records)::bigint AS records, sum(bytes)::bigint AS bytes FROM footprint
+`
+
+type GetExportFootprintRow struct {
+	Records int64 `json:"records"`
+	Bytes   int64 `json:"bytes"`
+}
+
+func (q *Queries) GetExportFootprint(ctx context.Context, workspaceID string) (GetExportFootprintRow, error) {
+	row := q.queryRow(ctx, q.getExportFootprintStmt, getExportFootprint, workspaceID)
+	var i GetExportFootprintRow
+	err := row.Scan(&i.Records, &i.Bytes)
+	return i, err
+}
+
 const getProgress = `-- name: GetProgress :one
 SELECT workspace_id, calendar_id, app_id, platform_id, platform_user_id, current_position, claim_count, last_claim_position, last_claim_at, next_claim_at, is_completed, reset_count, last_was_reset, created_at, updated_at
 FROM calendar_progress
@@ -1735,14 +1759,14 @@ INSERT INTO calendar_stats_daily (
 SELECT
     o.workspace_id,
     o.calendar_id,
-    o.occurred_at::date,
+    (o.occurred_at AT TIME ZONE 'UTC')::date,
     COUNT(*)::bigint,
     COUNT(*) FILTER (WHERE o.granted)::bigint,
     COUNT(DISTINCT (o.app_id, o.platform_id, o.platform_user_id))::bigint
 FROM calendar_operation o
 WHERE o.workspace_id = $3
   AND o.occurred_at >= $1 AND o.occurred_at < $2
-GROUP BY o.workspace_id, o.calendar_id, o.occurred_at::date
+GROUP BY o.workspace_id, o.calendar_id, (o.occurred_at AT TIME ZONE 'UTC')::date
 ON CONFLICT (workspace_id, calendar_id, stats_date) DO UPDATE SET
     operation_count = EXCLUDED.operation_count,
     grant_count = EXCLUDED.grant_count,

@@ -31,6 +31,7 @@ import (
 	"github.com/elum2b/services/internal/testsupport"
 	utils "github.com/elum2b/services/internal/utils"
 	callbackutil "github.com/elum2b/services/internal/utils/callback"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/payment/adapters/platega"
 	"github.com/elum2b/services/payment/adapters/telegramstars"
@@ -5634,8 +5635,8 @@ func assertPaymentPurchaseStats(
 	if err := env.api.Admin.RefreshDailyStats(
 		env.ctx,
 		testWorkspaceID,
-		now.Add(-24*time.Hour),
-		now.Add(24*time.Hour),
+		now,
+		now,
 	); err != nil {
 		t.Fatalf("refresh payment daily stats: %v", err)
 	}
@@ -14965,4 +14966,181 @@ func TestPlategaExportLimitsInitialResponse(t *testing.T) {
 	if !errors.Is(err, platega.ErrExportResponseTooLarge) {
 		t.Fatalf("large export error = %v, want ErrExportResponseTooLarge", err)
 	}
+}
+
+func TestPaymentDefaultImportMergesCatalog(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	repo := env.api.pricing
+	ctx := context.Background()
+	workspace := testsupport.WorkspaceID("audit-catalog-merge")
+	makePackage := func(keys []string, active bool) repository.ExportPackage {
+		pkg := repository.ExportPackage{Format: repository.ExportFormat, Service: "payment"}
+		for _, key := range keys {
+			pkg.Groups = append(pkg.Groups, repository.ExportProductGroup{Code: key, IsActive: active})
+		}
+		return pkg
+	}
+	for _, pkg := range []repository.ExportPackage{makePackage([]string{"A", "B", "C"}, true), makePackage([]string{"B", "C", "D"}, false)} {
+		if _, err := repo.Import(ctx, workspace, repository.ImportRequest{Package: pkg}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := repo.Export(ctx, workspace, repository.ExportRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Groups) != 4 {
+		t.Fatalf("catalog size = %d, want 4", len(got.Groups))
+	}
+	seen := map[string]bool{}
+	for _, item := range got.Groups {
+		seen[item.Code] = true
+		if item.IsActive != (item.Code == "A") {
+			t.Fatalf("import priority wrong for %s", item.Code)
+		}
+	}
+	for _, key := range []string{"A", "B", "C", "D"} {
+		if !seen[key] {
+			t.Fatalf("missing catalog key %s", key)
+		}
+	}
+}
+
+func TestPaymentArchiveJobsRoundTrip(t *testing.T) {
+	options := paymentTestOptions()
+
+	options.ArchiveDirectory = t.TempDir()
+
+	env := setupPaymentIntegrationTestWithOptions(t, options)
+	source := testsupport.WorkspaceID("payment-archive-source")
+	target := testsupport.WorkspaceID("payment-archive-target")
+	createPaymentProduct(t, env, testProductOptions{WorkspaceID: source})
+
+	export, err := env.api.Admin.QueueArchiveExport(
+		context.Background(),
+		admin.QueueArchiveExportParams{
+			WorkspaceID: source,
+			FileName:    "payment.zip",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if export.Status != jobs.StatusQueued {
+		t.Fatalf("export status = %s, want queued", export.Status)
+	}
+
+	worker := startPaymentArchiveWorker(t, options)
+
+	waitPaymentArchiveJob(t, worker, source, export.ID)
+
+	dump, _, err := env.api.Admin.DownloadArchive(
+		context.Background(),
+		source,
+		export.ID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dump.Close()
+
+	importJob, err := env.api.Admin.QueueArchiveImport(
+		context.Background(),
+		admin.QueueArchiveImportParams{
+			WorkspaceID: target,
+			FileName:    "payment.zip",
+			ImportRequest: admin.ImportRequest{
+				ConflictStrategy: repository.ImportConflictUpdate,
+			},
+			Archive: dump,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waitPaymentArchiveJob(t, worker, target, importJob.ID)
+
+	pkg, err := repository.NewPaymentRepository(env.client).
+		Export(context.Background(), target, admin.ExportRequest{})
+	if err != nil || len(pkg.Groups) != 1 || len(pkg.Groups[0].Products) != 1 {
+		t.Fatalf("imported package = %+v, err = %v", pkg, err)
+	}
+}
+
+func startPaymentArchiveWorker(t *testing.T, options Options) *Payment {
+	t.Helper()
+
+	service := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- service.Run(ctx, DatabaseParams{
+			User:     paymentPostgresUsername,
+			Password: paymentPostgresPassword,
+			Database: paymentTestDB,
+			Host:     paymentPostgresHost,
+			Port:     paymentPostgresPort,
+			Options:  options,
+		})
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for !service.IsReady() {
+		select {
+		case err := <-done:
+			cancel()
+			t.Fatalf("start payment archive worker: %v", err)
+		default:
+		}
+
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("payment archive worker did not become ready")
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Cleanup(func() {
+		cancel()
+
+		if err := <-done; err != nil {
+			t.Errorf("stop payment archive worker: %v", err)
+		}
+	})
+
+	return service
+}
+
+func waitPaymentArchiveJob(
+	t *testing.T,
+	service *Payment,
+	workspaceID string,
+	id int64,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		job, err := service.Admin.ArchiveJob(
+			context.Background(),
+			workspaceID,
+			id,
+		)
+		if err == nil && job.Status == jobs.StatusCompleted {
+			return
+		}
+
+		if err == nil && job.Status == jobs.StatusFailed {
+			t.Fatalf("archive job failed: %s", job.Error)
+		}
+
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	t.Fatal("archive job did not complete")
 }

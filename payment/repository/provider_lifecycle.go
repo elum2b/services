@@ -85,7 +85,7 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 		return ErrAttemptFieldsInvalid
 	}
 
-	return r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttempt(
 			ctx,
 			int64(params.AttemptID),
@@ -190,7 +190,7 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 
 	var result ProviderChargebackResult
 
-	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttemptByProviderPaymentID(
 			ctx,
 			sqlc.LockPaymentAttemptByProviderPaymentIDParams{

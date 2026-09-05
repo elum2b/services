@@ -81,6 +81,27 @@ func TestControlInitializationAndInvitationOnlyRegistration(t *testing.T) {
 	}
 }
 
+func TestControlCompleteAuthInitializesFirstOwner(t *testing.T) {
+	service := newControlTestService(t)
+
+	result, err := service.Admin.CompleteAuth(
+		context.Background(),
+		authParams("first-owner"),
+	)
+	if err != nil {
+		t.Fatalf("CompleteAuth() error = %v", err)
+	}
+
+	if !result.Created || result.Account.ID == "" || result.SessionToken == "" {
+		t.Fatalf("CompleteAuth() result = %#v", result)
+	}
+
+	initialized, err := service.Admin.IsInitialized(context.Background())
+	if err != nil || !initialized {
+		t.Fatalf("initialized=%v err=%v", initialized, err)
+	}
+}
+
 func TestControlNewPublicFacadesReturnNotReady(t *testing.T) {
 	service := control.New()
 	if service.Admin == nil || service.Internal == nil || service.IsReady() {
@@ -1425,6 +1446,13 @@ func TestControlPlatformRemovalRevokesSessionsAndDefersTwoFactorReactivation(
 	member := inviteAccount(t, service, owner.Account.ID, "member")
 	_, backupCodes := enableControlTwoFactor(t, service, member.Account.ID)
 
+	mcp, err := service.Admin.CreateMCPToken(ctx, admin.CreateMCPTokenParams{
+		AccountID: member.Account.ID, Name: "before removal", Duration: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if _, err := service.Admin.RemovePlatformMember(
 		ctx,
 		owner.Account.ID,
@@ -1510,6 +1538,14 @@ func TestControlPlatformRemovalRevokesSessionsAndDefersTwoFactorReactivation(
 	); err == nil {
 		t.Fatal("old session was restored after reactivation")
 	}
+	if _, err := service.Internal.ValidateMCPToken(ctx, internalapi.ValidateMCPTokenRequest{Token: mcp.RawToken}); err == nil {
+		t.Fatal("old MCP token was restored after reactivation")
+	}
+	tokens, err := service.Admin.ListMCPTokens(ctx, admin.ListMCPTokensParams{AccountID: member.Account.ID})
+	if err != nil || len(tokens) != 1 || tokens[0].RevokedAt == nil {
+		t.Fatalf("MCP token revocation not persisted: tokens=%+v err=%v", tokens, err)
+	}
+
 }
 
 func TestControlDeleteRolesRemovesPendingInviteReferences(t *testing.T) {
@@ -3591,4 +3627,140 @@ func controlTestTOTP(secret string, now time.Time) string {
 		uint32(sum[offset+3])
 
 	return fmt.Sprintf("%06d", value%1_000_000)
+}
+
+func TestControlMutationDeadlineCancelsLockWait(t *testing.T) {
+	service := newControlTestService(t)
+	owner := initializeControl(t, service, "owner")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	db, err := sql.Open("pgx", controlPostgresDSN(controlTestDatabase))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	client, err := sqlwrap.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	repo := repository.NewWithOptions(client, repository.Options{QueryTimeout: 100 * time.Millisecond})
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "control:account-authentication:"+owner.Account.ID); err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	_, _, err = repo.CreateMCPToken(ctx, owner.Account.ID, repository.MCPTokenInput{ID: "audit-deadline", Name: "deadline"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("blocked mutation error = %v", err)
+	}
+	if ctx.Err() != nil || time.Since(started) > time.Second {
+		t.Fatal("mutation ignored repository deadline")
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := repo.ListMCPTokens(ctx, owner.Account.ID)
+	if err != nil || len(tokens) != 0 {
+		t.Fatalf("timed-out mutation persisted token: count=%d err=%v", len(tokens), err)
+	}
+}
+
+func TestControlConcurrentFirstAuthentication(t *testing.T) {
+	for _, sameIdentity := range []bool{true, false} {
+		t.Run(fmt.Sprintf("same_identity_%t", sameIdentity), func(t *testing.T) {
+			service := newControlTestService(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			db, err := sql.Open("pgx", controlPostgresDSN(controlTestDatabase))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			tx, err := db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback()
+			if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('control:initialize',0))"); err != nil {
+				t.Fatal(err)
+			}
+			type outcome struct {
+				result admin.AuthResult
+				err    error
+			}
+			outcomes := make(chan outcome, 2)
+			for i := range 2 {
+				go func() {
+					subject := "first"
+					if !sameIdentity {
+						subject = fmt.Sprintf("first-%d", i)
+					}
+					params := authParams(subject)
+					params.Provider = "yandex"
+					result, err := service.Admin.CompleteAuth(ctx, params)
+					outcomes <- outcome{result, err}
+				}()
+			}
+			// Both calls observed an uninitialized platform before either can create it.
+			for {
+				var waiting int
+				if err := db.QueryRowContext(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%control:initialize%'`).Scan(&waiting); err != nil {
+					t.Fatal(err)
+				}
+				if waiting == 2 {
+					break
+				}
+				if ctx.Err() != nil {
+					t.Fatal(ctx.Err())
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			created, successful, denied := 0, 0, 0
+			var ownerID string
+			for range 2 {
+				out := <-outcomes
+				if out.err != nil {
+					if !errors.Is(out.err, repository.ErrAuthenticationDenied) {
+						t.Fatalf("first auth error: %v", out.err)
+					}
+					denied++
+					continue
+				}
+				successful++
+				if out.result.Created {
+					created++
+					ownerID = out.result.Account.ID
+				}
+				if _, err := service.Admin.ValidateSession(ctx, out.result.SessionToken, "127.0.0.1"); err != nil {
+					t.Fatalf("invalid first session: %v", err)
+				}
+			}
+			wantSuccess := 1
+			if sameIdentity {
+				wantSuccess = 2
+			}
+			if created != 1 || successful != wantSuccess || denied != 2-wantSuccess {
+				t.Fatalf("created=%d successful=%d denied=%d", created, successful, denied)
+			}
+			var storedOwner string
+			var accounts int
+			if err := db.QueryRowContext(ctx, "SELECT owner_account_id FROM control_platform WHERE id=1").Scan(&storedOwner); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRowContext(ctx, "SELECT count(*) FROM control_account").Scan(&accounts); err != nil {
+				t.Fatal(err)
+			}
+			if storedOwner != ownerID || accounts != 1 {
+				t.Fatalf("owner=%s want=%s accounts=%d", storedOwner, ownerID, accounts)
+			}
+		})
+	}
 }

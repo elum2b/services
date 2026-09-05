@@ -46,7 +46,7 @@ func (r *Repository) UpsertApplicationDelivery(
 
 	var result ApplicationDelivery
 
-	err = r.withAuditDBTx(ctx, func(tx *sql.Tx, q *controlsqlc.Queries) error {
+	err = r.withAuditDBTx(ctx, func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 		if err := requireWorkspaceAuthorization(
 			ctx,
 			q,
@@ -135,7 +135,7 @@ func (r *Repository) DeleteApplicationDelivery(
 
 	var affected int64
 
-	err := r.withAuditDBTx(ctx, func(tx *sql.Tx, q *controlsqlc.Queries) error {
+	err := r.withAuditDBTx(ctx, func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 		if err := requireWorkspaceAuthorization(
 			ctx,
 			q,

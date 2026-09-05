@@ -15,6 +15,8 @@ func (r *PaymentRepository) Export(
 	workspaceID string,
 	req ExportRequest,
 ) (ExportPackage, error) {
+	r = r.archiveRepository()
+
 	workspaceID, err := requireWorkspaceID(workspaceID)
 	if err != nil {
 		return ExportPackage{}, err
@@ -33,12 +35,20 @@ func (r *PaymentRepository) Export(
 		tonWallets   []ExportTONWallet
 	)
 
-	if err := r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	if err := r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		if _, err := txRepo.executor.ExecContext(
 			ctx,
 			"SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
 		); err != nil {
 			return err
+		}
+
+		footprint, budgetErr := txRepo.q.GetExportFootprint(ctx, workspaceID)
+		if budgetErr != nil {
+			return budgetErr
+		}
+		if footprint.Records > 100000 || footprint.Bytes > 32<<20 {
+			return fmt.Errorf("payment export exceeds archive record or byte budget")
 		}
 
 		localizations, err := txRepo.exportLocalizations(ctx, workspaceID)

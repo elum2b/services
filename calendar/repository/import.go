@@ -65,13 +65,15 @@ func (r *Repository) ImportJob(
 func (r *Repository) importWithJob(
 	ctx context.Context, workspaceID string, req ImportRequest, jobID int64,
 ) (ImportResult, error) {
+	r = r.archiveRepository()
+
 	if err := validateExportPackage(workspaceID, req.Package); err != nil {
 		return ImportResult{}, err
 	}
 
 	strategy := req.ConflictStrategy
 	if strategy == "" {
-		strategy = ImportConflictFail
+		strategy = ImportConflictUpdate
 	}
 
 	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
@@ -85,7 +87,7 @@ func (r *Repository) importWithJob(
 	result := ImportResult{}
 	alreadyApplied := false
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -158,14 +160,14 @@ func (r *Repository) lockWorkspaceMutation(
 func (r *Repository) withWorkspaceMutation(
 	ctx context.Context,
 	workspaceID string,
-	fn func(*Repository) error,
+	fn func(context.Context, *Repository) error,
 ) error {
-	return r.WithTx(ctx, func(txRepo *Repository) error {
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
 
-		return fn(txRepo)
+		return fn(ctx, txRepo)
 	})
 }
 

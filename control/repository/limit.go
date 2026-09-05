@@ -20,7 +20,7 @@ func (r *Repository) RequestWorkspaceLimit(
 ) (LimitRequest, error) {
 	var request LimitRequest
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		member, err := q.GetPlatformMemberForUpdate(ctx, accountID)
 		if err != nil {
 			return noRows(err, ErrForbidden)
@@ -82,7 +82,7 @@ func (r *Repository) RequestEmployeeLimit(
 ) (LimitRequest, error) {
 	var request LimitRequest
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := workspaceAuthorization(
 			ctx,
 			q,
@@ -199,7 +199,7 @@ func (r *Repository) ResolveLimitRequest(
 ) (LimitRequest, error) {
 	var result LimitRequest
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		methodKey := "control.global.limit.reject"
 		if approved {
 			methodKey = "control.global.limit.approve"
@@ -358,6 +358,9 @@ func (r *Repository) CancelLimitRequest(
 	accountID string,
 	requestID string,
 ) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
 	var affected int64
 
 	err := sqlwrap.WithTx(

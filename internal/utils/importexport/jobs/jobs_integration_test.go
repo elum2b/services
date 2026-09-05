@@ -5,9 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/elum2b/services/internal/utils/goroutine"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -315,5 +319,77 @@ func TestDownloadRejectsCompletedImport(t *testing.T) {
 		ErrArchiveNotReady,
 	) {
 		t.Fatalf("completed import download error = %v", err)
+	}
+}
+
+type receiptTestHandler struct {
+	db      *sql.DB
+	applied atomic.Int32
+}
+
+func (h *receiptTestHandler) ReconcileImport(context.Context, Job) error { return nil }
+
+func (h *receiptTestHandler) Export(context.Context, Job) (io.ReadCloser, error) {
+	return nil, errors.New("unused")
+}
+func (h *receiptTestHandler) Import(ctx context.Context, job Job, _ io.Reader) error {
+	claimed, err := ClaimImportReceipt(ctx, h.db, job.ID, job.Service, job.WorkspaceID)
+	if claimed {
+		h.applied.Add(1)
+		return errors.New("simulated lost COMMIT response")
+	}
+	return err
+}
+
+func TestCommittedImportRecoversFailedStatusWrite(t *testing.T) {
+	db, store := openIntegrationStore(t)
+	archive, err := NewDiskArchive(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := archive.Store(t.Context(), ArchiveObject{}, strings.NewReader("dump"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := newToken()
+	workspace := fmt.Sprintf("%s-%s-%s-%s-%s", token[:8], token[8:12], token[12:16], token[16:20], token[20:])
+	job, err := store.queue(t.Context(), "service", workspace, TypeImport, "dump.zip", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM importexport_job_import_receipt WHERE job_id=$1 AND service=$2 AND workspace_id=$3`, job.ID, job.Service, workspace)
+	})
+	handler := &receiptTestHandler{db: db}
+	manager := &Manager{store: store, archive: archive, handler: handler, workers: goroutine.New(), handlerTimeout: time.Minute, retention: time.Hour, retryBackoff: time.Millisecond, maxAttempts: 1}
+	defer manager.Close()
+	lease, err := store.lease(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	queries := store.queries()
+	complete := queries.complete
+	queries.complete = "SELECT 1/0"
+	manager.handle(t.Context(), lease)
+	status, err := store.get(t.Context(), job.Service, workspace, job.ID)
+	if err != nil || status.Status != StatusQueued || handler.applied.Load() != 1 {
+		t.Fatalf("committed import mislabeled: %s applied=%d err=%v", status.Status, handler.applied.Load(), err)
+	}
+	queries.complete = complete
+	// Recovery of an applied import no longer depends on the source archive.
+	if err := archive.Delete(t.Context(), key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(t.Context(), "UPDATE "+quoteIdentifier(store.table)+" SET next_attempt_at=now() WHERE id=$1", job.ID); err != nil {
+		t.Fatal(err)
+	}
+	lease, err = store.lease(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.handle(t.Context(), lease)
+	status, err = store.get(t.Context(), job.Service, workspace, job.ID)
+	if err != nil || status.Status != StatusCompleted || handler.applied.Load() != 1 {
+		t.Fatalf("recovery: %s applied=%d err=%v", status.Status, handler.applied.Load(), err)
 	}
 }

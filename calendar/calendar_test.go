@@ -16,6 +16,7 @@ import (
 	"github.com/elum2b/services/calendar/service/admin"
 	"github.com/elum2b/services/calendar/service/user"
 	"github.com/elum2b/services/internal/testsupport"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 )
 
@@ -596,8 +597,8 @@ func TestCalendarSequentialLifecycleAndCallback(t *testing.T) {
 	if err := service.Admin.RefreshDailyStats(
 		ctx,
 		testsupport.WorkspaceID("workspace-a"),
-		start.Add(-time.Hour),
-		start.Add(4*time.Hour),
+		start,
+		start,
 	); err != nil {
 		t.Fatalf("refresh daily stats: %v", err)
 	}
@@ -1896,4 +1897,192 @@ func openCalendarPostgres(database string) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func TestCalendarDefaultImportMergesCatalog(t *testing.T) {
+	service := newCalendarTestService(t)
+	repo := repository.New(service.client)
+	ctx := context.Background()
+	workspace := testsupport.WorkspaceID("audit-catalog-merge")
+	makePackage := func(keys []string, active bool) repository.ExportPackage {
+		pkg := repository.ExportPackage{Format: repository.ExportFormat, Service: "calendar"}
+		for _, key := range keys {
+			pkg.Calendars = append(pkg.Calendars, repository.ExportCalendar{Type: key, IsActive: active, Mode: repository.ModeSequential, IntervalType: repository.IntervalFloating, IntervalUnit: "day", IntervalCount: 1, EndBehavior: repository.EndStop, Timezone: "UTC"})
+		}
+		return pkg
+	}
+	for _, pkg := range []repository.ExportPackage{makePackage([]string{"A", "B", "C"}, true), makePackage([]string{"B", "C", "D"}, false)} {
+		if _, err := repo.Import(ctx, workspace, repository.ImportRequest{Package: pkg}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := repo.Export(ctx, workspace, repository.ExportRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Calendars) != 4 {
+		t.Fatalf("catalog size = %d, want 4", len(got.Calendars))
+	}
+	seen := map[string]bool{}
+	for _, item := range got.Calendars {
+		seen[item.Type] = true
+		if item.IsActive != (item.Type == "A") {
+			t.Fatalf("import priority wrong for %s", item.Type)
+		}
+	}
+	for _, key := range []string{"A", "B", "C", "D"} {
+		if !seen[key] {
+			t.Fatalf("missing catalog key %s", key)
+		}
+	}
+}
+
+func TestCalendarArchiveJobsRoundTrip(t *testing.T) {
+	options := calendarTestOptions()
+
+	options.ArchiveDirectory = t.TempDir()
+
+	service := newCalendarTestServiceWithOptions(t, options)
+	ctx := context.Background()
+	source := testsupport.WorkspaceID("archive-source")
+	target := testsupport.WorkspaceID("archive-target")
+	createCalendar(
+		t,
+		service,
+		admin.SaveCalendarParams{
+			WorkspaceID:   source,
+			Type:          "archive",
+			Mode:          repository.ModeSequential,
+			IntervalType:  repository.IntervalFloating,
+			IntervalUnit:  "day",
+			IntervalCount: 1,
+			EndBehavior:   repository.EndStop,
+			Timezone:      "UTC",
+			IsActive:      true,
+		},
+	)
+
+	export, err := service.Admin.QueueArchiveExport(
+		ctx,
+		admin.QueueArchiveExportParams{
+			WorkspaceID: source,
+			FileName:    "calendar.zip",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if export.Status != jobs.StatusQueued {
+		t.Fatalf("export status = %s, want queued", export.Status)
+	}
+
+	worker := startCalendarArchiveWorker(t, options)
+
+	waitCalendarArchiveJob(t, worker, source, export.ID)
+
+	dump, _, err := service.Admin.DownloadArchive(ctx, source, export.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dump.Close()
+
+	importJob, err := service.Admin.QueueArchiveImport(
+		ctx,
+		admin.QueueArchiveImportParams{
+			WorkspaceID: target,
+			FileName:    "calendar.zip",
+			ImportRequest: admin.ImportRequest{
+				ConflictStrategy: "update_existing",
+			},
+			Archive: dump,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waitCalendarArchiveJob(t, worker, target, importJob.ID)
+
+	pkg, err := repository.New(service.client).
+		Export(ctx, target, admin.ExportRequest{})
+	if err != nil || len(pkg.Calendars) != 1 {
+		t.Fatalf("imported package = %+v, err = %v", pkg, err)
+	}
+}
+
+func startCalendarArchiveWorker(t *testing.T, options Options) *Calendar {
+	t.Helper()
+
+	service := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- service.Run(ctx, DatabaseParams{
+			User:     calendarTestPGUser,
+			Password: calendarTestPGPassword,
+			Database: calendarTestDB,
+			Host:     calendarTestPGHost,
+			Port:     calendarTestPGPort,
+			Options:  options,
+		})
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for !service.IsReady() {
+		select {
+		case err := <-done:
+			cancel()
+			t.Fatalf("start calendar archive worker: %v", err)
+		default:
+		}
+
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("calendar archive worker did not become ready")
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Cleanup(func() {
+		cancel()
+
+		if err := <-done; err != nil {
+			t.Errorf("stop calendar archive worker: %v", err)
+		}
+	})
+
+	return service
+}
+
+func waitCalendarArchiveJob(
+	t *testing.T,
+	service *Calendar,
+	workspaceID string,
+	id int64,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		job, err := service.Admin.ArchiveJob(
+			context.Background(),
+			workspaceID,
+			id,
+		)
+		if err == nil && job.Status == jobs.StatusCompleted {
+			return
+		}
+
+		if err == nil && job.Status == jobs.StatusFailed {
+			t.Fatalf("archive job failed: %s", job.Error)
+		}
+
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	t.Fatal("archive job did not complete")
 }

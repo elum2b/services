@@ -68,6 +68,11 @@ UPDATE promo_offer
 SET deleted_at = now(), is_active = FALSE, updated_at = now()
 WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL;
 
+-- name: LockApplyOffer :one
+SELECT id FROM promo_offer
+WHERE workspace_id = $1 AND code_normalized = $2
+FOR UPDATE;
+
 -- name: GetApplyBundleForUpdate :many
 SELECT
     o.id,
@@ -287,14 +292,23 @@ INSERT INTO promo_stats_daily (
 SELECT
     e.workspace_id,
     e.promo_id,
-    e.occurred_at::date,
+    (e.occurred_at AT TIME ZONE 'UTC')::date,
     COUNT(*),
     COUNT(*)
 FROM promo_redemption_event e
 WHERE e.workspace_id = sqlc.arg(workspace_id)
   AND e.occurred_at >= $1 AND e.occurred_at < $2
-GROUP BY e.workspace_id, e.promo_id, e.occurred_at::date
+GROUP BY e.workspace_id, e.promo_id, (e.occurred_at AT TIME ZONE 'UTC')::date
 ON CONFLICT (workspace_id, promo_id, stats_date) DO UPDATE SET
     redemption_count = EXCLUDED.redemption_count,
     unique_users = EXCLUDED.unique_users,
     updated_at = now();
+
+-- name: GetExportFootprint :one
+WITH footprint AS (
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM promo_offer t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM promo_localization t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM promo_reward t WHERE t.workspace_id=$1
+) SELECT sum(records)::bigint AS records, sum(bytes)::bigint AS bytes FROM footprint;

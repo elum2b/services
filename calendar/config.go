@@ -43,6 +43,8 @@ type Options struct {
 	// ArchiveDirectory overrides the local disk archive directory when Archive
 	// is nil. The executable-relative development directory remains the default.
 	ArchiveDirectory string
+	// ArchiveS3 enables shared S3/MinIO storage; nil retains local disk.
+	ArchiveS3 *ArchiveS3Options
 }
 
 type DatabaseParams struct {
@@ -78,3 +80,5 @@ func toSQLWrapOptions(value Options) sqlwrap.Options {
 type storageAdapter struct{ Storage }
 type codecAdapter struct{ Codec }
 type mutexAdapter struct{ Mutex }
+
+type ArchiveS3Options = jobs.S3Options

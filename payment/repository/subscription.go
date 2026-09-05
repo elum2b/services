@@ -195,7 +195,7 @@ func (r *PaymentRepository) RecordSubscriptionRenewal(
 
 	var result SubscriptionRenewalResult
 
-	err = r.WithTx(ctx, func(txRepo *PaymentRepository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttempt(
 			ctx,
 			int64(params.AttemptID),

@@ -1,10 +1,25 @@
 package repository
 
 import (
+	"context"
 	"errors"
 
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 )
+
+// RefreshArchiveCache recovers a commit interrupted before cache invalidation,
+// even when the uploaded archive is no longer available.
+func (r *Repository) RefreshArchiveCache(ctx context.Context, workspaceID string) error {
+	if err := requireWorkspace(workspaceID); err != nil {
+		return err
+	}
+	ids, err := r.q.AdminListOfferIDs(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
+	r.invalidateCPACache(workspaceID, ids...)
+	return nil
+}
 
 const (
 	cpaCacheScopeOffer     = "offer"

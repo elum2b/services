@@ -959,7 +959,7 @@ INSERT INTO task_stats_daily (
 SELECT
     e.workspace_id,
     e.task_id,
-    e.occurred_at::date,
+    (e.occurred_at AT TIME ZONE 'UTC')::date,
     COUNT(*) FILTER (WHERE e.event_type = 'progress_created'),
     COALESCE(SUM(e.amount) FILTER (WHERE e.event_type = 'progress_added'), 0)::bigint,
     COUNT(*) FILTER (WHERE e.event_type = 'ready'),
@@ -971,7 +971,7 @@ SELECT
 FROM task_stats_event e
 WHERE e.workspace_id = sqlc.arg(refresh_workspace_id)
   AND e.occurred_at >= $1 AND e.occurred_at < $2
-GROUP BY e.workspace_id, e.task_id, e.occurred_at::date
+GROUP BY e.workspace_id, e.task_id, (e.occurred_at AT TIME ZONE 'UTC')::date
 ON CONFLICT (workspace_id, task_id, stats_date) DO UPDATE SET
     progress_created = EXCLUDED.progress_created,
     progress_amount = EXCLUDED.progress_amount,
@@ -1016,7 +1016,7 @@ SELECT
 FROM (
     SELECT
         workspace_id,
-        occurred_at::date AS stats_date,
+        (occurred_at AT TIME ZONE 'UTC')::date AS stats_date,
         COUNT(*) FILTER (WHERE event_type = 'progress_created') AS progress_created,
         COALESCE(SUM(amount) FILTER (WHERE event_type = 'progress_added'), 0)::bigint AS progress_amount,
         COUNT(*) FILTER (WHERE event_type = 'ready') AS ready_count,
@@ -1028,7 +1028,7 @@ FROM (
     FROM task_stats_event refresh_events
     WHERE refresh_events.workspace_id = sqlc.arg(refresh_workspace_id)
       AND refresh_events.occurred_at >= $1 AND refresh_events.occurred_at < $2
-    GROUP BY refresh_events.workspace_id, refresh_events.occurred_at::date
+    GROUP BY refresh_events.workspace_id, (refresh_events.occurred_at AT TIME ZONE 'UTC')::date
 ) event_rows
 JOIN (
     SELECT
@@ -1420,3 +1420,24 @@ WHERE workspace_id = $1
   AND ($4 = '' OR provider = $5)
   AND ($6 = '' OR group_key = $7)
 ORDER BY stats_date, provider, group_key, external_type;
+
+-- name: GetExportFootprint :one
+WITH footprint AS (
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM task_group t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM task_group_localization t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM task_sequence t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM task_definition t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM task_complex_condition t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM task_localization t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM task_reward t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM task_partner_config t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM task_partner_reward_rule t WHERE t.workspace_id=$1
+) SELECT sum(records)::bigint AS records, sum(bytes)::bigint AS bytes FROM footprint;

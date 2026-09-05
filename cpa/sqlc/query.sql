@@ -184,6 +184,7 @@ ON CONFLICT (workspace_id, cpa_id, code) DO NOTHING;
 -- name: CreateGeneratedCode :one
 INSERT INTO cpa_code (workspace_id, cpa_id, code, source)
 VALUES ($1, $2, $3, 'generated')
+ON CONFLICT (workspace_id, cpa_id, code) DO NOTHING
 RETURNING id;
 
 -- name: GetAvailableCodeForUpdate :one
@@ -379,3 +380,49 @@ ON CONFLICT (workspace_id, cpa_id, stats_date) DO UPDATE SET
     completed_count = EXCLUDED.completed_count,
     unique_users = EXCLUDED.unique_users,
     updated_at = now();
+
+-- name: ListImportAssignments :many
+SELECT a.id, a.cpa_id, a.app_id, a.platform_id, a.platform_user_id, a.status, c.code AS code_ref
+FROM cpa_assignment a
+LEFT JOIN cpa_code c ON c.id = a.code_id
+WHERE a.workspace_id = $1 AND a.cpa_id = ANY($2::text[]);
+
+-- name: ListImportCodes :many
+SELECT id, cpa_id, code FROM cpa_code
+WHERE workspace_id = $1 AND cpa_id = ANY($2::text[]);
+
+-- name: DeleteImportAssignmentEvents :exec
+DELETE FROM cpa_assignment_event e USING cpa_assignment a
+WHERE e.assignment_id = a.id AND a.workspace_id = $1
+  AND a.cpa_id = ANY($2::text[]) AND a.status <> 'completed';
+
+-- name: DeleteImportAssignments :exec
+DELETE FROM cpa_assignment
+WHERE workspace_id = $1 AND cpa_id = ANY($2::text[]) AND status <> 'completed';
+
+-- name: DeleteImportCodes :exec
+DELETE FROM cpa_code c
+WHERE c.workspace_id = $1 AND c.cpa_id = ANY($2::text[])
+  AND NOT EXISTS (SELECT 1 FROM cpa_assignment a WHERE a.code_id = c.id);
+
+-- name: DeleteWorkspaceDailyStats :exec
+DELETE FROM cpa_stats_daily WHERE workspace_id = $1;
+
+-- name: RebuildWorkspaceDailyStats :exec
+INSERT INTO cpa_stats_daily (workspace_id,cpa_id,stats_date,issued_count,completed_count,unique_users)
+SELECT workspace_id,cpa_id,(occurred_at AT TIME ZONE 'UTC')::date,
+       SUM((event_type='issued')::int)::bigint,SUM((event_type='completed')::int)::bigint,
+       COUNT(DISTINCT assignment_id)::bigint
+FROM cpa_assignment_event WHERE cpa_assignment_event.workspace_id=$1
+GROUP BY workspace_id,cpa_id,(occurred_at AT TIME ZONE 'UTC')::date;
+
+-- name: GetExportFootprint :one
+WITH footprint AS (
+ SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM cpa_offer t WHERE t.workspace_id=$1
+ UNION ALL SELECT count(*), COALESCE(sum(octet_length(row_to_json(t)::text)),0) FROM cpa_localization t WHERE t.workspace_id=$1
+ UNION ALL SELECT count(*), COALESCE(sum(octet_length(row_to_json(t)::text)),0) FROM cpa_reward t WHERE t.workspace_id=$1
+ UNION ALL SELECT count(*), COALESCE(sum(octet_length(row_to_json(t)::text)),0) FROM cpa_code t WHERE t.workspace_id=$1
+ UNION ALL SELECT count(*), COALESCE(sum(octet_length(row_to_json(t)::text)),0) FROM cpa_assignment t WHERE t.workspace_id=$1
+ UNION ALL SELECT count(*), COALESCE(sum(octet_length(row_to_json(t)::text)),0) FROM cpa_assignment_event t WHERE t.workspace_id=$1
+)
+SELECT sum(records)::bigint AS records, sum(bytes)::bigint AS bytes FROM footprint;

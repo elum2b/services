@@ -1,5 +1,27 @@
 # Аудит асинхронных архивов CPA
 
+## Состояние после исправлений — 2026-09-05
+
+Исходные формулировки ниже сохранены как история аудита. Актуальные решения:
+
+| Пункт | Исправление или уточнение контракта |
+| --- | --- |
+| 1 | Runtime уже экспортируется: codes, assignments, reward snapshots, events. Исправлена совместимость исторических кодов с текущим каталогом. Архив CPA не является DR backup всей БД; outbox не переносится. |
+| 2 | Upload/CRC/распаковка ограничены. CPA проверяет бюджет строк/байтов до загрузки export и структуру JSON до выделения typed slices/maps. ZIP создаётся в ограниченном spool-файле. |
+| 3 | Диск сохранён по умолчанию для монолита. Добавлен ArchiveS3 для S3/MinIO с проверкой bucket при startup. Два независимых клиента проверены HTTP fixture; production bucket не проверялся. |
+| 4 | Heartbeat и транзакционный receipt существовали ранее. Completed теперь необратимы при update_existing; Complete согласован с import workspace lock. |
+| 5 | Receipt проверяется до открытия архива и при неоднозначном COMMIT. Применённый import восстанавливает кэш/статус без повторной записи и зависимости от ZIP. Ошибка записи статуса не становится ложным failed. Добавлена классификация PostgreSQL transient SQLSTATE. |
+| 6 | ArchiveJob — отдельный публичный DTO без Options/ArchiveKey/LockedBy/LeaseToken. Ошибки/history санитизированы; Package больше не сохраняется в options. |
+| 7 | ArchiveTimeout по умолчанию 5m. Контекст транзакции передаётся SQL. Runtime импортируется bulk batches; PostgreSQL trigger-тест проверяет короткий обычный и длинный архивный timeout. |
+| 8 | Единственный manifest/JSON-документ проверяется. Disk/S3 поддерживают sweep. Временные .archive и приватные spool files очищаются после crash, живые файлы защищены OS locks. Для custom Archive наличие List обязательно. |
+
+Подробности и регрессии: [SECURITY_RELIABILITY_AUDIT.md](SECURITY_RELIABILITY_AUDIT.md).
+Конфигурация и ограничения: [ARCHIVES.md](ARCHIVES.md).
+
+Перед запуском реплик S3/общий том подключается явно; автоматического переноса старых локальных файлов нет. Доставка существующего outbox остаётся at-least-once. Production deployment и реальный MinIO в этой задаче не запускались.
+
+## Исходный отчёт до исправлений
+
 Область: текущие async ZIP import/export и общий `internal/utils/importexport/jobs`.
 Экспорт предназначен для переноса каталога, не для полного восстановления CPA.
 

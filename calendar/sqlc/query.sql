@@ -406,14 +406,14 @@ INSERT INTO calendar_stats_daily (
 SELECT
     o.workspace_id,
     o.calendar_id,
-    o.occurred_at::date,
+    (o.occurred_at AT TIME ZONE 'UTC')::date,
     COUNT(*)::bigint,
     COUNT(*) FILTER (WHERE o.granted)::bigint,
     COUNT(DISTINCT (o.app_id, o.platform_id, o.platform_user_id))::bigint
 FROM calendar_operation o
 WHERE o.workspace_id = sqlc.arg(refresh_workspace_id)
   AND o.occurred_at >= $1 AND o.occurred_at < $2
-GROUP BY o.workspace_id, o.calendar_id, o.occurred_at::date
+GROUP BY o.workspace_id, o.calendar_id, (o.occurred_at AT TIME ZONE 'UTC')::date
 ON CONFLICT (workspace_id, calendar_id, stats_date) DO UPDATE SET
     operation_count = EXCLUDED.operation_count,
     grant_count = EXCLUDED.grant_count,
@@ -429,3 +429,14 @@ WHERE workspace_id = $1;
 SELECT calendar_id, position, id
 FROM calendar_step
 WHERE workspace_id = $1;
+
+-- name: GetExportFootprint :one
+WITH footprint AS (
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM calendar_definition t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM calendar_localization t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM calendar_step t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM calendar_reward t WHERE t.workspace_id=$1
+) SELECT sum(records)::bigint AS records, sum(bytes)::bigint AS bytes FROM footprint;

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	json "github.com/goccy/go-json"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	services "github.com/elum2b/services"
 	"github.com/elum2b/services/cpa/model"
@@ -253,7 +252,7 @@ func (r *Repository) Issue(
 
 	var result IssueResult
 
-	err = r.WithTx(ctx, func(txRepo *Repository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceCatalogRead(
 			ctx,
 			scope.WorkspaceID,
@@ -400,7 +399,11 @@ func (r *Repository) Complete(
 
 	var result CompleteResult
 
-	err = r.WithTx(ctx, func(txRepo *Repository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
+		if err := txRepo.lockWorkspaceCatalogRead(ctx, scope.WorkspaceID); err != nil {
+			return err
+		}
+
 		row, err := txRepo.q.GetAssignmentForUpdate(
 			ctx,
 			assignmentForUpdateParams(scope),
@@ -517,7 +520,7 @@ func (r *Repository) AddCodes(
 	}
 
 	added := 0
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -569,7 +572,7 @@ func (r *Repository) DeleteAvailableCodes(
 
 	var rows int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -600,7 +603,7 @@ func (r *Repository) DeleteIssuedCodes(
 
 	var rows int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -631,7 +634,7 @@ func (r *Repository) DeleteCompletedCodes(
 
 	var rows int64
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -715,7 +718,7 @@ func (r *Repository) allocateCode(
 			return code, &value, nil
 		}
 
-		if !isUniqueViolation(err) {
+		if !isNoRows(err) {
 			return "", nil, err
 		}
 	}
@@ -898,12 +901,6 @@ func decodeRewardsSnapshot(
 	}
 
 	return result, nil
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func randomCode(length int, alphabet string) (string, error) {

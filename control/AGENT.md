@@ -38,6 +38,8 @@
 
 ## Авторизация и безопасность
 
+- Первый CompleteAuth с проверенной provider identity атомарно создаёт owner;
+  конкурентные первые входы не создают дополнительных владельцев.
 - После первой инициализации новый account создаётся только по одноразовому
   global или workspace invite. При 2FA invite принимается после challenge.
 - Session, challenge, invite и backup tokens не хранить в открытом виде;

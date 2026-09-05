@@ -41,7 +41,7 @@ func (r *Repository) UpsertApplicationPlatform(
 
 	var result ApplicationPlatform
 
-	err = r.withAuditDBTx(ctx, func(tx *sql.Tx, q *controlsqlc.Queries) error {
+	err = r.withAuditDBTx(ctx, func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 		if err := requireWorkspaceAuthorization(
 			ctx,
 			q,
@@ -137,7 +137,7 @@ func (r *Repository) DeleteApplicationPlatform(
 
 	var affected int64
 
-	err := r.withAuditDBTx(ctx, func(tx *sql.Tx, q *controlsqlc.Queries) error {
+	err := r.withAuditDBTx(ctx, func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 		if err := requireWorkspaceAuthorization(
 			ctx,
 			q,
@@ -236,6 +236,9 @@ func (r *Repository) requireWorkspaceAccess(
 	ctx context.Context,
 	actorID, workspaceID, methodKey string,
 ) error {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
 	return sqlwrap.WithTx(
 		ctx,
 		r.db.DB(),

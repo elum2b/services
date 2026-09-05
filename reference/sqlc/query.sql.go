@@ -459,6 +459,20 @@ func (q *Queries) AdminUpsertLocalization(ctx context.Context, arg AdminUpsertLo
 	return err
 }
 
+const deleteImportedItemLinks = `-- name: DeleteImportedItemLinks :exec
+DELETE FROM reference_item_resource WHERE workspace_id=$1 AND item_key = ANY($2::text[])
+`
+
+type DeleteImportedItemLinksParams struct {
+	WorkspaceID string   `json:"workspace_id"`
+	Column2     []string `json:"column_2"`
+}
+
+func (q *Queries) DeleteImportedItemLinks(ctx context.Context, arg DeleteImportedItemLinksParams) error {
+	_, err := q.exec(ctx, q.deleteImportedItemLinksStmt, deleteImportedItemLinks, arg.WorkspaceID, pq.Array(arg.Column2))
+	return err
+}
+
 const getItemBundle = `-- name: GetItemBundle :many
 SELECT
     i.workspace_id,
@@ -525,6 +539,142 @@ func (q *Queries) GetItemBundle(ctx context.Context, arg GetItemBundleParams) ([
 			&i.Locale,
 			&i.Title,
 			&i.Description,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const importResource = `-- name: ImportResource :exec
+INSERT INTO reference_resource (workspace_id,key,resource_type,payload,is_active,format,content_type,source_size,source_sha256,media_version,width,height,original_ref,preview_61_ref,preview_128_ref,preview_256_ref,preview_512_ref,placeholder_ref)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'','','','','','')
+ON CONFLICT (workspace_id,key) DO UPDATE SET resource_type=EXCLUDED.resource_type,payload=EXCLUDED.payload,is_active=EXCLUDED.is_active,deleted_at=NULL,format=EXCLUDED.format,content_type=EXCLUDED.content_type,source_size=EXCLUDED.source_size,source_sha256=EXCLUDED.source_sha256,media_version=EXCLUDED.media_version,width=EXCLUDED.width,height=EXCLUDED.height,updated_at=now()
+`
+
+type ImportResourceParams struct {
+	WorkspaceID  string          `json:"workspace_id"`
+	Key          string          `json:"key"`
+	ResourceType string          `json:"resource_type"`
+	Payload      json.RawMessage `json:"payload"`
+	IsActive     bool            `json:"is_active"`
+	Format       string          `json:"format"`
+	ContentType  string          `json:"content_type"`
+	SourceSize   int64           `json:"source_size"`
+	SourceSha256 string          `json:"source_sha256"`
+	MediaVersion string          `json:"media_version"`
+	Width        int32           `json:"width"`
+	Height       int32           `json:"height"`
+}
+
+func (q *Queries) ImportResource(ctx context.Context, arg ImportResourceParams) error {
+	_, err := q.exec(ctx, q.importResourceStmt, importResource,
+		arg.WorkspaceID,
+		arg.Key,
+		arg.ResourceType,
+		arg.Payload,
+		arg.IsActive,
+		arg.Format,
+		arg.ContentType,
+		arg.SourceSize,
+		arg.SourceSha256,
+		arg.MediaVersion,
+		arg.Width,
+		arg.Height,
+	)
+	return err
+}
+
+const listArchiveLinks = `-- name: ListArchiveLinks :many
+SELECT ir.item_key, ir.resource_key, ir.position
+FROM reference_item_resource ir
+JOIN reference_item i ON i.workspace_id=ir.workspace_id AND i.key=ir.item_key
+JOIN reference_resource r ON r.workspace_id=ir.workspace_id AND r.key=ir.resource_key
+WHERE ir.workspace_id=$1 AND i.deleted_at IS NULL AND r.deleted_at IS NULL
+ORDER BY ir.item_key, ir.position
+`
+
+type ListArchiveLinksRow struct {
+	ItemKey     string `json:"item_key"`
+	ResourceKey string `json:"resource_key"`
+	Position    int32  `json:"position"`
+}
+
+func (q *Queries) ListArchiveLinks(ctx context.Context, workspaceID string) ([]ListArchiveLinksRow, error) {
+	rows, err := q.query(ctx, q.listArchiveLinksStmt, listArchiveLinks, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListArchiveLinksRow
+	for rows.Next() {
+		var i ListArchiveLinksRow
+		if err := rows.Scan(&i.ItemKey, &i.ResourceKey, &i.Position); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listArchiveResources = `-- name: ListArchiveResources :many
+SELECT key, resource_type, payload, is_active, format, content_type,
+       source_sha256, media_version, source_size, width, height, placeholder_ref
+FROM reference_resource
+WHERE workspace_id=$1 AND deleted_at IS NULL
+ORDER BY key
+`
+
+type ListArchiveResourcesRow struct {
+	Key            string          `json:"key"`
+	ResourceType   string          `json:"resource_type"`
+	Payload        json.RawMessage `json:"payload"`
+	IsActive       bool            `json:"is_active"`
+	Format         string          `json:"format"`
+	ContentType    string          `json:"content_type"`
+	SourceSha256   string          `json:"source_sha256"`
+	MediaVersion   string          `json:"media_version"`
+	SourceSize     int64           `json:"source_size"`
+	Width          int32           `json:"width"`
+	Height         int32           `json:"height"`
+	PlaceholderRef string          `json:"placeholder_ref"`
+}
+
+func (q *Queries) ListArchiveResources(ctx context.Context, workspaceID string) ([]ListArchiveResourcesRow, error) {
+	rows, err := q.query(ctx, q.listArchiveResourcesStmt, listArchiveResources, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListArchiveResourcesRow
+	for rows.Next() {
+		var i ListArchiveResourcesRow
+		if err := rows.Scan(
+			&i.Key,
+			&i.ResourceType,
+			&i.Payload,
+			&i.IsActive,
+			&i.Format,
+			&i.ContentType,
+			&i.SourceSha256,
+			&i.MediaVersion,
+			&i.SourceSize,
+			&i.Width,
+			&i.Height,
+			&i.PlaceholderRef,
 		); err != nil {
 			return nil, err
 		}
@@ -656,6 +806,33 @@ WHERE workspace_id = $1
 
 func (q *Queries) ListImportItemKeys(ctx context.Context, workspaceID string) ([]string, error) {
 	rows, err := q.query(ctx, q.listImportItemKeysStmt, listImportItemKeys, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		items = append(items, key)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listImportResourceKeys = `-- name: ListImportResourceKeys :many
+SELECT key FROM reference_resource WHERE workspace_id=$1
+`
+
+func (q *Queries) ListImportResourceKeys(ctx context.Context, workspaceID string) ([]string, error) {
+	rows, err := q.query(ctx, q.listImportResourceKeysStmt, listImportResourceKeys, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1297,6 +1474,23 @@ func (q *Queries) ResourceMediaVersionCreate(ctx context.Context, arg ResourceMe
 	return err
 }
 
+const resourceMediaVersionDurable = `-- name: ResourceMediaVersionDurable :one
+SELECT EXISTS (SELECT 1 FROM reference_resource_media_version WHERE workspace_id=$1 AND resource_key=$2 AND media_version=$3)
+`
+
+type ResourceMediaVersionDurableParams struct {
+	WorkspaceID  string `json:"workspace_id"`
+	ResourceKey  string `json:"resource_key"`
+	MediaVersion string `json:"media_version"`
+}
+
+func (q *Queries) ResourceMediaVersionDurable(ctx context.Context, arg ResourceMediaVersionDurableParams) (bool, error) {
+	row := q.queryRow(ctx, q.resourceMediaVersionDurableStmt, resourceMediaVersionDurable, arg.WorkspaceID, arg.ResourceKey, arg.MediaVersion)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const resourceMediaVersionRetireActive = `-- name: ResourceMediaVersionRetireActive :exec
 UPDATE reference_resource_media_version
 SET retired_at = now()
@@ -1314,19 +1508,20 @@ func (q *Queries) ResourceMediaVersionRetireActive(ctx context.Context, arg Reso
 }
 
 const resourcePurgeDeleted = `-- name: ResourcePurgeDeleted :execrows
-WITH removed_links AS (
-    DELETE FROM reference_item_resource
-    WHERE workspace_id = $1 AND resource_key = $2
+WITH candidate AS (
+    SELECT r.workspace_id, r.key FROM reference_resource r
+    WHERE r.workspace_id = $1 AND r.key = $2 AND r.deleted_at IS NOT NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM reference_resource_media_version v
+          WHERE v.workspace_id = r.workspace_id AND v.resource_key = r.key
+      )
+    FOR UPDATE
+), removed_links AS (
+    DELETE FROM reference_item_resource ir USING candidate c
+    WHERE ir.workspace_id = c.workspace_id AND ir.resource_key = c.key
 )
-DELETE FROM reference_resource
-WHERE reference_resource.workspace_id = $1
-  AND reference_resource.key = $2
-  AND reference_resource.deleted_at IS NOT NULL
-  AND NOT EXISTS (
-      SELECT 1
-      FROM reference_resource_media_version
-      WHERE workspace_id = $1 AND resource_key = $2
-  )
+DELETE FROM reference_resource r USING candidate c
+WHERE r.workspace_id = c.workspace_id AND r.key = c.key
 `
 
 type ResourcePurgeDeletedParams struct {
@@ -1417,4 +1612,36 @@ func (q *Queries) ResourceUpdate(ctx context.Context, arg ResourceUpdateParams) 
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const updateResourceObjectRefs = `-- name: UpdateResourceObjectRefs :exec
+UPDATE reference_resource SET original_ref=$3,preview_61_ref=$4,preview_128_ref=$5,preview_256_ref=$6,preview_512_ref=$7,placeholder_ref=$8
+WHERE workspace_id=$1 AND key=$2 AND media_version=$9 AND deleted_at IS NULL
+`
+
+type UpdateResourceObjectRefsParams struct {
+	WorkspaceID    string `json:"workspace_id"`
+	Key            string `json:"key"`
+	OriginalRef    string `json:"original_ref"`
+	Preview61Ref   string `json:"preview_61_ref"`
+	Preview128Ref  string `json:"preview_128_ref"`
+	Preview256Ref  string `json:"preview_256_ref"`
+	Preview512Ref  string `json:"preview_512_ref"`
+	PlaceholderRef string `json:"placeholder_ref"`
+	MediaVersion   string `json:"media_version"`
+}
+
+func (q *Queries) UpdateResourceObjectRefs(ctx context.Context, arg UpdateResourceObjectRefsParams) error {
+	_, err := q.exec(ctx, q.updateResourceObjectRefsStmt, updateResourceObjectRefs,
+		arg.WorkspaceID,
+		arg.Key,
+		arg.OriginalRef,
+		arg.Preview61Ref,
+		arg.Preview128Ref,
+		arg.Preview256Ref,
+		arg.Preview512Ref,
+		arg.PlaceholderRef,
+		arg.MediaVersion,
+	)
+	return err
 }

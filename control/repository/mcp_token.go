@@ -38,7 +38,7 @@ func (r *Repository) CreateMCPToken(
 		rawToken string
 	)
 
-	err := r.withAuditDBTx(ctx, func(tx *sql.Tx, q *controlsqlc.Queries) error {
+	err := r.withAuditDBTx(ctx, func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 		if err := lockAccountAuthentication(ctx, tx, accountID); err != nil {
 			return err
 		}
@@ -121,7 +121,7 @@ func (r *Repository) RevokeMCPToken(
 
 	var affected int64
 
-	err := r.withAuditDBTx(ctx, func(tx *sql.Tx, q *controlsqlc.Queries) error {
+	err := r.withAuditDBTx(ctx, func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 		if err := lockAccountAuthentication(
 			ctx,
 			tx,

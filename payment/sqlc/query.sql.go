@@ -6066,6 +6066,34 @@ func (q *Queries) GetEnabledTONWalletForWorkspace(ctx context.Context, workspace
 	return i, err
 }
 
+const getExportFootprint = `-- name: GetExportFootprint :one
+WITH footprint AS (
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM payment_product_group t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM payment_product t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM payment_product_item t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM payment_price t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM payment_localization t WHERE t.workspace_id=$1
+UNION ALL
+SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM payment_ton_wallet t WHERE t.workspace_id=$1
+) SELECT sum(records)::bigint AS records, sum(bytes)::bigint AS bytes FROM footprint
+`
+
+type GetExportFootprintRow struct {
+	Records int64 `json:"records"`
+	Bytes   int64 `json:"bytes"`
+}
+
+func (q *Queries) GetExportFootprint(ctx context.Context, workspaceID string) (GetExportFootprintRow, error) {
+	row := q.queryRow(ctx, q.getExportFootprintStmt, getExportFootprint, workspaceID)
+	var i GetExportFootprintRow
+	err := row.Scan(&i.Records, &i.Bytes)
+	return i, err
+}
+
 const getFulfilledAttemptResult = `-- name: GetFulfilledAttemptResult :one
 SELECT
     pa.order_id,
@@ -10338,12 +10366,12 @@ SELECT
     COALESCE(payments.unique_buyers, 0),
     COALESCE(payments.refund_count, 0)
 FROM (
-    SELECT order_dates.workspace_id, DATE(order_dates.occurred_at) AS stats_date
+    SELECT order_dates.workspace_id, (order_dates.occurred_at AT TIME ZONE 'UTC')::date AS stats_date
     FROM payment_stats_order_event order_dates
     WHERE order_dates.workspace_id = $9
       AND order_dates.occurred_at >= $1 AND order_dates.occurred_at < $2
     UNION
-    SELECT payment_dates.workspace_id, DATE(payment_dates.occurred_at) AS stats_date
+    SELECT payment_dates.workspace_id, (payment_dates.occurred_at AT TIME ZONE 'UTC')::date AS stats_date
     FROM payment_stats_event payment_dates
     WHERE payment_dates.workspace_id = $9
       AND payment_dates.occurred_at >= $3 AND payment_dates.occurred_at < $4
@@ -10361,7 +10389,7 @@ LEFT JOIN (
 LEFT JOIN (
     SELECT
         workspace_id,
-        DATE(occurred_at) AS stats_date,
+        (occurred_at AT TIME ZONE 'UTC')::date AS stats_date,
         SUM(CASE WHEN event_type = 'created' THEN 1 ELSE 0 END) AS orders_created,
         SUM(CASE WHEN event_type = 'status' AND order_status = 'draft' THEN 1 ELSE 0 END) AS draft_orders,
         SUM(CASE WHEN event_type = 'status' AND order_status = 'pending_payment' THEN 1 ELSE 0 END) AS pending_payment_orders,
@@ -10375,14 +10403,14 @@ LEFT JOIN (
     FROM payment_stats_order_event overview_orders
     WHERE overview_orders.workspace_id = $9
       AND overview_orders.occurred_at >= $5 AND overview_orders.occurred_at < $6
-    GROUP BY overview_orders.workspace_id, DATE(overview_orders.occurred_at)
+    GROUP BY overview_orders.workspace_id, (overview_orders.occurred_at AT TIME ZONE 'UTC')::date
 ) orders
     ON orders.workspace_id = dates.workspace_id
    AND orders.stats_date = dates.stats_date
 LEFT JOIN (
     SELECT
         workspace_id,
-        DATE(occurred_at) AS stats_date,
+        (occurred_at AT TIME ZONE 'UTC')::date AS stats_date,
         SUM(CASE WHEN event_type = 'purchase' THEN 1 ELSE 0 END) AS purchase_count,
         SUM(CASE WHEN event_type = 'purchase' THEN quantity ELSE 0 END) AS purchase_quantity,
         COUNT(DISTINCT CASE WHEN event_type = 'purchase' THEN CONCAT_WS(':', app_id, platform_id, platform_user_id) ELSE NULL END) AS unique_buyers,
@@ -10390,7 +10418,7 @@ LEFT JOIN (
     FROM payment_stats_event overview_payments
     WHERE overview_payments.workspace_id = $9
       AND overview_payments.occurred_at >= $7 AND overview_payments.occurred_at < $8
-    GROUP BY overview_payments.workspace_id, DATE(overview_payments.occurred_at)
+    GROUP BY overview_payments.workspace_id, (overview_payments.occurred_at AT TIME ZONE 'UTC')::date
 ) payments
     ON payments.workspace_id = dates.workspace_id
    AND payments.stats_date = dates.stats_date
@@ -10450,7 +10478,7 @@ SELECT
     e.workspace_id,
     COALESCE(e.product_id, ''),
     e.asset_code,
-    DATE(e.occurred_at),
+    (e.occurred_at AT TIME ZONE 'UTC')::date,
     SUM(CASE WHEN e.event_type = 'purchase' THEN 1 ELSE 0 END),
     SUM(CASE WHEN e.event_type = 'purchase' THEN e.quantity ELSE 0 END),
     COUNT(DISTINCT CASE WHEN e.event_type = 'purchase' THEN CONCAT_WS(':', e.app_id, e.platform_id, e.platform_user_id) ELSE NULL END),
@@ -10461,8 +10489,8 @@ FROM payment_stats_event e
 WHERE e.workspace_id = $3
   AND e.occurred_at >= $1 AND e.occurred_at < $2
 GROUP BY GROUPING SETS (
-    (e.workspace_id, e.product_id, e.asset_code, DATE(e.occurred_at)),
-    (e.workspace_id, e.asset_code, DATE(e.occurred_at))
+    (e.workspace_id, e.product_id, e.asset_code, (e.occurred_at AT TIME ZONE 'UTC')::date),
+    (e.workspace_id, e.asset_code, (e.occurred_at AT TIME ZONE 'UTC')::date)
 )
 ON CONFLICT (workspace_id, product_id, asset_code, stats_date) DO UPDATE SET
     purchase_count = EXCLUDED.purchase_count,

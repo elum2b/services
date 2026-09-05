@@ -2,6 +2,7 @@ package callback
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -495,7 +496,13 @@ FOR UPDATE SKIP LOCKED`
 			return err
 		}
 
-		lockedBy := sql.NullString{String: workerID, Valid: true}
+		// Each claim has a distinct fencing owner, even when a scheduler or
+		// replica reuses its configured worker ID. ACK must use this owner.
+		owner := workerID
+		if len(owner) > 64 {
+			owner = owner[:64]
+		}
+		lockedBy := sql.NullString{String: owner + ":" + rand.Text(), Valid: true}
 		lockedUntil := sql.NullTime{
 			Time:  time.Now().UTC().Add(leaseTimeout),
 			Valid: true,
@@ -534,7 +541,7 @@ func (s *Store) MarkOK(ctx context.Context, id uint64, workerID string) error {
 	rows, err := s.execRows(ctx, `
 SET status = 'ok', delivered_at = NOW(), locked_by = NULL,
     locked_until = NULL, last_error = NULL, updated_at = NOW()
-WHERE id = ? AND status = 'processing' AND locked_by = ?`,
+WHERE id = ? AND status = 'processing' AND locked_by = ? AND locked_until > NOW()`,
 		int64(id), normalizeWorkerID(workerID),
 	)
 
@@ -550,7 +557,7 @@ func (s *Store) MarkReject(
 	rows, err := s.execRows(ctx, `
 SET status = 'reject', rejected_at = NOW(), reject_reason = ?,
     locked_by = NULL, locked_until = NULL, updated_at = NOW()
-WHERE id = ? AND status = 'processing' AND locked_by = ?`,
+WHERE id = ? AND status = 'processing' AND locked_by = ? AND locked_until > NOW()`,
 		nullableString(reason), int64(id), normalizeWorkerID(workerID),
 	)
 
@@ -569,7 +576,7 @@ func (s *Store) MarkFailed(ctx context.Context, params FailParams) error {
 SET status = 'pending', attempt_count = attempt_count + 1,
     next_attempt_at = ?, locked_by = NULL, locked_until = NULL,
     last_error = ?, updated_at = NOW()
-WHERE id = ? AND status = 'processing' AND locked_by = ?`,
+WHERE id = ? AND status = 'processing' AND locked_by = ? AND locked_until > NOW()`,
 		failedAt.Add(RetryDelay(params.Attempt)), nullableString(params.Error),
 		int64(params.ID), normalizeWorkerID(params.WorkerID),
 	)

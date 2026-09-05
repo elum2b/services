@@ -88,6 +88,12 @@ type Handler interface {
 	Import(context.Context, Job, io.Reader) error
 }
 
+// AppliedImportReconciler restores post-commit effects without reopening the
+// source archive when a durable receipt proves the import already committed.
+type AppliedImportReconciler interface {
+	ReconcileImport(context.Context, Job) error
+}
+
 type Job struct {
 	ID             int64
 	Service        string

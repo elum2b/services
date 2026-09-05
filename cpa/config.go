@@ -30,6 +30,9 @@ type Codec interface {
 type CacheInvalidationErrorHandler func(error)
 
 type Options struct {
+	ArchiveTimeout           time.Duration
+	ArchiveMaxRows           int64
+	ArchiveMaxBytes          int64
 	MaxConnections           int
 	QueryTimeout             time.Duration
 	CacheL1Delay             time.Duration
@@ -43,11 +46,18 @@ type Options struct {
 	OnCacheInvalidationError CacheInvalidationErrorHandler
 	// Archive stores async import/export ZIPs. Set this to shared durable
 	// storage when workers run on more than one node.
-	Archive jobs.Archive
+	Archive Archive
+	// ArchiveS3 enables shared S3/MinIO storage. Nil retains the disk default.
+	ArchiveS3 *ArchiveS3Options
 	// ArchiveDirectory overrides the local disk archive directory when Archive
 	// is nil. The executable-relative development directory remains the default.
 	ArchiveDirectory string
 }
+
+type ArchiveS3Options = jobs.S3Options
+type Archive = jobs.Archive
+type ArchiveObject = jobs.ArchiveObject
+type ArchiveInfo = jobs.ArchiveInfo
 
 type DatabaseParams struct {
 	User        string

@@ -1,3 +1,5 @@
+> Повторная проверка 2026-09-05: актуальные статусы и исправления — в [SECURITY_RELIABILITY_AUDIT.md](SECURITY_RELIABILITY_AUDIT.md). Ниже сохранён исторический отчёт; его строки кода и утверждения о недостающих защитах не описывают текущую версию.
+
 # Аудит асинхронных архивов Promo
 
 Область: текущие async ZIP import/export и общий `internal/utils/importexport/jobs`.

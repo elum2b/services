@@ -191,6 +191,11 @@ WHERE id = $1
   AND account_id = $2
   AND revoked_at IS NULL;
 
+-- name: RevokeAllMCPTokens :execrows
+UPDATE control_mcp_token
+SET revoked_at = now()
+WHERE account_id = $1 AND revoked_at IS NULL;
+
 -- name: ValidateAndTouchMCPToken :one
 UPDATE control_mcp_token token
 SET last_used_at = CASE

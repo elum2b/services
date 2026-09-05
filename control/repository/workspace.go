@@ -26,7 +26,7 @@ func (r *Repository) CreateWorkspace(
 
 	var result Workspace
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := q.GetWorkspaceCreationBundleForUpdate(ctx, actorID)
 		if err != nil {
 			return noRows(err, ErrForbidden)
@@ -117,7 +117,7 @@ func (r *Repository) UpdateWorkspace(
 
 	var affected int64
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		if err := requireWorkspaceAuthorization(
 			ctx,
 			q,
@@ -150,7 +150,7 @@ func (r *Repository) ArchiveWorkspace(
 ) (int64, error) {
 	var affected int64
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := q.GetWorkspaceAuthorizationForUpdate(
 			ctx,
 			controlsqlc.GetWorkspaceAuthorizationForUpdateParams{
@@ -194,7 +194,7 @@ func (r *Repository) TransferWorkspaceOwnership(
 	workspaceID string,
 	targetAccountID string,
 ) error {
-	return r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	return r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := q.GetWorkspaceAuthorizationForUpdate(
 			ctx,
 			controlsqlc.GetWorkspaceAuthorizationForUpdateParams{
@@ -309,7 +309,7 @@ func (r *Repository) RemoveMember(
 ) (int64, error) {
 	var affected int64
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := q.GetWorkspaceAuthorizationForUpdate(
 			ctx,
 			controlsqlc.GetWorkspaceAuthorizationForUpdateParams{
@@ -395,7 +395,7 @@ func (r *Repository) CreateWorkspaceRole(
 		return Role{}, err
 	}
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := workspaceAuthorization(
 			ctx,
 			q,
@@ -507,7 +507,7 @@ func (r *Repository) UpdateWorkspaceRole(
 
 	var affected int64
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := workspaceAuthorization(
 			ctx,
 			q,
@@ -569,7 +569,7 @@ func (r *Repository) DeleteWorkspaceRole(
 ) (int64, error) {
 	var affected int64
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := workspaceAuthorization(
 			ctx,
 			q,
@@ -670,7 +670,7 @@ func (r *Repository) changeWorkspaceRoleMember(
 		methodKey = "control.workspace.role.member.assign"
 	}
 
-	return r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	return r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := workspaceAuthorization(
 			ctx,
 			q,
@@ -748,7 +748,7 @@ func (r *Repository) ReplaceWorkspaceRolePermissions(
 ) error {
 	methodKeys = uniqueStrings(methodKeys)
 
-	return r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	return r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := workspaceAuthorization(
 			ctx,
 			q,

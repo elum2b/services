@@ -21,6 +21,9 @@ func Merge(
 
 	ctx, cancel := context.WithCancel(requestCtx)
 	stop := context.AfterFunc(rootCtx, cancel)
+	if rootCtx.Err() != nil {
+		cancel()
+	}
 
 	return ctx, func() {
 		stop()

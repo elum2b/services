@@ -14,6 +14,7 @@ import (
 
 	"github.com/elum2b/services/internal/testsupport"
 	callbackutil "github.com/elum2b/services/internal/utils/callback"
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
 	"github.com/elum2b/services/promo/repository"
 	"github.com/elum2b/services/promo/service/admin"
@@ -946,11 +947,12 @@ func TestPromoApplyLifecycleAndCallback(t *testing.T) {
 		t.Fatalf("get user redemption: %+v, err=%v", redemption, err)
 	}
 
+	refreshAt := time.Now()
 	if err := service.Admin.RefreshDailyStats(
 		ctx,
 		testsupport.WorkspaceID("workspace-a"),
-		time.Now().Add(-time.Hour),
-		time.Now().Add(time.Hour),
+		refreshAt,
+		refreshAt,
 	); err != nil {
 		t.Fatalf("refresh daily stats: %v", err)
 	}
@@ -1670,3 +1672,333 @@ func openPromoPostgres(database string) (*sql.DB, error) {
 }
 
 func timePtr(value time.Time) *time.Time { return &value }
+
+func TestPromoConcurrentSameIdentity(t *testing.T) {
+	service := newPromoTestService(t)
+	ctx := context.Background()
+	workspace := testsupport.WorkspaceID("same-identity-audit")
+	_, err := service.Admin.CreatePromo(ctx, admin.SavePromoParams{WorkspaceID: workspace, Code: "ONCE", Payload: json.RawMessage(`{}`), IsActive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := user.ApplyParams{Identity: user.Identity{WorkspaceID: workspace, AppID: 1, PlatformID: 1, PlatformUserID: "same"}, Code: "ONCE"}
+	db, err := openPromoPostgres(promoTestDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, "SELECT id FROM promo_offer WHERE workspace_id=$1 FOR UPDATE", workspace); err != nil {
+		t.Fatal(err)
+	}
+	const n = 4
+	start := make(chan struct{})
+	results := make(chan string, n)
+	errs := make(chan error, n)
+	for range n {
+		go func() { <-start; result, err := service.User.Apply(ctx, params); results <- result.Status; errs <- err }()
+	}
+	close(start)
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		var waiting int
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%promo_offer%'").Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting >= n {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d blocked apply calls", waiting)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	success := 0
+	for range n {
+		if err := <-errs; err != nil {
+			t.Errorf("concurrent replay: %v", err)
+		}
+		switch status := <-results; status {
+		case repository.StatusSuccess:
+			success++
+		case repository.StatusAlreadyApplied:
+		default:
+			t.Errorf("unexpected status %s", status)
+		}
+	}
+	if success != 1 {
+		t.Fatalf("successful redemptions = %d, want 1", success)
+	}
+}
+
+func TestPromoDefaultImportMergesCatalog(t *testing.T) {
+	service := newPromoTestService(t)
+	repo := repository.New(service.client)
+	ctx := context.Background()
+	workspace := testsupport.WorkspaceID("audit-catalog-merge")
+	makePackage := func(keys []string, active bool) repository.ExportPackage {
+		pkg := repository.ExportPackage{Format: repository.ExportFormat, Service: "promo"}
+		for _, key := range keys {
+			pkg.Promos = append(pkg.Promos, repository.ExportPromo{Code: key, IsActive: active, Payload: json.RawMessage(`{}`)})
+		}
+		return pkg
+	}
+	for _, pkg := range []repository.ExportPackage{makePackage([]string{"A", "B", "C"}, true), makePackage([]string{"B", "C", "D"}, false)} {
+		if _, err := repo.Import(ctx, workspace, repository.ImportRequest{Package: pkg}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := repo.Export(ctx, workspace, repository.ExportRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Promos) != 4 {
+		t.Fatalf("catalog size = %d, want 4", len(got.Promos))
+	}
+	seen := map[string]bool{}
+	for _, item := range got.Promos {
+		seen[item.Code] = true
+		if item.IsActive != (item.Code == "A") {
+			t.Fatalf("import priority wrong for %s", item.Code)
+		}
+	}
+	for _, key := range []string{"A", "B", "C", "D"} {
+		if !seen[key] {
+			t.Fatalf("missing catalog key %s", key)
+		}
+	}
+}
+
+func TestPromoArchiveJobsRoundTrip(t *testing.T) {
+	options := promoTestOptions()
+
+	options.ArchiveDirectory = t.TempDir()
+
+	service := newPromoTestServiceWithOptions(t, options)
+	ctx := context.Background()
+	source := testsupport.WorkspaceID("archive-source")
+	target := testsupport.WorkspaceID("archive-target")
+
+	if _, err := service.Admin.CreatePromo(
+		ctx,
+		admin.SavePromoParams{
+			WorkspaceID:    source,
+			Code:           "ARCHIVE",
+			Payload:        []byte(`{}`),
+			MaxActivations: 1,
+			IsActive:       true,
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	applied, err := service.User.Apply(ctx, user.ApplyParams{
+		Identity: user.Identity{
+			WorkspaceID:    source,
+			AppID:          1,
+			PlatformID:     1,
+			PlatformUserID: "archive-user",
+		},
+		Code: "ARCHIVE",
+	})
+	if err != nil || applied.Status != repository.StatusSuccess {
+		t.Fatalf("apply source promo: result=%+v err=%v", applied, err)
+	}
+
+	export, err := service.Admin.QueueArchiveExport(
+		ctx,
+		admin.QueueArchiveExportParams{
+			WorkspaceID: source,
+			FileName:    "promo.zip",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if export.Status != jobs.StatusQueued {
+		t.Fatalf("export status = %s, want queued", export.Status)
+	}
+
+	worker := startPromoArchiveWorker(t, options)
+
+	waitPromoArchiveJob(t, worker, source, export.ID)
+
+	dump, _, err := service.Admin.DownloadArchive(ctx, source, export.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dump.Close()
+
+	importJob, err := service.Admin.QueueArchiveImport(
+		ctx,
+		admin.QueueArchiveImportParams{
+			WorkspaceID: target,
+			FileName:    "promo.zip",
+			ImportRequest: admin.ImportRequest{
+				ConflictStrategy: "update_existing",
+			},
+			Archive: dump,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waitPromoArchiveJob(t, worker, target, importJob.ID)
+
+	pkg, err := repository.New(service.client).
+		Export(ctx, target, admin.ExportRequest{})
+	if err != nil || len(pkg.Promos) != 1 ||
+		pkg.Promos[0].ActivationCount != 1 {
+		t.Fatalf("imported package = %+v, err = %v", pkg, err)
+	}
+}
+
+func startPromoArchiveWorker(t *testing.T, options Options) *Promo {
+	t.Helper()
+
+	service := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- service.Run(ctx, DatabaseParams{
+			User:     promoTestPGUser,
+			Password: promoTestPGPassword,
+			Database: promoTestDB,
+			Host:     promoTestPGHost,
+			Port:     promoTestPGPort,
+			Options:  options,
+		})
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+
+	for !service.IsReady() {
+		select {
+		case err := <-done:
+			cancel()
+			t.Fatalf("start promo archive worker: %v", err)
+		default:
+		}
+
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("promo archive worker did not become ready")
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Cleanup(func() {
+		cancel()
+
+		if err := <-done; err != nil {
+			t.Errorf("stop promo archive worker: %v", err)
+		}
+	})
+
+	return service
+}
+
+func waitPromoArchiveJob(
+	t *testing.T,
+	service *Promo,
+	workspaceID string,
+	id int64,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		job, err := service.Admin.ArchiveJob(
+			context.Background(),
+			workspaceID,
+			id,
+		)
+		if err == nil && job.Status == jobs.StatusCompleted {
+			return
+		}
+
+		if err == nil && job.Status == jobs.StatusFailed {
+			t.Fatalf("archive job failed: %s", job.Error)
+		}
+
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	t.Fatal("archive job did not complete")
+}
+
+func TestPromoImportNeverDecreasesActivationCount(t *testing.T) {
+	service := newPromoTestService(t)
+	ctx := context.Background()
+	repo := repository.New(service.client)
+	workspace := testsupport.WorkspaceID("import-activation-floor")
+	pkg := repository.ExportPackage{Format: repository.ExportFormat, Service: "promo", Promos: []repository.ExportPromo{{Code: "KEEP", Payload: json.RawMessage(`{}`), MaxActivations: 3, IsActive: true}}}
+	apply := func(w, who string) user.ApplyResult {
+		t.Helper()
+		result, err := service.User.Apply(ctx, user.ApplyParams{Identity: user.Identity{WorkspaceID: w, AppID: 1, PlatformID: 1, PlatformUserID: who}, Code: "KEEP"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	importPackage := func(w string) {
+		t.Helper()
+		if _, err := repo.Import(ctx, w, repository.ImportRequest{Package: pkg}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	importPackage(workspace)
+	for i := range 3 {
+		if got := apply(workspace, fmt.Sprint(i)); got.Status != repository.StatusSuccess {
+			t.Fatalf("seed activation: %s", got.Status)
+		}
+	}
+	for _, count := range []uint64{0, 1, 3} {
+		pkg.Promos[0].ActivationCount = count
+		pkg.Promos[0].Payload = json.RawMessage(`{"imported":true}`)
+		importPackage(workspace)
+		exported, err := repo.Export(ctx, workspace, repository.ExportRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(exported.Promos) != 1 || exported.Promos[0].ActivationCount != 3 {
+			t.Fatalf("counter changed incorrectly: %+v", exported.Promos)
+		}
+		var settings struct {
+			Imported bool `json:"imported"`
+		}
+		if err := json.Unmarshal(exported.Promos[0].Payload, &settings); err != nil || !settings.Imported {
+			t.Fatalf("imported settings not applied: %+v err=%v", settings, err)
+		}
+		if got := apply(workspace, "new"); got.Status != repository.StatusLimitReached {
+			t.Fatalf("import restored spent limit: %s", got.Status)
+		}
+		if got := apply(workspace, "0"); got.Status != repository.StatusAlreadyApplied {
+			t.Fatalf("import lost redemption: %s", got.Status)
+		}
+	}
+	// A higher archive value must still win, including on a fresh target.
+	pkg.Promos[0].ActivationCount = 5
+	pkg.Promos[0].MaxActivations = 6
+	for _, target := range []string{workspace, testsupport.WorkspaceID("fresh-activation-floor")} {
+		importPackage(target)
+		got := apply(target, "last")
+		if got.Status != repository.StatusSuccess || got.Promo.ActivationCount != 6 {
+			t.Fatalf("higher imported counter was not preserved: %+v", got.Promo)
+		}
+		if got := apply(target, "overflow"); got.Status != repository.StatusLimitReached {
+			t.Fatalf("higher imported limit: %s", got.Status)
+		}
+	}
+}

@@ -2,11 +2,11 @@ package admin
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	json "github.com/goccy/go-json"
@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	maxQueuedArchiveSize             = 512 << 20
+	maxQueuedArchiveSize             = jobs.DefaultMaxUploadBytes
 	maxQueuedArchiveUncompressedSize = 512 << 20
 	maxQueuedArchiveFiles            = 10_000
 )
@@ -62,15 +62,22 @@ func (h archiveJobHandler) Export(
 		return nil, fmt.Errorf("decode export job options: %w", err)
 	}
 
-	reader, writer := io.Pipe()
+	file, err := jobs.NewStagingFile("importexport-reference-export-*.zip")
+	if err != nil {
+		return nil, err
+	}
+	if err = h.admin.exportZIP(ctx, job.WorkspaceID, request, file); err != nil {
+		file.Close()
+		os.Remove(file.Name())
+		return nil, err
+	}
+	if _, err = file.Seek(0, io.SeekStart); err != nil {
+		file.Close()
+		os.Remove(file.Name())
+		return nil, err
+	}
+	return &archiveSpool{File: file}, nil
 
-	go func() {
-		err := h.admin.exportZIP(ctx, job.WorkspaceID, request, writer)
-
-		_ = writer.CloseWithError(err)
-	}()
-
-	return reader, nil
 }
 
 func (h archiveJobHandler) Import(
@@ -84,23 +91,23 @@ func (h archiveJobHandler) Import(
 		return fmt.Errorf("decode import job options: %w", err)
 	}
 
-	data, err := io.ReadAll(io.LimitReader(source, maxQueuedArchiveSize+1))
+	file, err := jobs.NewStagingFile("importexport-reference-import-*.zip")
 	if err != nil {
-		return fmt.Errorf("read import archive: %w", err)
+		return err
 	}
-
-	if len(data) > maxQueuedArchiveSize {
-		return fmt.Errorf(
-			"import archive exceeds %d byte limit",
-			maxQueuedArchiveSize,
-		)
+	defer os.Remove(file.Name())
+	defer file.Close()
+	size, err := io.Copy(file, io.LimitReader(&archiveContextReader{ctx: ctx, reader: source}, maxQueuedArchiveSize+1))
+	if err != nil {
+		return err
 	}
-
-	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if size > maxQueuedArchiveSize {
+		return fmt.Errorf("import archive exceeds %d byte limit", maxQueuedArchiveSize)
+	}
+	archive, err := zip.NewReader(file, size)
 	if err != nil {
 		return fmt.Errorf("open import ZIP: %w", err)
 	}
-
 	if err := validateQueuedZIP(archive, request.IncludeMedia); err != nil {
 		return err
 	}
@@ -132,10 +139,6 @@ func validateQueuedZIP(archive *zip.Reader, includeMedia bool) error {
 		return fmt.Errorf("import archive has too many files")
 	}
 
-	if !includeMedia {
-		return nil
-	}
-
 	var total uint64
 
 	for _, file := range archive.File {
@@ -152,4 +155,28 @@ func validateQueuedZIP(archive *zip.Reader, includeMedia bool) error {
 	}
 
 	return nil
+}
+
+// ReconcileImport finishes a committed import even if its source archive is gone.
+func (h archiveJobHandler) ReconcileImport(ctx context.Context, job jobs.Job) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return h.admin.repository.ReconcileArchiveImport(job.WorkspaceID)
+}
+
+type archiveSpool struct{ *os.File }
+
+func (s *archiveSpool) Close() error { err := s.File.Close(); _ = os.Remove(s.Name()); return err }
+
+type archiveContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *archiveContextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
 }

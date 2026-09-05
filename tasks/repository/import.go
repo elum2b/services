@@ -157,6 +157,8 @@ func (r *Repository) ImportJob(
 func (r *Repository) importWithJob(
 	ctx context.Context, workspaceID string, req ImportRequest, jobID int64,
 ) (ImportResult, error) {
+	r = r.archiveRepository()
+
 	if err := requireWorkspaceID(workspaceID); err != nil {
 		return ImportResult{}, err
 	}
@@ -167,7 +169,7 @@ func (r *Repository) importWithJob(
 
 	strategy := req.ConflictStrategy
 	if strategy == "" {
-		strategy = ImportConflictFail
+		strategy = ImportConflictUpdate
 	}
 
 	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
@@ -178,14 +180,18 @@ func (r *Repository) importWithJob(
 		)
 	}
 
-	if err := requireImportSecrets(req.Package, req.Secrets); err != nil {
+	secretPreview, err := r.PreviewImport(ctx, workspaceID, req.Package)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	if err := requireImportSecrets(req.Package, req.Secrets, strategy, secretPreview); err != nil {
 		return ImportResult{}, err
 	}
 
 	result := ImportResult{}
 	alreadyApplied := false
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err = r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -216,6 +222,9 @@ func (r *Repository) importWithJob(
 			)
 		}
 
+		if err := requireImportSecrets(req.Package, req.Secrets, strategy, preview); err != nil {
+			return err
+		}
 		return txRepo.importBulk(
 			ctx,
 			workspaceID,
@@ -1498,9 +1507,13 @@ func validateExportPackage(pkg ExportPackage) error {
 	return nil
 }
 
-func requireImportSecrets(pkg ExportPackage, secrets map[string]string) error {
+func requireImportSecrets(pkg ExportPackage, secrets map[string]string, strategy string, preview ImportPreview) error {
 	for _, group := range pkg.Groups {
 		for _, config := range group.PartnerConfigs {
+			if strategy == ImportConflictSkip && previewHasConflict(preview, "partner_config", partnerConfigImportKey(config.Provider, group.Key, config.Platform)) {
+				continue
+			}
+
 			for _, secret := range []*ExportSecret{config.Secret, config.WebhookSecret} {
 				if secret == nil {
 					continue

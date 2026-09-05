@@ -96,6 +96,18 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createGeneratedCodeStmt, err = db.PrepareContext(ctx, createGeneratedCode); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateGeneratedCode: %w", err)
 	}
+	if q.deleteImportAssignmentEventsStmt, err = db.PrepareContext(ctx, deleteImportAssignmentEvents); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteImportAssignmentEvents: %w", err)
+	}
+	if q.deleteImportAssignmentsStmt, err = db.PrepareContext(ctx, deleteImportAssignments); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteImportAssignments: %w", err)
+	}
+	if q.deleteImportCodesStmt, err = db.PrepareContext(ctx, deleteImportCodes); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteImportCodes: %w", err)
+	}
+	if q.deleteWorkspaceDailyStatsStmt, err = db.PrepareContext(ctx, deleteWorkspaceDailyStats); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteWorkspaceDailyStats: %w", err)
+	}
 	if q.getActiveOfferStmt, err = db.PrepareContext(ctx, getActiveOffer); err != nil {
 		return nil, fmt.Errorf("error preparing query GetActiveOffer: %w", err)
 	}
@@ -114,11 +126,20 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getCodeByValueStmt, err = db.PrepareContext(ctx, getCodeByValue); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCodeByValue: %w", err)
 	}
+	if q.getExportFootprintStmt, err = db.PrepareContext(ctx, getExportFootprint); err != nil {
+		return nil, fmt.Errorf("error preparing query GetExportFootprint: %w", err)
+	}
 	if q.getLocalizationStmt, err = db.PrepareContext(ctx, getLocalization); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLocalization: %w", err)
 	}
 	if q.listActiveOfferCatalogStmt, err = db.PrepareContext(ctx, listActiveOfferCatalog); err != nil {
 		return nil, fmt.Errorf("error preparing query ListActiveOfferCatalog: %w", err)
+	}
+	if q.listImportAssignmentsStmt, err = db.PrepareContext(ctx, listImportAssignments); err != nil {
+		return nil, fmt.Errorf("error preparing query ListImportAssignments: %w", err)
+	}
+	if q.listImportCodesStmt, err = db.PrepareContext(ctx, listImportCodes); err != nil {
+		return nil, fmt.Errorf("error preparing query ListImportCodes: %w", err)
 	}
 	if q.listLocalizationsStmt, err = db.PrepareContext(ctx, listLocalizations); err != nil {
 		return nil, fmt.Errorf("error preparing query ListLocalizations: %w", err)
@@ -134,6 +155,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.markCodeIssuedStmt, err = db.PrepareContext(ctx, markCodeIssued); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkCodeIssued: %w", err)
+	}
+	if q.rebuildWorkspaceDailyStatsStmt, err = db.PrepareContext(ctx, rebuildWorkspaceDailyStats); err != nil {
+		return nil, fmt.Errorf("error preparing query RebuildWorkspaceDailyStats: %w", err)
 	}
 	if q.refreshDailyStatsStmt, err = db.PrepareContext(ctx, refreshDailyStats); err != nil {
 		return nil, fmt.Errorf("error preparing query RefreshDailyStats: %w", err)
@@ -263,6 +287,26 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing createGeneratedCodeStmt: %w", cerr)
 		}
 	}
+	if q.deleteImportAssignmentEventsStmt != nil {
+		if cerr := q.deleteImportAssignmentEventsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteImportAssignmentEventsStmt: %w", cerr)
+		}
+	}
+	if q.deleteImportAssignmentsStmt != nil {
+		if cerr := q.deleteImportAssignmentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteImportAssignmentsStmt: %w", cerr)
+		}
+	}
+	if q.deleteImportCodesStmt != nil {
+		if cerr := q.deleteImportCodesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteImportCodesStmt: %w", cerr)
+		}
+	}
+	if q.deleteWorkspaceDailyStatsStmt != nil {
+		if cerr := q.deleteWorkspaceDailyStatsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteWorkspaceDailyStatsStmt: %w", cerr)
+		}
+	}
 	if q.getActiveOfferStmt != nil {
 		if cerr := q.getActiveOfferStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getActiveOfferStmt: %w", cerr)
@@ -293,6 +337,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getCodeByValueStmt: %w", cerr)
 		}
 	}
+	if q.getExportFootprintStmt != nil {
+		if cerr := q.getExportFootprintStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getExportFootprintStmt: %w", cerr)
+		}
+	}
 	if q.getLocalizationStmt != nil {
 		if cerr := q.getLocalizationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLocalizationStmt: %w", cerr)
@@ -301,6 +350,16 @@ func (q *Queries) Close() error {
 	if q.listActiveOfferCatalogStmt != nil {
 		if cerr := q.listActiveOfferCatalogStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listActiveOfferCatalogStmt: %w", cerr)
+		}
+	}
+	if q.listImportAssignmentsStmt != nil {
+		if cerr := q.listImportAssignmentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listImportAssignmentsStmt: %w", cerr)
+		}
+	}
+	if q.listImportCodesStmt != nil {
+		if cerr := q.listImportCodesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listImportCodesStmt: %w", cerr)
 		}
 	}
 	if q.listLocalizationsStmt != nil {
@@ -326,6 +385,11 @@ func (q *Queries) Close() error {
 	if q.markCodeIssuedStmt != nil {
 		if cerr := q.markCodeIssuedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing markCodeIssuedStmt: %w", cerr)
+		}
+	}
+	if q.rebuildWorkspaceDailyStatsStmt != nil {
+		if cerr := q.rebuildWorkspaceDailyStatsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing rebuildWorkspaceDailyStatsStmt: %w", cerr)
 		}
 	}
 	if q.refreshDailyStatsStmt != nil {
@@ -370,89 +434,105 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                              DBTX
-	tx                              *sql.Tx
-	adminAddCodeStmt                *sql.Stmt
-	adminDeleteAvailableCodesStmt   *sql.Stmt
-	adminDeleteCompletedCodesStmt   *sql.Stmt
-	adminDeleteIssuedCodesStmt      *sql.Stmt
-	adminDeleteLocalizationStmt     *sql.Stmt
-	adminDeleteOfferStmt            *sql.Stmt
-	adminDeleteRewardStmt           *sql.Stmt
-	adminGetCodeStatsStmt           *sql.Stmt
-	adminGetOfferStmt               *sql.Stmt
-	adminGetOfferStatsStmt          *sql.Stmt
-	adminListAssignmentEventsStmt   *sql.Stmt
-	adminListAssignmentsStmt        *sql.Stmt
-	adminListCodesStmt              *sql.Stmt
-	adminListDailyStatsStmt         *sql.Stmt
-	adminListOfferBundleRewardsStmt *sql.Stmt
-	adminListOfferBundlesStmt       *sql.Stmt
-	adminListOfferIDsStmt           *sql.Stmt
-	adminUpsertLocalizationStmt     *sql.Stmt
-	adminUpsertOfferStmt            *sql.Stmt
-	adminUpsertRewardStmt           *sql.Stmt
-	completeAssignmentStmt          *sql.Stmt
-	createAssignmentStmt            *sql.Stmt
-	createAssignmentEventStmt       *sql.Stmt
-	createGeneratedCodeStmt         *sql.Stmt
-	getActiveOfferStmt              *sql.Stmt
-	getAssignmentStmt               *sql.Stmt
-	getAssignmentByIDStmt           *sql.Stmt
-	getAssignmentForUpdateStmt      *sql.Stmt
-	getAvailableCodeForUpdateStmt   *sql.Stmt
-	getCodeByValueStmt              *sql.Stmt
-	getLocalizationStmt             *sql.Stmt
-	listActiveOfferCatalogStmt      *sql.Stmt
-	listLocalizationsStmt           *sql.Stmt
-	listRewardsStmt                 *sql.Stmt
-	listUserAssignmentsStmt         *sql.Stmt
-	markCodeCompletedStmt           *sql.Stmt
-	markCodeIssuedStmt              *sql.Stmt
-	refreshDailyStatsStmt           *sql.Stmt
+	db                               DBTX
+	tx                               *sql.Tx
+	adminAddCodeStmt                 *sql.Stmt
+	adminDeleteAvailableCodesStmt    *sql.Stmt
+	adminDeleteCompletedCodesStmt    *sql.Stmt
+	adminDeleteIssuedCodesStmt       *sql.Stmt
+	adminDeleteLocalizationStmt      *sql.Stmt
+	adminDeleteOfferStmt             *sql.Stmt
+	adminDeleteRewardStmt            *sql.Stmt
+	adminGetCodeStatsStmt            *sql.Stmt
+	adminGetOfferStmt                *sql.Stmt
+	adminGetOfferStatsStmt           *sql.Stmt
+	adminListAssignmentEventsStmt    *sql.Stmt
+	adminListAssignmentsStmt         *sql.Stmt
+	adminListCodesStmt               *sql.Stmt
+	adminListDailyStatsStmt          *sql.Stmt
+	adminListOfferBundleRewardsStmt  *sql.Stmt
+	adminListOfferBundlesStmt        *sql.Stmt
+	adminListOfferIDsStmt            *sql.Stmt
+	adminUpsertLocalizationStmt      *sql.Stmt
+	adminUpsertOfferStmt             *sql.Stmt
+	adminUpsertRewardStmt            *sql.Stmt
+	completeAssignmentStmt           *sql.Stmt
+	createAssignmentStmt             *sql.Stmt
+	createAssignmentEventStmt        *sql.Stmt
+	createGeneratedCodeStmt          *sql.Stmt
+	deleteImportAssignmentEventsStmt *sql.Stmt
+	deleteImportAssignmentsStmt      *sql.Stmt
+	deleteImportCodesStmt            *sql.Stmt
+	deleteWorkspaceDailyStatsStmt    *sql.Stmt
+	getActiveOfferStmt               *sql.Stmt
+	getAssignmentStmt                *sql.Stmt
+	getAssignmentByIDStmt            *sql.Stmt
+	getAssignmentForUpdateStmt       *sql.Stmt
+	getAvailableCodeForUpdateStmt    *sql.Stmt
+	getCodeByValueStmt               *sql.Stmt
+	getExportFootprintStmt           *sql.Stmt
+	getLocalizationStmt              *sql.Stmt
+	listActiveOfferCatalogStmt       *sql.Stmt
+	listImportAssignmentsStmt        *sql.Stmt
+	listImportCodesStmt              *sql.Stmt
+	listLocalizationsStmt            *sql.Stmt
+	listRewardsStmt                  *sql.Stmt
+	listUserAssignmentsStmt          *sql.Stmt
+	markCodeCompletedStmt            *sql.Stmt
+	markCodeIssuedStmt               *sql.Stmt
+	rebuildWorkspaceDailyStatsStmt   *sql.Stmt
+	refreshDailyStatsStmt            *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                              tx,
-		tx:                              tx,
-		adminAddCodeStmt:                q.adminAddCodeStmt,
-		adminDeleteAvailableCodesStmt:   q.adminDeleteAvailableCodesStmt,
-		adminDeleteCompletedCodesStmt:   q.adminDeleteCompletedCodesStmt,
-		adminDeleteIssuedCodesStmt:      q.adminDeleteIssuedCodesStmt,
-		adminDeleteLocalizationStmt:     q.adminDeleteLocalizationStmt,
-		adminDeleteOfferStmt:            q.adminDeleteOfferStmt,
-		adminDeleteRewardStmt:           q.adminDeleteRewardStmt,
-		adminGetCodeStatsStmt:           q.adminGetCodeStatsStmt,
-		adminGetOfferStmt:               q.adminGetOfferStmt,
-		adminGetOfferStatsStmt:          q.adminGetOfferStatsStmt,
-		adminListAssignmentEventsStmt:   q.adminListAssignmentEventsStmt,
-		adminListAssignmentsStmt:        q.adminListAssignmentsStmt,
-		adminListCodesStmt:              q.adminListCodesStmt,
-		adminListDailyStatsStmt:         q.adminListDailyStatsStmt,
-		adminListOfferBundleRewardsStmt: q.adminListOfferBundleRewardsStmt,
-		adminListOfferBundlesStmt:       q.adminListOfferBundlesStmt,
-		adminListOfferIDsStmt:           q.adminListOfferIDsStmt,
-		adminUpsertLocalizationStmt:     q.adminUpsertLocalizationStmt,
-		adminUpsertOfferStmt:            q.adminUpsertOfferStmt,
-		adminUpsertRewardStmt:           q.adminUpsertRewardStmt,
-		completeAssignmentStmt:          q.completeAssignmentStmt,
-		createAssignmentStmt:            q.createAssignmentStmt,
-		createAssignmentEventStmt:       q.createAssignmentEventStmt,
-		createGeneratedCodeStmt:         q.createGeneratedCodeStmt,
-		getActiveOfferStmt:              q.getActiveOfferStmt,
-		getAssignmentStmt:               q.getAssignmentStmt,
-		getAssignmentByIDStmt:           q.getAssignmentByIDStmt,
-		getAssignmentForUpdateStmt:      q.getAssignmentForUpdateStmt,
-		getAvailableCodeForUpdateStmt:   q.getAvailableCodeForUpdateStmt,
-		getCodeByValueStmt:              q.getCodeByValueStmt,
-		getLocalizationStmt:             q.getLocalizationStmt,
-		listActiveOfferCatalogStmt:      q.listActiveOfferCatalogStmt,
-		listLocalizationsStmt:           q.listLocalizationsStmt,
-		listRewardsStmt:                 q.listRewardsStmt,
-		listUserAssignmentsStmt:         q.listUserAssignmentsStmt,
-		markCodeCompletedStmt:           q.markCodeCompletedStmt,
-		markCodeIssuedStmt:              q.markCodeIssuedStmt,
-		refreshDailyStatsStmt:           q.refreshDailyStatsStmt,
+		db:                               tx,
+		tx:                               tx,
+		adminAddCodeStmt:                 q.adminAddCodeStmt,
+		adminDeleteAvailableCodesStmt:    q.adminDeleteAvailableCodesStmt,
+		adminDeleteCompletedCodesStmt:    q.adminDeleteCompletedCodesStmt,
+		adminDeleteIssuedCodesStmt:       q.adminDeleteIssuedCodesStmt,
+		adminDeleteLocalizationStmt:      q.adminDeleteLocalizationStmt,
+		adminDeleteOfferStmt:             q.adminDeleteOfferStmt,
+		adminDeleteRewardStmt:            q.adminDeleteRewardStmt,
+		adminGetCodeStatsStmt:            q.adminGetCodeStatsStmt,
+		adminGetOfferStmt:                q.adminGetOfferStmt,
+		adminGetOfferStatsStmt:           q.adminGetOfferStatsStmt,
+		adminListAssignmentEventsStmt:    q.adminListAssignmentEventsStmt,
+		adminListAssignmentsStmt:         q.adminListAssignmentsStmt,
+		adminListCodesStmt:               q.adminListCodesStmt,
+		adminListDailyStatsStmt:          q.adminListDailyStatsStmt,
+		adminListOfferBundleRewardsStmt:  q.adminListOfferBundleRewardsStmt,
+		adminListOfferBundlesStmt:        q.adminListOfferBundlesStmt,
+		adminListOfferIDsStmt:            q.adminListOfferIDsStmt,
+		adminUpsertLocalizationStmt:      q.adminUpsertLocalizationStmt,
+		adminUpsertOfferStmt:             q.adminUpsertOfferStmt,
+		adminUpsertRewardStmt:            q.adminUpsertRewardStmt,
+		completeAssignmentStmt:           q.completeAssignmentStmt,
+		createAssignmentStmt:             q.createAssignmentStmt,
+		createAssignmentEventStmt:        q.createAssignmentEventStmt,
+		createGeneratedCodeStmt:          q.createGeneratedCodeStmt,
+		deleteImportAssignmentEventsStmt: q.deleteImportAssignmentEventsStmt,
+		deleteImportAssignmentsStmt:      q.deleteImportAssignmentsStmt,
+		deleteImportCodesStmt:            q.deleteImportCodesStmt,
+		deleteWorkspaceDailyStatsStmt:    q.deleteWorkspaceDailyStatsStmt,
+		getActiveOfferStmt:               q.getActiveOfferStmt,
+		getAssignmentStmt:                q.getAssignmentStmt,
+		getAssignmentByIDStmt:            q.getAssignmentByIDStmt,
+		getAssignmentForUpdateStmt:       q.getAssignmentForUpdateStmt,
+		getAvailableCodeForUpdateStmt:    q.getAvailableCodeForUpdateStmt,
+		getCodeByValueStmt:               q.getCodeByValueStmt,
+		getExportFootprintStmt:           q.getExportFootprintStmt,
+		getLocalizationStmt:              q.getLocalizationStmt,
+		listActiveOfferCatalogStmt:       q.listActiveOfferCatalogStmt,
+		listImportAssignmentsStmt:        q.listImportAssignmentsStmt,
+		listImportCodesStmt:              q.listImportCodesStmt,
+		listLocalizationsStmt:            q.listLocalizationsStmt,
+		listRewardsStmt:                  q.listRewardsStmt,
+		listUserAssignmentsStmt:          q.listUserAssignmentsStmt,
+		markCodeCompletedStmt:            q.markCodeCompletedStmt,
+		markCodeIssuedStmt:               q.markCodeIssuedStmt,
+		rebuildWorkspaceDailyStatsStmt:   q.rebuildWorkspaceDailyStatsStmt,
+		refreshDailyStatsStmt:            q.refreshDailyStatsStmt,
 	}
 }

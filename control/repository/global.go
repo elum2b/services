@@ -51,7 +51,7 @@ func (r *Repository) RemovePlatformMember(
 ) (int64, error) {
 	var affected int64
 
-	err := r.withAuditDBTx(ctx, func(tx *sql.Tx, q *controlsqlc.Queries) error {
+	err := r.withAuditDBTx(ctx, func(ctx context.Context, tx *sql.Tx, q *controlsqlc.Queries) error {
 		if err := lockAccountAuthentication(ctx, tx, accountID); err != nil {
 			return err
 		}
@@ -135,6 +135,10 @@ func (r *Repository) RemovePlatformMember(
 			return err
 		}
 
+		if _, err := q.RevokeAllMCPTokens(ctx, accountID); err != nil {
+			return err
+		}
+
 		if _, err := q.DeleteTwoFactorChallengesForAccount(
 			ctx,
 			accountID,
@@ -162,7 +166,7 @@ func (r *Repository) TransferGlobalOwnership(
 	actorID string,
 	targetAccountID string,
 ) error {
-	return r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	return r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := globalAuthorization(
 			ctx,
 			q,
@@ -211,7 +215,7 @@ func (r *Repository) CreateGlobalRole(
 		return Role{}, err
 	}
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := globalAuthorization(
 			ctx,
 			q,
@@ -316,7 +320,7 @@ func (r *Repository) UpdateGlobalRole(
 
 	var affected int64
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := globalAuthorization(
 			ctx,
 			q,
@@ -369,7 +373,7 @@ func (r *Repository) DeleteGlobalRole(
 ) (int64, error) {
 	var affected int64
 
-	err := r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	err := r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := globalAuthorization(
 			ctx,
 			q,
@@ -440,7 +444,7 @@ func (r *Repository) changeGlobalRoleMember(
 		methodKey = "control.global.role.member.assign"
 	}
 
-	return r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	return r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := globalAuthorization(
 			ctx,
 			q,
@@ -511,7 +515,7 @@ func (r *Repository) ReplaceGlobalRolePermissions(
 ) error {
 	methodKeys = uniqueStrings(methodKeys)
 
-	return r.withAuditTx(ctx, func(q *controlsqlc.Queries) error {
+	return r.withAuditTx(ctx, func(ctx context.Context, q *controlsqlc.Queries) error {
 		bundle, err := globalAuthorization(
 			ctx,
 			q,

@@ -133,27 +133,36 @@ func (r *PaymentRepository) RefreshPaymentDailyStats(
 		return ErrInvalidDateRange
 	}
 
-	if err := r.q.RefreshPaymentDailyStats(
-		ctx,
-		sqlc.RefreshPaymentDailyStatsParams{
-			WorkspaceID:  workspaceID,
-			OccurredAt:   from,
-			OccurredAt_2: until,
-		},
-	); err != nil {
-		return err
+	// Recompute complete UTC days; the two materializations commit together.
+	from = from.UTC().Truncate(24 * time.Hour)
+	end := until.UTC().Truncate(24 * time.Hour)
+	if until.After(end) || !end.After(from) {
+		end = end.Add(24 * time.Hour)
 	}
+	until = end
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
+		if err := txRepo.q.RefreshPaymentDailyStats(
+			ctx,
+			sqlc.RefreshPaymentDailyStatsParams{
+				WorkspaceID:  workspaceID,
+				OccurredAt:   from,
+				OccurredAt_2: until,
+			},
+		); err != nil {
+			return err
+		}
 
-	return r.q.RefreshPaymentDailyOverview(
-		ctx,
-		sqlc.RefreshPaymentDailyOverviewParams{
-			WorkspaceID: workspaceID,
-			OccurredAt:  from, OccurredAt_2: until,
-			OccurredAt_3: from, OccurredAt_4: until,
-			OccurredAt_5: from, OccurredAt_6: until,
-			OccurredAt_7: from, OccurredAt_8: until,
-		},
-	)
+		return txRepo.q.RefreshPaymentDailyOverview(
+			ctx,
+			sqlc.RefreshPaymentDailyOverviewParams{
+				WorkspaceID: workspaceID,
+				OccurredAt:  from, OccurredAt_2: until,
+				OccurredAt_3: from, OccurredAt_4: until,
+				OccurredAt_5: from, OccurredAt_6: until,
+				OccurredAt_7: from, OccurredAt_8: until,
+			},
+		)
+	})
 }
 
 func mapStoredDailyOverview(

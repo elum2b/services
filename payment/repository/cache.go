@@ -197,7 +197,7 @@ func (r *PaymentRepository) RebuildWorkspaceProductCache(
 		return err
 	}
 
-	err = r.inTransaction(ctx, func(tx *PaymentRepository) error {
+	err = r.inTransaction(ctx, func(ctx context.Context, tx *PaymentRepository) error {
 		if _, err := tx.q.DeleteWorkspaceProductCache(
 			ctx,
 			workspaceID,
@@ -230,7 +230,7 @@ func (r *PaymentRepository) RebuildProductCache(
 		return err
 	}
 
-	err = r.inTransaction(ctx, func(tx *PaymentRepository) error {
+	err = r.inTransaction(ctx, func(ctx context.Context, tx *PaymentRepository) error {
 		if _, err := tx.q.DeleteProductCache(
 			ctx,
 			paymentsqlc.DeleteProductCacheParams{
@@ -254,5 +254,12 @@ func (r *PaymentRepository) RebuildProductCache(
 		return err
 	}
 
+	return r.invalidateWorkspaceCache(workspaceID)
+}
+
+func (r *PaymentRepository) ReconcileArchiveImport(ctx context.Context, workspaceID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	return r.invalidateWorkspaceCache(workspaceID)
 }

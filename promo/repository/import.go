@@ -67,13 +67,15 @@ func (r *Repository) ImportJob(
 func (r *Repository) importWithJob(
 	ctx context.Context, workspaceID string, req ImportRequest, jobID int64,
 ) (ImportResult, error) {
+	r = r.archiveRepository()
+
 	if err := validateExportPackage(workspaceID, req.Package); err != nil {
 		return ImportResult{}, err
 	}
 
 	strategy := req.ConflictStrategy
 	if strategy == "" {
-		strategy = ImportConflictFail
+		strategy = ImportConflictUpdate
 	}
 
 	if strategy != ImportConflictFail && strategy != ImportConflictSkip &&
@@ -87,7 +89,7 @@ func (r *Repository) importWithJob(
 	result := ImportResult{}
 	alreadyApplied := false
 
-	err := r.WithTx(ctx, func(txRepo *Repository) error {
+	err := r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
@@ -158,14 +160,14 @@ func (r *Repository) lockWorkspaceMutation(
 func (r *Repository) withWorkspaceMutation(
 	ctx context.Context,
 	workspaceID string,
-	fn func(*Repository) error,
+	fn func(context.Context, *Repository) error,
 ) error {
-	return r.WithTx(ctx, func(txRepo *Repository) error {
+	return r.WithTx(ctx, func(ctx context.Context, txRepo *Repository) error {
 		if err := txRepo.lockWorkspaceMutation(ctx, workspaceID); err != nil {
 			return err
 		}
 
-		return fn(txRepo)
+		return fn(ctx, txRepo)
 	})
 }
 
@@ -327,7 +329,7 @@ func (r *Repository) importPromosBulk(
 		},
 		rows,
 		"(workspace_id, code_normalized)",
-		"code = EXCLUDED.code, payload = EXCLUDED.payload, target = EXCLUDED.target, max_activations = EXCLUDED.max_activations, activation_count = EXCLUDED.activation_count, "+
+		"code = EXCLUDED.code, payload = EXCLUDED.payload, target = EXCLUDED.target, max_activations = EXCLUDED.max_activations, activation_count = GREATEST(promo_offer.activation_count, EXCLUDED.activation_count), "+
 			"is_active = EXCLUDED.is_active, start_at = EXCLUDED.start_at, end_at = EXCLUDED.end_at, deleted_at = NULL, updated_at = now()",
 		strategy,
 	)

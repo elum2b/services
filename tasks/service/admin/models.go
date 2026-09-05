@@ -232,5 +232,21 @@ type QueueArchiveImportParams struct {
 	ImportRequest
 	Archive io.Reader
 }
-type ArchiveJob = jobs.Job
+type ArchiveJob struct {
+	ID             int64      `json:"id"`
+	Service        string     `json:"service"`
+	WorkspaceID    string     `json:"workspace_id"`
+	Type           string     `json:"type"`
+	Status         string     `json:"status"`
+	FileName       string     `json:"file_name"`
+	ArchiveExpires *time.Time `json:"archive_expires,omitempty"`
+	Error          string     `json:"error,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	FinishedAt     *time.Time `json:"finished_at,omitempty"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	Attempt        int        `json:"attempt"`
+	NextAttemptAt  *time.Time `json:"next_attempt_at,omitempty"`
+}
+
 type ArchiveJobHistoryEntry = jobs.HistoryEntry

@@ -2,6 +2,7 @@ package admin
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -11,9 +12,11 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	json "github.com/goccy/go-json"
 
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
 	"github.com/elum2b/services/reference/repository"
 	"github.com/elum2b/services/reference/storage"
 )
@@ -41,38 +44,28 @@ func (a *Admin) exportZIP(
 
 	defer cancel()
 
-	pkg, err := a.repository.Export(
-		mergedCtx,
-		workspaceID,
-		repository.ExportRequest{OnlyNotDeleted: true},
-	)
+	mergedCtx, archiveCancel := context.WithTimeout(mergedCtx, a.importTimeout())
+	defer archiveCancel()
+	if req.IncludeMedia && a.store == nil {
+		return fmt.Errorf("reference resource storage is not configured")
+	}
+	manifest, err := a.repository.ExportArchive(mergedCtx, workspaceID, req.IncludeMedia)
 	if err != nil {
 		return err
 	}
-
-	manifest := repository.ArchivePackage{Package: pkg}
-
-	if req.IncludeMedia {
-		if a.store == nil {
-			return fmt.Errorf("reference resource storage is not configured")
-		}
-
-		manifest.Resources, manifest.Links, err = a.repository.ExportArchiveData(
-			mergedCtx,
-			workspaceID,
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	writer := zip.NewWriter(dst)
+	writer := &archiveZIPWriter{Writer: zip.NewWriter(&archiveSizeWriter{dst: dst})}
 
 	data, err := json.Marshal(manifest)
 	if err != nil {
 		return err
 	}
 
+	if len(data) > 16<<20 {
+		return fmt.Errorf("archive manifest exceeds 16 MiB")
+	}
+	if err := jobs.ValidateJSONShape(mergedCtx, bytes.NewReader(data), 100000); err != nil {
+		return err
+	}
 	if err := writeArchiveFile(writer, archiveManifestName, data); err != nil {
 		return err
 	}
@@ -143,7 +136,7 @@ func (a *Admin) exportZIP(
 
 func writeResourceObject(
 	ctx context.Context,
-	writer *zip.Writer,
+	writer *archiveZIPWriter,
 	store storage.Store,
 	workspaceID string,
 	resource repository.ExportResource,
@@ -175,7 +168,12 @@ func writeResourceObject(
 	return writeArchiveFile(writer, base+name, data)
 }
 
-func writeArchiveFile(writer *zip.Writer, name string, data []byte) error {
+func writeArchiveFile(writer *archiveZIPWriter, name string, data []byte) error {
+	if writer.entries >= maxQueuedArchiveFiles || int64(len(data)) > maxQueuedArchiveUncompressedSize-writer.bytes {
+		return fmt.Errorf("archive exceeds entry or uncompressed byte limit")
+	}
+	writer.entries++
+	writer.bytes += int64(len(data))
 	entry, err := writer.Create(name)
 	if err != nil {
 		return err
@@ -225,6 +223,9 @@ func (a *Admin) importZIPJob(
 		return ImportResult{}, err
 	}
 
+	if err := jobs.ValidateJSONShape(mergedCtx, bytes.NewReader(data), 100000); err != nil {
+		return ImportResult{}, err
+	}
 	var manifest repository.ArchivePackage
 
 	if err := json.Unmarshal(data, &manifest); err != nil {
@@ -472,7 +473,7 @@ func validateArchiveResources(
 	for _, resource := range resources {
 		if _, ok := storage.OriginalName(
 			resource.Format,
-		); !ok || !archiveResourceKeyPattern.MatchString(resource.Key) || seen[resource.Key] || !json.Valid(resource.Payload) || resource.Type == "" || resource.ContentType == "" || resource.Size <= 0 || resource.Size > maxArchiveMediaFile || resource.Width <= 0 || resource.Height <= 0 || len(resource.SHA256) != 64 {
+		); !ok || !archiveResourceKeyPattern.MatchString(resource.Key) || seen[resource.Key] || !json.Valid(resource.Payload) || resource.Type == "" || utf8.RuneCountInString(resource.Type) > 32 || utf8.RuneCountInString(resource.ContentType) > 128 || resource.Width > 2147483647 || resource.Height > 2147483647 || resource.ContentType == "" || resource.Size <= 0 || resource.Size > maxArchiveMediaFile || resource.Width <= 0 || resource.Height <= 0 || len(resource.SHA256) != 64 {
 			return fmt.Errorf("invalid archive resource %q", resource.Key)
 		}
 
@@ -480,6 +481,7 @@ func validateArchiveResources(
 	}
 
 	positions := make(map[string]struct{}, len(links))
+	pairs := make(map[string]bool, len(links))
 	for _, link := range links {
 		if !archiveResourceKeyPattern.MatchString(link.ItemKey) ||
 			!seen[link.ResourceKey] {
@@ -492,6 +494,14 @@ func validateArchiveResources(
 			)
 		}
 
+		if link.Position < 0 {
+			return fmt.Errorf("negative archive resource position")
+		}
+		pair := link.ItemKey + "\x00" + link.ResourceKey
+		if pairs[pair] {
+			return fmt.Errorf("duplicate archive resource link")
+		}
+		pairs[pair] = true
 		position := fmt.Sprintf("%s\x00%d", link.ItemKey, link.Position)
 		if _, exists := positions[position]; exists {
 			return fmt.Errorf("duplicate archive resource link position")
@@ -533,7 +543,7 @@ func (a *Admin) cleanupArchiveVersions(
 			value.Key,
 			value.MediaVersion,
 		)
-		if err == nil && durable {
+		if err != nil || durable {
 			continue
 		}
 
@@ -544,4 +554,23 @@ func (a *Admin) cleanupArchiveVersions(
 			value.MediaVersion,
 		)
 	}
+}
+
+type archiveZIPWriter struct {
+	*zip.Writer
+	bytes   int64
+	entries int
+}
+type archiveSizeWriter struct {
+	dst   io.Writer
+	bytes int64
+}
+
+func (w *archiveSizeWriter) Write(p []byte) (int, error) {
+	if int64(len(p)) > maxQueuedArchiveSize-w.bytes {
+		return 0, fmt.Errorf("archive exceeds upload byte limit")
+	}
+	n, err := w.dst.Write(p)
+	w.bytes += int64(n)
+	return n, err
 }
