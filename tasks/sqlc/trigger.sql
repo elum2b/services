@@ -1,9 +1,7 @@
 DROP TRIGGER IF EXISTS task_progress_create_stats ON task_progress;
 DROP TRIGGER IF EXISTS task_progress_update_stats ON task_progress;
-DROP FUNCTION IF EXISTS task_progress_create_stats_fn();
-DROP FUNCTION IF EXISTS task_progress_update_stats_fn();
 
-CREATE FUNCTION task_progress_create_stats_fn()
+CREATE OR REPLACE FUNCTION task_progress_create_stats_fn()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -65,7 +63,7 @@ BEGIN
 END;
 $$;
 
-CREATE FUNCTION task_progress_update_stats_fn()
+CREATE OR REPLACE FUNCTION task_progress_update_stats_fn()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$

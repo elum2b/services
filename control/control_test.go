@@ -3233,6 +3233,10 @@ func newControlTestService(t testing.TB) *control.Control {
 		t.Fatalf("bootstrap: %v", err)
 	}
 
+	if err := repo.Bootstrap(context.Background()); err != nil {
+		t.Fatalf("repeat bootstrap: %v", err)
+	}
+
 	service, err := control.NewWithDatabase(
 		context.Background(),
 		db,

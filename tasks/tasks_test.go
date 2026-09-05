@@ -2703,6 +2703,10 @@ func newExportImportRepository(t *testing.T) *repository.Repository {
 		t.Fatalf("bootstrap: %v", err)
 	}
 
+	if err := repo.Bootstrap(ctx); err != nil {
+		t.Fatalf("repeat bootstrap: %v", err)
+	}
+
 	t.Cleanup(func() {
 		_ = repo.Close()
 		_ = client.Close()
@@ -10060,6 +10064,10 @@ func TestTasksQueryTimeout(t *testing.T) {
 
 	if err := service.Admin.Bootstrap(ctx); err != nil {
 		t.Fatalf("bootstrap: %v", err)
+	}
+
+	if err := service.Admin.Bootstrap(ctx); err != nil {
+		t.Fatalf("repeat bootstrap: %v", err)
 	}
 
 	timeoutService, err := NewWithDatabase(

@@ -1,5 +1,30 @@
-CREATE TYPE promo_reward_type AS ENUM ('quantity', 'duration');
-CREATE TYPE promo_duration_unit AS ENUM ('second', 'minute', 'hour', 'day', 'week', 'month', 'year');
+DO $$
+BEGIN
+    IF to_regtype('promo_reward_type') IS NULL THEN
+        CREATE TYPE promo_reward_type AS ENUM ('quantity', 'duration');
+    ELSIF (
+        SELECT array_agg(enumlabel::text ORDER BY enumsortorder)
+        FROM pg_enum
+        WHERE enumtypid = to_regtype('promo_reward_type')
+    ) IS DISTINCT FROM ARRAY['quantity', 'duration'] THEN
+        RAISE EXCEPTION 'promo_reward_type enum definition is incompatible';
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF to_regtype('promo_duration_unit') IS NULL THEN
+        CREATE TYPE promo_duration_unit AS ENUM ('second', 'minute', 'hour', 'day', 'week', 'month', 'year');
+    ELSIF (
+        SELECT array_agg(enumlabel::text ORDER BY enumsortorder)
+        FROM pg_enum
+        WHERE enumtypid = to_regtype('promo_duration_unit')
+    ) IS DISTINCT FROM ARRAY['second', 'minute', 'hour', 'day', 'week', 'month', 'year'] THEN
+        RAISE EXCEPTION 'promo_duration_unit enum definition is incompatible';
+    END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS promo_offer (
     id BIGSERIAL PRIMARY KEY,

@@ -1,10 +1,100 @@
-CREATE TYPE cpa_code_mode AS ENUM ('shared_code', 'personal_code');
-CREATE TYPE cpa_code_source AS ENUM ('generated', 'pool');
-CREATE TYPE cpa_reward_type AS ENUM ('quantity', 'duration');
-CREATE TYPE cpa_duration_unit AS ENUM ('second', 'minute', 'hour', 'day', 'week', 'month', 'year');
-CREATE TYPE cpa_code_status AS ENUM ('available', 'issued', 'completed', 'deleted');
-CREATE TYPE cpa_assignment_status AS ENUM ('issued', 'completed');
-CREATE TYPE cpa_assignment_event_type AS ENUM ('issued', 'completed');
+DO $$
+BEGIN
+    IF to_regtype('cpa_code_mode') IS NULL THEN
+        CREATE TYPE cpa_code_mode AS ENUM ('shared_code', 'personal_code');
+    ELSIF (
+        SELECT array_agg(enumlabel::text ORDER BY enumsortorder)
+        FROM pg_enum
+        WHERE enumtypid = to_regtype('cpa_code_mode')
+    ) IS DISTINCT FROM ARRAY['shared_code', 'personal_code'] THEN
+        RAISE EXCEPTION 'cpa_code_mode enum definition is incompatible';
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF to_regtype('cpa_code_source') IS NULL THEN
+        CREATE TYPE cpa_code_source AS ENUM ('generated', 'pool');
+    ELSIF (
+        SELECT array_agg(enumlabel::text ORDER BY enumsortorder)
+        FROM pg_enum
+        WHERE enumtypid = to_regtype('cpa_code_source')
+    ) IS DISTINCT FROM ARRAY['generated', 'pool'] THEN
+        RAISE EXCEPTION 'cpa_code_source enum definition is incompatible';
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF to_regtype('cpa_reward_type') IS NULL THEN
+        CREATE TYPE cpa_reward_type AS ENUM ('quantity', 'duration');
+    ELSIF (
+        SELECT array_agg(enumlabel::text ORDER BY enumsortorder)
+        FROM pg_enum
+        WHERE enumtypid = to_regtype('cpa_reward_type')
+    ) IS DISTINCT FROM ARRAY['quantity', 'duration'] THEN
+        RAISE EXCEPTION 'cpa_reward_type enum definition is incompatible';
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF to_regtype('cpa_duration_unit') IS NULL THEN
+        CREATE TYPE cpa_duration_unit AS ENUM ('second', 'minute', 'hour', 'day', 'week', 'month', 'year');
+    ELSIF (
+        SELECT array_agg(enumlabel::text ORDER BY enumsortorder)
+        FROM pg_enum
+        WHERE enumtypid = to_regtype('cpa_duration_unit')
+    ) IS DISTINCT FROM ARRAY['second', 'minute', 'hour', 'day', 'week', 'month', 'year'] THEN
+        RAISE EXCEPTION 'cpa_duration_unit enum definition is incompatible';
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF to_regtype('cpa_code_status') IS NULL THEN
+        CREATE TYPE cpa_code_status AS ENUM ('available', 'issued', 'completed', 'deleted');
+    ELSIF (
+        SELECT array_agg(enumlabel::text ORDER BY enumsortorder)
+        FROM pg_enum
+        WHERE enumtypid = to_regtype('cpa_code_status')
+    ) IS DISTINCT FROM ARRAY['available', 'issued', 'completed', 'deleted'] THEN
+        RAISE EXCEPTION 'cpa_code_status enum definition is incompatible';
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF to_regtype('cpa_assignment_status') IS NULL THEN
+        CREATE TYPE cpa_assignment_status AS ENUM ('issued', 'completed');
+    ELSIF (
+        SELECT array_agg(enumlabel::text ORDER BY enumsortorder)
+        FROM pg_enum
+        WHERE enumtypid = to_regtype('cpa_assignment_status')
+    ) IS DISTINCT FROM ARRAY['issued', 'completed'] THEN
+        RAISE EXCEPTION 'cpa_assignment_status enum definition is incompatible';
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF to_regtype('cpa_assignment_event_type') IS NULL THEN
+        CREATE TYPE cpa_assignment_event_type AS ENUM ('issued', 'completed');
+    ELSIF (
+        SELECT array_agg(enumlabel::text ORDER BY enumsortorder)
+        FROM pg_enum
+        WHERE enumtypid = to_regtype('cpa_assignment_event_type')
+    ) IS DISTINCT FROM ARRAY['issued', 'completed'] THEN
+        RAISE EXCEPTION 'cpa_assignment_event_type enum definition is incompatible';
+    END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS cpa_offer (
     workspace_id VARCHAR(36) NOT NULL,

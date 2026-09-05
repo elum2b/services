@@ -89,6 +89,29 @@ func TestCPA_NewWithDatabaseAppliesDefaultCache(t *testing.T) {
 	}
 }
 
+func TestBootstrapIsIdempotent(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+
+	if err := env.Repository.Bootstrap(env.Context); err != nil {
+		t.Fatalf("repeat CPA bootstrap: %v", err)
+	}
+}
+
+func TestBootstrapRejectsIncompatibleEnum(t *testing.T) {
+	env := newCPATestEnvironment(t, testCPAOptions())
+
+	if _, err := env.Database.ExecContext(
+		env.Context,
+		"ALTER TYPE cpa_code_mode ADD VALUE 'unexpected'",
+	); err != nil {
+		t.Fatalf("make enum incompatible: %v", err)
+	}
+
+	if err := env.Repository.Bootstrap(env.Context); err == nil {
+		t.Fatal("bootstrap accepted an incompatible cpa_code_mode enum")
+	}
+}
+
 func TestCPA_PublicStatusContractsSerializeAsStrings(t *testing.T) {
 	value := struct {
 		Assignment user.AssignmentModel       `json:"assignment"`

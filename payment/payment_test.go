@@ -854,6 +854,13 @@ func TestBootstrapRealPostgres(t *testing.T) {
 		t.Fatalf("apply schema: %v", err)
 	}
 
+	if err := repo.Bootstrap(
+		ctx,
+		filepath.Join("sqlc", "schema.sql"),
+	); err != nil {
+		t.Fatalf("reapply schema: %v", err)
+	}
+
 	payments, err := NewWithDatabase(ctx, appDB, paymentTestOptions())
 	if err != nil {
 		t.Fatalf("create payment service: %v", err)

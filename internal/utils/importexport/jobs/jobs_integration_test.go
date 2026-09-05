@@ -55,6 +55,10 @@ func openIntegrationStore(t *testing.T) (*sql.DB, *store) {
 		t.Fatal(err)
 	}
 
+	if err := BootstrapTable(t.Context(), db, table); err != nil {
+		t.Fatalf("repeat bootstrap: %v", err)
+	}
+
 	t.Cleanup(func() {
 		_, _ = db.ExecContext(
 			context.Background(),

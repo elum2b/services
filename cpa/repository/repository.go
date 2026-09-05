@@ -262,10 +262,6 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 				return err
 			},
 		); err != nil {
-			if isCreateTypeAlreadyExists(statement, err) {
-				continue
-			}
-
 			return fmt.Errorf(
 				"cpa %s SQL statement failed: %w\n%s",
 				source,
@@ -276,17 +272,6 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 	}
 
 	return nil
-}
-
-func isCreateTypeAlreadyExists(statement string, err error) bool {
-	var pgErr *pgconn.PgError
-
-	return strings.HasPrefix(
-		strings.ToUpper(strings.TrimSpace(statement)),
-		"CREATE TYPE ",
-	) &&
-		errors.As(err, &pgErr) &&
-		pgErr.Code == "42710"
 }
 
 func queryTimeout(value time.Duration) time.Duration {

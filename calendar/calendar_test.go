@@ -1760,6 +1760,10 @@ func newCalendarTestServiceWithOptions(
 		t.Fatalf("bootstrap calendar: %v", err)
 	}
 
+	if err := repo.Bootstrap(ctx); err != nil {
+		t.Fatalf("repeat bootstrap calendar: %v", err)
+	}
+
 	service, err := NewWithDatabase(ctx, db, options)
 	if err != nil {
 		t.Fatalf("create calendar service: %v", err)

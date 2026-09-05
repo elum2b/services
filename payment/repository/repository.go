@@ -234,10 +234,6 @@ func (r *PaymentRepository) Bootstrap(
 				return err
 			},
 		); err != nil {
-			if isDuplicateTypeStatement(stmt, err) {
-				continue
-			}
-
 			return fmt.Errorf("statement failed: %w\n%s", err, stmt)
 		}
 	}
@@ -266,19 +262,6 @@ func (r *PaymentRepository) Bootstrap(
 	}
 
 	return r.applySQL(ctx, paymentsqlc.EventSQL, "event")
-}
-
-func isDuplicateTypeStatement(stmt string, err error) bool {
-	if !strings.HasPrefix(
-		strings.ToUpper(strings.TrimSpace(stmt)),
-		"CREATE TYPE ",
-	) {
-		return false
-	}
-
-	var pgErr *pgconn.PgError
-
-	return errors.As(err, &pgErr) && pgErr.Code == "42710"
 }
 
 func isUniqueViolation(err error) bool {

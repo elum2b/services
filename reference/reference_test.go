@@ -2161,6 +2161,10 @@ func TestReferenceOpenBootstrapsSchema(t *testing.T) {
 		t.Fatalf("bootstrap reference: %v", err)
 	}
 
+	if err := repo.Bootstrap(ctx); err != nil {
+		t.Fatalf("repeat bootstrap reference: %v", err)
+	}
+
 	defer repo.Close()
 
 	service, err := NewWithDatabase(

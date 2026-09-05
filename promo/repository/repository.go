@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
-
 	services "github.com/elum2b/services"
 	callbackutil "github.com/elum2b/services/internal/utils/callback"
 	sqlwrap "github.com/elum2b/services/internal/utils/sql"
@@ -158,10 +156,6 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 			_, err := r.db.DB().ExecContext(ctx, statement)
 			return err
 		}); err != nil {
-			if isCreateTypeAlreadyExists(statement, err) {
-				continue
-			}
-
 			return fmt.Errorf(
 				"promo %s SQL statement failed: %w\n%s",
 				source,
@@ -172,17 +166,6 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 	}
 
 	return nil
-}
-
-func isCreateTypeAlreadyExists(statement string, err error) bool {
-	var pgErr *pgconn.PgError
-
-	return strings.HasPrefix(
-		strings.ToUpper(strings.TrimSpace(statement)),
-		"CREATE TYPE ",
-	) &&
-		errors.As(err, &pgErr) &&
-		pgErr.Code == "42710"
 }
 
 func queryTimeout(value time.Duration) time.Duration {

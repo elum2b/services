@@ -58,6 +58,59 @@ func TestIsReady(t *testing.T) {
 	}
 }
 
+func TestBootstrapIsIdempotent(t *testing.T) {
+	_ = newPromoTestService(t)
+
+	db, err := openPromoPostgres(promoTestDB)
+	if err != nil {
+		t.Fatalf("open bootstrap test database: %v", err)
+	}
+
+	t.Cleanup(func() { _ = db.Close() })
+
+	client, err := sqlwrap.New(db)
+	if err != nil {
+		t.Fatalf("create bootstrap client: %v", err)
+	}
+
+	t.Cleanup(func() { _ = client.Close() })
+
+	if err := repository.New(client).
+		Bootstrap(context.Background()); err != nil {
+		t.Fatalf("repeat promo bootstrap: %v", err)
+	}
+}
+
+func TestBootstrapRejectsIncompatibleEnum(t *testing.T) {
+	_ = newPromoTestService(t)
+
+	db, err := openPromoPostgres(promoTestDB)
+	if err != nil {
+		t.Fatalf("open bootstrap test database: %v", err)
+	}
+
+	t.Cleanup(func() { _ = db.Close() })
+
+	if _, err := db.ExecContext(
+		context.Background(),
+		"ALTER TYPE promo_reward_type ADD VALUE 'unexpected'",
+	); err != nil {
+		t.Fatalf("make enum incompatible: %v", err)
+	}
+
+	client, err := sqlwrap.New(db)
+	if err != nil {
+		t.Fatalf("create bootstrap client: %v", err)
+	}
+
+	t.Cleanup(func() { _ = client.Close() })
+
+	if err := repository.New(client).
+		Bootstrap(context.Background()); err == nil {
+		t.Fatal("bootstrap accepted an incompatible promo_reward_type enum")
+	}
+}
+
 func TestCallbackWorkerDoesNotLeaseFifthRouteEvent(t *testing.T) {
 	_ = newPromoTestService(t)
 
