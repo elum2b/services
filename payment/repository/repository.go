@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -43,6 +44,12 @@ type Options struct {
 }
 
 const bootstrapQueryTimeout = 30 * time.Second
+
+var createEnumStatement = regexp.MustCompile(
+	`(?is)^\s*CREATE\s+TYPE\s+([a-z_][a-z0-9_]*)\s+AS\s+ENUM\s*\((.*)\)\s*$`,
+)
+
+var enumLabel = regexp.MustCompile(`'([^']*)'`)
 
 var (
 	ErrWorkspaceRequired = serviceerrors.New(
@@ -234,6 +241,20 @@ func (r *PaymentRepository) Bootstrap(
 				return err
 			},
 		); err != nil {
+			if isDuplicateObject(err) {
+				if name, labels, ok := parseCreateEnum(stmt); ok {
+					if validationErr := r.validateExistingEnum(
+						ctx,
+						name,
+						labels,
+					); validationErr == nil {
+						continue
+					} else {
+						return validationErr
+					}
+				}
+			}
+
 			return fmt.Errorf("statement failed: %w\n%s", err, stmt)
 		}
 	}
@@ -268,6 +289,59 @@ func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func isDuplicateObject(err error) bool {
+	var pgErr *pgconn.PgError
+
+	return errors.As(err, &pgErr) && pgErr.Code == "42710"
+}
+
+func parseCreateEnum(statement string) (string, []string, bool) {
+	matches := createEnumStatement.FindStringSubmatch(statement)
+	if len(matches) != 3 {
+		return "", nil, false
+	}
+
+	labels := enumLabel.FindAllStringSubmatch(matches[2], -1)
+	if len(labels) == 0 {
+		return "", nil, false
+	}
+
+	values := make([]string, len(labels))
+	for i, label := range labels {
+		values[i] = label[1]
+	}
+
+	return matches[1], values, true
+}
+
+func (r *PaymentRepository) validateExistingEnum(
+	ctx context.Context,
+	name string,
+	expected []string,
+) error {
+	var actual string
+
+	if err := r.db.DB().QueryRowContext(ctx, `
+SELECT COALESCE(string_agg(enum.enumlabel, E'\x1F' ORDER BY enum.enumsortorder), '')
+FROM pg_type AS type
+LEFT JOIN pg_enum AS enum ON enum.enumtypid = type.oid
+WHERE type.oid = to_regtype($1)
+  AND type.typtype = 'e'`, name).Scan(&actual); err != nil {
+		return fmt.Errorf("validate existing enum %s: %w", name, err)
+	}
+
+	if actual != strings.Join(expected, "\x1f") {
+		return fmt.Errorf(
+			"existing enum %s has incompatible labels: expected %v, got %v",
+			name,
+			expected,
+			strings.Split(actual, "\x1f"),
+		)
+	}
+
+	return nil
 }
 
 func (r *PaymentRepository) applySchemaUpgrades(ctx context.Context) error {

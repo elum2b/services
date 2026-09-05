@@ -1,66 +1,33 @@
-DO $$
-DECLARE
-    definition RECORD;
-    actual_labels TEXT[];
-BEGIN
-    FOR definition IN
-        SELECT * FROM (VALUES
-            ('payment_provider_provider_kind', ARRAY['platform_internal', 'fiat_gateway', 'crypto_chain']::TEXT[]),
-            ('payment_asset_asset_kind', ARRAY['fiat', 'platform_currency', 'crypto_native', 'crypto_jetton']::TEXT[]),
-            ('payment_product_quantity_mode', ARRAY['fixed', 'flexible']::TEXT[]),
-            ('payment_product_global_interval', ARRAY['SECOND', 'MINUTE', 'HOUR', 'DAY', 'WEEK', 'MONTH', 'ONCE', 'UNLIMITED']::TEXT[]),
-            ('payment_product_user_interval', ARRAY['SECOND', 'MINUTE', 'HOUR', 'DAY', 'WEEK', 'MONTH', 'ONCE', 'UNLIMITED']::TEXT[]),
-            ('payment_product_item_reward_type', ARRAY['quantity', 'duration']::TEXT[]),
-            ('payment_product_item_duration_unit', ARRAY['second', 'minute', 'hour', 'day', 'week', 'month', 'year']::TEXT[]),
-            ('payment_price_pricing_mode', ARRAY['fixed', 'dynamic']::TEXT[]),
-            ('payment_product_cache_quantity_mode', ARRAY['fixed', 'flexible']::TEXT[]),
-            ('payment_product_cache_global_interval', ARRAY['SECOND', 'MINUTE', 'HOUR', 'DAY', 'WEEK', 'MONTH', 'ONCE', 'UNLIMITED']::TEXT[]),
-            ('payment_product_cache_user_interval', ARRAY['SECOND', 'MINUTE', 'HOUR', 'DAY', 'WEEK', 'MONTH', 'ONCE', 'UNLIMITED']::TEXT[]),
-            ('payment_product_cache_reward_type', ARRAY['quantity', 'duration']::TEXT[]),
-            ('payment_product_cache_duration_unit', ARRAY['second', 'minute', 'hour', 'day', 'week', 'month', 'year']::TEXT[]),
-            ('payment_purchase_key_status', ARRAY['active', 'used', 'canceled', 'expired']::TEXT[]),
-            ('payment_order_status', ARRAY['draft', 'pending_payment', 'paid', 'fulfilled', 'canceled', 'expired', 'refunded', 'chargebacked', 'failed']::TEXT[]),
-            ('payment_paid_order_index_status', ARRAY['paid', 'fulfilled']::TEXT[]),
-            ('payment_order_item_reward_type', ARRAY['quantity', 'duration']::TEXT[]),
-            ('payment_order_item_duration_unit', ARRAY['second', 'minute', 'hour', 'day', 'week', 'month', 'year']::TEXT[]),
-            ('payment_product_limit_counter_counter_scope', ARRAY['global', 'user']::TEXT[]),
-            ('payment_attempt_status', ARRAY['created', 'pending', 'requires_action', 'waiting_capture', 'succeeded', 'canceled', 'expired', 'refunded', 'chargebacked', 'failed']::TEXT[]),
-            ('payment_event_processing_status', ARRAY['new', 'processed', 'ignored', 'failed']::TEXT[]),
-            ('payment_subscription_status', ARRAY['active', 'canceled', 'refunded', 'expired']::TEXT[]),
-            ('payment_fulfillment_status', ARRAY['pending', 'succeeded', 'revoked', 'failed']::TEXT[]),
-            ('payment_fulfillment_item_reward_type', ARRAY['quantity', 'duration']::TEXT[]),
-            ('payment_fulfillment_item_duration_unit', ARRAY['second', 'minute', 'hour', 'day', 'week', 'month', 'year']::TEXT[]),
-            ('payment_refund_status', ARRAY['created', 'pending', 'succeeded', 'canceled', 'failed']::TEXT[]),
-            ('payment_stats_event_event_type', ARRAY['purchase', 'refund']::TEXT[]),
-            ('payment_stats_order_event_event_type', ARRAY['created', 'status']::TEXT[]),
-            ('payment_provider_transaction_status', ARRAY['new', 'matched', 'ignored', 'failed']::TEXT[]),
-            ('payment_stats_order_event_order_status', ARRAY['draft', 'pending_payment', 'paid', 'fulfilled', 'canceled', 'expired', 'refunded', 'chargebacked', 'failed']::TEXT[])
-        ) AS enum_definition(name, labels)
-    LOOP
-        BEGIN
-            EXECUTE format(
-                'CREATE TYPE %I AS ENUM (%s)',
-                definition.name,
-                (SELECT string_agg(quote_literal(value.label), ', ') FROM unnest(definition.labels) AS value(label))
-            );
-        EXCEPTION WHEN duplicate_object THEN
-            SELECT array_agg(enum.enumlabel ORDER BY enum.enumsortorder)
-            INTO actual_labels
-            FROM pg_type AS type
-            LEFT JOIN pg_enum AS enum ON enum.enumtypid = type.oid
-            WHERE type.oid = to_regtype(definition.name)
-              AND type.typtype = 'e';
-
-            IF actual_labels IS DISTINCT FROM definition.labels THEN
-                RAISE EXCEPTION 'existing enum % has incompatible labels: expected %, got %',
-                    definition.name,
-                    definition.labels,
-                    actual_labels;
-            END IF;
-        END;
-    END LOOP;
-END
-$$;
+CREATE TYPE payment_provider_provider_kind AS ENUM ('platform_internal', 'fiat_gateway', 'crypto_chain');
+CREATE TYPE payment_asset_asset_kind AS ENUM ('fiat', 'platform_currency', 'crypto_native', 'crypto_jetton');
+CREATE TYPE payment_product_quantity_mode AS ENUM ('fixed', 'flexible');
+CREATE TYPE payment_product_global_interval AS ENUM ('SECOND', 'MINUTE', 'HOUR', 'DAY', 'WEEK', 'MONTH', 'ONCE', 'UNLIMITED');
+CREATE TYPE payment_product_user_interval AS ENUM ('SECOND', 'MINUTE', 'HOUR', 'DAY', 'WEEK', 'MONTH', 'ONCE', 'UNLIMITED');
+CREATE TYPE payment_product_item_reward_type AS ENUM ('quantity', 'duration');
+CREATE TYPE payment_product_item_duration_unit AS ENUM ('second', 'minute', 'hour', 'day', 'week', 'month', 'year');
+CREATE TYPE payment_price_pricing_mode AS ENUM ('fixed', 'dynamic');
+CREATE TYPE payment_product_cache_quantity_mode AS ENUM ('fixed', 'flexible');
+CREATE TYPE payment_product_cache_global_interval AS ENUM ('SECOND', 'MINUTE', 'HOUR', 'DAY', 'WEEK', 'MONTH', 'ONCE', 'UNLIMITED');
+CREATE TYPE payment_product_cache_user_interval AS ENUM ('SECOND', 'MINUTE', 'HOUR', 'DAY', 'WEEK', 'MONTH', 'ONCE', 'UNLIMITED');
+CREATE TYPE payment_product_cache_reward_type AS ENUM ('quantity', 'duration');
+CREATE TYPE payment_product_cache_duration_unit AS ENUM ('second', 'minute', 'hour', 'day', 'week', 'month', 'year');
+CREATE TYPE payment_purchase_key_status AS ENUM ('active', 'used', 'canceled', 'expired');
+CREATE TYPE payment_order_status AS ENUM ('draft', 'pending_payment', 'paid', 'fulfilled', 'canceled', 'expired', 'refunded', 'chargebacked', 'failed');
+CREATE TYPE payment_paid_order_index_status AS ENUM ('paid', 'fulfilled');
+CREATE TYPE payment_order_item_reward_type AS ENUM ('quantity', 'duration');
+CREATE TYPE payment_order_item_duration_unit AS ENUM ('second', 'minute', 'hour', 'day', 'week', 'month', 'year');
+CREATE TYPE payment_product_limit_counter_counter_scope AS ENUM ('global', 'user');
+CREATE TYPE payment_attempt_status AS ENUM ('created', 'pending', 'requires_action', 'waiting_capture', 'succeeded', 'canceled', 'expired', 'refunded', 'chargebacked', 'failed');
+CREATE TYPE payment_event_processing_status AS ENUM ('new', 'processed', 'ignored', 'failed');
+CREATE TYPE payment_subscription_status AS ENUM ('active', 'canceled', 'refunded', 'expired');
+CREATE TYPE payment_fulfillment_status AS ENUM ('pending', 'succeeded', 'revoked', 'failed');
+CREATE TYPE payment_fulfillment_item_reward_type AS ENUM ('quantity', 'duration');
+CREATE TYPE payment_fulfillment_item_duration_unit AS ENUM ('second', 'minute', 'hour', 'day', 'week', 'month', 'year');
+CREATE TYPE payment_refund_status AS ENUM ('created', 'pending', 'succeeded', 'canceled', 'failed');
+CREATE TYPE payment_stats_event_event_type AS ENUM ('purchase', 'refund');
+CREATE TYPE payment_stats_order_event_event_type AS ENUM ('created', 'status');
+CREATE TYPE payment_provider_transaction_status AS ENUM ('new', 'matched', 'ignored', 'failed');
+CREATE TYPE payment_stats_order_event_order_status AS ENUM ('draft', 'pending_payment', 'paid', 'fulfilled', 'canceled', 'expired', 'refunded', 'chargebacked', 'failed');
 
 CREATE TABLE IF NOT EXISTS payment_provider (
     code VARCHAR(32) NOT NULL PRIMARY KEY,

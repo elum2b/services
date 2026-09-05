@@ -251,6 +251,8 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 	}
 
 	for _, statement := range statements {
+		statement = guardedEnumStatement(statement)
+
 		if err := sqlwrap.Exec(
 			ctx,
 			r.db,
@@ -272,6 +274,39 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 	}
 
 	return nil
+}
+
+func guardedEnumStatement(statement string) string {
+	labels, ok := cpaEnumDefinitions[statement]
+	if !ok {
+		return statement
+	}
+
+	typeName := strings.Fields(statement)[2]
+
+	return fmt.Sprintf(`DO $$
+BEGIN
+    IF to_regtype('%[1]s') IS NULL THEN
+        %[2]s;
+    ELSIF (
+        SELECT array_agg(enumlabel::text ORDER BY enumsortorder)
+        FROM pg_enum
+        WHERE enumtypid = to_regtype('%[1]s')
+    ) IS DISTINCT FROM ARRAY[%[3]s] THEN
+        RAISE EXCEPTION '%[1]s enum definition is incompatible';
+    END IF;
+END
+$$`, typeName, statement, labels)
+}
+
+var cpaEnumDefinitions = map[string]string{
+	"CREATE TYPE cpa_code_mode AS ENUM ('shared_code', 'personal_code')":                                 "'shared_code', 'personal_code'",
+	"CREATE TYPE cpa_code_source AS ENUM ('generated', 'pool')":                                          "'generated', 'pool'",
+	"CREATE TYPE cpa_reward_type AS ENUM ('quantity', 'duration')":                                       "'quantity', 'duration'",
+	"CREATE TYPE cpa_duration_unit AS ENUM ('second', 'minute', 'hour', 'day', 'week', 'month', 'year')": "'second', 'minute', 'hour', 'day', 'week', 'month', 'year'",
+	"CREATE TYPE cpa_code_status AS ENUM ('available', 'issued', 'completed', 'deleted')":                "'available', 'issued', 'completed', 'deleted'",
+	"CREATE TYPE cpa_assignment_status AS ENUM ('issued', 'completed')":                                  "'issued', 'completed'",
+	"CREATE TYPE cpa_assignment_event_type AS ENUM ('issued', 'completed')":                              "'issued', 'completed'",
 }
 
 func queryTimeout(value time.Duration) time.Duration {

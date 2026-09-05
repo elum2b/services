@@ -150,6 +150,8 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 	}
 
 	for _, statement := range statements {
+		statement = guardedEnumStatement(statement)
+
 		if err := sqlwrap.Exec(ctx, r.db, sqlwrap.Params{
 			Timeout: bootstrapQueryTimeout,
 		}, func(ctx context.Context) error {
@@ -166,6 +168,34 @@ func (r *Repository) applySQL(ctx context.Context, raw, source string) error {
 	}
 
 	return nil
+}
+
+func guardedEnumStatement(statement string) string {
+	labels, ok := promoEnumDefinitions[statement]
+	if !ok {
+		return statement
+	}
+
+	typeName := strings.Fields(statement)[2]
+
+	return fmt.Sprintf(`DO $$
+BEGIN
+    IF to_regtype('%[1]s') IS NULL THEN
+        %[2]s;
+    ELSIF (
+        SELECT array_agg(enumlabel::text ORDER BY enumsortorder)
+        FROM pg_enum
+        WHERE enumtypid = to_regtype('%[1]s')
+    ) IS DISTINCT FROM ARRAY[%[3]s] THEN
+        RAISE EXCEPTION '%[1]s enum definition is incompatible';
+    END IF;
+END
+$$`, typeName, statement, labels)
+}
+
+var promoEnumDefinitions = map[string]string{
+	"CREATE TYPE promo_reward_type AS ENUM ('quantity', 'duration')":                                       "'quantity', 'duration'",
+	"CREATE TYPE promo_duration_unit AS ENUM ('second', 'minute', 'hour', 'day', 'week', 'month', 'year')": "'second', 'minute', 'hour', 'day', 'week', 'month', 'year'",
 }
 
 func queryTimeout(value time.Duration) time.Duration {
