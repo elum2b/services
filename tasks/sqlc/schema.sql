@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS task_definition (
     action_kind VARCHAR(64) NOT NULL,
     claim_mode VARCHAR(64) NOT NULL DEFAULT 'manual',
     start_mode VARCHAR(64) NOT NULL DEFAULT 'none',
+    progress_mode VARCHAR(16) NOT NULL DEFAULT 'sum' CHECK (progress_mode IN ('sum', 'max')),
     target_count BIGINT NOT NULL DEFAULT 1,
     reset_unit VARCHAR(64) NOT NULL DEFAULT 'never',
     reset_every INTEGER NOT NULL DEFAULT 1,

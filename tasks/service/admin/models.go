@@ -10,6 +10,13 @@ import (
 	"github.com/elum2b/services/tasks/repository"
 )
 
+type ProgressMode = repository.ProgressMode
+
+const (
+	ProgressModeSum = repository.ProgressModeSum
+	ProgressModeMax = repository.ProgressModeMax
+)
+
 type Page struct {
 	Limit  int32
 	Offset int32
@@ -27,6 +34,7 @@ type SaveTaskParams struct {
 	ActionKind          string
 	ClaimMode           string
 	StartMode           string
+	ProgressMode        ProgressMode `json:"progress_mode"`
 	TargetCount         uint64
 	ResetUnit           string
 	ResetEvery          uint32
@@ -54,6 +62,7 @@ type TaskModel struct {
 	ActionKind          string          `json:"action_kind"`
 	ClaimMode           string          `json:"claim_mode"`
 	StartMode           string          `json:"start_mode"`
+	ProgressMode        ProgressMode    `json:"progress_mode"`
 	TargetCount         uint64          `json:"target_count"`
 	ResetUnit           string          `json:"reset_unit"`
 	ResetEvery          uint32          `json:"reset_every"`

@@ -68,8 +68,8 @@ INSERT INTO task_definition (
     action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
     reset_every, position, payload, target, integration_kind, integration_provider,
     integration_payload, image_url, is_visible, is_active,
-    start_at, end_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+    start_at, end_at, progress_mode
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 RETURNING id
 `
 
@@ -98,6 +98,7 @@ type AdminCreateTaskParams struct {
 	IsActive            bool                  `json:"is_active"`
 	StartAt             sql.NullTime          `json:"start_at"`
 	EndAt               sql.NullTime          `json:"end_at"`
+	ProgressMode        string                `json:"progress_mode"`
 }
 
 func (q *Queries) AdminCreateTask(ctx context.Context, arg AdminCreateTaskParams) (int64, error) {
@@ -126,6 +127,7 @@ func (q *Queries) AdminCreateTask(ctx context.Context, arg AdminCreateTaskParams
 		arg.IsActive,
 		arg.StartAt,
 		arg.EndAt,
+		arg.ProgressMode,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -555,7 +557,7 @@ func (q *Queries) AdminGetSingleTaskStats(ctx context.Context, arg AdminGetSingl
 
 const adminGetTask = `-- name: AdminGetTask :one
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count, reset_unit,
        reset_every, position, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, is_visible, is_active,
        start_at, end_at, deleted_at, branch_sort_key, created_at, updated_at
@@ -584,6 +586,7 @@ func (q *Queries) AdminGetTask(ctx context.Context, arg AdminGetTaskParams) (Tas
 		&i.ActionKind,
 		&i.ClaimMode,
 		&i.StartMode,
+		&i.ProgressMode,
 		&i.TargetCount,
 		&i.ResetUnit,
 		&i.ResetEvery,
@@ -608,7 +611,7 @@ func (q *Queries) AdminGetTask(ctx context.Context, arg AdminGetTaskParams) (Tas
 
 const adminGetTaskByKey = `-- name: AdminGetTaskByKey :one
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count, reset_unit,
        reset_every, position, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, is_visible, is_active,
        start_at, end_at, deleted_at, branch_sort_key, created_at, updated_at
@@ -637,6 +640,7 @@ func (q *Queries) AdminGetTaskByKey(ctx context.Context, arg AdminGetTaskByKeyPa
 		&i.ActionKind,
 		&i.ClaimMode,
 		&i.StartMode,
+		&i.ProgressMode,
 		&i.TargetCount,
 		&i.ResetUnit,
 		&i.ResetEvery,
@@ -1602,7 +1606,7 @@ func (q *Queries) AdminListTaskLocalizationsByTask(ctx context.Context, arg Admi
 
 const adminListTasks = `-- name: AdminListTasks :many
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count, reset_unit,
        reset_every, position, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, is_visible, is_active,
        start_at, end_at, deleted_at, branch_sort_key, created_at, updated_at
@@ -1639,6 +1643,7 @@ func (q *Queries) AdminListTasks(ctx context.Context, arg AdminListTasksParams) 
 			&i.ActionKind,
 			&i.ClaimMode,
 			&i.StartMode,
+			&i.ProgressMode,
 			&i.TargetCount,
 			&i.ResetUnit,
 			&i.ResetEvery,
@@ -1673,7 +1678,7 @@ func (q *Queries) AdminListTasks(ctx context.Context, arg AdminListTasksParams) 
 
 const adminListTasksByGroup = `-- name: AdminListTasksByGroup :many
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count, reset_unit,
        reset_every, position, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, is_visible, is_active,
        start_at, end_at, deleted_at, branch_sort_key, created_at, updated_at
@@ -1716,6 +1721,7 @@ func (q *Queries) AdminListTasksByGroup(ctx context.Context, arg AdminListTasksB
 			&i.ActionKind,
 			&i.ClaimMode,
 			&i.StartMode,
+			&i.ProgressMode,
 			&i.TargetCount,
 			&i.ResetUnit,
 			&i.ResetEvery,
@@ -1792,7 +1798,7 @@ SET group_key = $1, sequence_key = $2, sequence_position = $3, task_kind = $4, a
     action_kind = $6, claim_mode = $7, start_mode = $8, target_count = $9, reset_unit = $10,
     reset_every = $11, position = $12, payload = $13, target = $14, integration_kind = $15,
     integration_provider = $16, integration_payload = $17, image_url = $18,
-    is_visible = $19, is_active = $20, start_at = $21, end_at = $22
+    is_visible = $19, is_active = $20, start_at = $21, end_at = $22, progress_mode = $25
 WHERE workspace_id = $23 AND id = $24 AND deleted_at IS NULL
 `
 
@@ -1821,6 +1827,7 @@ type AdminUpdateTaskParams struct {
 	EndAt               sql.NullTime          `json:"end_at"`
 	WorkspaceID         string                `json:"workspace_id"`
 	ID                  int64                 `json:"id"`
+	ProgressMode        string                `json:"progress_mode"`
 }
 
 func (q *Queries) AdminUpdateTask(ctx context.Context, arg AdminUpdateTaskParams) (int64, error) {
@@ -1849,6 +1856,7 @@ func (q *Queries) AdminUpdateTask(ctx context.Context, arg AdminUpdateTaskParams
 		arg.EndAt,
 		arg.WorkspaceID,
 		arg.ID,
+		arg.ProgressMode,
 	)
 	if err != nil {
 		return 0, err
@@ -2400,7 +2408,7 @@ func (q *Queries) ExpirePartnerIssue(ctx context.Context, arg ExpirePartnerIssue
 
 const exportListTasks = `-- name: ExportListTasks :many
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count, reset_unit,
        reset_every, position, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, is_visible, is_active,
        start_at, end_at, deleted_at, branch_sort_key, created_at, updated_at
@@ -2430,6 +2438,7 @@ func (q *Queries) ExportListTasks(ctx context.Context, workspaceID string) ([]Ta
 			&i.ActionKind,
 			&i.ClaimMode,
 			&i.StartMode,
+			&i.ProgressMode,
 			&i.TargetCount,
 			&i.ResetUnit,
 			&i.ResetEvery,
@@ -2464,7 +2473,7 @@ func (q *Queries) ExportListTasks(ctx context.Context, workspaceID string) ([]Ta
 
 const getClaimBundleByIDForUpdate = `-- name: GetClaimBundleByIDForUpdate :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.payload, t.target, t.integration_kind, t.integration_provider, t.integration_payload, t.image_url,
        p.id AS progress_id, p.progress, p.status, p.period_start_at, p.period_end_at,
     p.ready_at, p.claimed_at, p.operation_id, COALESCE(p.rewards_snapshot, '[]'::jsonb) AS rewards_snapshot,
@@ -2503,6 +2512,7 @@ type GetClaimBundleByIDForUpdateRow struct {
 	ActionKind          string                `json:"action_kind"`
 	ClaimMode           string                `json:"claim_mode"`
 	StartMode           string                `json:"start_mode"`
+	ProgressMode        string                `json:"progress_mode"`
 	TargetCount         int64                 `json:"target_count"`
 	Payload             pqtype.NullRawMessage `json:"payload"`
 	Target              pqtype.NullRawMessage `json:"target"`
@@ -2557,6 +2567,7 @@ func (q *Queries) GetClaimBundleByIDForUpdate(ctx context.Context, arg GetClaimB
 			&i.ActionKind,
 			&i.ClaimMode,
 			&i.StartMode,
+			&i.ProgressMode,
 			&i.TargetCount,
 			&i.Payload,
 			&i.Target,
@@ -2596,7 +2607,7 @@ func (q *Queries) GetClaimBundleByIDForUpdate(ctx context.Context, arg GetClaimB
 
 const getClaimBundleByKeyForUpdate = `-- name: GetClaimBundleByKeyForUpdate :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.payload, t.target, t.integration_kind, t.integration_provider, t.integration_payload, t.image_url,
        p.id AS progress_id, p.progress, p.status, p.period_start_at, p.period_end_at,
     p.ready_at, p.claimed_at, p.operation_id, COALESCE(p.rewards_snapshot, '[]'::jsonb) AS rewards_snapshot,
@@ -2635,6 +2646,7 @@ type GetClaimBundleByKeyForUpdateRow struct {
 	ActionKind          string                `json:"action_kind"`
 	ClaimMode           string                `json:"claim_mode"`
 	StartMode           string                `json:"start_mode"`
+	ProgressMode        string                `json:"progress_mode"`
 	TargetCount         int64                 `json:"target_count"`
 	Payload             pqtype.NullRawMessage `json:"payload"`
 	Target              pqtype.NullRawMessage `json:"target"`
@@ -2689,6 +2701,7 @@ func (q *Queries) GetClaimBundleByKeyForUpdate(ctx context.Context, arg GetClaim
 			&i.ActionKind,
 			&i.ClaimMode,
 			&i.StartMode,
+			&i.ProgressMode,
 			&i.TargetCount,
 			&i.Payload,
 			&i.Target,
@@ -2728,7 +2741,7 @@ func (q *Queries) GetClaimBundleByKeyForUpdate(ctx context.Context, arg GetClaim
 
 const getClaimCatalogByID = `-- name: GetClaimCatalogByID :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.payload, t.target, t.integration_kind, t.integration_provider, t.integration_payload, t.image_url,
        r.id AS reward_id, r.reward_key, r.reward_type, r.quantity AS reward_quantity, r.scale AS reward_scale, r.duration_unit
 FROM task_definition t
@@ -2754,6 +2767,7 @@ type GetClaimCatalogByIDRow struct {
 	ActionKind          string                `json:"action_kind"`
 	ClaimMode           string                `json:"claim_mode"`
 	StartMode           string                `json:"start_mode"`
+	ProgressMode        string                `json:"progress_mode"`
 	TargetCount         int64                 `json:"target_count"`
 	Payload             pqtype.NullRawMessage `json:"payload"`
 	Target              pqtype.NullRawMessage `json:"target"`
@@ -2790,6 +2804,7 @@ func (q *Queries) GetClaimCatalogByID(ctx context.Context, arg GetClaimCatalogBy
 			&i.ActionKind,
 			&i.ClaimMode,
 			&i.StartMode,
+			&i.ProgressMode,
 			&i.TargetCount,
 			&i.Payload,
 			&i.Target,
@@ -2819,7 +2834,7 @@ func (q *Queries) GetClaimCatalogByID(ctx context.Context, arg GetClaimCatalogBy
 
 const getClaimCatalogByKey = `-- name: GetClaimCatalogByKey :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.payload, t.target, t.integration_kind, t.integration_provider, t.integration_payload, t.image_url,
        r.id AS reward_id, r.reward_key, r.reward_type, r.quantity AS reward_quantity, r.scale AS reward_scale, r.duration_unit
 FROM task_definition t
@@ -2845,6 +2860,7 @@ type GetClaimCatalogByKeyRow struct {
 	ActionKind          string                `json:"action_kind"`
 	ClaimMode           string                `json:"claim_mode"`
 	StartMode           string                `json:"start_mode"`
+	ProgressMode        string                `json:"progress_mode"`
 	TargetCount         int64                 `json:"target_count"`
 	Payload             pqtype.NullRawMessage `json:"payload"`
 	Target              pqtype.NullRawMessage `json:"target"`
@@ -2881,6 +2897,7 @@ func (q *Queries) GetClaimCatalogByKey(ctx context.Context, arg GetClaimCatalogB
 			&i.ActionKind,
 			&i.ClaimMode,
 			&i.StartMode,
+			&i.ProgressMode,
 			&i.TargetCount,
 			&i.Payload,
 			&i.Target,
@@ -3023,7 +3040,7 @@ func (q *Queries) GetExportFootprint(ctx context.Context, workspaceID string) (G
 
 const getIntegrationCheckTaskByID = `-- name: GetIntegrationCheckTaskByID :one
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.reset_unit, t.reset_every, t.payload, t.target, t.integration_kind, t.integration_provider,
        t.integration_payload, t.image_url, t.start_at, t.end_at
 FROM task_definition t
@@ -3047,6 +3064,7 @@ type GetIntegrationCheckTaskByIDRow struct {
 	ActionKind          string                `json:"action_kind"`
 	ClaimMode           string                `json:"claim_mode"`
 	StartMode           string                `json:"start_mode"`
+	ProgressMode        string                `json:"progress_mode"`
 	TargetCount         int64                 `json:"target_count"`
 	ResetUnit           string                `json:"reset_unit"`
 	ResetEvery          int32                 `json:"reset_every"`
@@ -3075,6 +3093,7 @@ func (q *Queries) GetIntegrationCheckTaskByID(ctx context.Context, arg GetIntegr
 		&i.ActionKind,
 		&i.ClaimMode,
 		&i.StartMode,
+		&i.ProgressMode,
 		&i.TargetCount,
 		&i.ResetUnit,
 		&i.ResetEvery,
@@ -3092,7 +3111,7 @@ func (q *Queries) GetIntegrationCheckTaskByID(ctx context.Context, arg GetIntegr
 
 const getIntegrationCheckTaskByKey = `-- name: GetIntegrationCheckTaskByKey :one
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.reset_unit, t.reset_every, t.payload, t.target, t.integration_kind, t.integration_provider,
        t.integration_payload, t.image_url, t.start_at, t.end_at
 FROM task_definition t
@@ -3116,6 +3135,7 @@ type GetIntegrationCheckTaskByKeyRow struct {
 	ActionKind          string                `json:"action_kind"`
 	ClaimMode           string                `json:"claim_mode"`
 	StartMode           string                `json:"start_mode"`
+	ProgressMode        string                `json:"progress_mode"`
 	TargetCount         int64                 `json:"target_count"`
 	ResetUnit           string                `json:"reset_unit"`
 	ResetEvery          int32                 `json:"reset_every"`
@@ -3144,6 +3164,7 @@ func (q *Queries) GetIntegrationCheckTaskByKey(ctx context.Context, arg GetInteg
 		&i.ActionKind,
 		&i.ClaimMode,
 		&i.StartMode,
+		&i.ProgressMode,
 		&i.TargetCount,
 		&i.ResetUnit,
 		&i.ResetEvery,
@@ -3627,7 +3648,7 @@ func (q *Queries) GetSequenceState(ctx context.Context, arg GetSequenceStatePara
 
 const getStartTaskByID = `-- name: GetStartTaskByID :one
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count,
        reset_unit, reset_every, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, start_at, end_at
 FROM task_definition
@@ -3652,6 +3673,7 @@ type GetStartTaskByIDRow struct {
 	ActionKind          string                `json:"action_kind"`
 	ClaimMode           string                `json:"claim_mode"`
 	StartMode           string                `json:"start_mode"`
+	ProgressMode        string                `json:"progress_mode"`
 	TargetCount         int64                 `json:"target_count"`
 	ResetUnit           string                `json:"reset_unit"`
 	ResetEvery          int32                 `json:"reset_every"`
@@ -3680,6 +3702,7 @@ func (q *Queries) GetStartTaskByID(ctx context.Context, arg GetStartTaskByIDPara
 		&i.ActionKind,
 		&i.ClaimMode,
 		&i.StartMode,
+		&i.ProgressMode,
 		&i.TargetCount,
 		&i.ResetUnit,
 		&i.ResetEvery,
@@ -3697,7 +3720,7 @@ func (q *Queries) GetStartTaskByID(ctx context.Context, arg GetStartTaskByIDPara
 
 const getStartTaskByKey = `-- name: GetStartTaskByKey :one
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count,
        reset_unit, reset_every, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, start_at, end_at
 FROM task_definition
@@ -3722,6 +3745,7 @@ type GetStartTaskByKeyRow struct {
 	ActionKind          string                `json:"action_kind"`
 	ClaimMode           string                `json:"claim_mode"`
 	StartMode           string                `json:"start_mode"`
+	ProgressMode        string                `json:"progress_mode"`
 	TargetCount         int64                 `json:"target_count"`
 	ResetUnit           string                `json:"reset_unit"`
 	ResetEvery          int32                 `json:"reset_every"`
@@ -3750,6 +3774,7 @@ func (q *Queries) GetStartTaskByKey(ctx context.Context, arg GetStartTaskByKeyPa
 		&i.ActionKind,
 		&i.ClaimMode,
 		&i.StartMode,
+		&i.ProgressMode,
 		&i.TargetCount,
 		&i.ResetUnit,
 		&i.ResetEvery,
@@ -4098,7 +4123,7 @@ func (q *Queries) ListActiveComplexConditions(ctx context.Context, workspaceID s
 
 const listActiveTaskBundles = `-- name: ListActiveTaskBundles :many
 SELECT t.id, t.key, t.group_key,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.payload, t.target, t.image_url, t.start_at, t.end_at,
        gl.locale AS group_locale, gl.title AS group_title, gl.description AS group_description,
        l.locale, l.title, l.description,
@@ -4133,6 +4158,7 @@ type ListActiveTaskBundlesRow struct {
 	ActionKind       string                `json:"action_kind"`
 	ClaimMode        string                `json:"claim_mode"`
 	StartMode        string                `json:"start_mode"`
+	ProgressMode     string                `json:"progress_mode"`
 	TargetCount      int64                 `json:"target_count"`
 	Payload          pqtype.NullRawMessage `json:"payload"`
 	Target           pqtype.NullRawMessage `json:"target"`
@@ -4177,6 +4203,7 @@ func (q *Queries) ListActiveTaskBundles(ctx context.Context, arg ListActiveTaskB
 			&i.ActionKind,
 			&i.ClaimMode,
 			&i.StartMode,
+			&i.ProgressMode,
 			&i.TargetCount,
 			&i.Payload,
 			&i.Target,
@@ -4721,7 +4748,7 @@ func (q *Queries) ListPartnerRewardRules(ctx context.Context, arg ListPartnerRew
 
 const listRecordCatalog = `-- name: ListRecordCatalog :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count, t.reset_unit,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count, t.reset_unit,
        t.reset_every, t.payload, t.target, t.position, t.start_at, t.end_at,
        COALESCE(
            (
@@ -4769,6 +4796,7 @@ type ListRecordCatalogRow struct {
 	ActionKind       string                `json:"action_kind"`
 	ClaimMode        string                `json:"claim_mode"`
 	StartMode        string                `json:"start_mode"`
+	ProgressMode     string                `json:"progress_mode"`
 	TargetCount      int64                 `json:"target_count"`
 	ResetUnit        string                `json:"reset_unit"`
 	ResetEvery       int32                 `json:"reset_every"`
@@ -4801,6 +4829,7 @@ func (q *Queries) ListRecordCatalog(ctx context.Context, arg ListRecordCatalogPa
 			&i.ActionKind,
 			&i.ClaimMode,
 			&i.StartMode,
+			&i.ProgressMode,
 			&i.TargetCount,
 			&i.ResetUnit,
 			&i.ResetEvery,
@@ -4826,7 +4855,7 @@ func (q *Queries) ListRecordCatalog(ctx context.Context, arg ListRecordCatalogPa
 
 const listRecordTasks = `-- name: ListRecordTasks :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count, t.reset_unit,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count, t.reset_unit,
        t.reset_every, t.payload, t.target, t.branch_sort_key, t.position
 FROM task_definition t 
 WHERE t.workspace_id = $1
@@ -4838,7 +4867,7 @@ WHERE t.workspace_id = $1
   AND (t.end_at IS NULL OR t.end_at > $4)
 UNION ALL
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count, t.reset_unit,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count, t.reset_unit,
        t.reset_every, t.payload, t.target, t.branch_sort_key, t.position
 FROM task_sequence_state s
 JOIN task_definition t
@@ -4855,7 +4884,7 @@ WHERE s.workspace_id = $5
   AND (t.end_at IS NULL OR t.end_at > $11)
 UNION ALL
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count, t.reset_unit,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count, t.reset_unit,
        t.reset_every, t.payload, t.target, t.branch_sort_key, t.position
 FROM task_definition t 
 LEFT JOIN task_sequence_state s
@@ -4909,6 +4938,7 @@ type ListRecordTasksRow struct {
 	ActionKind       string                `json:"action_kind"`
 	ClaimMode        string                `json:"claim_mode"`
 	StartMode        string                `json:"start_mode"`
+	ProgressMode     string                `json:"progress_mode"`
 	TargetCount      int64                 `json:"target_count"`
 	ResetUnit        string                `json:"reset_unit"`
 	ResetEvery       int32                 `json:"reset_every"`
@@ -4958,6 +4988,7 @@ func (q *Queries) ListRecordTasks(ctx context.Context, arg ListRecordTasksParams
 			&i.ActionKind,
 			&i.ClaimMode,
 			&i.StartMode,
+			&i.ProgressMode,
 			&i.TargetCount,
 			&i.ResetUnit,
 			&i.ResetEvery,

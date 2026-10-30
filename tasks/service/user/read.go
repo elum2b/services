@@ -183,18 +183,19 @@ func groupTasks(tasks []repository.ActiveTask) []TaskGroupModel {
 
 func mapTask(task repository.Task) TaskModel {
 	result := TaskModel{
-		ID:          task.ID,
-		Key:         task.Key,
-		GroupKey:    task.GroupKey,
-		TaskKind:    task.TaskKind,
-		ActionKey:   task.ActionKey,
-		ActionKind:  task.ActionKind,
-		ClaimMode:   task.ClaimMode,
-		StartMode:   task.StartMode,
-		TargetCount: task.TargetCount,
-		Payload:     task.Payload,
-		ImageURL:    task.ImageURL,
-		Rewards:     task.Rewards,
+		ID:           task.ID,
+		Key:          task.Key,
+		GroupKey:     task.GroupKey,
+		TaskKind:     task.TaskKind,
+		ActionKey:    task.ActionKey,
+		ActionKind:   task.ActionKind,
+		ClaimMode:    task.ClaimMode,
+		StartMode:    task.StartMode,
+		ProgressMode: task.ProgressMode,
+		TargetCount:  task.TargetCount,
+		Payload:      task.Payload,
+		ImageURL:     task.ImageURL,
+		Rewards:      task.Rewards,
 	}
 	if task.Localization != nil {
 		result.Title = task.Localization.Title

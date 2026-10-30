@@ -35,6 +35,7 @@ type TaskDefinition struct {
 	ActionKind          string                `json:"action_kind"`
 	ClaimMode           string                `json:"claim_mode"`
 	StartMode           string                `json:"start_mode"`
+	ProgressMode        string                `json:"progress_mode"`
 	TargetCount         int64                 `json:"target_count"`
 	ResetUnit           string                `json:"reset_unit"`
 	ResetEvery          int32                 `json:"reset_every"`

@@ -40,7 +40,7 @@ Lua provider экспортирует не общий `handle`, а конкре�
 | `Admin.UpsertGroup(ctx, workspaceID, key, position, active)` | `workspaceID`, `key`, `position`, `active`. | Создает или обновляет группу задач. |
 | `Admin.UpsertGroupLocalization(ctx, workspaceID, key, locale, title, description)` | Данные локализации группы. | Создает или обновляет локализацию группы. |
 | `Admin.UpsertSequence(ctx, workspaceID, key, position, active)` | `workspaceID`, `key`, `position`, `active`. | Создает или обновляет последовательность задач. |
-| `Admin.SaveTask(ctx, params)` | `SaveTaskParams{ID, WorkspaceID, Key, GroupKey, SequenceKey, SequencePosition, TaskKind, ActionKey, ActionKind, ClaimMode, StartMode, TargetCount, ResetUnit, ResetEvery, Position, Payload, Target, IntegrationKind, IntegrationProvider, IntegrationPayload, ImageURL, IsVisible, IsActive, StartAt, EndAt}`. | Создает или обновляет задачу, включая `start_mode=none|required`, target-фильтр отображения и закрытый integration payload. |
+| `Admin.SaveTask(ctx, params)` | `SaveTaskParams{ID, WorkspaceID, Key, GroupKey, SequenceKey, SequencePosition, TaskKind, ActionKey, ActionKind, ClaimMode, StartMode, ProgressMode, TargetCount, ResetUnit, ResetEvery, Position, Payload, Target, IntegrationKind, IntegrationProvider, IntegrationPayload, ImageURL, IsVisible, IsActive, StartAt, EndAt}`. | Создает или обновляет задачу, включая `start_mode=none|required`, target-фильтр отображения и закрытый integration payload. |
 | `Admin.DeleteTask(ctx, workspaceID, id)` | `workspaceID`, `id`. | Удаляет задачу. |
 | `Admin.GetTask(ctx, workspaceID, id)` | `workspaceID`, `id`. | Возвращает задачу. |
 | `Admin.ListTasks(ctx, workspaceID, groupKey, limit, offset)` | `workspaceID`, `groupKey`, `limit`, `offset`. | Возвращает список задач, опционально по группе. |
@@ -71,3 +71,9 @@ Lua provider экспортирует не общий `handle`, а конкре�
 | `Admin.ListDailyStats(ctx, workspaceID, taskID, from, until)` | `workspaceID`, `taskID`, `from`, `until`. | Возвращает дневную статистику задачи. |
 | `Admin.ListDailyOverview(ctx, workspaceID, from, until)` | `workspaceID`, `from`, `until`. | Возвращает дневный обзор по задачам. |
 | `Admin.RefreshDailyStats(ctx, workspaceID, from, until)` | `workspaceID`, `from`, `until`. | Пересчитывает дневную статистику только указанной workspace. |
+
+`Admin.SaveTaskParams.ProgressMode` is a typed `ProgressMode` with
+`ProgressModeSum` (default) and `ProgressModeMax`. Max is valid only for internal
+amount tasks. Admin/user reads and export/import expose `progress_mode`.
+`Internal.Record.Amount` is an independent result for max tasks, and a delta
+for sum tasks. Record continues to deduplicate by identity/source/external key.

@@ -159,6 +159,7 @@
 | `task_kind` | Тип задания на уровне бизнес-смысла. | Определяет общий сценарий UI. Значения описаны ниже. |
 | `action_key` | Событие/действие, которое двигает прогресс. | Бэкенд должен записывать событие с таким ключом, когда действие реально произошло. Фронт обычно не интерпретирует это поле, кроме отладки. |
 | `action_kind` | Класс действия: `app_action`, `amount_action`, `channel_subscribe`, `channel_boost`, `advertisement_view`, `external`, `composite`. | Помогает выбрать кнопку/сценарий проверки. |
+| `progress_mode` | `sum` (default) adds event amounts; `max` keeps the largest individual amount in the task period. | `max` is supported for internal `amount_action` tasks; use it for a score reached in one run. |
 | `claim_mode` | Как забирать награду: `manual` либо `auto` для внутренних задач. | При `manual` показывать кнопку claim только когда статус готов. `auto` выдаёт награду вместе с внутренним application event и не поддерживается integration/complex/partner task kinds. |
 | `start_mode` | Нужно ли сначала начать задание: `none` или `required`. | Если `required`, перед check/claim надо вызвать start и обработать `action_url`. |
 | `target_count` | Сколько единиц прогресса нужно. | Показывать прогресс `progress.progress / target_count`. |
@@ -447,3 +448,20 @@ Target применяется сервером до выдачи задания 
 8. Если `task_kind=complex`, показывать `conditions` и claim только у родителя.
 9. После успешного claim всегда обновлять список или локальную карточку из ответа.
 10. Не использовать приватные поля import/export в пользовательском UI.
+
+### Best result from one game run
+
+Configure `progress_mode: "max"` on an internal `amount_action` task and send
+one trusted `Internal.Record` event per completed run with its full final score.
+For a target of 500, results 300, 300 and 450 leave progress at 450; a result of
+600 completes it. `sum` instead adds the results. Existing tasks and old import
+archives default to `sum`.
+
+Modes are preserved by admin reads, user task models and export/import. Daily
+reset windows, sequence ordering, start requirements, reward snapshots, user
+isolation and external-event deduplication apply to both modes. A max event
+advances only the currently available stage of a sequence; the same external
+event cannot be replayed to advance the next stage. `Consumed` reports the
+increase in progress, which can be less than the event amount in max mode.
+Do not change an already-progressed task from sum to max to reinterpret its
+history: max preserves the stored progress and compares future results with it.

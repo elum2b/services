@@ -11108,3 +11108,248 @@ func waitTasksArchiveJob(
 
 	t.Fatal("archive job did not complete")
 }
+
+func TestTasksMaxProgressDoesNotSumRuns(t *testing.T) {
+	service := newTasksTestService(t)
+	ctx := context.Background()
+	workspace := testsupport.WorkspaceID("max-runs")
+	if err := service.Admin.UpsertGroup(ctx, workspace, "main", 1, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []admin.ProgressMode{admin.ProgressModeSum, admin.ProgressModeMax} {
+		_, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
+			WorkspaceID: workspace, Key: string(mode), GroupKey: "main",
+			ActionKey: "game_score_closed", ActionKind: repository.ActionKindAmountAction,
+			ProgressMode: mode, TargetCount: 10000, ResetUnit: repository.ResetDay,
+			IsActive: true, IsVisible: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	identity := internalapi.Identity{WorkspaceID: workspace, AppID: 1, PlatformID: 1, PlatformUserID: "player"}
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	record := func(amount uint64, key string, at time.Time) error {
+		_, err := service.Internal.Record(ctx, internalapi.RecordParams{Identity: identity, ActionKey: "game_score_closed", Amount: amount, ExternalEventKey: key, Now: at})
+		return err
+	}
+	read := func(key string, at time.Time) user.TaskModel {
+		groups, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity), Now: at})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return findTask(t, groups, key)
+	}
+	for i, amount := range []uint64{300, 300, 450, 200} {
+		if err := record(amount, fmt.Sprint(i), now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := record(450, "2", now); err != nil {
+		t.Fatal(err)
+	}
+	if got := read("max", now); got.Progress.Progress != 450 || got.ProgressMode != repository.ProgressModeMax {
+		t.Fatalf("max accumulated runs: %+v", got)
+	}
+	if got := read("sum", now).Progress.Progress; got != 1250 {
+		t.Fatalf("sum=%d want 1250", got)
+	}
+
+	var wg sync.WaitGroup
+	errorsCh := make(chan error, 9)
+	for i := 1; i <= 9; i++ {
+		wg.Add(1)
+		go func(i int) { defer wg.Done(); errorsCh <- record(uint64(i*100), fmt.Sprintf("parallel-%d", i), now) }(i)
+	}
+	wg.Wait()
+	close(errorsCh)
+	for err := range errorsCh {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := read("max", now).Progress.Progress; got != 900 {
+		t.Fatalf("concurrent max=%d want 900", got)
+	}
+	if got := read("sum", now).Progress.Progress; got != 5750 {
+		t.Fatalf("concurrent sum=%d want 5750", got)
+	}
+	if err := record(100, "next-day", now.Add(24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got := read("max", now.Add(24*time.Hour)).Progress.Progress; got != 100 {
+		t.Fatalf("daily max did not reset: %d", got)
+	}
+	identity.PlatformUserID = "other"
+	if got := read("max", now); got.Progress != nil && got.Progress.Progress != 0 {
+		t.Fatalf("identity leaked progress: %+v", got)
+	}
+}
+
+func TestTasksMaxProgressSequenceAndExactlyOnceRewards(t *testing.T) {
+	service := newTasksTestService(t)
+	ctx := context.Background()
+	workspace := testsupport.WorkspaceID("max-sequence")
+	if err := service.Admin.UpsertGroup(ctx, workspace, "main", 1, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Admin.UpsertSequence(ctx, workspace, "runs", 1, true); err != nil {
+		t.Fatal(err)
+	}
+	for i, target := range []uint64{500, 1000} {
+		position := uint32(i + 1)
+		id, err := service.Admin.SaveTask(ctx, admin.SaveTaskParams{
+			WorkspaceID: workspace, Key: fmt.Sprint(target), GroupKey: "main", SequenceKey: strPtr("runs"), SequencePosition: &position,
+			ActionKey: "game_score_closed", ActionKind: repository.ActionKindAmountAction,
+			ClaimMode: repository.ClaimModeAuto, ProgressMode: admin.ProgressModeMax, TargetCount: target,
+			IsActive: true, IsVisible: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := service.Admin.UpsertReward(ctx, workspace, id, admin.RewardModel{Key: "coin", Quantity: 1}, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	identity := internalapi.Identity{WorkspaceID: workspace, AppID: 1, PlatformID: 1, PlatformUserID: "player"}
+	record := func(amount uint64, key string) {
+		t.Helper()
+		_, err := service.Internal.Record(ctx, internalapi.RecordParams{Identity: identity, ActionKey: "game_score_closed", Amount: amount, ExternalEventKey: key})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	record(600, "first")
+	record(600, "first")
+	record(800, "second")
+	record(800, "third")
+	groups, err := service.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := findTask(t, groups, "1000"); got.Progress.Progress != 800 || got.Progress.Status != repository.StatusOpen {
+		t.Fatalf("sequence summed results: %+v", got)
+	}
+	record(1200, "winner")
+	record(1200, "winner")
+	record(1500, "already-claimed")
+	if got := countTaskCallbacks(t, tasksTestDB); got != 2 {
+		t.Fatalf("callbacks=%d want exactly 2", got)
+	}
+}
+
+func TestTasksProgressModeValidationArchiveAndMigration(t *testing.T) {
+	repo := newExportImportRepository(t)
+	ctx := context.Background()
+	workspace := testsupport.WorkspaceID("progress-mode")
+	if err := repo.UpsertGroup(ctx, workspace, "main", 1, true); err != nil {
+		t.Fatal(err)
+	}
+	params := repository.SaveTaskParams{WorkspaceID: workspace, Key: "best", GroupKey: "main", ActionKey: "score", ActionKind: repository.ActionKindAmountAction, ProgressMode: repository.ProgressModeMax, TargetCount: 500, IsActive: true, IsVisible: true}
+	id, err := repo.SaveTask(ctx, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*repository.SaveTaskParams){
+		func(p *repository.SaveTaskParams) { p.ProgressMode = "unknown" },
+		func(p *repository.SaveTaskParams) { p.ActionKind = repository.ActionKindAppAction },
+	} {
+		invalid := params
+		invalid.ID = id
+		mutate(&invalid)
+		if _, err := repo.SaveTask(ctx, invalid); !errors.Is(err, repository.ErrInvalidProgressMode) {
+			t.Fatalf("invalid mode error: %v", err)
+		}
+	}
+	pkg, err := repo.Export(ctx, workspace, repository.ExportRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pkg.Groups[0].Tasks[0].ProgressMode != repository.ProgressModeMax {
+		t.Fatal("export lost max mode")
+	}
+	target := testsupport.WorkspaceID("progress-mode-import")
+	if _, err := repo.Import(ctx, target, repository.ImportRequest{Package: pkg, ConflictStrategy: repository.ImportConflictFail}); err != nil {
+		t.Fatal(err)
+	}
+	imported, err := repo.ListTasks(ctx, target, "main", 10, 0)
+	if err != nil || len(imported) != 1 || imported[0].ProgressMode != repository.ProgressModeMax {
+		t.Fatalf("import lost max mode: %+v %v", imported, err)
+	}
+	// Old archives without the field remain sum tasks.
+	pkg.Groups[0].Tasks[0].ProgressMode = ""
+	target = testsupport.WorkspaceID("progress-mode-old-import")
+	if _, err := repo.Import(ctx, target, repository.ImportRequest{Package: pkg, ConflictStrategy: repository.ImportConflictFail}); err != nil {
+		t.Fatal(err)
+	}
+	imported, err = repo.ListTasks(ctx, target, "main", 10, 0)
+	if err != nil || len(imported) != 1 || imported[0].ProgressMode != repository.ProgressModeSum {
+		t.Fatalf("old archive default: %+v %v", imported, err)
+	}
+	// Simulate an existing installation whose catalog predates progress_mode.
+	db, err := openExportImportPostgres(exportImportDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, "ALTER TABLE task_definition DROP COLUMN progress_mode"); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := repo.Bootstrap(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var mode string
+	if err := db.QueryRowContext(ctx, "SELECT progress_mode FROM task_definition WHERE workspace_id=$1 AND id=$2", workspace, id).Scan(&mode); err != nil || mode != "sum" {
+		t.Fatalf("migration did not default old task to sum: %s %v", mode, err)
+	}
+	if _, err := db.ExecContext(ctx, "UPDATE task_definition SET progress_mode='invalid' WHERE id=$1", id); err == nil {
+		t.Fatal("database accepted invalid progress mode")
+	}
+
+}
+
+func TestTasksProgressModeCacheAcrossNodes(t *testing.T) {
+	ctx := context.Background()
+	cache := testsupport.NewCache()
+	options := tasksTestOptions(Options{Cache: cache, CacheL2Delay: time.Minute})
+	nodeA := newTasksTestService(t, options)
+	db, err := openTasksPostgres(tasksTestDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeB, err := NewWithDatabase(ctx, db, options)
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = nodeB.Close() })
+	workspace := testsupport.WorkspaceID("progress-mode-cache")
+	if err := nodeA.Admin.UpsertGroup(ctx, workspace, "main", 1, true); err != nil {
+		t.Fatal(err)
+	}
+	params := admin.SaveTaskParams{WorkspaceID: workspace, Key: "best", GroupKey: "main", ActionKey: "score", ActionKind: repository.ActionKindAmountAction, TargetCount: 1000, IsActive: true, IsVisible: true}
+	params.ID, err = nodeA.Admin.SaveTask(ctx, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := internalapi.Identity{WorkspaceID: workspace, AppID: 1, PlatformID: 1, PlatformUserID: "player"}
+	if _, err := nodeB.Internal.Record(ctx, internalapi.RecordParams{Identity: identity, ActionKey: "score", Amount: 100, ExternalEventKey: "sum"}); err != nil {
+		t.Fatal(err)
+	}
+	params.ProgressMode = admin.ProgressModeMax
+	if _, err := nodeA.Admin.SaveTask(ctx, params); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := nodeB.Internal.Record(ctx, internalapi.RecordParams{Identity: identity, ActionKey: "score", Amount: 150, ExternalEventKey: "max"}); err != nil {
+		t.Fatal(err)
+	}
+	groups, err := nodeB.User.ListActive(ctx, user.ListActiveParams{Identity: user.Identity(identity)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := findTask(t, groups, "best"); got.ProgressMode != repository.ProgressModeMax || got.Progress.Progress != 150 {
+		t.Fatalf("stale mode on second node: %+v", got)
+	}
+}

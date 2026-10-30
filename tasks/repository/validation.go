@@ -7,8 +7,11 @@ import (
 
 	json "github.com/goccy/go-json"
 
+	serviceerrors "github.com/elum2b/services/errors"
 	"github.com/elum2b/services/internal/utils/target"
 )
+
+var ErrInvalidProgressMode = serviceerrors.New(serviceerrors.CodeInvalidFields, "invalid task progress mode")
 
 const maxJSONDocumentBytes = 256 << 10
 
@@ -23,6 +26,9 @@ func normalizeSaveTaskParams(params SaveTaskParams) SaveTaskParams {
 	params.TaskKind = defaultString(params.TaskKind, TaskKindInternal)
 	params.ClaimMode = defaultString(params.ClaimMode, ClaimModeManual)
 	params.StartMode = defaultString(params.StartMode, StartModeNone)
+	if params.ProgressMode == "" {
+		params.ProgressMode = ProgressModeSum
+	}
 	params.ResetUnit = defaultString(params.ResetUnit, ResetNever)
 	params.ResetEvery = defaultUint32(params.ResetEvery, 1)
 
@@ -97,6 +103,13 @@ func validateSaveTask(params SaveTaskParams) error {
 			params.ClaimMode,
 			params.TaskKind,
 		)
+	}
+
+	if params.ProgressMode != ProgressModeSum && params.ProgressMode != ProgressModeMax {
+		return fmt.Errorf("%w: unsupported mode %q", ErrInvalidProgressMode, params.ProgressMode)
+	}
+	if params.ProgressMode == ProgressModeMax && (params.TaskKind != TaskKindInternal || params.ActionKind != ActionKindAmountAction) {
+		return fmt.Errorf("%w: max requires an internal amount_action task", ErrInvalidProgressMode)
 	}
 
 	if params.StartMode != StartModeNone &&

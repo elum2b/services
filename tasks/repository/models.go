@@ -8,6 +8,14 @@ import (
 	services "github.com/elum2b/services"
 )
 
+// ProgressMode selects how independent event amounts update task progress.
+type ProgressMode string
+
+const (
+	ProgressModeSum ProgressMode = "sum"
+	ProgressModeMax ProgressMode = "max"
+)
+
 const (
 	TaskKindInternal           = "internal"
 	TaskKindChannelBoost       = "channel_boost"
@@ -152,6 +160,7 @@ type ExportTask struct {
 	ActionKind       string                `json:"action_kind"`
 	ClaimMode        string                `json:"claim_mode"`
 	StartMode        string                `json:"start_mode"`
+	ProgressMode     ProgressMode          `json:"progress_mode"`
 	TargetCount      uint64                `json:"target_count"`
 	Reset            ExportReset           `json:"reset"`
 	Position         int32                 `json:"position"`
@@ -294,6 +303,7 @@ type Task struct {
 	ActionKind          string
 	ClaimMode           string
 	StartMode           string
+	ProgressMode        ProgressMode `json:"progress_mode"`
 	TargetCount         uint64
 	ResetUnit           string
 	ResetEvery          uint32
@@ -318,27 +328,28 @@ type Task struct {
 }
 
 type ActiveTask struct {
-	ID          uint64          `json:"id"`
-	Key         string          `json:"key"`
-	GroupKey    string          `json:"group_key"`
-	GroupTitle  string          `json:"-"                     msgpack:"group_title"`
-	GroupDesc   string          `json:"-"                     msgpack:"group_description"`
-	TaskKind    string          `json:"task_kind"`
-	ActionKey   string          `json:"action_key"`
-	ActionKind  string          `json:"action_kind"`
-	ClaimMode   string          `json:"claim_mode"`
-	StartMode   string          `json:"start_mode"`
-	TargetCount uint64          `json:"target_count"`
-	Payload     json.RawMessage `json:"payload,omitempty"`
-	ImageURL    *string         `json:"image_url,omitempty"`
-	Title       string          `json:"title,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Rewards     []Reward        `json:"rewards"`
-	Progress    *ActiveProgress `json:"progress,omitempty"`
-	Conditions  []ActiveTask    `json:"conditions,omitempty"`
-	StartAt     *time.Time      `json:"-"                     msgpack:"start_at"`
-	EndAt       *time.Time      `json:"-"                     msgpack:"end_at"`
-	Target      json.RawMessage `json:"-"                     msgpack:"target"`
+	ID           uint64          `json:"id"`
+	Key          string          `json:"key"`
+	GroupKey     string          `json:"group_key"`
+	GroupTitle   string          `json:"-"                     msgpack:"group_title"`
+	GroupDesc    string          `json:"-"                     msgpack:"group_description"`
+	TaskKind     string          `json:"task_kind"`
+	ActionKey    string          `json:"action_key"`
+	ActionKind   string          `json:"action_kind"`
+	ClaimMode    string          `json:"claim_mode"`
+	StartMode    string          `json:"start_mode"`
+	ProgressMode ProgressMode    `json:"progress_mode"`
+	TargetCount  uint64          `json:"target_count"`
+	Payload      json.RawMessage `json:"payload,omitempty"`
+	ImageURL     *string         `json:"image_url,omitempty"`
+	Title        string          `json:"title,omitempty"`
+	Description  string          `json:"description,omitempty"`
+	Rewards      []Reward        `json:"rewards"`
+	Progress     *ActiveProgress `json:"progress,omitempty"`
+	Conditions   []ActiveTask    `json:"conditions,omitempty"`
+	StartAt      *time.Time      `json:"-"                     msgpack:"start_at"`
+	EndAt        *time.Time      `json:"-"                     msgpack:"end_at"`
+	Target       json.RawMessage `json:"-"                     msgpack:"target"`
 }
 
 type ComplexCondition struct {
@@ -417,6 +428,7 @@ type SaveTaskParams struct {
 	ActionKind          string
 	ClaimMode           string
 	StartMode           string
+	ProgressMode        ProgressMode `json:"progress_mode"`
 	TargetCount         uint64
 	ResetUnit           string
 	ResetEvery          uint32

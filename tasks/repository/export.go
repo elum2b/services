@@ -406,6 +406,7 @@ func (r *Repository) exportSnapshot(
 			ActionKind:       task.ActionKind,
 			ClaimMode:        task.ClaimMode,
 			StartMode:        task.StartMode,
+			ProgressMode:     task.ProgressMode,
 			TargetCount:      task.TargetCount,
 			Reset: ExportReset{
 				Unit:  task.ResetUnit,

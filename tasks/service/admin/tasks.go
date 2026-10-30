@@ -544,6 +544,7 @@ func mapTask(task repository.Task) TaskModel {
 		ActionKind:          task.ActionKind,
 		ClaimMode:           task.ClaimMode,
 		StartMode:           task.StartMode,
+		ProgressMode:        task.ProgressMode,
 		TargetCount:         task.TargetCount,
 		ResetUnit:           task.ResetUnit,
 		ResetEvery:          task.ResetEvery,

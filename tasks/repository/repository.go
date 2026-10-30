@@ -245,6 +245,10 @@ func (r *Repository) applySchemaUpgrades(ctx context.Context) error {
 			sql:  "ALTER TABLE task_definition ADD COLUMN IF NOT EXISTS start_mode VARCHAR(64) NOT NULL DEFAULT 'none'",
 		},
 		{
+			name: "task_definition.progress_mode",
+			sql:  "ALTER TABLE task_definition ADD COLUMN IF NOT EXISTS progress_mode VARCHAR(16) NOT NULL DEFAULT 'sum' CHECK (progress_mode IN ('sum', 'max'))",
+		},
+		{
 			name: "task_partner_issue.external_click_id",
 			sql:  "ALTER TABLE task_partner_issue ADD COLUMN IF NOT EXISTS external_click_id VARCHAR(255) NULL",
 		},

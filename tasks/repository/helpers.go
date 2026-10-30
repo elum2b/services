@@ -147,6 +147,7 @@ func mapTask(row tasksqlc.TaskDefinition) Task {
 		ActionKind:       row.ActionKind,
 		ClaimMode:        row.ClaimMode,
 		StartMode:        row.StartMode,
+		ProgressMode:     ProgressMode(row.ProgressMode),
 		TargetCount: uint64(
 			row.TargetCount,
 		),

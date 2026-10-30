@@ -584,6 +584,7 @@ func (r *Repository) importTasksBulk(
 				task.ActionKind,
 				defaultString(task.ClaimMode, ClaimModeManual),
 				defaultString(task.StartMode, StartModeNone),
+				defaultString(string(task.ProgressMode), string(ProgressModeSum)),
 				task.TargetCount,
 				defaultString(task.Reset.Unit, ResetNever),
 				defaultUint32(task.Reset.Every, 1),
@@ -615,6 +616,7 @@ func (r *Repository) importTasksBulk(
 			"action_kind",
 			"claim_mode",
 			"start_mode",
+			"progress_mode",
 			"target_count",
 			"reset_unit",
 			"reset_every",
@@ -634,7 +636,7 @@ func (r *Repository) importTasksBulk(
 		"ON CONFLICT (workspace_id, key) DO UPDATE SET "+
 			"group_key = EXCLUDED.group_key, sequence_key = EXCLUDED.sequence_key, sequence_position = EXCLUDED.sequence_position, "+
 			"task_kind = EXCLUDED.task_kind, action_key = EXCLUDED.action_key, action_kind = EXCLUDED.action_kind, "+
-			"claim_mode = EXCLUDED.claim_mode, start_mode = EXCLUDED.start_mode, target_count = EXCLUDED.target_count, reset_unit = EXCLUDED.reset_unit, "+
+			"claim_mode = EXCLUDED.claim_mode, start_mode = EXCLUDED.start_mode, progress_mode = EXCLUDED.progress_mode, target_count = EXCLUDED.target_count, reset_unit = EXCLUDED.reset_unit, "+
 			"reset_every = EXCLUDED.reset_every, position = EXCLUDED.position, payload = EXCLUDED.payload, target = EXCLUDED.target, "+
 			"integration_kind = EXCLUDED.integration_kind, integration_provider = EXCLUDED.integration_provider, "+
 			"integration_payload = EXCLUDED.integration_payload, image_url = EXCLUDED.image_url, is_visible = EXCLUDED.is_visible, "+
@@ -1372,6 +1374,7 @@ func validateExportPackage(pkg ExportPackage) error {
 				ActionKind:          task.ActionKind,
 				ClaimMode:           task.ClaimMode,
 				StartMode:           task.StartMode,
+				ProgressMode:        task.ProgressMode,
 				TargetCount:         task.TargetCount,
 				ResetUnit:           task.Reset.Unit,
 				ResetEvery:          task.Reset.Every,

@@ -52,8 +52,8 @@ INSERT INTO task_definition (
     action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
     reset_every, position, payload, target, integration_kind, integration_provider,
     integration_payload, image_url, is_visible, is_active,
-    start_at, end_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+    start_at, end_at, progress_mode
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 RETURNING id;
 
 -- name: AdminUpdateTask :execrows
@@ -62,7 +62,7 @@ SET group_key = $1, sequence_key = $2, sequence_position = $3, task_kind = $4, a
     action_kind = $6, claim_mode = $7, start_mode = $8, target_count = $9, reset_unit = $10,
     reset_every = $11, position = $12, payload = $13, target = $14, integration_kind = $15,
     integration_provider = $16, integration_payload = $17, image_url = $18,
-    is_visible = $19, is_active = $20, start_at = $21, end_at = $22
+    is_visible = $19, is_active = $20, start_at = $21, end_at = $22, progress_mode = $25
 WHERE workspace_id = $23 AND id = $24 AND deleted_at IS NULL;
 
 -- name: AdminDeleteTask :execrows
@@ -72,7 +72,7 @@ WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL;
 
 -- name: AdminGetTask :one
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count, reset_unit,
        reset_every, position, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, is_visible, is_active,
        start_at, end_at, deleted_at, branch_sort_key, created_at, updated_at
@@ -82,7 +82,7 @@ LIMIT 1;
 
 -- name: AdminGetTaskByKey :one
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count, reset_unit,
        reset_every, position, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, is_visible, is_active,
        start_at, end_at, deleted_at, branch_sort_key, created_at, updated_at
@@ -173,7 +173,7 @@ ORDER BY group_key, provider, external_type, position, reward_key;
 
 -- name: AdminListTasks :many
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count, reset_unit,
        reset_every, position, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, is_visible, is_active,
        start_at, end_at, deleted_at, branch_sort_key, created_at, updated_at
@@ -184,7 +184,7 @@ LIMIT $2 OFFSET $3;
 
 -- name: AdminListTasksByGroup :many
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count, reset_unit,
        reset_every, position, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, is_visible, is_active,
        start_at, end_at, deleted_at, branch_sort_key, created_at, updated_at
@@ -195,7 +195,7 @@ LIMIT $3 OFFSET $4;
 
 -- name: ExportListTasks :many
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count, reset_unit,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count, reset_unit,
        reset_every, position, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, is_visible, is_active,
        start_at, end_at, deleted_at, branch_sort_key, created_at, updated_at
@@ -331,7 +331,7 @@ ORDER BY c.parent_task_id, c.position, c.condition_task_id;
 
 -- name: ListRecordTasks :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count, t.reset_unit,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count, t.reset_unit,
        t.reset_every, t.payload, t.target, t.branch_sort_key, t.position
 FROM task_definition t 
 WHERE t.workspace_id = $1
@@ -343,7 +343,7 @@ WHERE t.workspace_id = $1
   AND (t.end_at IS NULL OR t.end_at > $4)
 UNION ALL
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count, t.reset_unit,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count, t.reset_unit,
        t.reset_every, t.payload, t.target, t.branch_sort_key, t.position
 FROM task_sequence_state s
 JOIN task_definition t
@@ -360,7 +360,7 @@ WHERE s.workspace_id = $5
   AND (t.end_at IS NULL OR t.end_at > $11)
 UNION ALL
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count, t.reset_unit,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count, t.reset_unit,
        t.reset_every, t.payload, t.target, t.branch_sort_key, t.position
 FROM task_definition t 
 LEFT JOIN task_sequence_state s
@@ -382,7 +382,7 @@ ORDER BY branch_sort_key, sequence_position, position, id;
 
 -- name: ListRecordCatalog :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count, t.reset_unit,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count, t.reset_unit,
        t.reset_every, t.payload, t.target, t.position, t.start_at, t.end_at,
        COALESCE(
            (
@@ -540,7 +540,7 @@ RETURNING id;
 
 -- name: GetStartTaskByID :one
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count,
        reset_unit, reset_every, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, start_at, end_at
 FROM task_definition
@@ -549,7 +549,7 @@ LIMIT 1;
 
 -- name: GetStartTaskByKey :one
 SELECT id, workspace_id, key, group_key, sequence_key, sequence_position,
-       task_kind, action_key, action_kind, claim_mode, start_mode, target_count,
+       task_kind, action_key, action_kind, claim_mode, start_mode, progress_mode, target_count,
        reset_unit, reset_every, payload, target, integration_kind, integration_provider,
        integration_payload, image_url, start_at, end_at
 FROM task_definition
@@ -635,7 +635,7 @@ ORDER BY position, id;
 
 -- name: GetClaimCatalogByID :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.payload, t.target, t.integration_kind, t.integration_provider, t.integration_payload, t.image_url,
        r.id AS reward_id, r.reward_key, r.reward_type, r.quantity AS reward_quantity, r.scale AS reward_scale, r.duration_unit
 FROM task_definition t
@@ -645,7 +645,7 @@ ORDER BY r.position, r.id;
 
 -- name: GetClaimCatalogByKey :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.payload, t.target, t.integration_kind, t.integration_provider, t.integration_payload, t.image_url,
        r.id AS reward_id, r.reward_key, r.reward_type, r.quantity AS reward_quantity, r.scale AS reward_scale, r.duration_unit
 FROM task_definition t
@@ -655,7 +655,7 @@ ORDER BY r.position, r.id;
 
 -- name: GetIntegrationCheckTaskByID :one
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.reset_unit, t.reset_every, t.payload, t.target, t.integration_kind, t.integration_provider,
        t.integration_payload, t.image_url, t.start_at, t.end_at
 FROM task_definition t
@@ -663,7 +663,7 @@ WHERE t.workspace_id = $1 AND t.id = $2 AND t.is_active = true AND t.deleted_at 
 
 -- name: GetIntegrationCheckTaskByKey :one
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.reset_unit, t.reset_every, t.payload, t.target, t.integration_kind, t.integration_provider,
        t.integration_payload, t.image_url, t.start_at, t.end_at
 FROM task_definition t
@@ -671,7 +671,7 @@ WHERE t.workspace_id = $1 AND t.key = $2 AND t.is_active = true AND t.deleted_at
 
 -- name: GetClaimBundleByIDForUpdate :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.payload, t.target, t.integration_kind, t.integration_provider, t.integration_payload, t.image_url,
        p.id AS progress_id, p.progress, p.status, p.period_start_at, p.period_end_at,
     p.ready_at, p.claimed_at, p.operation_id, COALESCE(p.rewards_snapshot, '[]'::jsonb) AS rewards_snapshot,
@@ -689,7 +689,7 @@ FOR UPDATE;
 
 -- name: GetClaimBundleByKeyForUpdate :many
 SELECT t.id, t.workspace_id, t.key, t.group_key, t.sequence_key, t.sequence_position,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.payload, t.target, t.integration_kind, t.integration_provider, t.integration_payload, t.image_url,
        p.id AS progress_id, p.progress, p.status, p.period_start_at, p.period_end_at,
     p.ready_at, p.claimed_at, p.operation_id, COALESCE(p.rewards_snapshot, '[]'::jsonb) AS rewards_snapshot,
@@ -707,7 +707,7 @@ FOR UPDATE;
 
 -- name: ListActiveTaskBundles :many
 SELECT t.id, t.key, t.group_key,
-       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.target_count,
+       t.task_kind, t.action_key, t.action_kind, t.claim_mode, t.start_mode, t.progress_mode, t.target_count,
        t.payload, t.target, t.image_url, t.start_at, t.end_at,
        gl.locale AS group_locale, gl.title AS group_title, gl.description AS group_description,
        l.locale, l.title, l.description,

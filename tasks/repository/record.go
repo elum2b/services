@@ -290,6 +290,12 @@ func (r *Repository) recordInTx(
 			before := progress.Progress
 			need := task.TargetCount - progress.Progress
 			consume := amount
+			if task.ProgressMode == ProgressModeMax {
+				if amount <= before {
+					continue
+				}
+				consume = amount - before
+			}
 
 			if consume > need {
 				consume = need

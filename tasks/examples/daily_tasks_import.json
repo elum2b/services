@@ -61,6 +61,7 @@
             "task_kind": "internal",
             "action_key": "stars.topup",
             "action_kind": "amount_action",
+            "progress_mode": "sum",
             "claim_mode": "manual",
             "start_mode": "none",
             "target_count": 100,
