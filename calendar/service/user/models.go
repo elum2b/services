@@ -22,6 +22,7 @@ type GetCalendarParams struct {
 }
 
 type GetProgressParams struct {
+	Now        time.Time
 	Identity   Identity
 	CalendarID string
 }
@@ -60,6 +61,7 @@ type CalendarModel struct {
 }
 
 type ProgressModel struct {
+	StreakCount       uint64     `json:"streak_count"`
 	CurrentPosition   uint32     `json:"current_position"`
 	ClaimCount        uint64     `json:"claim_count"`
 	LastClaimPosition *uint32    `json:"last_claim_position,omitempty"`

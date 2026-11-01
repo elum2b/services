@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `User.ListActive(ctx, params)` | `ListActiveParams{WorkspaceID, Locale, Now}`. | Возвращает активные календари рабочей области на момент `Now`. |
 | `User.GetCalendar(ctx, params)` | `GetCalendarParams{Identity, Ref, Locale, Now}`; `Identity{WorkspaceID, AppID, PlatformID, Platform, PlatformUserID, IsPremium, Sex, Country}`. | Возвращает активный на момент `Now` календарь с локализацией, шагами и наградами для пользователя. `Ref` может быть UUID календаря или его `Type`. |
-| `User.GetProgress(ctx, params)` | `GetProgressParams{Identity, CalendarID}`. | Возвращает прогресс пользователя по календарю. |
+| `User.GetProgress(ctx, params)` | `GetProgressParams{Identity, CalendarID, Now}`. | Возвращает прогресс пользователя по календарю, включая `streak_count` — серию последовательных интервалов. `Now` позволяет рассчитать истечение серии на заданный момент. |
 | `User.Record(ctx, params)` | `RecordParams{Identity, CalendarRef, OperationID, Now}`. | Идемпотентно фиксирует попытку получения награды, при доступности шага обновляет прогресс и создает callback `calendar.reward_granted`. `CalendarRef` может быть UUID календаря или его `Type`. |
 | `User.Next(ctx, params)` | `NextParams{Identity, CalendarRef, Locale, Now}`. | Без записи в БД рассчитывает, что вернул бы `Record` на момент `Now`. Используется для предпросмотра доступности следующего шага; награду не выдает и callback не создает. |
 

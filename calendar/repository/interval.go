@@ -47,8 +47,13 @@ func nextAvailableAt(
 		return time.Time{}, err
 	}
 
+	location, err := time.LoadLocation(calendar.Timezone)
+	if err != nil {
+		return time.Time{}, err
+	}
+
 	return addInterval(
-			boundary,
+			boundary.In(location),
 			calendar.IntervalUnit,
 			calendar.IntervalCount,
 		).UTC(),
@@ -169,9 +174,16 @@ func intervalIndex(
 		if err != nil {
 			return 0, time.Time{}, err
 		}
+		location, err := time.LoadLocation(calendar.Timezone)
+		if err != nil {
+			return 0, time.Time{}, err
+		}
+		anchor = anchor.In(location)
 	}
 
-	if calendar.IntervalUnit != "month" {
+	variableCivilInterval := calendar.IntervalType == IntervalCalendar &&
+		(calendar.IntervalUnit == "day" || calendar.IntervalUnit == "week")
+	if calendar.IntervalUnit != "month" && !variableCivilInterval {
 		next := addInterval(
 			anchor,
 			calendar.IntervalUnit,
@@ -194,5 +206,5 @@ func intervalIndex(
 		next = addInterval(next, calendar.IntervalUnit, calendar.IntervalCount)
 	}
 
-	return index, next, nil
+	return index, next.UTC(), nil
 }

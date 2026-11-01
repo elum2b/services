@@ -54,6 +54,7 @@ type CalendarOperation struct {
 	RewardsSnapshot   json.RawMessage `json:"rewards_snapshot"`
 	CurrentPosition   int32           `json:"current_position"`
 	ClaimCount        int64           `json:"claim_count"`
+	StreakCount       int64           `json:"streak_count"`
 	LastClaimPosition sql.NullInt32   `json:"last_claim_position"`
 	LastClaimAt       sql.NullTime    `json:"last_claim_at"`
 	NextClaimAt       sql.NullTime    `json:"next_claim_at"`
@@ -72,6 +73,7 @@ type CalendarProgress struct {
 	PlatformUserID    string        `json:"platform_user_id"`
 	CurrentPosition   int32         `json:"current_position"`
 	ClaimCount        int64         `json:"claim_count"`
+	StreakCount       int64         `json:"streak_count"`
 	LastClaimPosition sql.NullInt32 `json:"last_claim_position"`
 	LastClaimAt       sql.NullTime  `json:"last_claim_at"`
 	NextClaimAt       sql.NullTime  `json:"next_claim_at"`

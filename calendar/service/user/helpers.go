@@ -48,6 +48,7 @@ func mapCalendar(value repository.Calendar) CalendarModel {
 
 func mapProgress(value repository.Progress) ProgressModel {
 	return ProgressModel{
+		StreakCount:       value.StreakCount,
 		CurrentPosition:   value.CurrentPosition,
 		ClaimCount:        value.ClaimCount,
 		LastClaimPosition: value.LastClaimPosition,

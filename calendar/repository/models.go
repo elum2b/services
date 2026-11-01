@@ -90,7 +90,14 @@ type Reward struct {
 	Unit     *string `json:"unit,omitempty"`
 }
 
+type GetProgressParams struct {
+	Identity   Identity
+	CalendarID string
+	Now        time.Time
+}
+
 type Progress struct {
+	StreakCount       uint64
 	CurrentPosition   uint32
 	ClaimCount        uint64
 	LastClaimPosition *uint32

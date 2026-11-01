@@ -149,7 +149,8 @@ func (r *Repository) Record(
 				CurrentPosition: int32(
 					result.Progress.CurrentPosition,
 				),
-				ClaimCount: int64(result.Progress.ClaimCount),
+				ClaimCount:  int64(result.Progress.ClaimCount),
+				StreakCount: int64(result.Progress.StreakCount),
 				LastClaimPosition: nullableUint32(
 					result.Progress.LastClaimPosition,
 				),
@@ -177,6 +178,7 @@ func (r *Repository) Record(
 					PlatformUserID:  params.Identity.PlatformUserID,
 					CurrentPosition: int32(result.Progress.CurrentPosition),
 					ClaimCount:      int64(result.Progress.ClaimCount),
+					StreakCount:     int64(result.Progress.StreakCount),
 					LastClaimPosition: nullableUint32(
 						result.Progress.LastClaimPosition,
 					),
@@ -277,6 +279,7 @@ func mapRecordBundle(
 	progress := Progress{
 		CurrentPosition:   nonNegativeUint32(row.CurrentPosition),
 		ClaimCount:        uint64(row.ClaimCount.Int64),
+		StreakCount:       uint64(row.StreakCount.Int64),
 		LastClaimPosition: sqlNullUint32Ptr(row.LastClaimPosition),
 		LastClaimAt: sqlNullTimePtr(
 			row.LastClaimAt,
@@ -305,6 +308,7 @@ func mapRecordBundle(
 		Progress: Progress{
 			CurrentPosition:   nonNegativeUint32(row.OperationCurrentPosition),
 			ClaimCount:        uint64(row.OperationClaimCount.Int64),
+			StreakCount:       uint64(row.OperationStreakCount.Int64),
 			LastClaimPosition: sqlNullUint32Ptr(row.OperationLastClaimPosition),
 			LastClaimAt:       sqlNullTimePtr(row.OperationLastClaimAt),
 			NextClaimAt:       sqlNullTimePtr(row.OperationNextClaimAt),
@@ -345,6 +349,14 @@ func calculateRecord(
 	operationID string,
 	now time.Time,
 ) (RecordResult, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	streak, err := currentIntervalStreak(progress, calendar, now)
+	if err != nil {
+		return RecordResult{}, err
+	}
+	progress.StreakCount = streak
 	result := RecordResult{
 		OperationID: operationID,
 		Calendar:    calendar,
@@ -403,6 +415,10 @@ func calculateRecord(
 	result.Rewards = append(result.Rewards, step.Rewards...)
 	result.Progress.CurrentPosition = position
 	result.Progress.ClaimCount++
+	result.Progress.StreakCount, err = grantedIntervalStreak(progress, calendar, now)
+	if err != nil {
+		return RecordResult{}, err
+	}
 
 	result.Progress.LastClaimPosition = &position
 	result.Progress.LastClaimAt = &now

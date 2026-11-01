@@ -199,7 +199,7 @@ func (q *Queries) AdminGetLocalization(ctx context.Context, arg AdminGetLocaliza
 }
 
 const adminGetOperation = `-- name: AdminGetOperation :one
-SELECT id, workspace_id, calendar_id, app_id, platform_id, platform_user_id, operation_id, granted, status, position, rewards_snapshot, current_position, claim_count, last_claim_position, last_claim_at, next_claim_at, is_completed, reset_count, was_reset, occurred_at, created_at FROM calendar_operation
+SELECT id, workspace_id, calendar_id, app_id, platform_id, platform_user_id, operation_id, granted, status, position, rewards_snapshot, current_position, claim_count, streak_count, last_claim_position, last_claim_at, next_claim_at, is_completed, reset_count, was_reset, occurred_at, created_at FROM calendar_operation
 WHERE workspace_id = $1 AND calendar_id = $2 AND id = $3
 LIMIT 1
 `
@@ -227,6 +227,7 @@ func (q *Queries) AdminGetOperation(ctx context.Context, arg AdminGetOperationPa
 		&i.RewardsSnapshot,
 		&i.CurrentPosition,
 		&i.ClaimCount,
+		&i.StreakCount,
 		&i.LastClaimPosition,
 		&i.LastClaimAt,
 		&i.NextClaimAt,
@@ -485,7 +486,7 @@ func (q *Queries) AdminListLocalizations(ctx context.Context, arg AdminListLocal
 }
 
 const adminListOperations = `-- name: AdminListOperations :many
-SELECT id, workspace_id, calendar_id, app_id, platform_id, platform_user_id, operation_id, granted, status, position, rewards_snapshot, current_position, claim_count, last_claim_position, last_claim_at, next_claim_at, is_completed, reset_count, was_reset, occurred_at, created_at
+SELECT id, workspace_id, calendar_id, app_id, platform_id, platform_user_id, operation_id, granted, status, position, rewards_snapshot, current_position, claim_count, streak_count, last_claim_position, last_claim_at, next_claim_at, is_completed, reset_count, was_reset, occurred_at, created_at
 FROM calendar_operation
 WHERE workspace_id = $1 AND calendar_id = $2
 ORDER BY occurred_at DESC, id DESC
@@ -527,6 +528,7 @@ func (q *Queries) AdminListOperations(ctx context.Context, arg AdminListOperatio
 			&i.RewardsSnapshot,
 			&i.CurrentPosition,
 			&i.ClaimCount,
+			&i.StreakCount,
 			&i.LastClaimPosition,
 			&i.LastClaimAt,
 			&i.NextClaimAt,
@@ -895,8 +897,8 @@ INSERT INTO calendar_operation (
     workspace_id, calendar_id, app_id, platform_id, platform_user_id,
     operation_id, granted, status, position, rewards_snapshot,
     current_position, claim_count, last_claim_position, last_claim_at,
-    next_claim_at, is_completed, reset_count, was_reset, occurred_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+    next_claim_at, is_completed, reset_count, was_reset, occurred_at, streak_count
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 RETURNING id
 `
 
@@ -920,6 +922,7 @@ type CreateOperationParams struct {
 	ResetCount        int64           `json:"reset_count"`
 	WasReset          bool            `json:"was_reset"`
 	OccurredAt        time.Time       `json:"occurred_at"`
+	StreakCount       int64           `json:"streak_count"`
 }
 
 func (q *Queries) CreateOperation(ctx context.Context, arg CreateOperationParams) (int64, error) {
@@ -943,6 +946,7 @@ func (q *Queries) CreateOperation(ctx context.Context, arg CreateOperationParams
 		arg.ResetCount,
 		arg.WasReset,
 		arg.OccurredAt,
+		arg.StreakCount,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -1149,13 +1153,14 @@ func (q *Queries) GetExportFootprint(ctx context.Context, workspaceID string) (G
 }
 
 const getProgress = `-- name: GetProgress :one
-SELECT workspace_id, calendar_id, app_id, platform_id, platform_user_id, current_position, claim_count, last_claim_position, last_claim_at, next_claim_at, is_completed, reset_count, last_was_reset, created_at, updated_at
-FROM calendar_progress
-WHERE workspace_id = $1
-  AND calendar_id = $2
-  AND app_id = $3
-  AND platform_id = $4
-  AND platform_user_id = $5
+SELECT p.workspace_id, p.calendar_id, p.app_id, p.platform_id, p.platform_user_id, p.current_position, p.claim_count, p.streak_count, p.last_claim_position, p.last_claim_at, p.next_claim_at, p.is_completed, p.reset_count, p.last_was_reset, p.created_at, p.updated_at, c.timezone, c.mode, c.interval_type, c.interval_unit, c.interval_count
+FROM calendar_progress p
+JOIN calendar_definition c ON c.workspace_id = p.workspace_id AND c.id = p.calendar_id
+WHERE p.workspace_id = $1
+  AND p.calendar_id = $2
+  AND p.app_id = $3
+  AND p.platform_id = $4
+  AND p.platform_user_id = $5
 LIMIT 1
 `
 
@@ -1167,7 +1172,31 @@ type GetProgressParams struct {
 	PlatformUserID string `json:"platform_user_id"`
 }
 
-func (q *Queries) GetProgress(ctx context.Context, arg GetProgressParams) (CalendarProgress, error) {
+type GetProgressRow struct {
+	WorkspaceID       string        `json:"workspace_id"`
+	CalendarID        string        `json:"calendar_id"`
+	AppID             int64         `json:"app_id"`
+	PlatformID        int64         `json:"platform_id"`
+	PlatformUserID    string        `json:"platform_user_id"`
+	CurrentPosition   int32         `json:"current_position"`
+	ClaimCount        int64         `json:"claim_count"`
+	StreakCount       int64         `json:"streak_count"`
+	LastClaimPosition sql.NullInt32 `json:"last_claim_position"`
+	LastClaimAt       sql.NullTime  `json:"last_claim_at"`
+	NextClaimAt       sql.NullTime  `json:"next_claim_at"`
+	IsCompleted       bool          `json:"is_completed"`
+	ResetCount        int64         `json:"reset_count"`
+	LastWasReset      bool          `json:"last_was_reset"`
+	CreatedAt         time.Time     `json:"created_at"`
+	UpdatedAt         time.Time     `json:"updated_at"`
+	Timezone          string        `json:"timezone"`
+	Mode              string        `json:"mode"`
+	IntervalType      string        `json:"interval_type"`
+	IntervalUnit      string        `json:"interval_unit"`
+	IntervalCount     int32         `json:"interval_count"`
+}
+
+func (q *Queries) GetProgress(ctx context.Context, arg GetProgressParams) (GetProgressRow, error) {
 	row := q.queryRow(ctx, q.getProgressStmt, getProgress,
 		arg.WorkspaceID,
 		arg.CalendarID,
@@ -1175,7 +1204,7 @@ func (q *Queries) GetProgress(ctx context.Context, arg GetProgressParams) (Calen
 		arg.PlatformID,
 		arg.PlatformUserID,
 	)
-	var i CalendarProgress
+	var i GetProgressRow
 	err := row.Scan(
 		&i.WorkspaceID,
 		&i.CalendarID,
@@ -1184,6 +1213,7 @@ func (q *Queries) GetProgress(ctx context.Context, arg GetProgressParams) (Calen
 		&i.PlatformUserID,
 		&i.CurrentPosition,
 		&i.ClaimCount,
+		&i.StreakCount,
 		&i.LastClaimPosition,
 		&i.LastClaimAt,
 		&i.NextClaimAt,
@@ -1192,6 +1222,11 @@ func (q *Queries) GetProgress(ctx context.Context, arg GetProgressParams) (Calen
 		&i.LastWasReset,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Timezone,
+		&i.Mode,
+		&i.IntervalType,
+		&i.IntervalUnit,
+		&i.IntervalCount,
 	)
 	return i, err
 }
@@ -1217,6 +1252,7 @@ SELECT
     c.updated_at,
     p.current_position,
     p.claim_count,
+    p.streak_count,
     p.last_claim_position,
     p.last_claim_at,
     p.next_claim_at,
@@ -1231,6 +1267,7 @@ SELECT
     COALESCE(o.rewards_snapshot, '[]'::jsonb) AS operation_rewards_snapshot,
     o.current_position AS operation_current_position,
     o.claim_count AS operation_claim_count,
+    o.streak_count AS operation_streak_count,
     o.last_claim_position AS operation_last_claim_position,
     o.last_claim_at AS operation_last_claim_at,
     o.next_claim_at AS operation_next_claim_at,
@@ -1307,6 +1344,7 @@ type GetRecordBundleForUpdateRow struct {
 	UpdatedAt                  time.Time       `json:"updated_at"`
 	CurrentPosition            sql.NullInt32   `json:"current_position"`
 	ClaimCount                 sql.NullInt64   `json:"claim_count"`
+	StreakCount                sql.NullInt64   `json:"streak_count"`
 	LastClaimPosition          sql.NullInt32   `json:"last_claim_position"`
 	LastClaimAt                sql.NullTime    `json:"last_claim_at"`
 	NextClaimAt                sql.NullTime    `json:"next_claim_at"`
@@ -1321,6 +1359,7 @@ type GetRecordBundleForUpdateRow struct {
 	OperationRewardsSnapshot   json.RawMessage `json:"operation_rewards_snapshot"`
 	OperationCurrentPosition   sql.NullInt32   `json:"operation_current_position"`
 	OperationClaimCount        sql.NullInt64   `json:"operation_claim_count"`
+	OperationStreakCount       sql.NullInt64   `json:"operation_streak_count"`
 	OperationLastClaimPosition sql.NullInt32   `json:"operation_last_claim_position"`
 	OperationLastClaimAt       sql.NullTime    `json:"operation_last_claim_at"`
 	OperationNextClaimAt       sql.NullTime    `json:"operation_next_claim_at"`
@@ -1379,6 +1418,7 @@ func (q *Queries) GetRecordBundleForUpdate(ctx context.Context, arg GetRecordBun
 			&i.UpdatedAt,
 			&i.CurrentPosition,
 			&i.ClaimCount,
+			&i.StreakCount,
 			&i.LastClaimPosition,
 			&i.LastClaimAt,
 			&i.NextClaimAt,
@@ -1393,6 +1433,7 @@ func (q *Queries) GetRecordBundleForUpdate(ctx context.Context, arg GetRecordBun
 			&i.OperationRewardsSnapshot,
 			&i.OperationCurrentPosition,
 			&i.OperationClaimCount,
+			&i.OperationStreakCount,
 			&i.OperationLastClaimPosition,
 			&i.OperationLastClaimAt,
 			&i.OperationNextClaimAt,
@@ -1789,11 +1830,12 @@ const upsertProgress = `-- name: UpsertProgress :exec
 INSERT INTO calendar_progress (
     workspace_id, calendar_id, app_id, platform_id, platform_user_id,
     current_position, claim_count, last_claim_position, last_claim_at,
-    next_claim_at, is_completed, reset_count, last_was_reset
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    next_claim_at, is_completed, reset_count, last_was_reset, streak_count
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 ON CONFLICT (workspace_id, calendar_id, app_id, platform_id, platform_user_id) DO UPDATE SET
     current_position = EXCLUDED.current_position,
     claim_count = EXCLUDED.claim_count,
+    streak_count = EXCLUDED.streak_count,
     last_claim_position = EXCLUDED.last_claim_position,
     last_claim_at = EXCLUDED.last_claim_at,
     next_claim_at = EXCLUDED.next_claim_at,
@@ -1817,6 +1859,7 @@ type UpsertProgressParams struct {
 	IsCompleted       bool          `json:"is_completed"`
 	ResetCount        int64         `json:"reset_count"`
 	LastWasReset      bool          `json:"last_was_reset"`
+	StreakCount       int64         `json:"streak_count"`
 }
 
 func (q *Queries) UpsertProgress(ctx context.Context, arg UpsertProgressParams) error {
@@ -1834,6 +1877,7 @@ func (q *Queries) UpsertProgress(ctx context.Context, arg UpsertProgressParams) 
 		arg.IsCompleted,
 		arg.ResetCount,
 		arg.LastWasReset,
+		arg.StreakCount,
 	)
 	return err
 }

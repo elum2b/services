@@ -92,8 +92,11 @@ func (u *User) GetCalendar(
 
 	progress, err := u.repository.GetProgress(
 		mergedCtx,
-		repositoryIdentity(params.Identity),
-		value.ID,
+		repository.GetProgressParams{
+			Identity:   repositoryIdentity(params.Identity),
+			CalendarID: value.ID,
+			Now:        now,
+		},
 	)
 	if err != nil {
 		return CalendarModel{}, err
@@ -141,8 +144,11 @@ func (u *User) GetProgress(
 
 	value, err := u.repository.GetProgress(
 		mergedCtx,
-		repositoryIdentity(params.Identity),
-		params.CalendarID,
+		repository.GetProgressParams{
+			Identity:   repositoryIdentity(params.Identity),
+			CalendarID: params.CalendarID,
+			Now:        params.Now,
+		},
 	)
 	if err != nil || value == nil {
 		return nil, err

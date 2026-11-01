@@ -257,6 +257,7 @@ SELECT
     c.updated_at,
     p.current_position,
     p.claim_count,
+    p.streak_count,
     p.last_claim_position,
     p.last_claim_at,
     p.next_claim_at,
@@ -271,6 +272,7 @@ SELECT
     COALESCE(o.rewards_snapshot, '[]'::jsonb) AS operation_rewards_snapshot,
     o.current_position AS operation_current_position,
     o.claim_count AS operation_claim_count,
+    o.streak_count AS operation_streak_count,
     o.last_claim_position AS operation_last_claim_position,
     o.last_claim_at AS operation_last_claim_at,
     o.next_claim_at AS operation_next_claim_at,
@@ -338,19 +340,20 @@ INSERT INTO calendar_operation (
     workspace_id, calendar_id, app_id, platform_id, platform_user_id,
     operation_id, granted, status, position, rewards_snapshot,
     current_position, claim_count, last_claim_position, last_claim_at,
-    next_claim_at, is_completed, reset_count, was_reset, occurred_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+    next_claim_at, is_completed, reset_count, was_reset, occurred_at, streak_count
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 RETURNING id;
 
 -- name: UpsertProgress :exec
 INSERT INTO calendar_progress (
     workspace_id, calendar_id, app_id, platform_id, platform_user_id,
     current_position, claim_count, last_claim_position, last_claim_at,
-    next_claim_at, is_completed, reset_count, last_was_reset
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    next_claim_at, is_completed, reset_count, last_was_reset, streak_count
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 ON CONFLICT (workspace_id, calendar_id, app_id, platform_id, platform_user_id) DO UPDATE SET
     current_position = EXCLUDED.current_position,
     claim_count = EXCLUDED.claim_count,
+    streak_count = EXCLUDED.streak_count,
     last_claim_position = EXCLUDED.last_claim_position,
     last_claim_at = EXCLUDED.last_claim_at,
     next_claim_at = EXCLUDED.next_claim_at,
@@ -360,13 +363,14 @@ ON CONFLICT (workspace_id, calendar_id, app_id, platform_id, platform_user_id) D
     updated_at = now();
 
 -- name: GetProgress :one
-SELECT *
-FROM calendar_progress
-WHERE workspace_id = $1
-  AND calendar_id = $2
-  AND app_id = $3
-  AND platform_id = $4
-  AND platform_user_id = $5
+SELECT p.*, c.timezone, c.mode, c.interval_type, c.interval_unit, c.interval_count
+FROM calendar_progress p
+JOIN calendar_definition c ON c.workspace_id = p.workspace_id AND c.id = p.calendar_id
+WHERE p.workspace_id = $1
+  AND p.calendar_id = $2
+  AND p.app_id = $3
+  AND p.platform_id = $4
+  AND p.platform_user_id = $5
 LIMIT 1;
 
 -- name: AdminListOperations :many

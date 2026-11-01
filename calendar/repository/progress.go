@@ -9,16 +9,18 @@ import (
 
 func (r *Repository) GetProgress(
 	ctx context.Context,
-	identity Identity,
-	calendarID string,
+	params GetProgressParams,
 ) (*Progress, error) {
+	identity := params.Identity
 	if err := identity.Validate(); err != nil {
 		return nil, err
 	}
 
 	row, err := r.q.GetProgress(ctx, calendarsqlc.GetProgressParams{
-		WorkspaceID: identity.WorkspaceID, CalendarID: calendarID,
-		AppID: identity.AppID, PlatformID: identity.PlatformID,
+		WorkspaceID:    identity.WorkspaceID,
+		CalendarID:     params.CalendarID,
+		AppID:          identity.AppID,
+		PlatformID:     identity.PlatformID,
 		PlatformUserID: identity.PlatformUserID,
 	})
 	if isNoRows(err) {
@@ -30,7 +32,8 @@ func (r *Repository) GetProgress(
 		return nil, err
 	}
 
-	return &Progress{
+	progress := Progress{
+		StreakCount: uint64(row.StreakCount),
 		CurrentPosition: uint32(
 			row.CurrentPosition,
 		),
@@ -43,7 +46,22 @@ func (r *Repository) GetProgress(
 		IsCompleted:  row.IsCompleted,
 		ResetCount:   uint64(row.ResetCount),
 		LastWasReset: row.LastWasReset,
-	}, nil
+	}
+	now := params.Now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	progress.StreakCount, err = currentIntervalStreak(progress, Calendar{
+		Timezone:      row.Timezone,
+		Mode:          row.Mode,
+		IntervalType:  row.IntervalType,
+		IntervalUnit:  row.IntervalUnit,
+		IntervalCount: uint32(row.IntervalCount),
+	}, now)
+	if err != nil {
+		return nil, err
+	}
+	return &progress, nil
 }
 
 func (r *Repository) Next(
@@ -61,7 +79,11 @@ func (r *Repository) Next(
 		return RecordResult{Status: StatusNotFound, Calendar: calendar}, err
 	}
 
-	progress, err := r.GetProgress(ctx, identity, calendar.ID)
+	progress, err := r.GetProgress(ctx, GetProgressParams{
+		Identity:   identity,
+		CalendarID: calendar.ID,
+		Now:        now,
+	})
 	if err != nil {
 		return RecordResult{}, err
 	}

@@ -3,6 +3,9 @@ package sqlc
 import _ "embed"
 
 var (
+	//go:embed streak_count_migration.sql
+	StreakCountMigrationSQL string
+
 	//go:embed schema.sql
 	SchemaSQL string
 

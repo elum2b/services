@@ -2086,3 +2086,209 @@ func waitCalendarArchiveJob(
 
 	t.Fatal("archive job did not complete")
 }
+
+func TestCalendarStreakCount(t *testing.T) {
+
+	service := newCalendarTestService(t)
+	ctx := context.Background()
+	cases := []struct {
+		name, timezone, unit, intervalType string
+		count                              uint32
+		times                              []string
+		want                               []uint64
+	}{
+		{"hours", "UTC", "hour", repository.IntervalFloating, 1, []string{"2026-03-01T10:00:00Z", "2026-03-01T11:00:00Z", "2026-03-01T12:59:59Z", "2026-03-01T15:00:00Z"}, []uint64{1, 2, 3, 1}},
+		{"multiple_hours", "UTC", "hour", repository.IntervalFloating, 3, []string{"2026-03-01T10:00:00Z", "2026-03-01T13:00:00Z", "2026-03-01T19:00:00Z"}, []uint64{1, 2, 1}},
+		{"moscow_midnight", "Europe/Moscow", "day", repository.IntervalCalendar, 1, []string{"2026-03-01T20:59:59Z", "2026-03-01T21:00:00Z"}, []uint64{1, 2}},
+		{"spring_dst", "America/New_York", "day", repository.IntervalCalendar, 1, []string{"2026-03-07T17:00:00Z", "2026-03-08T16:00:00Z", "2026-03-09T16:00:00Z"}, []uint64{1, 2, 3}},
+		{"autumn_dst", "America/New_York", "day", repository.IntervalCalendar, 1, []string{"2026-10-31T16:00:00Z", "2026-11-01T17:00:00Z"}, []uint64{1, 2}},
+		{"weeks", "UTC", "week", repository.IntervalCalendar, 1, []string{"2026-03-01T12:00:00Z", "2026-03-02T12:00:00Z", "2026-03-16T12:00:00Z"}, []uint64{1, 2, 1}},
+		{"months", "UTC", "month", repository.IntervalCalendar, 1, []string{"2026-01-31T12:00:00Z", "2026-02-01T12:00:00Z", "2026-04-01T12:00:00Z"}, []uint64{1, 2, 1}},
+		{"floating_days", "UTC", "day", repository.IntervalFloating, 1, []string{"2026-03-01T12:00:00Z", "2026-03-02T12:00:00Z", "2026-03-04T12:00:00Z"}, []uint64{1, 2, 1}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			identity := user.Identity{WorkspaceID: testsupport.WorkspaceID("streak"), AppID: 1, PlatformID: 2, PlatformUserID: tc.name}
+			id := createCalendar(t, service, admin.SaveCalendarParams{
+				WorkspaceID: identity.WorkspaceID, Type: tc.name, Mode: repository.ModeSequential,
+				IntervalType: tc.intervalType, IntervalUnit: tc.unit, IntervalCount: tc.count,
+				EndBehavior: repository.EndRestart, Timezone: tc.timezone, IsActive: true,
+			})
+			createStepReward(t, service, identity.WorkspaceID, id, 1, "coin", 1)
+			createStepReward(t, service, identity.WorkspaceID, id, 2, "coin", 1)
+			var first user.RecordResult
+			var last time.Time
+			for i, raw := range tc.times {
+				now, err := time.Parse(time.RFC3339, raw)
+				if err != nil {
+					t.Fatal(err)
+				}
+				preview, err := service.User.Next(ctx, user.NextParams{Identity: identity, CalendarRef: id, Now: now})
+				if err != nil || preview.Progress.StreakCount != tc.want[i] {
+					t.Fatalf("preview %d: %+v, %v", i, preview, err)
+				}
+				got := record(t, service, identity, id, fmt.Sprintf("claim-%d", i), now)
+				if !got.Granted || got.Progress.StreakCount != tc.want[i] || got.Progress.ClaimCount != uint64(i+1) {
+					t.Fatalf("claim %d: %+v", i, got)
+				}
+				progress, err := service.User.GetProgress(ctx, user.GetProgressParams{Identity: identity, CalendarID: id, Now: now})
+				if err != nil || progress == nil || progress.StreakCount != tc.want[i] {
+					t.Fatalf("read %d: %+v %v", i, progress, err)
+				}
+				denied := record(t, service, identity, id, fmt.Sprintf("denied-%d", i), now)
+				if denied.Granted || denied.Progress.StreakCount != tc.want[i] {
+					t.Fatalf("denied changed streak: %+v", denied)
+				}
+				if i == 0 {
+					first = got
+				}
+				last = now
+			}
+			replay := record(t, service, identity, id, "claim-0", last.AddDate(10, 0, 0))
+			if replay.Progress.StreakCount != first.Progress.StreakCount || replay.OperationRowID != first.OperationRowID {
+				t.Fatalf("replay changed historical snapshot: %+v", replay)
+			}
+			expired, err := service.User.GetProgress(ctx, user.GetProgressParams{Identity: identity, CalendarID: id, Now: last.AddDate(10, 0, 0)})
+			if err != nil || expired == nil || expired.StreakCount != 0 || expired.ClaimCount != uint64(len(tc.times)) {
+				t.Fatalf("expired: %+v %v", expired, err)
+			}
+			other := identity
+			other.AppID++
+			empty, err := service.User.GetProgress(ctx, user.GetProgressParams{Identity: other, CalendarID: id, Now: last})
+			if err != nil || empty != nil {
+				t.Fatalf("identity leaked: %+v %v", empty, err)
+			}
+		})
+	}
+
+}
+
+func TestCalendarStreakCountConcurrencyAndMigration(t *testing.T) {
+
+	service := newCalendarTestService(t)
+	ctx := context.Background()
+	identity := user.Identity{WorkspaceID: testsupport.WorkspaceID("streak"), AppID: 1, PlatformID: 2, PlatformUserID: "concurrent"}
+	id := createCalendar(t, service, admin.SaveCalendarParams{
+		WorkspaceID: identity.WorkspaceID, Type: "daily", Mode: repository.ModeSequential,
+		IntervalType: repository.IntervalCalendar, IntervalUnit: "day", IntervalCount: 1,
+		EndBehavior: repository.EndRestart, Timezone: "Europe/Moscow", IsActive: true,
+	})
+	createStepReward(t, service, identity.WorkspaceID, id, 1, "coin", 1)
+	start := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	for day := 0; day < 3; day++ {
+		var wg sync.WaitGroup
+		results := make(chan user.RecordResult, 10)
+		errs := make(chan error, 10)
+		for attempt := 0; attempt < 10; attempt++ {
+			wg.Add(1)
+			go func(n int) {
+				defer wg.Done()
+				got, err := service.User.Record(ctx, user.RecordParams{Identity: identity, CalendarRef: id, OperationID: fmt.Sprintf("%d-%d", day, n), Now: start.AddDate(0, 0, day)})
+				if err != nil {
+					errs <- err
+					return
+				}
+				results <- got
+			}(attempt)
+		}
+		wg.Wait()
+		close(results)
+		close(errs)
+		for err := range errs {
+			t.Fatal(err)
+		}
+		granted := 0
+		for got := range results {
+			if got.Granted {
+				granted++
+			}
+			if got.Progress.StreakCount != uint64(day+1) {
+				t.Fatalf("concurrent streak: %+v", got)
+			}
+		}
+		if granted != 1 {
+			t.Fatalf("day %d grants = %d", day, granted)
+		}
+	}
+	// Simulate an old schema with real grant history, then run the production upgrade twice.
+	db, err := openCalendarPostgres(calendarTestDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, "ALTER TABLE calendar_progress DROP COLUMN streak_count; ALTER TABLE calendar_operation DROP COLUMN streak_count"); err != nil {
+		t.Fatal(err)
+	}
+	client, err := sqlwrap.New(db, sqlwrap.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := repository.New(client)
+	defer repo.Close()
+	for range 2 {
+		if err := repo.Bootstrap(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var streak, claims, callbacks int
+	if err := db.QueryRowContext(ctx, "SELECT streak_count, claim_count FROM calendar_progress").Scan(&streak, &claims); err != nil {
+		t.Fatal(err)
+	}
+	if streak != 3 || claims != 3 {
+		t.Fatalf("migration lost progress: streak=%d claims=%d", streak, claims)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM calendar_operation WHERE streak_count <> ((occurred_at AT TIME ZONE 'Europe/Moscow')::date - DATE '2026-03-01' + 1)").Scan(&callbacks); err != nil || callbacks != 0 {
+		t.Fatalf("migration snapshots invalid: %d %v", callbacks, err)
+	}
+
+}
+
+func TestCalendarStreakModes(t *testing.T) {
+
+	service := newCalendarTestService(t)
+	ctx := context.Background()
+	for _, mode := range []string{repository.ModeSequential, repository.ModeSequentialReset, repository.ModeInterval} {
+		t.Run(mode, func(t *testing.T) {
+			start := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+			identity := user.Identity{WorkspaceID: testsupport.WorkspaceID("streak-modes"), AppID: 1, PlatformID: 2, PlatformUserID: mode}
+			id := createCalendar(t, service, admin.SaveCalendarParams{
+				WorkspaceID: identity.WorkspaceID, Type: mode, Mode: mode, IntervalType: repository.IntervalFloating,
+				IntervalUnit: "hour", IntervalCount: 1, ResetAfterIntervals: 1, EndBehavior: repository.EndRestart,
+				Timezone: "UTC", IsActive: true, StartAt: &start,
+			})
+			createStepReward(t, service, identity.WorkspaceID, id, 1, "coin", 1)
+			for i, offset := range []time.Duration{0, time.Hour, 3 * time.Hour} {
+				got := record(t, service, identity, id, fmt.Sprintf("claim-%d", i), start.Add(offset))
+				want := []uint64{1, 2, 1}[i]
+				if !got.Granted || got.Progress.StreakCount != want {
+					t.Fatalf("%s claim %d: %+v", mode, i, got)
+				}
+			}
+			progress, err := service.User.GetProgress(ctx, user.GetProgressParams{Identity: identity, CalendarID: id, Now: start.Add(5 * time.Hour)})
+			if err != nil || progress.StreakCount != 0 || progress.ClaimCount != 3 {
+				t.Fatalf("%s expired: %+v %v", mode, progress, err)
+			}
+		})
+	}
+
+}
+
+func TestCalendarIntervalStreakDST(t *testing.T) {
+
+	service := newCalendarTestService(t)
+	identity := user.Identity{WorkspaceID: testsupport.WorkspaceID("interval-dst"), AppID: 1, PlatformID: 2, PlatformUserID: "player"}
+	start := time.Date(2026, 3, 8, 5, 0, 0, 0, time.UTC)
+	id := createCalendar(t, service, admin.SaveCalendarParams{
+		WorkspaceID: identity.WorkspaceID, Type: "daily", Mode: repository.ModeInterval,
+		IntervalType: repository.IntervalCalendar, IntervalUnit: "day", IntervalCount: 1,
+		Timezone: "America/New_York", StartAt: &start, IsActive: true, EndBehavior: repository.EndRestart,
+	})
+	createStepReward(t, service, identity.WorkspaceID, id, 1, "coin", 1)
+	createStepReward(t, service, identity.WorkspaceID, id, 2, "coin", 1)
+	first := record(t, service, identity, id, "first", start)
+	second := record(t, service, identity, id, "second", start.Add(23*time.Hour))
+	if !first.Granted || !second.Granted || second.Progress.StreakCount != 2 || *second.Position != 2 {
+		t.Fatalf("DST continuation failed: first=%+v second=%+v", first, second)
+	}
+
+}

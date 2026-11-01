@@ -125,6 +125,9 @@ func (r *Repository) Bootstrap(ctx context.Context) error {
 	if err := r.applySQL(ctx, calendarsqlc.SchemaSQL, "schema"); err != nil {
 		return err
 	}
+	if err := r.applySQL(ctx, calendarsqlc.StreakCountMigrationSQL, "daily streak migration"); err != nil {
+		return err
+	}
 
 	if err := sqlwrap.Exec(
 		ctx,
