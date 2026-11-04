@@ -15,27 +15,21 @@ func (a *Admin) CreateWorkspace(
 	ctx context.Context,
 	params CreateWorkspaceParams,
 ) (WorkspaceModel, error) {
-	if strings.TrimSpace(params.ID) == "" {
-		params.ID = uuid.NewString()
-	}
-
-	if err := services.ValidateWorkspaceID(params.ID); err != nil {
-		return WorkspaceModel{}, err
-	}
+	workspaceID := uuid.NewString()
 
 	mergedCtx, cancel := a.withMutation(ctx, repository.AuditEvent{
 		Scope:      repository.ScopeGlobal,
 		ActorID:    strings.TrimSpace(params.ActorID),
 		MethodKey:  "control.global.workspace.create",
 		TargetType: "workspace",
-		TargetID:   params.ID,
+		TargetID:   workspaceID,
 	})
 	defer cancel()
 
 	workspace, err := a.repository.CreateWorkspace(
 		mergedCtx,
 		strings.TrimSpace(params.ActorID),
-		params.ID,
+		workspaceID,
 		strings.ToLower(strings.TrimSpace(params.Slug)),
 		strings.TrimSpace(params.Title),
 	)

@@ -18,9 +18,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	services "github.com/elum2b/services"
+	collectionsvc "github.com/elum2b/services/collections"
 	"github.com/elum2b/services/control"
 	controlmodel "github.com/elum2b/services/control/model"
 	"github.com/elum2b/services/control/repository"
@@ -780,7 +781,6 @@ func TestControlWorkspaceLimitCountsOwnershipOnly(t *testing.T) {
 
 	_, err = service.Admin.CreateWorkspace(ctx, admin.CreateWorkspaceParams{
 		ActorID: friend.Account.ID,
-		ID:      uuid.NewString(),
 		Slug:    "friend-second",
 		Title:   "Friend second",
 	})
@@ -2904,6 +2904,18 @@ func TestControlCreateMethodsReturnPersistedModelsAndDomainConflicts(
 		t.Fatalf("created workspace timestamps = %#v", workspace)
 	}
 
+	if err := services.ValidateWorkspaceID(workspace.ID); err != nil {
+		t.Fatalf("generated workspace ID: %v", err)
+	}
+	persisted, err := service.Admin.GetWorkspace(ctx, workspace.ID)
+	if err != nil || persisted != workspace {
+		t.Fatalf("generated workspace differs from persisted row: %v", err)
+	}
+	audit, err := service.Admin.ListGlobalAudit(ctx, admin.Page{Limit: 100})
+	if err != nil || !auditContainsTarget(audit, "control.global.workspace.create", workspace.ID) {
+		t.Fatalf("generated workspace missing from audit: %v", err)
+	}
+
 	globalRole, err := service.Admin.CreateGlobalRole(
 		ctx,
 		admin.CreateRoleParams{
@@ -3028,7 +3040,6 @@ func TestControlCreateMethodsReturnPersistedModelsAndDomainConflicts(
 
 	_, err = service.Admin.CreateWorkspace(ctx, admin.CreateWorkspaceParams{
 		ActorID: owner.Account.ID,
-		ID:      uuid.NewString(),
 		Slug:    workspace.Slug,
 		Title:   "Duplicate workspace",
 	})
@@ -3353,7 +3364,6 @@ func createWorkspace(
 		context.Background(),
 		admin.CreateWorkspaceParams{
 			ActorID: actorID,
-			ID:      uuid.NewString(),
 			Slug:    slug,
 			Title:   slug,
 		},
@@ -3762,5 +3772,164 @@ func TestControlConcurrentFirstAuthentication(t *testing.T) {
 				t.Fatalf("owner=%s want=%s accounts=%d", storedOwner, ownerID, accounts)
 			}
 		})
+	}
+}
+
+func TestControlCollectionsAccessCatalog(t *testing.T) {
+	service := newControlTestService(t)
+	ctx := context.Background()
+	manifests := []internalapi.MethodManifest{}
+	for _, a := range collectionsvc.AccessManifest() {
+		manifests = append(manifests, internalapi.MethodManifest{
+			Key:           a.Key,
+			Service:       a.Service,
+			GroupKey:      a.GroupKey,
+			GroupPosition: 10,
+			Position:      a.Position,
+		})
+	}
+	if err := service.Internal.RegisterManifest(ctx, manifests); err != nil {
+		t.Fatal(err)
+	}
+	for _, locale := range []string{"ru", "en"} {
+		tree, err := service.Admin.ListAccess(ctx, locale, admin.ScopeWorkspace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		count := 0
+		for _, s := range tree {
+			if s.Service != "collections" {
+				continue
+			}
+			if s.Title == "" || s.Description == "" {
+				t.Fatal("missing service localization")
+			}
+			for _, g := range s.Groups {
+				if g.Title == "" || g.Description == "" {
+					t.Fatal("missing group localization")
+				}
+				for _, a := range g.Accesses {
+					if a.Title == a.Key || a.Desc == "" {
+						t.Fatal("missing access localization")
+					}
+					count++
+				}
+			}
+		}
+		if count != len(manifests) {
+			t.Fatalf("collections access count %d", count)
+		}
+	}
+}
+
+func TestControlCollectionsCatalogUpgradePreservesPermissions(t *testing.T) {
+	service := newControlTestService(t)
+	ctx := context.Background()
+	owner := initializeControl(t, service, "upgrade-owner")
+	member := inviteAccount(t, service, owner.Account.ID, "upgrade-member")
+	workspace := createWorkspace(t, service, owner.Account.ID, "catalog-upgrade")
+	role, err := service.Admin.CreateWorkspaceRole(ctx, admin.CreateRoleParams{
+		ActorID:     owner.Account.ID,
+		WorkspaceID: workspace.ID,
+		Code:        "existing-editor",
+		Title:       "Existing editor",
+		Position:    10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Admin.ReplaceWorkspaceRolePermissions(ctx, admin.ReplaceRolePermissionsParams{
+		ActorID:     owner.Account.ID,
+		WorkspaceID: workspace.ID,
+		RoleID:      role.ID,
+		MethodKeys:  []string{"control.workspace.update"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inviteIntoWorkspaceWithRole(t, service, owner.Account.ID, workspace.ID, member.Account.ID, "upgrade-member", role.ID)
+
+	db, err := sql.Open("pgx", controlPostgresDSN(controlTestDatabase))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	client, err := sqlwrap.New(db, sqlwrap.Options{CacheEnabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	repo := repository.NewWithOptions(client, repository.Options{CacheL1Delay: time.Minute})
+	defer repo.Close()
+	// Reproduce the pre-Collections catalog while retaining accounts, roles and grants.
+	_, err = db.ExecContext(ctx, `DELETE FROM control_method WHERE service='collections';
+DELETE FROM control_method_group WHERE service='collections';
+DELETE FROM control_access_service WHERE service='collections';
+DELETE FROM control_localization WHERE localization_key LIKE 'control.%collections%';`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := repo.ListAccessCatalog(ctx, "en", repository.ScopeWorkspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range before {
+		if row.Service == "collections" {
+			t.Fatal("old catalog unexpectedly contains Collections")
+		}
+	}
+
+	for range 2 {
+		if err := repo.Bootstrap(ctx); err != nil {
+			t.Fatal(err)
+		}
+		for _, locale := range []string{"ru", "en"} {
+			after, err := repo.ListAccessCatalog(ctx, locale, repository.ScopeWorkspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			keys := map[string]repository.AccessCatalogRow{}
+			for _, row := range after {
+				keys[row.Key] = row
+			}
+			for _, old := range before {
+				if _, exists := keys[old.Key]; !exists {
+					t.Fatalf("upgrade removed existing access %s", old.Key)
+				}
+			}
+			for _, action := range collectionsvc.AccessManifest() {
+				row, exists := keys[action.Key]
+				if !exists || row.Scope != repository.ScopeWorkspace || row.Title == action.Key || row.Desc == "" {
+					t.Fatalf("upgrade did not refresh localized workspace access %s", action.Key)
+				}
+			}
+		}
+		global, err := repo.ListAccessCatalog(ctx, "en", repository.ScopeGlobal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range global {
+			if row.Service == "collections" {
+				t.Fatal("Collections access leaked into global scope")
+			}
+		}
+	}
+	for _, check := range []struct {
+		account string
+		method  string
+		want    bool
+	}{
+		{member.Account.ID, "control.workspace.update", true},
+		{member.Account.ID, "collections.catalog.read", false},
+		{member.Account.ID, "collections.ownership.correct", false},
+		{owner.Account.ID, "collections.catalog.read", true},
+	} {
+		allowed, err := service.Internal.CheckWorkspaceAccess(ctx, internalapi.WorkspaceAccessRequest{
+			AccountID:   check.account,
+			WorkspaceID: workspace.ID,
+			MethodKey:   check.method,
+		})
+		if err != nil || allowed != check.want {
+			t.Fatalf("after upgrade %s allowed=%t want=%t err=%v", check.method, allowed, check.want, err)
+		}
 	}
 }

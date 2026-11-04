@@ -1,0 +1,20 @@
+{
+  "format": "collections.export.v1",
+  "service": "collections",
+  "collections": [
+    {
+      "key": "colors",
+      "position": 10,
+      "active": true,
+      "archived": false,
+      "localization": {
+        "ru": {"title": "Цвета", "description": "Доступные варианты цвета"},
+        "en": {"title": "Colors", "description": "Available color variants"}
+      },
+      "entries": [
+        {"item_key": "color.red", "position": 10, "active": true},
+        {"item_key": "color.blue", "position": 20, "active": true}
+      ]
+    }
+  ]
+}

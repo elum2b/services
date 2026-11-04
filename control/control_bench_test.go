@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/elum2b/services/control"
@@ -215,7 +214,6 @@ func newControlBenchmark(b *testing.B) *controlBenchmark {
 		ctx,
 		admin.CreateWorkspaceParams{
 			ActorID: owner.Account.ID,
-			ID:      uuid.NewString(),
 			Slug:    "benchmark",
 			Title:   "Benchmark",
 		},

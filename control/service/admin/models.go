@@ -314,7 +314,6 @@ type AccessGroupModel struct {
 
 type CreateWorkspaceParams struct {
 	ActorID string
-	ID      string
 	Slug    string
 	Title   string
 }

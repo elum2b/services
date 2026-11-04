@@ -44,7 +44,7 @@
 
 | Метод | Принимает | Что делает |
 |---|---|---|
-| `Admin.CreateWorkspace` | Actor, UUID, slug, title | Проверяет global access и ownership limit, затем создает workspace. |
+| `Admin.CreateWorkspace` | Actor, slug, title | Генерирует UUID, проверяет global access и ownership limit, затем создает workspace. |
 | `Admin.GetWorkspace` / `ListWorkspaces` | Workspace ID либо account + cursor | Возвращает workspace или memberships account. |
 | `Admin.UpdateWorkspace` / `ArchiveWorkspace` | Actor и workspace | Изменяет либо архивирует workspace. Архивация освобождает ownership slot и отменяет pending employee-limit request. |
 | `Admin.TransferWorkspaceOwnership` | Actor, workspace, target account | Передает workspace активному участнику с проверкой его ownership limit. |

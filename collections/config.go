@@ -1,0 +1,92 @@
+package collections
+
+import (
+	"github.com/elum2b/services/collections/model"
+	"time"
+
+	"github.com/elum2b/services/internal/utils/importexport/jobs"
+	sqlwrap "github.com/elum2b/services/internal/utils/sql"
+)
+
+type Storage interface {
+	GetWithTTL(key string) ([]byte, time.Duration, error)
+	Set(key string, value []byte, expiration time.Duration) error
+	Delete(key string) error
+	Reset() error
+	Close() error
+}
+
+type Mutex interface {
+	Lock(key string) error
+	Unlock(key string) error
+}
+
+type Codec interface {
+	Marshal(value any) ([]byte, error)
+	Unmarshal(data []byte, value any) error
+}
+
+type Options struct {
+	MaxConnections int
+	QueryTimeout   time.Duration
+	CacheL1Delay   time.Duration
+	CacheL2Delay   time.Duration
+	// CatalogCacheTTL controls version-keyed public catalog pages (default 24h).
+	CatalogCacheTTL          time.Duration
+	Cache                    Storage
+	CacheEnabled             bool
+	CacheSize                int
+	CacheTTLCheck            time.Duration
+	Codec                    Codec
+	Mutex                    Mutex
+	OnCacheInvalidationError func(error)
+	// Archive stores async import/export ZIPs. Set this to shared durable
+	// storage when workers run on more than one node.
+	Archive Archive
+	// ArchiveDirectory overrides the local disk archive directory when Archive
+	// is nil. The executable-relative development directory remains the default.
+	ArchiveDirectory string
+	// ArchiveS3 enables shared S3/MinIO storage; nil retains local disk.
+	ArchiveS3 *ArchiveS3Options
+}
+
+type DatabaseParams struct {
+	User, Password, Database, Host string
+	Port                           int
+	SSLMode, SSLRootCert           string
+	Options                        Options
+}
+
+func toSQLWrapOptions(value Options) sqlwrap.Options {
+	result := sqlwrap.Options{
+		MaxConnections: value.MaxConnections,
+		CacheEnabled:   value.CacheEnabled,
+		CacheSize:      value.CacheSize,
+		CacheTTLCheck:  value.CacheTTLCheck,
+		QueryTimeout:   value.QueryTimeout,
+	}
+	if value.Cache != nil {
+		result.Cache = storageAdapter{value.Cache}
+	}
+
+	if value.Codec != nil {
+		result.Codec = codecAdapter{value.Codec}
+	}
+
+	if value.Mutex != nil {
+		result.Mutex = mutexAdapter{value.Mutex}
+	}
+
+	return result
+}
+
+type storageAdapter struct{ Storage }
+type codecAdapter struct{ Codec }
+type mutexAdapter struct{ Mutex }
+
+type ArchiveS3Options = jobs.S3Options
+
+type Archive = model.Archive
+type ArchiveObject = model.ArchiveObject
+type ArchiveInfo = model.ArchiveInfo
+type ArchiveLister = model.ArchiveLister

@@ -1,0 +1,101 @@
+// These probes assert defect presence; they are not normal regression tests.
+func auditRunParams(t *testing.T,e *testEnv)DatabaseParams{
+ t.Helper();u,err:=url.Parse(testDSN());must(t,err);var name string;must(t,e.db.QueryRow("SELECT current_database()").Scan(&name));password,_:=u.User.Password();port:=5432;if u.Port()!=""{port,err=strconv.Atoi(u.Port());must(t,err)}
+ return DatabaseParams{User:u.User.Username(),Password:password,Host:u.Hostname(),Port:port,Database:name,SSLMode:"disable",Options:Options{QueryTimeout:5*time.Second,ArchiveDirectory:t.TempDir()}}
+}
+func TestAuditProbeCloseDuringRun(t *testing.T){
+ e:=setup(t,Options{});ctx,cancel:=context.WithTimeout(context.Background(),10*time.Second);defer cancel()
+ tx,err:=e.db.BeginTx(ctx,nil);must(t,err);defer tx.Rollback();_,err=tx.ExecContext(ctx,"LOCK TABLE importexport_job IN ACCESS EXCLUSIVE MODE");must(t,err)
+ shell:=New();params:=auditRunParams(t,e);done:=make(chan error,1)
+ go func(){done<-shell.Run(ctx,params)}()
+ defer func(){cancel();select{case <-done:case <-time.After(2*time.Second):t.Error("Run cleanup timeout")}}()
+ for{
+  var waiting int;must(t,e.db.QueryRowContext(ctx,"SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%importexport_job%'").Scan(&waiting))
+  if waiting>0{break};select{case <-ctx.Done():t.Fatal("Run did not block in archive bootstrap");case <-time.After(5*time.Millisecond):}
+ }
+ must(t,shell.Close());must(t,tx.Commit())
+ deadline:=time.Now().Add(2*time.Second)
+ for !shell.IsReady()&&time.Now().Before(deadline){time.Sleep(5*time.Millisecond)}
+ if !shell.IsReady(){t.Fatal("defect no longer present: service did not revive")}
+ t.Log("CONFIRMED: Close returned, then pending Run adopted a live root and became ready")
+}
+func TestAuditProbeEmbeddedCloseDoesNotJoinCallback(t *testing.T){
+ e:=setup(t,Options{});e.seed(t,"red");_,err:=e.s.Internal.SetOwned(context.Background(),e.set("grant","red",true));must(t,err)
+ entered:=make(chan struct{});release:=make(chan struct{});exited:=make(chan error,1)
+ ctx,cancel:=context.WithTimeout(context.Background(),5*time.Second);defer cancel()
+ go func(){exited<-e.s.OnCallback(ctx,func(c Context)error{close(entered);<-c.Done();<-release;return c.Err()},WithCallbackIdleDelay(time.Millisecond))}()
+ select{case <-entered:case <-ctx.Done():t.Fatal("handler not entered")}
+ closed:=make(chan error,1);go func(){closed<-e.s.Close()}()
+ select{case err:=<-closed:must(t,err);t.Log("CONFIRMED: Close returned while callback handler was still active");case <-time.After(300*time.Millisecond):close(release);<-closed;<-exited;t.Fatal("defect no longer present: Close joined handler")}
+ close(release);select{case <-exited:case <-ctx.Done():t.Fatal("handler cleanup timeout")}
+}
+func TestAuditProbeConstructorIgnoresDeadline(t *testing.T){
+ e:=setup(t,Options{});e.db.SetMaxOpenConns(1);conn,err:=e.db.Conn(context.Background());must(t,err);defer conn.Close()
+ ctx,cancel:=context.WithTimeout(context.Background(),50*time.Millisecond);defer cancel()
+ result:=make(chan error,1);opts:=e.opts;opts.MaxConnections=1
+ go func(){s,err:=NewWithDatabase(ctx,e.db,opts);if s!=nil{s.Close()};result<-err}()
+ <-ctx.Done()
+ select{case <-result:t.Fatal("defect no longer present: constructor respected deadline");case <-time.After(100*time.Millisecond):t.Log("CONFIRMED: constructor remained blocked after caller deadline")}
+ must(t,conn.Close());select{case err:=<-result:if !errors.Is(err,context.DeadlineExceeded){t.Fatal(err)};case <-time.After(time.Second):t.Fatal("constructor cleanup timeout")}
+}
+func TestAuditProbeLargeCollectionCannotReorder(t *testing.T){
+ e:=setup(t,Options{});ctx:=context.Background();c:=model.Collection{Key:"colors",Active:true};keys:=[]string{}
+ for n:=range 1001{k:=fmt.Sprintf("k%04d",n);keys=append(keys,k);c.Entries=append(c.Entries,model.Entry{ItemKey:k,Active:true,Position:int32(n)})}
+ _,err:=e.s.Admin.Import(ctx,admin.ImportParams{WorkspaceID:e.w,Request:model.ImportRequest{Package:model.ExportPackage{Format:model.ExportFormat,Service:"collections",Collections:[]model.Collection{c}}}});must(t,err)
+ p:=model.ReorderEntriesParams{WorkspaceID:e.w,ActorID:"operator",CollectionKey:"colors",ItemKeys:keys}
+ err=e.s.Admin.ReorderEntries(ctx,p);if !errors.Is(err,ErrInvalidArgument){t.Fatalf("full reorder: %v",err)}
+ p.ItemKeys=keys[:1000];err=e.s.Admin.ReorderEntries(ctx,p);if !errors.Is(err,ErrConflict){t.Fatalf("partial reorder: %v",err)}
+ t.Log("CONFIRMED: import accepts 1001 entries; full reorder invalid and any smaller list conflicts")
+}
+func TestAuditProbeImportBypassesCatalogAudit(t *testing.T){
+ e:=setup(t,Options{});e.seed(t,"red");ctx:=context.Background();var before,after int
+ must(t,e.db.QueryRow("SELECT count(*) FROM collections_catalog_audit WHERE workspace_id=$1",e.w).Scan(&before))
+ _,err:=e.s.Admin.Import(ctx,admin.ImportParams{WorkspaceID:e.w,Request:model.ImportRequest{Package:model.ExportPackage{Format:model.ExportFormat,Service:"collections",Collections:[]model.Collection{{Key:"colors",Active:false}}}}});must(t,err)
+ must(t,e.db.QueryRow("SELECT count(*) FROM collections_catalog_audit WHERE workspace_id=$1",e.w).Scan(&after))
+ var active bool;must(t,e.db.QueryRow("SELECT active FROM collections_collection WHERE workspace_id=$1 AND key='colors'",e.w).Scan(&active))
+ if active||after!=before{t.Fatal("defect no longer present")};t.Logf("CONFIRMED: catalog changed, audit rows remain %d -> %d, no actor input on ImportParams",before,after)
+}
+func TestAuditProbeCallbackMissingRawError(t *testing.T){
+ e:=setup(t,Options{});_,err:=e.s.Admin.GetCallbackEvent(context.Background(),model.CallbackParams{WorkspaceID:e.w,ID:12345})
+ if !errors.Is(err,sql.ErrNoRows)||errors.Is(err,ErrNotFound){t.Fatalf("defect no longer present: %v",err)}
+ t.Log("CONFIRMED: GetCallbackEvent returns raw sql.ErrNoRows rather than domain ErrNotFound")
+}
+func TestAuditProbeReorderSQLRoundTrips(t *testing.T){
+ e:=setup(t,Options{});ctx:=context.Background();var name string;must(t,e.db.QueryRow("SELECT current_database()").Scan(&name));u,err:=url.Parse(testDSN());must(t,err);u.Path="/"+name
+ cfg,err:=pgx.ParseConfig(u.String());must(t,err);trace:=&queryTrace{};cfg.Tracer=trace;db:=stdlib.OpenDB(*cfg);defer db.Close();node,err:=NewWithDatabase(ctx,db,e.opts);must(t,err);defer node.Close()
+ c:=model.Collection{Key:"colors",Active:true};keys:=[]string{};for n:=range 20{k:=fmt.Sprint(n);keys=append(keys,k);c.Entries=append(c.Entries,model.Entry{ItemKey:k,Active:true})}
+ _,err=node.Admin.Import(ctx,admin.ImportParams{WorkspaceID:e.w,Request:model.ImportRequest{Package:model.ExportPackage{Format:model.ExportFormat,Service:"collections",Collections:[]model.Collection{c}}}});must(t,err)
+ trace.count.Store(0);must(t,node.Admin.ReorderEntries(ctx,model.ReorderEntriesParams{WorkspaceID:e.w,ActorID:"operator",CollectionKey:"colors",ItemKeys:keys}))
+ if got:=trace.count.Load();got!=24{t.Fatalf("unexpected SQL count %d",got)};t.Log("CONFIRMED: reorder 20 entries performs 24 SQL calls excluding BEGIN/COMMIT, while holding exclusive workspace catalog lock")
+}
+
+type auditLocalizationTraceKey struct{}
+type auditLocalizationTrace struct{rows atomic.Int64}
+func(q *auditLocalizationTrace)TraceQueryStart(ctx context.Context,_ *pgx.Conn,data pgx.TraceQueryStartData)context.Context{
+ if strings.Contains(data.SQL,"-- name: ListLocalizations"){return context.WithValue(ctx,auditLocalizationTraceKey{},true)};return ctx
+}
+func(q *auditLocalizationTrace)TraceQueryEnd(ctx context.Context,_ *pgx.Conn,data pgx.TraceQueryEndData){if ctx.Value(auditLocalizationTraceKey{})!=nil{q.rows.Store(data.CommandTag.RowsAffected())}}
+func TestAuditProbeUserReadLoadsUnselectedLocales(t *testing.T){
+ e:=setup(t,Options{});ctx:=context.Background();c:=model.Collection{Key:"colors",Active:true,Localization:map[string]model.Text{}}
+ for n:=range 100{c.Localization[fmt.Sprintf("l%02d",n)]=model.Text{Title:"title",Description:strings.Repeat("x",65536)}}
+ must(t,e.s.Admin.CreateCollection(ctx,model.SaveCollectionParams{WorkspaceID:e.w,ActorID:"operator",Collection:c}))
+ var name string;must(t,e.db.QueryRow("SELECT current_database()").Scan(&name));u,err:=url.Parse(testDSN());must(t,err);u.Path="/"+name
+ cfg,err:=pgx.ParseConfig(u.String());must(t,err);trace:=&auditLocalizationTrace{};cfg.Tracer=trace;db:=stdlib.OpenDB(*cfg);defer db.Close();node,err:=NewWithDatabase(ctx,db,e.opts);must(t,err);defer node.Close()
+ rows,err:=node.User.ListCollections(ctx,model.ReadParams{Identity:e.i,Locale:"l00"});must(t,err)
+ if len(rows)!=1||len(rows[0].Text.Description)!=65536{t.Fatal("wrong result")}
+ if got:=trace.rows.Load();got!=100{t.Fatalf("defect no longer present: read %d localizations",got)}
+ t.Log("CONFIRMED: returning one locale reads 100 locale rows, ~6.25 MiB of descriptions for a 64 KiB result")
+}
+
+type auditCloseTrackingCache struct{*sharedTestCache;closed atomic.Bool}
+func(c *auditCloseTrackingCache)Close()error{c.closed.Store(true);return nil}
+func TestAuditProbeRunClosesSuppliedCache(t *testing.T){
+ e:=setup(t,Options{});ctx,cancel:=context.WithTimeout(context.Background(),5*time.Second);defer cancel()
+ cache:=&auditCloseTrackingCache{sharedTestCache:&sharedTestCache{values:map[string][]byte{},expires:map[string]time.Time{}}}
+ params:=auditRunParams(t,e);params.Options.Cache=cache;params.Options.CacheEnabled=true
+ shell:=New();done:=make(chan error,1);go func(){done<-shell.Run(ctx,params)}()
+ for !shell.IsReady(){select{case err:=<-done:t.Fatal(err);case <-ctx.Done():t.Fatal("startup timeout");case <-time.After(time.Millisecond):}}
+ cancel();must(t,<-done)
+ if !cache.closed.Load(){t.Fatal("behavior changed: supplied cache was not closed")}
+ t.Log("CONFIRMED: Run shutdown invoked Close on the caller-supplied Cache")
+}

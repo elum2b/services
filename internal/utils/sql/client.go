@@ -50,6 +50,17 @@ func (c *Client) WithQueryTimeout(timeout time.Duration) *Executor {
 
 // New creates Client from existing sql.DB and options.
 func New(db *sql.DB, opts ...Options) (*Client, error) {
+	return NewWithContext(context.Background(), db, opts...)
+}
+
+// NewWithContext applies the caller deadline while acquiring and probing a connection.
+func NewWithContext(ctx context.Context, db *sql.DB, opts ...Options) (*Client, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	opt := defaultOptions(opts...)
 
 	if db == nil {
@@ -62,7 +73,7 @@ func New(db *sql.DB, opts ...Options) (*Client, error) {
 		db.SetConnMaxLifetime(5 * time.Minute)
 	}
 
-	if err := db.PingContext(context.Background()); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		return nil, err
 	}
 
@@ -404,4 +415,12 @@ func (c *Client) l2RemainingTTL(
 	}
 
 	return remaining
+}
+
+// CloseLocalCache stops this wrapper's local cache workers without closing the
+// borrowed database or the shared external cache.
+func (c *Client) CloseLocalCache() {
+	if c != nil && c.inMemory != nil {
+		c.inMemory.Close()
+	}
 }
