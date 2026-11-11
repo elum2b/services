@@ -7,6 +7,7 @@ package sqlc
 import (
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -20,6 +21,7 @@ const (
 	PaymentAssetAssetKindPlatformCurrency PaymentAssetAssetKind = "platform_currency"
 	PaymentAssetAssetKindCryptoNative     PaymentAssetAssetKind = "crypto_native"
 	PaymentAssetAssetKindCryptoJetton     PaymentAssetAssetKind = "crypto_jetton"
+	PaymentAssetAssetKindInternalCurrency PaymentAssetAssetKind = "internal_currency"
 )
 
 func (e *PaymentAssetAssetKind) Scan(src interface{}) error {
@@ -1407,6 +1409,25 @@ type PaymentAttempt struct {
 	UpdatedAt              time.Time            `json:"updated_at"`
 }
 
+type PaymentBalancePurchase struct {
+	OrderID              int64           `json:"order_id"`
+	AttemptID            int64           `json:"attempt_id"`
+	WorkspaceID          string          `json:"workspace_id"`
+	AppID                int64           `json:"app_id"`
+	PlatformID           int64           `json:"platform_id"`
+	PlatformUserID       string          `json:"platform_user_id"`
+	RequestID            string          `json:"request_id"`
+	HandlerKey           string          `json:"handler_key"`
+	EventID              int64           `json:"event_id"`
+	Snapshot             json.RawMessage `json:"snapshot"`
+	AdmittedAt           sql.NullTime    `json:"admitted_at"`
+	LastDeliveryAt       sql.NullTime    `json:"last_delivery_at"`
+	DeliveryAttemptCount int64           `json:"delivery_attempt_count"`
+	Outcome              string          `json:"outcome"`
+	Reason               string          `json:"reason"`
+	ResultConflict       bool            `json:"result_conflict"`
+}
+
 type PaymentEvent struct {
 	ID                int64                        `json:"id"`
 	WorkspaceID       string                       `json:"workspace_id"`
@@ -1498,6 +1519,9 @@ type PaymentOrder struct {
 	ExpiresAt                   sql.NullTime       `json:"expires_at"`
 	CreatedAt                   time.Time          `json:"created_at"`
 	UpdatedAt                   time.Time          `json:"updated_at"`
+	LimitTrackingLegacy         bool               `json:"limit_tracking_legacy"`
+	LimitReviewAttemptID        sql.NullInt64      `json:"limit_review_attempt_id"`
+	LimitReviewReason           sql.NullString     `json:"limit_review_reason"`
 }
 
 type PaymentOrderItem struct {
@@ -1509,6 +1533,14 @@ type PaymentOrderItem struct {
 	Scale        int16                            `json:"scale"`
 	DurationUnit NullPaymentOrderItemDurationUnit `json:"duration_unit"`
 	CreatedAt    time.Time                        `json:"created_at"`
+}
+
+type PaymentOrderLimitReservation struct {
+	OrderID      int64                                  `json:"order_id"`
+	CounterScope PaymentProductLimitCounterCounterScope `json:"counter_scope"`
+	Generation   int64                                  `json:"generation"`
+	Quantity     int64                                  `json:"quantity"`
+	State        string                                 `json:"state"`
 }
 
 type PaymentPaidOrderIndex struct {
@@ -1660,6 +1692,8 @@ type PaymentProductLimitCounter struct {
 	PaidCount      int64                                  `json:"paid_count"`
 	ReservedCount  int64                                  `json:"reserved_count"`
 	UpdatedAt      time.Time                              `json:"updated_at"`
+	Generation     int64                                  `json:"generation"`
+	RetiredAt      sql.NullTime                           `json:"retired_at"`
 }
 
 type PaymentProvider struct {
@@ -1750,6 +1784,10 @@ type PaymentRefund struct {
 	Reason           sql.NullString      `json:"reason"`
 	CreatedAt        time.Time           `json:"created_at"`
 	UpdatedAt        time.Time           `json:"updated_at"`
+}
+
+type PaymentSchemaMigration struct {
+	Name string `json:"name"`
 }
 
 type PaymentStatsDaily struct {

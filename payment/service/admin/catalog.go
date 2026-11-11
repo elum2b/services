@@ -501,7 +501,7 @@ func (a *Admin) DeleteProductLimitCounter(
 
 	return a.repository.AdminDeleteProductLimitCounter(
 		ctx,
-		paymentsqlc.AdminDeleteProductLimitCounterParams{
+		paymentsqlc.LockProductLimitCounterForResetParams{
 			WorkspaceID: params.WorkspaceID,
 			AppID:       params.AppID,
 			PlatformID:  params.PlatformID,

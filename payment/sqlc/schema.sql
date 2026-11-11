@@ -1,5 +1,5 @@
 CREATE TYPE payment_provider_provider_kind AS ENUM ('platform_internal', 'fiat_gateway', 'crypto_chain');
-CREATE TYPE payment_asset_asset_kind AS ENUM ('fiat', 'platform_currency', 'crypto_native', 'crypto_jetton');
+CREATE TYPE payment_asset_asset_kind AS ENUM ('fiat', 'platform_currency', 'crypto_native', 'crypto_jetton', 'internal_currency');
 CREATE TYPE payment_product_quantity_mode AS ENUM ('fixed', 'flexible');
 CREATE TYPE payment_product_global_interval AS ENUM ('SECOND', 'MINUTE', 'HOUR', 'DAY', 'WEEK', 'MONTH', 'ONCE', 'UNLIMITED');
 CREATE TYPE payment_product_user_interval AS ENUM ('SECOND', 'MINUTE', 'HOUR', 'DAY', 'WEEK', 'MONTH', 'ONCE', 'UNLIMITED');
@@ -389,7 +389,10 @@ ALTER TABLE payment_order
     ADD COLUMN IF NOT EXISTS user_interval_snapshot VARCHAR(16) NOT NULL DEFAULT 'UNLIMITED',
     ADD COLUMN IF NOT EXISTS user_interval_count_snapshot INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS user_window_start_snapshot TIMESTAMPTZ NULL,
-    ADD COLUMN IF NOT EXISTS user_window_end_snapshot TIMESTAMPTZ NULL;
+    ADD COLUMN IF NOT EXISTS user_window_end_snapshot TIMESTAMPTZ NULL,
+    ADD COLUMN IF NOT EXISTS limit_tracking_legacy BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS limit_review_attempt_id BIGINT NULL,
+    ADD COLUMN IF NOT EXISTS limit_review_reason TEXT NULL;
 
 CREATE TABLE IF NOT EXISTS payment_paid_order_index (
     order_id BIGINT NOT NULL PRIMARY KEY,
@@ -463,16 +466,8 @@ CREATE TABLE IF NOT EXISTS payment_product_limit_counter (
     paid_count BIGINT NOT NULL DEFAULT 0,
     reserved_count BIGINT NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (
-        workspace_id,
-        app_id,
-        platform_id,
-        product_id,
-        counter_scope,
-        platform_user_id,
-        window_start,
-        window_end
-    ),
+    generation BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    retired_at TIMESTAMPTZ,
     CONSTRAINT payment_product_limit_counter_product_fk
         FOREIGN KEY (workspace_id, product_id) REFERENCES payment_product (workspace_id, id)
             ON UPDATE CASCADE ON DELETE CASCADE
@@ -480,7 +475,32 @@ CREATE TABLE IF NOT EXISTS payment_product_limit_counter (
 
 ALTER TABLE payment_product_limit_counter
     ADD COLUMN IF NOT EXISTS reserved_count BIGINT NOT NULL DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS app_id BIGINT NOT NULL DEFAULT 0;
+    ADD COLUMN IF NOT EXISTS app_id BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS generation BIGINT GENERATED ALWAYS AS IDENTITY,
+    ADD COLUMN IF NOT EXISTS retired_at TIMESTAMPTZ;
+
+-- A reset retires the current generation so existing orders can still settle it.
+CREATE UNIQUE INDEX IF NOT EXISTS payment_limit_counter_active_key_idx
+    ON payment_product_limit_counter (
+        workspace_id, app_id, platform_id, product_id, counter_scope,
+        platform_user_id, window_start, window_end
+    )
+    WHERE retired_at IS NULL;
+
+-- Reservations follow their original counter generation.
+CREATE TABLE IF NOT EXISTS payment_order_limit_reservation (
+    order_id BIGINT NOT NULL REFERENCES payment_order (id) ON DELETE CASCADE,
+    counter_scope payment_product_limit_counter_counter_scope NOT NULL,
+    generation BIGINT NOT NULL,
+    quantity BIGINT NOT NULL CHECK (quantity > 0),
+    state TEXT NOT NULL DEFAULT 'reserved'
+        CHECK (state IN ('reserved', 'consumed', 'released', 'reversed')),
+    PRIMARY KEY (order_id, counter_scope)
+);
+
+CREATE TABLE IF NOT EXISTS payment_schema_migration (
+    name TEXT PRIMARY KEY
+);
 
 DO $$
 BEGIN
@@ -489,145 +509,103 @@ BEGIN
         FROM pg_constraint
         WHERE conrelid = 'payment_product_limit_counter'::regclass
           AND contype = 'p'
-          AND pg_get_constraintdef(oid) NOT LIKE '%app_id%'
+          AND pg_get_constraintdef(oid) <> 'PRIMARY KEY (generation)'
     ) THEN
         ALTER TABLE payment_product_limit_counter
             DROP CONSTRAINT payment_product_limit_counter_pkey;
         ALTER TABLE payment_product_limit_counter
-            ADD PRIMARY KEY (
-                workspace_id,
-                app_id,
-                platform_id,
-                product_id,
-                counter_scope,
-                platform_user_id,
-                window_start,
-                window_end
-            );
+            ADD PRIMARY KEY (generation);
     END IF;
 END
 $$;
 
--- Global limits are workspace-wide. Merge counters created by older versions
--- that partitioned the global scope by platform_id.
-WITH removed AS (
-    DELETE FROM payment_product_limit_counter
-    WHERE counter_scope = 'global'
-      AND platform_id <> 0
-    RETURNING *
-), aggregated AS (
-    SELECT
+DROP INDEX IF EXISTS payment_limit_counter_generation_idx;
+
+-- Existing aggregates do not establish which orders survived a counter reset.
+-- Preserve their counts and flag legacy orders for reconciliation.
+DO $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended('payment:limit-reservation-migration', 0));
+
+    INSERT INTO payment_schema_migration (name) VALUES ('limit_reservation_generations')
+    ON CONFLICT (name) DO NOTHING;
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
+
+    -- Global limits are workspace-wide. Merge counters created by older versions
+    -- that partitioned the global scope by platform_id.
+    WITH removed AS (
+        DELETE FROM payment_product_limit_counter
+        WHERE counter_scope = 'global'
+          AND platform_id <> 0
+          AND retired_at IS NULL
+        RETURNING *
+    ), aggregated AS (
+        SELECT
+            workspace_id,
+            0::bigint AS app_id,
+            product_id,
+            counter_scope,
+            platform_user_id,
+            window_start,
+            window_end,
+            SUM(paid_count)::bigint AS paid_count,
+            SUM(reserved_count)::bigint AS reserved_count
+        FROM removed
+        GROUP BY
+            workspace_id,
+            app_id,
+            product_id,
+            counter_scope,
+            platform_user_id,
+            window_start,
+            window_end
+    )
+    INSERT INTO payment_product_limit_counter (
         workspace_id,
-        0::bigint AS app_id,
+        app_id,
+        platform_id,
         product_id,
         counter_scope,
         platform_user_id,
         window_start,
         window_end,
-        SUM(paid_count)::bigint AS paid_count,
-        SUM(reserved_count)::bigint AS reserved_count
-    FROM removed
-    GROUP BY
+        paid_count,
+        reserved_count
+    )
+    SELECT
         workspace_id,
         app_id,
+        0,
+        product_id,
+        counter_scope,
+        platform_user_id,
+        window_start,
+        window_end,
+        paid_count,
+        reserved_count
+    FROM aggregated
+    ON CONFLICT (
+        workspace_id,
+        app_id,
+        platform_id,
         product_id,
         counter_scope,
         platform_user_id,
         window_start,
         window_end
-)
-INSERT INTO payment_product_limit_counter (
-    workspace_id,
-    app_id,
-    platform_id,
-    product_id,
-    counter_scope,
-    platform_user_id,
-    window_start,
-    window_end,
-    paid_count,
-    reserved_count
-)
-SELECT
-    workspace_id,
-    app_id,
-    0,
-    product_id,
-    counter_scope,
-    platform_user_id,
-    window_start,
-    window_end,
-    paid_count,
-    reserved_count
-FROM aggregated
-ON CONFLICT (
-    workspace_id,
-    app_id,
-    platform_id,
-    product_id,
-    counter_scope,
-    platform_user_id,
-    window_start,
-    window_end
-) DO UPDATE SET
-    paid_count = payment_product_limit_counter.paid_count + EXCLUDED.paid_count,
-    reserved_count = payment_product_limit_counter.reserved_count + EXCLUDED.reserved_count,
-    updated_at = now();
+    ) WHERE retired_at IS NULL DO UPDATE SET
+        paid_count = payment_product_limit_counter.paid_count + EXCLUDED.paid_count,
+        reserved_count = payment_product_limit_counter.reserved_count + EXCLUDED.reserved_count,
+        updated_at = now();
 
--- Rebuild user-scoped counters from immutable order snapshots so historical
--- rows created before app_id partitioning cannot collide across applications.
-DELETE FROM payment_product_limit_counter
-WHERE counter_scope = 'user';
-
-INSERT INTO payment_product_limit_counter (
-    workspace_id,
-    app_id,
-    platform_id,
-    product_id,
-    counter_scope,
-    platform_user_id,
-    window_start,
-    window_end,
-    paid_count,
-    reserved_count
-)
-SELECT
-    workspace_id,
-    app_id,
-    platform_id,
-    product_id,
-    'user'::payment_product_limit_counter_counter_scope,
-    platform_user_id,
-    user_window_start_snapshot,
-    user_window_end_snapshot,
-    SUM(CASE WHEN status IN ('paid', 'fulfilled') THEN quantity ELSE 0 END)::bigint,
-    SUM(CASE WHEN status IN ('draft', 'pending_payment') THEN quantity ELSE 0 END)::bigint
-FROM payment_order
-WHERE user_limit_snapshot > 0
-  AND user_window_start_snapshot IS NOT NULL
-  AND user_window_end_snapshot IS NOT NULL
-  AND status IN ('draft', 'pending_payment', 'paid', 'fulfilled')
-GROUP BY
-    workspace_id,
-    app_id,
-    platform_id,
-    product_id,
-    platform_user_id,
-    user_window_start_snapshot,
-    user_window_end_snapshot
-ON CONFLICT (
-    workspace_id,
-    app_id,
-    platform_id,
-    product_id,
-    counter_scope,
-    platform_user_id,
-    window_start,
-    window_end
-) DO UPDATE SET
-    paid_count = EXCLUDED.paid_count,
-    reserved_count = EXCLUDED.reserved_count,
-    updated_at = now();
+    UPDATE payment_order
+    SET limit_tracking_legacy = TRUE
+    WHERE global_window_start_snapshot IS NOT NULL
+       OR user_window_start_snapshot IS NOT NULL;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS payment_attempt (
     id BIGINT NOT NULL GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -659,6 +637,30 @@ CREATE TABLE IF NOT EXISTS payment_attempt (
     CONSTRAINT payment_attempt_asset_fk
         FOREIGN KEY (asset_code) REFERENCES payment_asset (code)
 );
+
+-- The debit admission and its immutable request survive worker and service restarts.
+CREATE TABLE IF NOT EXISTS payment_balance_purchase (
+    order_id BIGINT PRIMARY KEY REFERENCES payment_order (id) ON DELETE CASCADE,
+    attempt_id BIGINT NOT NULL UNIQUE REFERENCES payment_attempt (id) ON DELETE CASCADE,
+    workspace_id VARCHAR(36) NOT NULL,
+    app_id BIGINT NOT NULL,
+    platform_id BIGINT NOT NULL,
+    platform_user_id VARCHAR(128) NOT NULL,
+    request_id VARCHAR(128) NOT NULL,
+    handler_key VARCHAR(128) NOT NULL,
+    event_id BIGINT NOT NULL UNIQUE,
+    snapshot JSONB NOT NULL,
+    admitted_at TIMESTAMPTZ,
+    last_delivery_at TIMESTAMPTZ,
+    delivery_attempt_count BIGINT NOT NULL DEFAULT 0,
+    outcome TEXT NOT NULL DEFAULT '' CHECK (outcome IN ('', 'succeeded', 'rejected')),
+    reason TEXT NOT NULL DEFAULT '',
+    result_conflict BOOLEAN NOT NULL DEFAULT false,
+    UNIQUE (workspace_id, app_id, platform_id, platform_user_id, request_id)
+);
+
+CREATE INDEX IF NOT EXISTS payment_order_limit_reservation_generation_reserved_idx
+    ON payment_order_limit_reservation (generation) WHERE state = 'reserved';
 
 ALTER TABLE payment_attempt
     ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(36),
@@ -1155,6 +1157,7 @@ CREATE TABLE IF NOT EXISTS payment_provider_transaction (
 
 INSERT INTO payment_provider (code, title, provider_kind, supports_create, supports_redirect, supports_webhook, supports_refund)
 VALUES
+    ('internal_balance', 'Internal balance', 'platform_internal', false, false, false, false),
     ('vkma', 'VK Mini Apps', 'platform_internal', false, false, true, true),
     ('telegram_stars', 'Telegram Stars', 'platform_internal', true, false, true, true),
     ('ton', 'TON blockchain', 'crypto_chain', true, false, false, false),

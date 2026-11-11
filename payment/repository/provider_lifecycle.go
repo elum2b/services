@@ -98,6 +98,9 @@ func (r *PaymentRepository) FinalizeProviderAttempt(
 		if err != nil {
 			return err
 		}
+		if attempt.ProviderCode == BalanceProviderCode {
+			return ErrBalanceUnsupported
+		}
 
 		if attempt.WorkspaceID != workspaceID ||
 			order.WorkspaceID != workspaceID ||
@@ -210,6 +213,9 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 		if err != nil {
 			return err
 		}
+		if attempt.ProviderCode == BalanceProviderCode {
+			return ErrBalanceUnsupported
+		}
 
 		if order.WorkspaceID != workspaceID {
 			return ErrPaymentMismatch
@@ -227,12 +233,12 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 			attempt.Status == sqlc.PaymentAttemptStatusChargebacked {
 			result.AlreadyDone = true
 
-			fulfillment, err := txRepo.q.GetFulfillmentForOrder(ctx, order.ID)
+			fulfillmentID, err := txRepo.fulfillmentIDForReversal(ctx, order, attempt.ID)
 			if err != nil {
 				return err
 			}
 
-			result.FulfillmentID = uint64(fulfillment.ID)
+			result.FulfillmentID = fulfillmentID
 
 			return nil
 		}
@@ -243,12 +249,12 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 			return ErrOrderStateInvalid
 		}
 
-		fulfillment, err := txRepo.q.GetFulfillmentForOrder(ctx, order.ID)
+		fulfillmentID, err := txRepo.fulfillmentIDForReversal(ctx, order, attempt.ID)
 		if err != nil {
 			return err
 		}
 
-		result.FulfillmentID = uint64(fulfillment.ID)
+		result.FulfillmentID = fulfillmentID
 
 		if err := txRepo.q.UpdatePaymentAttemptStatus(
 			ctx,
@@ -269,13 +275,14 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 			return ErrOrderStateInvalid
 		}
 
-		if rows, err := txRepo.q.MarkFulfillmentRevokedForOrder(
-			ctx,
-			order.ID,
-		); err != nil {
-			return err
-		} else if rows != 1 {
-			return ErrOrderStateInvalid
+		if result.FulfillmentID != 0 {
+			rows, err := txRepo.q.MarkFulfillmentRevokedForOrder(ctx, order.ID)
+			if err != nil {
+				return err
+			}
+			if rows != 1 {
+				return ErrOrderStateInvalid
+			}
 		}
 
 		if _, err := txRepo.q.DecrementProductLimitCountersForRefund(
@@ -283,6 +290,10 @@ func (r *PaymentRepository) ApplyProviderChargeback(
 			order.ID,
 		); err != nil {
 			return err
+		}
+
+		if result.FulfillmentID == 0 {
+			return nil
 		}
 
 		return txRepo.enqueuePaymentChargebackedCallback(

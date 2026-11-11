@@ -68,7 +68,7 @@ WHERE chain = $1
   AND is_active = true
 LIMIT 1;
 
--- name: UpsertAsset :exec
+-- name: UpsertAsset :execrows
 INSERT INTO payment_asset (
     code,
     title,
@@ -88,7 +88,9 @@ ON CONFLICT (code) DO UPDATE SET
     network = EXCLUDED.network,
     contract_address = EXCLUDED.contract_address,
     is_active = EXCLUDED.is_active,
-    updated_at = now();
+    updated_at = now()
+WHERE (payment_asset.asset_kind = 'internal_currency') = (EXCLUDED.asset_kind = 'internal_currency')
+  AND (payment_asset.asset_kind <> 'internal_currency' OR payment_asset.scale = EXCLUDED.scale);
 
 -- name: DeleteAsset :execrows
 DELETE FROM payment_asset
@@ -114,7 +116,7 @@ WHERE provider_code = $1
   AND asset_code = $2
 LIMIT 1;
 
--- name: UpsertProviderAsset :exec
+-- name: UpsertProviderAsset :execrows
 INSERT INTO payment_provider_asset (
     provider_code,
     asset_code,
@@ -123,7 +125,10 @@ INSERT INTO payment_provider_asset (
     merchant_account,
     is_active
 )
-VALUES ($1, $2, $3, $4, $5, $6)
+SELECT $1, $2, $3, $4, $5, $6
+FROM payment_asset
+WHERE code = $2::varchar AND asset_kind <> 'internal_currency'
+  AND $1::varchar <> 'internal_balance'
 ON CONFLICT (provider_code, asset_code) DO UPDATE SET
     min_amount_minor = EXCLUDED.min_amount_minor,
     max_amount_minor = EXCLUDED.max_amount_minor,
@@ -1252,6 +1257,7 @@ ORDER BY pc.locale;
 SELECT paid_count + reserved_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
+  AND retired_at IS NULL
   AND app_id = $2
   AND platform_id = $3
   AND product_id = $4
@@ -1272,6 +1278,7 @@ SELECT
     paid_count + reserved_count AS paid_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
+  AND retired_at IS NULL
   AND app_id IN (0, $2)
   AND platform_id IN (0, $3)
   AND platform_user_id IN ('', $4)
@@ -1293,50 +1300,82 @@ INSERT INTO payment_product_limit_counter (
     reserved_count
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 0)
-ON CONFLICT (workspace_id, app_id, platform_id, product_id, counter_scope, platform_user_id, window_start, window_end) DO NOTHING;
+ON CONFLICT (workspace_id, app_id, platform_id, product_id, counter_scope, platform_user_id, window_start, window_end) WHERE retired_at IS NULL DO NOTHING;
 
 -- name: ReserveProductLimitCounter :execrows
-UPDATE payment_product_limit_counter
-SET reserved_count = reserved_count + $1,
-    updated_at = now()
-WHERE workspace_id = $2
-  AND app_id = $3
-  AND platform_id = $4
-  AND product_id = $5
-  AND counter_scope = $6
-  AND platform_user_id = $7
-  AND window_start = $8
-  AND window_end = $9
-  AND paid_count + reserved_count + $10 <= $11;
+WITH reserved AS (
+    INSERT INTO payment_product_limit_counter AS c (
+        workspace_id, app_id, platform_id, product_id, counter_scope,
+        platform_user_id, window_start, window_end, reserved_count
+    )
+    SELECT sqlc.arg(workspace_id), sqlc.arg(app_id), sqlc.arg(platform_id), sqlc.arg(product_id),
+           sqlc.arg(counter_scope), sqlc.arg(platform_user_id), sqlc.arg(window_start),
+           sqlc.arg(window_end), sqlc.arg(quantity)::bigint
+    WHERE sqlc.arg(quantity)::bigint <= sqlc.arg(limit_count)::bigint
+    ON CONFLICT (
+        workspace_id, app_id, platform_id, product_id, counter_scope,
+        platform_user_id, window_start, window_end
+    ) WHERE retired_at IS NULL DO UPDATE
+    SET reserved_count = c.reserved_count + EXCLUDED.reserved_count,
+        updated_at = now()
+    WHERE c.paid_count + c.reserved_count <= sqlc.arg(limit_count)::bigint - EXCLUDED.reserved_count
+    RETURNING c.counter_scope, c.generation
+)
+INSERT INTO payment_order_limit_reservation (order_id, counter_scope, generation, quantity)
+SELECT sqlc.arg(order_id), counter_scope, generation, sqlc.arg(quantity)
+FROM reserved;
 
--- name: ConsumeProductLimitReservation :execrows
-UPDATE payment_product_limit_counter
-SET reserved_count = reserved_count - $1,
-    paid_count = paid_count + $2,
-    updated_at = now()
-WHERE workspace_id = $3
-  AND app_id = $4
-  AND platform_id = $5
-  AND product_id = $6
-  AND counter_scope = $7
-  AND platform_user_id = $8
-  AND window_start = $9
-  AND window_end = $10
-  AND reserved_count >= $11;
+-- name: ConsumeOrderLimitReservations :one
+WITH required AS (
+    SELECT (global_window_start_snapshot IS NOT NULL)::int
+         + (user_window_start_snapshot IS NOT NULL)::int AS count
+    FROM payment_order
+    WHERE id = sqlc.arg(order_id)
+), owned AS MATERIALIZED (
+    SELECT r.counter_scope, r.generation, r.quantity
+    FROM payment_order_limit_reservation r
+    JOIN payment_product_limit_counter c ON c.generation = r.generation
+    WHERE r.order_id = sqlc.arg(order_id) AND r.state = 'reserved'
+      AND c.counter_scope = r.counter_scope AND c.reserved_count >= r.quantity
+    ORDER BY r.counter_scope
+    FOR UPDATE OF c
+), consumed AS (
+    UPDATE payment_product_limit_counter c
+    SET reserved_count = c.reserved_count - owned.quantity,
+        paid_count = c.paid_count + owned.quantity,
+        updated_at = now()
+    FROM owned
+    WHERE c.generation = owned.generation
+      AND (SELECT count(*) FROM owned) = (SELECT count FROM required)
+    RETURNING c.generation
+), recorded AS (
+    UPDATE payment_order_limit_reservation r
+    SET state = 'consumed'
+    FROM consumed
+    WHERE r.order_id = sqlc.arg(order_id) AND r.generation = consumed.generation
+    RETURNING r.counter_scope
+)
+SELECT (SELECT count(*) FROM recorded) = required.count AS consumed
+FROM required;
 
--- name: ReleaseProductLimitReservation :execrows
-UPDATE payment_product_limit_counter
-SET reserved_count = reserved_count - $1,
-    updated_at = now()
-WHERE workspace_id = $2
-  AND app_id = $3
-  AND platform_id = $4
-  AND product_id = $5
-  AND counter_scope = $6
-  AND platform_user_id = $7
-  AND window_start = $8
-  AND window_end = $9
-  AND reserved_count >= $10;
+-- name: ReleaseOrderLimitReservations :exec
+WITH owned AS MATERIALIZED (
+    SELECT r.generation, r.quantity
+    FROM payment_order_limit_reservation r
+    JOIN payment_product_limit_counter c ON c.generation = r.generation
+    WHERE r.order_id = sqlc.arg(order_id) AND r.state = 'reserved'
+      AND c.counter_scope = r.counter_scope AND c.reserved_count >= r.quantity
+    ORDER BY r.counter_scope
+    FOR UPDATE OF c
+), released AS (
+    UPDATE payment_product_limit_counter c
+    SET reserved_count = c.reserved_count - owned.quantity, updated_at = now()
+    FROM owned
+    WHERE c.generation = owned.generation
+)
+UPDATE payment_order_limit_reservation r
+SET state = 'released'
+WHERE r.order_id = sqlc.arg(order_id) AND state = 'reserved';
 
 -- name: IncrementProductLimitCounter :execrows
 UPDATE payment_product_limit_counter
@@ -1350,6 +1389,7 @@ WHERE workspace_id = $2
   AND platform_user_id = $7
   AND window_start = $8
   AND window_end = $9
+  AND retired_at IS NULL
   AND paid_count + $10 <= $11;
 
 -- name: GetProductLimitConfig :one
@@ -1470,7 +1510,7 @@ WITH created_order AS (
         user_window_end_snapshot,
         expires_at
     )
-    VALUES (
+    SELECT
         $1,
         $2,
         $3,
@@ -1502,7 +1542,9 @@ WITH created_order AS (
         $29,
         $30,
         $31
-    )
+    FROM payment_asset a
+    WHERE a.code = $14::varchar
+      AND (a.asset_kind = 'internal_currency') = sqlc.arg(is_balance)::boolean
     RETURNING id, workspace_id, product_id, quantity
 ),
 snapshot_items AS (
@@ -1591,7 +1633,10 @@ SELECT
     canceled_at,
     expires_at,
     created_at,
-    updated_at
+    updated_at,
+    limit_tracking_legacy,
+    limit_review_attempt_id,
+    limit_review_reason
 FROM payment_order
 WHERE id = $1
 LIMIT 1;
@@ -1634,7 +1679,10 @@ SELECT
     canceled_at,
     expires_at,
     created_at,
-    updated_at
+    updated_at,
+    limit_tracking_legacy,
+    limit_review_attempt_id,
+    limit_review_reason
 FROM payment_order
 WHERE public_id = $1
 LIMIT 1;
@@ -1677,7 +1725,10 @@ SELECT
     canceled_at,
     expires_at,
     created_at,
-    updated_at
+    updated_at,
+    limit_tracking_legacy,
+    limit_review_attempt_id,
+    limit_review_reason
 FROM payment_order
 WHERE id = $1
 LIMIT 1
@@ -1687,6 +1738,10 @@ FOR UPDATE;
 SELECT payment_order.id, payment_order.workspace_id
 FROM payment_order
 WHERE payment_order.status IN ('draft', 'pending_payment')
+  AND NOT EXISTS (
+      SELECT 1 FROM payment_balance_purchase b
+      WHERE b.order_id = payment_order.id AND b.admitted_at IS NOT NULL AND b.outcome = ''
+  )
   AND (
       NOT sqlc.arg(protect_unbound_platega)::boolean
       OR NOT EXISTS (
@@ -1740,6 +1795,10 @@ SELECT *
 FROM payment_order
 WHERE payment_order.id = sqlc.arg(order_id)
   AND payment_order.status IN ('draft', 'pending_payment')
+  AND NOT EXISTS (
+      SELECT 1 FROM payment_balance_purchase b
+      WHERE b.order_id = payment_order.id AND b.admitted_at IS NOT NULL AND b.outcome = ''
+  )
   AND (
       NOT sqlc.arg(protect_unbound_platega)::boolean
       OR NOT EXISTS (
@@ -1865,6 +1924,8 @@ JOIN payment_provider_asset ppa
 WHERE po.id = sqlc.arg(order_id)
   AND po.status IN ('draft', 'pending_payment')
   AND (po.expires_at IS NULL OR po.expires_at > now())
+  AND sqlc.arg(provider_code) <> 'internal_balance'
+  AND NOT EXISTS (SELECT 1 FROM payment_balance_purchase b WHERE b.order_id = po.id)
 RETURNING id, workspace_id, asset_code, amount_minor;
 
 -- name: CreatePaymentAttemptFromOwnedOrder :one
@@ -1921,6 +1982,8 @@ WHERE po.id = sqlc.arg(order_id)
   )
   AND po.status IN ('draft', 'pending_payment')
   AND (po.expires_at IS NULL OR po.expires_at > now())
+  AND sqlc.arg(provider_code) <> 'internal_balance'
+  AND NOT EXISTS (SELECT 1 FROM payment_balance_purchase b WHERE b.order_id = po.id)
 RETURNING id, workspace_id, asset_code, amount_minor;
 
 -- name: LockPaymentProviderIdempotency :exec
@@ -2750,7 +2813,9 @@ WITH marked_order AS (
         paid_at = COALESCE(paid_at, now()),
         updated_at = now()
     WHERE payment_order.id = $1
-      AND payment_order.status IN ('draft', 'pending_payment')
+      AND (payment_order.status IN ('draft', 'pending_payment')
+           OR (payment_order.limit_review_attempt_id IS NOT NULL
+               AND payment_order.status IN ('canceled', 'expired', 'failed')))
     RETURNING
         payment_order.id,
         payment_order.workspace_id,
@@ -2858,6 +2923,21 @@ SELECT
     EXISTS (SELECT 1 FROM inserted_index) AS inserted
 FROM source_order
 LIMIT 1;
+
+-- name: OrderHasResetLimitGeneration :one
+SELECT EXISTS (
+    SELECT 1
+    FROM payment_order_limit_reservation r
+    LEFT JOIN payment_product_limit_counter c ON c.generation = r.generation
+    WHERE r.order_id = $1 AND (c.generation IS NULL OR c.retired_at IS NOT NULL)
+) AS reset;
+
+-- name: SetOrderLimitReview :exec
+UPDATE payment_order
+SET limit_review_attempt_id = $2,
+    limit_review_reason = $3,
+    updated_at = now()
+WHERE id = $1;
 
 -- name: MarkOrderPendingPayment :execrows
 UPDATE payment_order
@@ -3348,9 +3428,12 @@ SELECT
     window_end,
     paid_count,
     reserved_count,
-    updated_at
+    updated_at,
+    generation,
+    retired_at
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
+  AND retired_at IS NULL
   AND ($2 = 0 OR app_id = $3)
   AND ($4 = '' OR product_id = $5)
   AND ($6 = 0 OR platform_id = $7)
@@ -3358,16 +3441,18 @@ WHERE workspace_id = $1
 ORDER BY window_end DESC, product_id, counter_scope, platform_user_id
 LIMIT $10 OFFSET $11;
 
--- name: AdminDeleteProductLimitCounter :execrows
-DELETE FROM payment_product_limit_counter
+-- name: LockProductLimitCounterForReset :one
+SELECT generation FROM payment_product_limit_counter
 WHERE workspace_id = $1
+  AND retired_at IS NULL
   AND app_id = $2
   AND platform_id = $3
   AND product_id = $4
   AND counter_scope = $5
   AND platform_user_id = $6
   AND window_start = $7
-  AND window_end = $8;
+  AND window_end = $8
+FOR UPDATE;
 
 -- name: AdminGetPurchaseKey :one
 SELECT
@@ -3463,7 +3548,10 @@ SELECT
     canceled_at,
     expires_at,
     created_at,
-    updated_at
+    updated_at,
+    limit_tracking_legacy,
+    limit_review_attempt_id,
+    limit_review_reason
 FROM payment_order
 WHERE workspace_id = $1
   AND ($2 = 0 OR app_id = $3)
@@ -4433,31 +4521,24 @@ WHERE order_id = $1
 LIMIT 1;
 
 -- name: DecrementProductLimitCountersForRefund :execrows
-UPDATE payment_product_limit_counter plc
-SET paid_count = GREATEST(plc.paid_count - po.quantity, 0),
-    updated_at = now()
-FROM payment_order po
-WHERE po.workspace_id = plc.workspace_id
-  AND (
-      (plc.counter_scope = 'global' AND plc.app_id = 0)
-      OR
-      (plc.counter_scope = 'user' AND po.app_id = plc.app_id)
-  )
-  AND (
-      (plc.counter_scope = 'global' AND plc.platform_id = 0)
-      OR
-      (plc.counter_scope = 'user' AND po.platform_id = plc.platform_id)
-  )
-  AND po.product_id = plc.product_id
-  AND po.id = $1
-  AND po.paid_at IS NOT NULL
-  AND po.paid_at >= plc.window_start
-  AND po.paid_at < plc.window_end
-  AND (
-      (plc.counter_scope = 'global' AND plc.platform_user_id = '')
-      OR
-      (plc.counter_scope = 'user' AND plc.platform_user_id = po.platform_user_id)
-  );
+WITH owned AS MATERIALIZED (
+    SELECT r.generation, r.quantity
+    FROM payment_order_limit_reservation r
+    JOIN payment_product_limit_counter c ON c.generation = r.generation
+    WHERE r.order_id = sqlc.arg(order_id) AND r.state = 'consumed'
+      AND c.counter_scope = r.counter_scope AND c.paid_count >= r.quantity
+    ORDER BY r.counter_scope
+    FOR UPDATE OF c
+), reversed AS (
+    UPDATE payment_product_limit_counter c
+    SET paid_count = c.paid_count - owned.quantity, updated_at = now()
+    FROM owned
+    WHERE c.generation = owned.generation
+)
+UPDATE payment_order_limit_reservation r
+SET state = 'reversed'
+WHERE r.order_id = sqlc.arg(order_id) AND state = 'consumed';
+
 -- name: ExportListProductGroups :many
 SELECT *
 FROM payment_product_group
@@ -4477,10 +4558,11 @@ WHERE workspace_id = $1
 ORDER BY product_id, item_id;
 
 -- name: ExportListPrices :many
-SELECT *
-FROM payment_price
-WHERE workspace_id = $1
-ORDER BY product_id, asset_code, starts_at, id;
+SELECT p.*, a.asset_kind, a.scale AS asset_scale
+FROM payment_price p
+JOIN payment_asset a ON a.code = p.asset_code
+WHERE p.workspace_id = $1
+ORDER BY p.product_id, p.asset_code, p.starts_at, p.id;
 
 -- name: ExportListLocalizations :many
 SELECT *
@@ -4541,6 +4623,7 @@ SET status = $1,
 FROM payment_order po
 WHERE po.id = pa.order_id
   AND po.workspace_id = $2
+  AND pa.provider_code <> 'internal_balance'
   AND pa.id = $3
   AND (
       pa.status = $1
@@ -4660,3 +4743,88 @@ SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) 
 UNION ALL
 SELECT count(*) AS records, COALESCE(sum(octet_length(row_to_json(t)::text)),0) AS bytes FROM payment_ton_wallet t WHERE t.workspace_id=$1
 ) SELECT sum(records)::bigint AS records, sum(bytes)::bigint AS bytes FROM footprint;
+
+
+-- name: RetireUnprotectedLimitGeneration :execrows
+UPDATE payment_product_limit_counter c
+SET retired_at = now(), updated_at = now()
+WHERE c.generation = $1
+  AND c.retired_at IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM payment_order_limit_reservation r
+      JOIN payment_balance_purchase b ON b.order_id = r.order_id
+      WHERE r.generation = c.generation AND r.state = 'reserved'
+        AND b.admitted_at IS NOT NULL AND b.outcome = ''
+  );
+
+-- name: LockBalancePurchaseRequest :exec
+SELECT pg_advisory_xact_lock(hashtextextended(
+    'payment:balance:' || jsonb_build_array(
+        sqlc.arg(workspace_id)::text, sqlc.arg(app_id)::bigint, sqlc.arg(platform_id)::bigint,
+        sqlc.arg(platform_user_id)::text, sqlc.arg(request_id)::text
+    )::text, 0));
+
+-- name: GetBalanceAssetForShare :one
+SELECT scale FROM payment_asset
+WHERE code = $1 AND is_active AND asset_kind = 'internal_currency'
+FOR SHARE;
+
+-- name: CreateBalancePurchase :exec
+INSERT INTO payment_balance_purchase (
+    order_id, attempt_id, workspace_id, app_id, platform_id, platform_user_id,
+    request_id, handler_key, event_id, snapshot
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+
+-- name: GetBalancePurchaseByRequest :one
+SELECT * FROM payment_balance_purchase
+WHERE workspace_id = $1 AND app_id = $2 AND platform_id = $3
+  AND platform_user_id = $4 AND request_id = $5;
+
+-- name: GetBalancePurchaseByOwner :one
+SELECT * FROM payment_balance_purchase
+WHERE order_id = $1 AND workspace_id = $2 AND app_id = $3 AND platform_id = $4
+  AND platform_user_id = $5;
+
+-- name: GetBalancePurchaseByEvent :one
+SELECT * FROM payment_balance_purchase WHERE event_id = $1;
+
+-- name: GetBalancePurchaseForOrder :one
+SELECT * FROM payment_balance_purchase WHERE order_id = $1;
+
+-- name: HasOwnedBalanceReservations :one
+WITH owned AS MATERIALIZED (
+    SELECT r.counter_scope
+    FROM payment_order_limit_reservation r
+    JOIN payment_product_limit_counter c ON c.generation = r.generation
+    WHERE r.order_id = sqlc.arg(order_id) AND r.state = 'reserved'
+      AND c.retired_at IS NULL
+      AND c.counter_scope = r.counter_scope AND c.reserved_count >= r.quantity
+    ORDER BY r.counter_scope
+    FOR UPDATE OF c
+)
+SELECT (SELECT count(*) FROM owned) =
+       ((global_window_start_snapshot IS NOT NULL)::int + (user_window_start_snapshot IS NOT NULL)::int)
+FROM payment_order WHERE id = sqlc.arg(order_id);
+
+-- name: RecordBalanceDelivery :exec
+UPDATE payment_balance_purchase
+SET admitted_at = COALESCE(admitted_at, now()),
+    last_delivery_at = now(),
+    delivery_attempt_count = delivery_attempt_count + 1
+WHERE order_id = $1;
+
+-- name: SetBalancePurchaseOutcome :exec
+UPDATE payment_balance_purchase SET outcome = $2, reason = $3 WHERE order_id = $1;
+
+-- name: CloseQueuedBalancePurchase :one
+UPDATE payment_balance_purchase SET outcome = 'rejected', reason = $2
+WHERE order_id = $1 AND admitted_at IS NULL AND outcome = ''
+RETURNING attempt_id;
+
+-- name: FlagBalanceResultConflict :exec
+UPDATE payment_balance_purchase SET result_conflict = true WHERE event_id = $1;
+
+
+-- name: UpdateExternalPaymentAttemptStatus :execrows
+UPDATE payment_attempt SET status = $1, updated_at = now()
+WHERE id = $2 AND provider_code <> 'internal_balance';

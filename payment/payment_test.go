@@ -5301,6 +5301,10 @@ func setupPaymentIntegrationTestWithOptions(
 	t testing.TB,
 	options Options,
 ) paymentTestEnv {
+	return setupPaymentIntegrationTestWithSchema(t, options, filepath.Join("sqlc", "schema.sql"))
+}
+
+func setupPaymentIntegrationTestWithSchema(t testing.TB, options Options, schemaPath string) paymentTestEnv {
 	t.Helper()
 
 	dsn := paymentTestDSN(t)
@@ -5334,7 +5338,7 @@ func setupPaymentIntegrationTestWithOptions(
 	repo := repository.NewPaymentRepository(client)
 	if err := repo.Bootstrap(
 		ctx,
-		filepath.Join("sqlc", "schema.sql"),
+		schemaPath,
 	); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
@@ -8206,7 +8210,7 @@ func TestPaymentStaleOrderExpirationReleasesLimitAndPurchaseKey(t *testing.T) {
 	}
 }
 
-func TestPaymentCreateOrderByKeyLocksLimitBeforePurchaseKey(t *testing.T) {
+func TestPaymentKeyedCheckoutLocksLimitBeforePurchaseKey(t *testing.T) {
 	env := setupPaymentIntegrationTest(t)
 	productID := createPaymentProduct(t, env, testProductOptions{
 		ProductID:           "purchase-key-lock-order",
@@ -8229,7 +8233,7 @@ func TestPaymentCreateOrderByKeyLocksLimitBeforePurchaseKey(t *testing.T) {
 		t.Fatalf("create purchase key: %v", err)
 	}
 
-	if _, err := env.api.User.CreateOrderByKey(
+	firstOrder, err := env.api.User.CreateOrderByKey(
 		env.ctx,
 		checkout.CreateOrderByKeyParams{
 			Key: key,
@@ -8240,7 +8244,8 @@ func TestPaymentCreateOrderByKeyLocksLimitBeforePurchaseKey(t *testing.T) {
 			AssetCode: "RUB",
 			Locale:    "ru",
 		},
-	); err != nil {
+	)
+	if err != nil {
 		t.Fatalf("create first keyed order: %v", err)
 	}
 
@@ -8311,6 +8316,53 @@ WHERE workspace_id = $1
 	if boundOrders != 2 {
 		t.Fatalf("bound keyed orders = %d, want 2", boundOrders)
 	}
+
+	t.Run("complete_attempt", func(t *testing.T) {
+		providerID := uniquePaymentID("keyed-lock-order")
+		attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
+			Identity:          paymentAttemptIdentity(firstOrder),
+			OrderID:           firstOrder.ID,
+			ProviderCode:      "yookassa",
+			ProviderPaymentID: &providerID,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		tx, err := env.db.BeginTx(env.ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		if _, err := tx.ExecContext(env.ctx, `SELECT generation FROM payment_product_limit_counter
+WHERE workspace_id = $1 AND product_id = $2 FOR UPDATE`, testWorkspaceID, productID); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan error, 1)
+		go func() {
+			_, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
+				WorkspaceID:       testWorkspaceID,
+				AttemptID:         attempt.ID,
+				ProviderCode:      "yookassa",
+				ProviderPaymentID: &providerID,
+				AmountMinor:       attempt.AmountMinor,
+				AssetCode:         attempt.AssetCode,
+			})
+			done <- err
+		}()
+		waitForPaymentBlockedQuery(t, env.db, "payment_order_limit_reservation")
+		if _, err := tx.ExecContext(env.ctx, `SELECT id FROM payment_purchase_key
+WHERE workspace_id = $1 AND product_id = $2 FOR NO KEY UPDATE NOWAIT`, testWorkspaceID, productID); err != nil {
+			t.Fatalf("completion acquired purchase key before product limit: %v", err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		assertOrderStatus(t, env.ctx, env.db, firstOrder.ID, "fulfilled")
+	})
+
 }
 
 func TestPaymentStaleOrderAndActiveAttemptExpireConsistently(t *testing.T) {
@@ -9296,7 +9348,7 @@ func TestPaymentGiftKeyNegativeCases(t *testing.T) {
 }
 
 func createPaymentProduct(
-	t *testing.T,
+	t testing.TB,
 	env paymentTestEnv,
 	opt testProductOptions,
 ) string {
@@ -15143,4 +15195,1292 @@ func waitPaymentArchiveJob(
 	}
 
 	t.Fatal("archive job did not complete")
+}
+
+func TestPaymentMissingLimitReservationGeneration(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	repo := repository.NewPaymentRepository(env.client)
+	defer repo.Close()
+
+	for _, tc := range []struct {
+		name  string
+		scope string
+	}{
+		{name: "refund_before_fulfillment", scope: "global"},
+		{name: "chargeback_before_fulfillment", scope: "user"},
+		{name: "provider_cancellation", scope: "global"},
+		{name: "confirmation_after_cancellation", scope: "user"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			productID := createReservationGenerationProduct(t, env, "ONCE")
+			oldOrder, oldAttempt := createReservationGenerationAttempt(t, env, productID)
+			// Simulate a genuinely missing counter. A normal reset now preserves it.
+			if _, err := env.db.ExecContext(env.ctx, `
+DELETE FROM payment_product_limit_counter c
+USING payment_order_limit_reservation r
+WHERE c.generation = r.generation AND r.order_id = $1 AND r.counter_scope = $2`, oldOrder, tc.scope); err != nil {
+				t.Fatal(err)
+			}
+			newOrder, newAttempt := createReservationGenerationAttempt(t, env, productID)
+
+			var different bool
+			err := env.db.QueryRowContext(env.ctx, `
+SELECT old.generation <> new.generation
+FROM payment_order_limit_reservation old
+JOIN payment_order_limit_reservation new ON old.counter_scope = new.counter_scope
+WHERE old.order_id = $1 AND new.order_id = $2 AND old.counter_scope = $3`,
+				oldOrder, newOrder, tc.scope).Scan(&different)
+			if err != nil || !different {
+				t.Fatalf("recreated counter generation changed=%t err=%v", different, err)
+			}
+
+			if tc.name == "provider_cancellation" || tc.name == "confirmation_after_cancellation" {
+				if err := repo.FinalizeProviderAttempt(env.ctx, repository.ProviderAttemptTerminalParams{
+					WorkspaceID:       oldAttempt.WorkspaceID,
+					AttemptID:         oldAttempt.AttemptID,
+					ProviderCode:      oldAttempt.ProviderCode,
+					ProviderPaymentID: *oldAttempt.ProviderPaymentID,
+					Status:            repository.ProviderAttemptTerminalCanceled,
+				}); err != nil {
+					t.Fatal(err)
+				}
+				assertOrderStatus(t, env.ctx, env.db, oldOrder, "canceled")
+			}
+			if tc.name != "provider_cancellation" {
+				for _, replay := range []bool{false, true} {
+					got, err := env.api.Operational.CompleteAttempt(env.ctx, oldAttempt)
+					if err != nil || got.FulfillmentID != nil || got.AlreadyDone != replay {
+						t.Fatalf("review replay=%t result=%+v err=%v", replay, got, err)
+					}
+				}
+				order, err := env.api.Admin.GetOrder(env.ctx, admin.OrderRefParams{WorkspaceID: testWorkspaceID, ID: oldOrder})
+				if err != nil || order.Status != "paid" || order.LimitReviewReason != "limit_reservation_lost" {
+					t.Fatalf("paid order awaiting review: %+v err=%v", order, err)
+				}
+				assertAttemptStatus(t, env.ctx, env.db, oldAttempt.AttemptID, "succeeded")
+				assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderFulfilled, oldOrder, 0)
+			}
+			assertReservationGenerationCounts(t, env, productID, 0, 1)
+
+			switch tc.name {
+			case "refund_before_fulfillment":
+				eventID := uniquePaymentID("reviewed-refund-event")
+				params := repository.ProviderRefundParams{
+					WorkspaceID:       oldAttempt.WorkspaceID,
+					ProviderCode:      oldAttempt.ProviderCode,
+					ProviderPaymentID: *oldAttempt.ProviderPaymentID,
+					ProviderRefundID:  uniquePaymentID("reviewed-refund"),
+					Event: repository.EventCreateParams{
+						ProviderCode:    oldAttempt.ProviderCode,
+						ProviderEventID: &eventID,
+						EventType:       "refund.succeeded",
+						PayloadHash:     sha256Hex(eventID),
+					},
+				}
+				for _, replay := range []bool{false, true} {
+					got, err := repo.ApplyProviderRefund(env.ctx, params)
+					if err != nil || got.AlreadyDone != replay || got.RefundID == 0 {
+						t.Fatalf("refund replay=%t result=%+v err=%v", replay, got, err)
+					}
+				}
+				assertOrderStatus(t, env.ctx, env.db, oldOrder, "refunded")
+				assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderRefunded, oldOrder, 0)
+			case "chargeback_before_fulfillment":
+				params := repository.ProviderChargebackParams{
+					WorkspaceID:       oldAttempt.WorkspaceID,
+					ProviderCode:      oldAttempt.ProviderCode,
+					ProviderPaymentID: *oldAttempt.ProviderPaymentID,
+					AssetCode:         oldAttempt.AssetCode,
+					AmountMinor:       oldAttempt.AmountMinor,
+				}
+				for _, replay := range []bool{false, true} {
+					got, err := repo.ApplyProviderChargeback(env.ctx, params)
+					if err != nil || got.AlreadyDone != replay || got.FulfillmentID != 0 {
+						t.Fatalf("chargeback replay=%t result=%+v err=%v", replay, got, err)
+					}
+				}
+				assertOrderStatus(t, env.ctx, env.db, oldOrder, "chargebacked")
+				assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderChargebacked, oldOrder, 0)
+			}
+
+			var fulfillments int
+			if err := env.db.QueryRowContext(env.ctx, `SELECT count(*) FROM payment_fulfillment WHERE order_id = $1`, oldOrder).Scan(&fulfillments); err != nil || fulfillments != 0 {
+				t.Fatalf("old order fulfillments=%d err=%v", fulfillments, err)
+			}
+			got, err := env.api.Operational.CompleteAttempt(env.ctx, newAttempt)
+			if err != nil || got.FulfillmentID == nil {
+				t.Fatalf("new order fulfillment=%+v err=%v", got, err)
+			}
+			assertReservationGenerationCounts(t, env, productID, 1, 0)
+		})
+	}
+}
+
+func TestPaymentLimitReservationSurvivesConcurrentBootstrap(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	productID := createReservationGenerationProduct(t, env, "ONCE")
+	orderID, attempt := createReservationGenerationAttempt(t, env, productID)
+
+	generations := func() [2]int64 {
+		t.Helper()
+		var value [2]int64
+		err := env.db.QueryRowContext(env.ctx, `
+SELECT min(generation), max(generation)
+FROM payment_product_limit_counter
+WHERE workspace_id = $1 AND product_id = $2`, testWorkspaceID, productID).Scan(&value[0], &value[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	before := generations()
+	start := make(chan struct{})
+	done := make(chan error, 2)
+	for range 2 {
+		go func() {
+			<-start
+			repo := repository.NewPaymentRepository(env.client)
+			defer repo.Close()
+			done <- repo.Bootstrap(env.ctx)
+		}()
+	}
+	close(start)
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}
+	if t.Failed() {
+		return
+	}
+	if after := generations(); after != before {
+		t.Fatalf("bootstrap changed generation: before=%v after=%v", before, after)
+	}
+	assertReservationGenerationCounts(t, env, productID, 0, 1)
+	got, err := env.api.Operational.CompleteAttempt(env.ctx, attempt)
+	if err != nil || got.FulfillmentID == nil {
+		t.Fatalf("complete after restart: %+v err=%v", got, err)
+	}
+	assertReservationGenerationCounts(t, env, productID, 1, 0)
+	assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderFulfilled, orderID, 1)
+}
+
+func TestPaymentLimitGenerationMigrationPreservesUnverifiedLegacyCounts(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	productID := createReservationGenerationProduct(t, env, "ONCE")
+	orderID, attempt := createReservationGenerationAttempt(t, env, productID)
+	for _, statement := range []string{
+		`DELETE FROM payment_order_limit_reservation`,
+		`ALTER TABLE payment_product_limit_counter DROP COLUMN generation`,
+		`DELETE FROM payment_schema_migration WHERE name = 'limit_reservation_generations'`,
+	} {
+		if _, err := env.db.ExecContext(env.ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo := repository.NewPaymentRepository(env.client)
+	defer repo.Close()
+	if err := repo.Bootstrap(env.ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertReservationGenerationCounts(t, env, productID, 0, 1)
+	got, err := env.api.Operational.CompleteAttempt(env.ctx, attempt)
+	if err != nil || got.FulfillmentID != nil {
+		t.Fatalf("legacy payment result=%+v err=%v", got, err)
+	}
+	order, err := env.api.Admin.GetOrder(env.ctx, admin.OrderRefParams{WorkspaceID: testWorkspaceID, ID: orderID})
+	if err != nil || order.Status != "paid" || !order.LimitTrackingLegacy || order.LimitReviewReason != "limit_reservation_unverified" {
+		t.Fatalf("legacy order=%+v err=%v", order, err)
+	}
+	assertReservationGenerationCounts(t, env, productID, 0, 1)
+	assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderFulfilled, orderID, 0)
+}
+
+func createReservationGenerationProduct(t *testing.T, env paymentTestEnv, interval string) string {
+	t.Helper()
+	return createPaymentProduct(t, env, testProductOptions{
+		GlobalLimit:         2,
+		GlobalInterval:      interval,
+		GlobalIntervalCount: 1,
+		UserLimit:           2,
+		UserInterval:        interval,
+		UserIntervalCount:   1,
+	})
+}
+
+func createReservationGenerationAttempt(t *testing.T, env paymentTestEnv, productID string) (uint64, checkout.CompleteAttemptParams) {
+	t.Helper()
+	identity := paymentTestIdentity(testWorkspaceID, 4110, 1, "reservation-generation-user")
+	order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
+		Identity:  identity,
+		ProductID: productID,
+		AssetCode: "RUB",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerID := uniquePaymentID("generation-attempt")
+	attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
+		Identity:          identity,
+		OrderID:           order.ID,
+		ProviderCode:      "yookassa",
+		ProviderPaymentID: &providerID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return order.ID, checkout.CompleteAttemptParams{
+		WorkspaceID:       identity.WorkspaceID,
+		AttemptID:         attempt.ID,
+		ProviderCode:      "yookassa",
+		ProviderPaymentID: &providerID,
+		AssetCode:         attempt.AssetCode,
+		AmountMinor:       attempt.AmountMinor,
+	}
+}
+
+func resetReservationGeneration(t *testing.T, env paymentTestEnv, productID, scope string) {
+	t.Helper()
+	counters, err := env.api.Admin.ListProductLimitCounters(env.ctx, admin.ProductLimitCounterListParams{
+		WorkspaceID: testWorkspaceID,
+		ProductID:   productID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, counter := range counters {
+		if counter.CounterScope == scope {
+			rows, err := env.api.Admin.DeleteProductLimitCounter(env.ctx, admin.ProductLimitCounterDeleteParams{
+				WorkspaceID:    counter.WorkspaceID,
+				AppID:          counter.AppID,
+				PlatformID:     counter.PlatformID,
+				ProductID:      counter.ProductID,
+				PlatformUserID: counter.PlatformUserID,
+				CounterScope:   counter.CounterScope,
+				WindowStart:    counter.WindowStart,
+				WindowEnd:      counter.WindowEnd,
+			})
+			if err != nil || rows != 1 {
+				t.Fatalf("reset %s counter rows=%d err=%v", scope, rows, err)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing counter %s", scope)
+}
+
+func assertReservationGenerationCounts(t *testing.T, env paymentTestEnv, productID string, paid, reserved int64) {
+	t.Helper()
+	counters, err := env.api.Admin.ListProductLimitCounters(env.ctx, admin.ProductLimitCounterListParams{
+		WorkspaceID: testWorkspaceID,
+		ProductID:   productID,
+	})
+	if err != nil || len(counters) != 2 {
+		t.Fatalf("counters=%+v err=%v", counters, err)
+	}
+	for _, counter := range counters {
+		if counter.PaidCount != paid || counter.ReservedCount != reserved {
+			t.Fatalf("%s counter paid=%d reserved=%d, want %d and %d", counter.CounterScope, counter.PaidCount, counter.ReservedCount, paid, reserved)
+		}
+	}
+}
+
+func TestPaymentReversalUsesConsumedWindowAndGeneration(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	repo := repository.NewPaymentRepository(env.client)
+	defer repo.Close()
+
+	for _, name := range []string{"previous_window", "recreated_generation"} {
+		t.Run(name, func(t *testing.T) {
+			interval := "ONCE"
+			if name == "previous_window" {
+				interval = "DAY"
+			}
+			productID := createReservationGenerationProduct(t, env, interval)
+			oldOrder, oldAttempt := createReservationGenerationAttempt(t, env, productID)
+			if name == "previous_window" {
+				// Move the original reservations to yesterday while keeping today's
+				// database time for payment confirmation and the next reservation.
+				for _, statement := range []string{
+					`UPDATE payment_product_limit_counter c SET window_start = window_start - interval '1 day', window_end = window_end - interval '1 day'
+WHERE EXISTS (SELECT 1 FROM payment_order_limit_reservation r WHERE r.order_id = $1 AND r.generation = c.generation)`,
+					`UPDATE payment_order SET global_window_start_snapshot = global_window_start_snapshot - interval '1 day',
+    global_window_end_snapshot = global_window_end_snapshot - interval '1 day',
+    user_window_start_snapshot = user_window_start_snapshot - interval '1 day',
+    user_window_end_snapshot = user_window_end_snapshot - interval '1 day' WHERE id = $1`,
+				} {
+					if _, err := env.db.ExecContext(env.ctx, statement, oldOrder); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if name == "recreated_generation" {
+				resetReservationGeneration(t, env, productID, "user")
+			}
+			newOrder, newAttempt := createReservationGenerationAttempt(t, env, productID)
+			got, err := env.api.Operational.CompleteAttempt(env.ctx, oldAttempt)
+			if err != nil || got.FulfillmentID == nil {
+				t.Fatalf("complete old attempt: %+v err=%v", got, err)
+			}
+			got, err = env.api.Operational.CompleteAttempt(env.ctx, newAttempt)
+			if err != nil || got.FulfillmentID == nil {
+				t.Fatalf("complete new attempt: %+v err=%v", got, err)
+			}
+
+			params := repository.ProviderChargebackParams{
+				WorkspaceID:       oldAttempt.WorkspaceID,
+				ProviderCode:      oldAttempt.ProviderCode,
+				ProviderPaymentID: *oldAttempt.ProviderPaymentID,
+				AssetCode:         oldAttempt.AssetCode,
+				AmountMinor:       oldAttempt.AmountMinor,
+			}
+			for _, replay := range []bool{false, true} {
+				result, err := repo.ApplyProviderChargeback(env.ctx, params)
+				if err != nil || result.FulfillmentID == 0 || result.AlreadyDone != replay {
+					t.Fatalf("reverse old order replay=%t result=%+v err=%v", replay, result, err)
+				}
+			}
+			assertOrderStatus(t, env.ctx, env.db, newOrder, "fulfilled")
+			assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderChargebacked, oldOrder, 1)
+
+			var newPaid, oldPaid int
+			if err := env.db.QueryRowContext(env.ctx, `
+SELECT count(*) FILTER (WHERE c.paid_count = 1)
+FROM payment_order_limit_reservation r JOIN payment_product_limit_counter c USING (generation)
+WHERE r.order_id = $1 AND r.state = 'consumed'`, newOrder).Scan(&newPaid); err != nil || newPaid != 2 {
+				t.Fatalf("new order paid counters=%d err=%v", newPaid, err)
+			}
+			if name == "previous_window" {
+				if err := env.db.QueryRowContext(env.ctx, `
+SELECT count(*) FILTER (WHERE c.paid_count = 0)
+FROM payment_order_limit_reservation r JOIN payment_product_limit_counter c USING (generation)
+WHERE r.order_id = $1 AND r.state = 'reversed'`, oldOrder).Scan(&oldPaid); err != nil || oldPaid != 2 {
+					t.Fatalf("old order reversed counters=%d err=%v", oldPaid, err)
+				}
+			} else {
+				if err := env.db.QueryRowContext(env.ctx, `
+SELECT count(*) FROM payment_order_limit_reservation r JOIN payment_product_limit_counter c USING (generation)
+WHERE r.order_id = $1 AND r.state = 'reversed' AND c.retired_at IS NOT NULL AND c.paid_count = 0`,
+					oldOrder).Scan(&oldPaid); err != nil || oldPaid != 1 {
+					t.Fatalf("retired counter was not reversed: rows=%d err=%v", oldPaid, err)
+				}
+			}
+		})
+	}
+}
+
+func TestPaymentExternalConfirmationWaitsForCounterReset(t *testing.T) {
+	for _, scope := range []string{"global", "user"} {
+		t.Run(scope, func(t *testing.T) {
+			env := setupPaymentIntegrationTest(t)
+			productID := createReservationGenerationProduct(t, env, "ONCE")
+			orderID, attempt := createReservationGenerationAttempt(t, env, productID)
+
+			reset, err := env.db.BeginTx(env.ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reset.Rollback()
+			result, err := reset.ExecContext(env.ctx, `
+UPDATE payment_product_limit_counter
+SET retired_at = now()
+WHERE workspace_id = $1 AND product_id = $2 AND counter_scope = $3`, testWorkspaceID, productID, scope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rows, err := result.RowsAffected(); err != nil || rows != 1 {
+				t.Fatalf("retired counter rows=%d err=%v", rows, err)
+			}
+
+			finished := make(chan error, 1)
+			go func() {
+				result, err := env.api.Operational.CompleteAttempt(env.ctx, attempt)
+				if err == nil && result.FulfillmentID == nil {
+					err = fmt.Errorf("order did not fulfill: %+v", result)
+				}
+				finished <- err
+			}()
+			waitForPaymentBlockedQuery(t, env.db, "payment_order_limit_reservation")
+			if err := reset.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case err := <-finished:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-env.ctx.Done():
+				t.Fatal(env.ctx.Err())
+			}
+			assertOrderStatus(t, env.ctx, env.db, orderID, "fulfilled")
+
+			newOrderID, newAttempt := createReservationGenerationAttempt(t, env, productID)
+			var oldPaid, oldReserved, newPaid, newReserved int64
+			var oldRetired, different bool
+			if err := env.db.QueryRowContext(env.ctx, `
+SELECT oc.paid_count, oc.reserved_count, nc.paid_count, nc.reserved_count,
+       oc.retired_at IS NOT NULL, oc.generation <> nc.generation
+FROM payment_order_limit_reservation old
+JOIN payment_order_limit_reservation fresh ON old.counter_scope = fresh.counter_scope
+JOIN payment_product_limit_counter oc ON oc.generation = old.generation
+JOIN payment_product_limit_counter nc ON nc.generation = fresh.generation
+WHERE old.order_id = $1 AND fresh.order_id = $2 AND old.counter_scope = $3`,
+				orderID, newOrderID, scope,
+			).Scan(&oldPaid, &oldReserved, &newPaid, &newReserved, &oldRetired, &different); err != nil {
+				t.Fatal(err)
+			}
+			if !oldRetired || !different || oldPaid != 1 || oldReserved != 0 || newPaid != 0 || newReserved != 1 {
+				t.Fatalf("retired=%t distinct=%t old=%d/%d new=%d/%d",
+					oldRetired, different, oldPaid, oldReserved, newPaid, newReserved)
+			}
+			replay, err := env.api.Operational.CompleteAttempt(env.ctx, attempt)
+			if err != nil || !replay.AlreadyDone || replay.FulfillmentID == nil {
+				t.Fatalf("repeat confirmation: %+v err=%v", replay, err)
+			}
+			assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderFulfilled, orderID, 1)
+			if got, err := env.api.Operational.CompleteAttempt(env.ctx, newAttempt); err != nil || got.FulfillmentID == nil {
+				t.Fatalf("new order fulfillment=%+v err=%v", got, err)
+			}
+		})
+	}
+}
+
+const testBalanceAsset = "test_coin"
+
+func balanceTestBinding() BalanceBinding {
+	return BalanceBinding{WorkspaceID: testWorkspaceID, AppID: 4111, AssetCode: testBalanceAsset}
+}
+
+func setupBalanceProduct(t testing.TB, env paymentTestEnv, withLimits bool) PurchaseWithBalanceParams {
+	t.Helper()
+	if err := env.api.Operational.UpsertAsset(env.ctx, operational.AssetUpsertParams{
+		Code: testBalanceAsset, Title: "Test coin", AssetKind: AssetKindInternalCurrency, Scale: 2, IsActive: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	opt := testProductOptions{AssetCode: testBalanceAsset, ListAmountMinor: 500, DiscountAmountMinor: 50}
+	if withLimits {
+		opt.GlobalLimit, opt.UserLimit = 2, 2
+		opt.GlobalInterval, opt.UserInterval = "ONCE", "ONCE"
+		opt.GlobalIntervalCount, opt.UserIntervalCount = 1, 1
+	}
+	return PurchaseWithBalanceParams{
+		Identity:  paymentTestIdentity(testWorkspaceID, balanceTestBinding().AppID, 1, "balance-player"),
+		ProductID: createPaymentProduct(t, env, opt), AssetCode: testBalanceAsset, Quantity: 1, RequestID: "balance-1",
+	}
+}
+
+func balanceTestRepository(t testing.TB, env paymentTestEnv) *repository.PaymentRepository {
+	t.Helper()
+	repo := repository.NewPaymentRepositoryWithOptions(env.client, repository.Options{
+		BalanceBindings: map[BalanceBinding]string{balanceTestBinding(): "game"},
+	})
+	t.Cleanup(func() { _ = repo.Close() })
+	return repo
+}
+
+func balanceTestEvent(t testing.TB, env paymentTestEnv, orderID uint64) uint64 {
+	t.Helper()
+	var id uint64
+	if err := env.db.QueryRowContext(env.ctx, "SELECT event_id FROM payment_balance_purchase WHERE order_id = $1", orderID).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func waitForBalanceDelivery(t *testing.T, env paymentTestEnv, api *Payment, orderID uint64, accept func(BalanceDelivery) bool) BalanceDelivery {
+	t.Helper()
+	deadline := time.NewTimer(6 * time.Second)
+	defer deadline.Stop()
+	for {
+		delivery, err := api.Operational.GetBalanceDelivery(env.ctx, BalanceDeliveryParams{WorkspaceID: testWorkspaceID, OrderID: orderID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if accept(delivery) {
+			return delivery
+		}
+		select {
+		case <-deadline.C:
+			t.Fatalf("unexpected balance delivery: %+v", delivery)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+func TestPaymentBalancePurchaseAndCallbackIsolation(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	params := setupBalanceProduct(t, env, true)
+	if _, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
+		Identity: params.Identity, ProductID: params.ProductID, AssetCode: params.AssetCode,
+	}); !errors.Is(err, ErrBalanceUnsupported) {
+		t.Fatalf("external checkout on internal asset: %v", err)
+	}
+	if err := env.api.Operational.UpsertProviderAsset(env.ctx, operational.ProviderAssetUpsertParams{
+		ProviderCode: "yookassa", AssetCode: params.AssetCode, IsActive: true,
+	}); !errors.Is(err, repository.ErrInvalidProviderAsset) {
+		t.Fatalf("external provider linked to internal asset: %v", err)
+	}
+
+	var calls atomic.Int32
+	var gameMu sync.Mutex
+	gameBalance, gameItems := uint64(1000), int64(0)
+	gameOperations := make(map[string]BalanceChargeRequest)
+	requests := make(chan BalanceChargeRequest, 4)
+	firstCall := make(chan struct{})
+	allowFirstResponse := make(chan struct{})
+
+	handler := func(ctx context.Context, request BalanceChargeRequest) (BalanceChargeResult, error) {
+		requests <- request
+		gameMu.Lock()
+		defer gameMu.Unlock()
+		if saved, exists := gameOperations[request.OperationKey]; exists {
+			if !reflect.DeepEqual(saved, request) {
+				return BalanceChargeResult{}, ErrBalanceOperationConflict
+			}
+		} else {
+			if request.AmountMinor > gameBalance || len(request.Rewards) != 1 {
+				return BalanceChargeResult{}, ErrBalanceOperationConflict
+			}
+			gameBalance -= request.AmountMinor
+			gameItems += request.Rewards[0].Quantity
+			gameOperations[request.OperationKey] = request
+		}
+		if calls.Add(1) == 1 {
+			close(firstCall)
+			select {
+			case <-allowFirstResponse:
+			case <-ctx.Done():
+				return BalanceChargeResult{}, ctx.Err()
+			}
+
+			// The test application persisted debit and grant, but its response
+			// was lost. The same application ledger survives Payment restart.
+			return BalanceChargeResult{}, context.DeadlineExceeded
+		}
+		return BalanceChargeResult{Outcome: BalanceChargeSucceeded}, nil
+	}
+
+	options := paymentTestOptions()
+	options.BalanceBindings = map[BalanceBinding]string{balanceTestBinding(): "game"}
+	options.BalanceHandlers = map[string]BalanceChargeHandler{"game": handler}
+	api, err := NewWithDatabase(env.ctx, env.db, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = api.Close() })
+
+	results := make(chan struct {
+		order BalancePurchase
+		err   error
+	}, 8)
+	for range cap(results) {
+		go func() {
+			order, err := api.User.PurchaseWithBalance(env.ctx, params)
+			results <- struct {
+				order BalancePurchase
+				err   error
+			}{order, err}
+		}()
+	}
+	var id uint64
+	for range cap(results) {
+		result := <-results
+		if result.err != nil || (id != 0 && result.order.OrderID != id) || result.order.OrderID == 0 {
+			t.Fatalf("parallel balance purchase: %+v", result)
+		}
+		id = result.order.OrderID
+	}
+	changed := params
+	changed.Quantity = 2
+	if _, err := api.User.PurchaseWithBalance(env.ctx, changed); !errors.Is(err, ErrBalanceRequestConflict) {
+		t.Fatalf("changed request reused: %v", err)
+	}
+	outsider := params.Identity
+	outsider.PlatformID++
+	if _, err := api.User.GetBalancePurchase(env.ctx, GetBalancePurchaseParams{
+		Identity: outsider, OrderID: id,
+	}); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("outsider looked up order: %v", err)
+	}
+	externalProduct := createReservationGenerationProduct(t, env, "ONCE")
+	externalOrder, externalAttempt := createReservationGenerationAttempt(t, env, externalProduct)
+	if _, err := env.api.Operational.CompleteAttempt(env.ctx, externalAttempt); err != nil {
+		t.Fatal(err)
+	}
+
+	legacy := callbackutil.NewWithTable(env.db, callbackutil.PaymentTable)
+	events, err := legacy.LeaseEvents(env.ctx, callbackutil.LeaseParams{SourceService: "payment", WorkerID: "legacy", Limit: 1})
+	if err != nil || len(events) != 1 || events[0].EventType != CallbackEventPaymentOrderFulfilled ||
+		events[0].EventKey != fmt.Sprintf("%s:%d", CallbackEventPaymentOrderFulfilled, externalOrder) {
+		t.Fatalf("ordinary callback claimed the wrong stream: %+v %v", events, err)
+	}
+	select {
+	case <-firstCall:
+	case <-env.ctx.Done():
+		t.Fatal(env.ctx.Err())
+	}
+	if ok, err := api.Operational.RetryBalanceDelivery(env.ctx, BalanceDeliveryParams{
+		WorkspaceID: testWorkspaceID, OrderID: id,
+	}); err != nil || ok {
+		t.Fatalf("retry interrupted a live lease: %v %v", ok, err)
+	}
+	close(allowFirstResponse)
+
+	waitForBalanceDelivery(t, env, api, id, func(d BalanceDelivery) bool {
+		return d.Status == BalancePurchaseProcessing && d.LastError != nil
+	})
+	assertReservationGenerationCounts(t, env, params.ProductID, 0, 1)
+	if err := api.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.api.Operational.UpsertAsset(env.ctx, operational.AssetUpsertParams{
+		Code: testBalanceAsset, Title: "Test coin", AssetKind: AssetKindInternalCurrency, Scale: 2, IsActive: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Pending requests can drain without enabling new purchases.
+	options.BalanceBindings = nil
+	api, err = NewWithDatabase(env.ctx, env.db, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = api.Close() })
+
+	if ok, err := api.Operational.RetryBalanceDelivery(env.ctx, BalanceDeliveryParams{WorkspaceID: testWorkspaceID, OrderID: id}); err != nil || !ok {
+		t.Fatalf("retry balance delivery: %v %v", ok, err)
+	}
+	delivery := waitForBalanceDelivery(t, env, api, id, func(d BalanceDelivery) bool { return d.DeliveredAt != nil })
+	if delivery.Status != BalancePurchaseSucceeded || delivery.AttemptCount != 2 || calls.Load() != 2 {
+		t.Fatalf("unexpected terminal delivery: %+v calls=%d", delivery, calls.Load())
+	}
+	first, second := <-requests, <-requests
+	if first.Identity != params.Identity || first.OrderID != id || first.AttemptID == 0 || first.AssetCode != testBalanceAsset ||
+		first.Scale != 2 || first.AmountMinor != 450 || len(first.Rewards) != 1 || first.Rewards[0].Quantity != 1 ||
+		first.OperationKey != delivery.OperationKey || !reflect.DeepEqual(first, second) {
+		t.Fatalf("unstable or invalid snapshots: %+v / %+v", first, second)
+	}
+	gameMu.Lock()
+	remaining, granted, operations := gameBalance, gameItems, len(gameOperations)
+	gameMu.Unlock()
+	if remaining != 550 || granted != 1 || operations != 1 {
+		t.Fatalf("test application applied purchase repeatedly: balance=%d items=%d operations=%d", remaining, granted, operations)
+	}
+
+	assertOrderStatus(t, env.ctx, env.db, id, "fulfilled")
+	assertReservationGenerationCounts(t, env, params.ProductID, 1, 0)
+	assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderFulfilled, id, 0)
+	if _, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
+		WorkspaceID: testWorkspaceID, AttemptID: first.AttemptID, ProviderCode: repository.BalanceProviderCode,
+		AssetCode: first.AssetCode, AmountMinor: first.AmountMinor, ProviderPaymentID: &first.OperationKey,
+	}); !errors.Is(err, ErrBalanceUnsupported) {
+		t.Fatalf("completed internal attempt through legacy path: %v", err)
+	}
+
+	// No binding in the original service and the asset is now unavailable.
+	if err := env.api.Operational.UpsertAsset(env.ctx, operational.AssetUpsertParams{
+		Code: testBalanceAsset, Title: "Test coin", AssetKind: AssetKindInternalCurrency, Scale: 2, IsActive: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := env.api.User.PurchaseWithBalance(env.ctx, params)
+	if err != nil || saved.OrderID != id || saved.Status != BalancePurchaseSucceeded {
+		t.Fatalf("request replay after disabling asset: %+v %v", saved, err)
+	}
+}
+
+func TestPaymentBalanceRejectAndClose(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	params := setupBalanceProduct(t, env, true)
+	repo := balanceTestRepository(t, env)
+	handlers := map[string]BalanceChargeHandler{"game": func(context.Context, BalanceChargeRequest) (BalanceChargeResult, error) {
+		return BalanceChargeResult{Outcome: BalanceChargeRejected, Reason: "insufficient_balance"}, nil
+	}}
+
+	purchase, err := repo.PurchaseWithBalance(env.ctx, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := balanceTestEvent(t, env, purchase.OrderID)
+	request, handler, err := repo.BeginBalanceCharge(env.ctx, id, handlers)
+	if err != nil || request == nil {
+		t.Fatalf("admit charge: %+v %v", request, err)
+	}
+	if err := repo.FinishBalanceCharge(env.ctx, id, BalanceChargeResult{}); !errors.Is(err, ErrBalanceResultInvalid) {
+		t.Fatalf("invalid result accepted: %v", err)
+	}
+	assertReservationGenerationCounts(t, env, params.ProductID, 0, 1)
+	result, err := handler(env.ctx, *request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := repo.FinishBalanceCharge(env.ctx, id, result); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.FinishBalanceCharge(env.ctx, id, BalanceChargeResult{Outcome: BalanceChargeSucceeded}); !errors.Is(err, ErrBalanceResultInvalid) {
+		t.Fatalf("conflicting terminal outcome accepted: %v", err)
+	}
+	saved, err := repo.PurchaseWithBalance(env.ctx, params)
+	if err != nil || saved.Status != BalancePurchaseRejected || saved.Reason != result.Reason {
+		t.Fatalf("rejected order: %+v %v", saved, err)
+	}
+	delivery, err := env.api.Operational.GetBalanceDelivery(env.ctx, BalanceDeliveryParams{
+		WorkspaceID: testWorkspaceID, OrderID: purchase.OrderID,
+	})
+	if err != nil || !delivery.ResultConflict {
+		t.Fatalf("protocol conflict was not saved: %+v %v", delivery, err)
+	}
+	assertOrderStatus(t, env.ctx, env.db, purchase.OrderID, "failed")
+	assertReservationGenerationCounts(t, env, params.ProductID, 0, 0)
+	assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderFulfilled, purchase.OrderID, 0)
+
+	for _, tc := range []struct{ status, reason string }{
+		{"canceled", "order_canceled"}, {"expired", "order_expired"},
+	} {
+		params.RequestID = tc.status
+		queued, err := repo.PurchaseWithBalance(env.ctx, params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tc.status == "expired" {
+			if count, err := repo.ExpireStaleOrders(env.ctx, time.Now().Add(time.Hour), time.Minute, 10, false); err != nil || count != 1 {
+				t.Fatalf("expire queued purchase: count=%d err=%v", count, err)
+			}
+		} else if _, err := repo.UpdateOrderStatus(env.ctx, testWorkspaceID, queued.OrderID, tc.status); err != nil {
+			t.Fatal(err)
+		}
+		request, _, err := repo.BeginBalanceCharge(env.ctx, balanceTestEvent(t, env, queued.OrderID), handlers)
+		if err != nil || request != nil {
+			t.Fatalf("closed purchase reached game: %+v %v", request, err)
+		}
+		saved, err := repo.GetBalancePurchase(env.ctx, GetBalancePurchaseParams{Identity: params.Identity, RequestID: params.RequestID})
+		if err != nil || saved.Status != BalancePurchaseRejected || saved.Reason != tc.reason {
+			t.Fatalf("closed purchase status: %+v %v", saved, err)
+		}
+		assertReservationGenerationCounts(t, env, params.ProductID, 0, 0)
+	}
+}
+
+func TestPaymentBalanceAdmissionAndCounterReset(t *testing.T) {
+	for _, resetFirst := range []bool{true, false} {
+		name := "admit_first"
+		if resetFirst {
+			name = "reset_first"
+		}
+		t.Run(name, func(t *testing.T) {
+			options := paymentTestOptions()
+			options.DisableOrderExpiration = true
+			env := setupPaymentIntegrationTestWithOptions(t, options)
+			params := setupBalanceProduct(t, env, true)
+			repo := balanceTestRepository(t, env)
+			old, err := repo.PurchaseWithBalance(env.ctx, params)
+			if err != nil {
+				t.Fatal(err)
+			}
+			eventID := balanceTestEvent(t, env, old.OrderID)
+			counters, err := env.api.Admin.ListProductLimitCounters(env.ctx, admin.ProductLimitCounterListParams{
+				WorkspaceID: testWorkspaceID, ProductID: params.ProductID,
+			})
+			if err != nil || len(counters) != 2 {
+				t.Fatalf("missing counters: %+v %v", counters, err)
+			}
+			global := counters[0]
+			if global.CounterScope != "global" {
+				global = counters[1]
+			}
+			resetParams := paymentsqlc.LockProductLimitCounterForResetParams{
+				WorkspaceID: global.WorkspaceID, ProductID: global.ProductID,
+				AppID: global.AppID, PlatformID: global.PlatformID, PlatformUserID: global.PlatformUserID,
+				CounterScope: paymentsqlc.PaymentProductLimitCounterCounterScopeGlobal,
+				WindowStart:  global.WindowStart, WindowEnd: global.WindowEnd,
+			}
+			var gameCalls atomic.Int32
+			handlers := map[string]BalanceChargeHandler{"game": func(context.Context, BalanceChargeRequest) (BalanceChargeResult, error) {
+				gameCalls.Add(1)
+				return BalanceChargeResult{Outcome: BalanceChargeSucceeded}, nil
+			}}
+			type admission struct {
+				request *BalanceChargeRequest
+				handler BalanceChargeHandler
+				err     error
+			}
+			admitted := make(chan admission, 1)
+			begin := func() {
+				request, handler, err := repo.BeginBalanceCharge(env.ctx, eventID, handlers)
+				admitted <- admission{request, handler, err}
+			}
+
+			if resetFirst {
+				deleted := make(chan error, 1)
+				allowCommit := make(chan struct{})
+				defer func() {
+					select {
+					case <-allowCommit:
+					default:
+						close(allowCommit)
+					}
+				}()
+				resetDone := make(chan error, 1)
+				replacement := params
+				replacement.RequestID = "replacement"
+				go func() {
+					resetDone <- repo.WithTx(env.ctx, func(ctx context.Context, tx *repository.PaymentRepository) error {
+						rows, err := tx.AdminDeleteProductLimitCounter(ctx, resetParams)
+						if err == nil && rows != 1 {
+							err = fmt.Errorf("reset returned %d rows", rows)
+						}
+						deleted <- err
+						if err != nil {
+							return err
+						}
+						select {
+						case <-allowCommit:
+						case <-ctx.Done():
+							return ctx.Err()
+						}
+						// Same window key, but a different generation, with its own reserve.
+						_, err = tx.PurchaseWithBalance(ctx, replacement)
+						return err
+					})
+				}()
+				select {
+				case err := <-deleted:
+					if err != nil {
+						t.Fatal(err)
+					}
+				case <-env.ctx.Done():
+					t.Fatal(env.ctx.Err())
+				}
+				go begin()
+				waitForPaymentBlockedQuery(t, env.db, "WITH owned AS MATERIALIZED")
+				close(allowCommit)
+				if err := <-resetDone; err != nil {
+					t.Fatal(err)
+				}
+				result := <-admitted
+				if result.err != nil || result.request != nil || gameCalls.Load() != 0 {
+					t.Fatalf("admitted after reset: %+v calls=%d", result, gameCalls.Load())
+				}
+				old, err = repo.PurchaseWithBalance(env.ctx, params)
+				if err != nil || old.Status != BalancePurchaseRejected || old.Reason != "limit_reservation_lost" {
+					t.Fatalf("lost reservation result: %+v %v", old, err)
+				}
+				assertOrderStatus(t, env.ctx, env.db, old.OrderID, "failed")
+				assertReservationGenerationCounts(t, env, params.ProductID, 0, 1)
+				return
+			}
+
+			// Hold the second counter so admission locks global but cannot commit yet.
+			blocker, err := env.db.BeginTx(env.ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer blocker.Rollback()
+			if _, err := blocker.ExecContext(env.ctx, `
+SELECT generation FROM payment_product_limit_counter
+WHERE workspace_id = $1 AND product_id = $2 AND counter_scope = 'user' FOR UPDATE`, testWorkspaceID, params.ProductID); err != nil {
+				t.Fatal(err)
+			}
+			go begin()
+			waitForPaymentBlockedQuery(t, env.db, "WITH owned AS MATERIALIZED")
+			resetDone := make(chan error, 1)
+			go func() {
+				_, err := repo.AdminDeleteProductLimitCounter(env.ctx, resetParams)
+				resetDone <- err
+			}()
+			waitForPaymentBlockedQuery(t, env.db, "SELECT generation FROM payment_product_limit_counter")
+			if err := blocker.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			result := <-admitted
+			if result.err != nil || result.request == nil {
+				t.Fatalf("expected admission: %+v", result)
+			}
+			if err := <-resetDone; !errors.Is(err, ErrBalanceInProgress) {
+				t.Fatalf("reset behind admission: %v", err)
+			}
+			if _, err := env.api.Admin.UpdateOrderStatus(env.ctx, testWorkspaceID, old.OrderID, "canceled"); !errors.Is(err, ErrBalanceInProgress) {
+				t.Fatalf("canceled admitted order: %v", err)
+			}
+			if count, err := repo.ExpireStaleOrders(env.ctx, time.Now().Add(time.Hour), time.Minute, 10, false); err != nil || count != 0 {
+				t.Fatalf("expired admitted order: count=%d err=%v", count, err)
+			}
+			if err := repo.FinalizeProviderAttempt(env.ctx, repository.ProviderAttemptTerminalParams{
+				WorkspaceID: testWorkspaceID, AttemptID: result.request.AttemptID, ProviderCode: repository.BalanceProviderCode,
+				ProviderPaymentID: result.request.OperationKey, Status: repository.ProviderAttemptTerminalFailed,
+			}); !errors.Is(err, ErrBalanceUnsupported) {
+				t.Fatalf("finalized balance attempt through provider path: %v", err)
+			}
+			if _, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
+				Identity: params.Identity, OrderID: old.OrderID, ProviderCode: "yookassa",
+			}); err == nil {
+				t.Fatal("created second attempt for balance order")
+			}
+			assertReservationGenerationCounts(t, env, params.ProductID, 0, 1)
+
+			restarted := repository.NewPaymentRepository(env.client)
+			defer restarted.Close()
+			if err := restarted.Bootstrap(env.ctx); err != nil {
+				t.Fatal(err)
+			}
+			request, handler, err := restarted.BeginBalanceCharge(env.ctx, eventID, handlers)
+			if err != nil || !reflect.DeepEqual(result.request, request) {
+				t.Fatalf("restored admission: %+v %v", request, err)
+			}
+			gameResult, err := handler(env.ctx, *request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range 2 {
+				if err := restarted.FinishBalanceCharge(env.ctx, eventID, gameResult); err != nil {
+					t.Fatal(err)
+				}
+			}
+			assertOrderStatus(t, env.ctx, env.db, old.OrderID, "fulfilled")
+			assertReservationGenerationCounts(t, env, params.ProductID, 1, 0)
+			if gameCalls.Load() != 1 {
+				t.Fatalf("game calls=%d", gameCalls.Load())
+			}
+		})
+	}
+}
+
+func TestPaymentBalanceLostReservationScopes(t *testing.T) {
+	for _, scope := range []string{"global", "user"} {
+		t.Run(scope, func(t *testing.T) {
+			env := setupPaymentIntegrationTest(t)
+			params := setupBalanceProduct(t, env, true)
+			repo := balanceTestRepository(t, env)
+			old, err := repo.PurchaseWithBalance(env.ctx, params)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resetReservationGeneration(t, env, params.ProductID, scope)
+			replacement := params
+			replacement.RequestID = "replacement"
+			if _, err := repo.PurchaseWithBalance(env.ctx, replacement); err != nil {
+				t.Fatal(err)
+			}
+			request, _, err := repo.BeginBalanceCharge(env.ctx, balanceTestEvent(t, env, old.OrderID),
+				map[string]BalanceChargeHandler{"game": func(context.Context, BalanceChargeRequest) (BalanceChargeResult, error) {
+					t.Fatal("lost reservation reached game")
+					return BalanceChargeResult{}, nil
+				}})
+			if err != nil || request != nil {
+				t.Fatalf("lost reservation admitted: %+v %v", request, err)
+			}
+			assertReservationGenerationCounts(t, env, params.ProductID, 0, 1)
+		})
+	}
+}
+
+func TestPaymentBalanceSharedLimitsAndFlexibleQuantity(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	params := setupBalanceProduct(t, env, true)
+	repo := balanceTestRepository(t, env)
+	if _, err := env.db.ExecContext(env.ctx, "UPDATE payment_product SET quantity_mode = 'flexible' WHERE workspace_id = $1 AND id = $2",
+		testWorkspaceID, params.ProductID); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.api.Admin.RebuildProductCache(env.ctx, testWorkspaceID); err != nil {
+		t.Fatal(err)
+	}
+	start, end := time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
+	if _, err := env.api.Admin.CreateCatalogPrice(env.ctx, product.CreatePriceParams{
+		WorkspaceID: testWorkspaceID, ProductID: params.ProductID, AssetCode: "RUB", ListAmountMinor: 1000,
+		StartsAt: &start, EndsAt: &end,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	params.Quantity = 2
+	type orderResult struct {
+		id      uint64
+		err     error
+		balance bool
+	}
+	results := make(chan orderResult, 2)
+	started := make(chan struct{})
+	go func() {
+		<-started
+		purchase, err := repo.PurchaseWithBalance(env.ctx, params)
+		results <- orderResult{id: purchase.OrderID, err: err, balance: true}
+	}()
+	go func() {
+		<-started
+		order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
+			Identity: params.Identity, ProductID: params.ProductID, Quantity: 2, AssetCode: "RUB",
+		})
+		var id uint64
+		if order != nil {
+			id = order.ID
+		}
+		results <- orderResult{id: id, err: err}
+	}()
+	close(started)
+	one, two := <-results, <-results
+	if (one.err == nil) == (two.err == nil) {
+		t.Fatalf("shared quota result: %+v / %+v", one, two)
+	}
+	winner, loser := one, two
+	if winner.err != nil {
+		winner, loser = loser, winner
+	}
+	if !errors.Is(loser.err, repository.ErrProductLocked) {
+		t.Fatalf("unexpected quota error: %v", loser.err)
+	}
+	assertReservationGenerationCounts(t, env, params.ProductID, 0, 2)
+	if !winner.balance {
+		if _, err := env.api.Admin.UpdateOrderStatus(env.ctx, testWorkspaceID, winner.id, "canceled"); err != nil {
+			t.Fatal(err)
+		}
+		purchase, err := repo.PurchaseWithBalance(env.ctx, params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		winner.id = purchase.OrderID
+	}
+	id := balanceTestEvent(t, env, winner.id)
+	request, _, err := repo.BeginBalanceCharge(env.ctx, id,
+		map[string]BalanceChargeHandler{"game": func(context.Context, BalanceChargeRequest) (BalanceChargeResult, error) {
+			return BalanceChargeResult{}, nil
+		}})
+	if err != nil || request == nil {
+		t.Fatalf("admit flexible purchase: %+v %v", request, err)
+	}
+	if request.Quantity != 2 || request.AmountMinor != 900 || len(request.Rewards) != 1 || request.Rewards[0].Quantity != 2 {
+		t.Fatalf("invalid flexible snapshot: %+v", request)
+	}
+	if err := repo.FinishBalanceCharge(env.ctx, id, BalanceChargeResult{Outcome: BalanceChargeSucceeded}); err != nil {
+		t.Fatal(err)
+	}
+	assertReservationGenerationCounts(t, env, params.ProductID, 2, 0)
+	params.RequestID = "exhausted"
+	if _, err := repo.PurchaseWithBalance(env.ctx, params); !errors.Is(err, repository.ErrProductLocked) {
+		t.Fatalf("exceeded consumed quota: %v", err)
+	}
+}
+
+func TestPaymentBalanceArchiveAndEnumUpgrade(t *testing.T) {
+	legacy := strings.Replace(paymentsqlc.SchemaSQL, ", 'internal_currency'", "", 1)
+	path := filepath.Join(t.TempDir(), "legacy.sql")
+	if err := os.WriteFile(path, []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	env := setupPaymentIntegrationTestWithSchema(t, paymentTestOptions(), path)
+	if _, err := env.db.ExecContext(env.ctx, `
+INSERT INTO payment_asset (code, title, asset_kind, scale, is_active) VALUES ('LEGACY', 'Legacy', 'fiat', 2, true)`); err != nil {
+		t.Fatal(err)
+	}
+	repo := balanceTestRepository(t, env)
+	for range 2 {
+		if err := repo.Bootstrap(env.ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var count int
+	if err := env.db.QueryRowContext(env.ctx, "SELECT count(*) FROM payment_asset WHERE code = 'LEGACY'").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("legacy data was lost during enum upgrade: %d %v", count, err)
+	}
+	params := setupBalanceProduct(t, env, false)
+	pkg, err := repo.Export(env.ctx, testWorkspaceID, repository.ExportRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var price *repository.ExportPrice
+	for i := range pkg.Groups {
+		for j := range pkg.Groups[i].Products {
+			p := &pkg.Groups[i].Products[j]
+			if p.ID == params.ProductID && len(p.Prices) == 1 {
+				price = &p.Prices[0]
+			}
+		}
+	}
+	if price == nil || price.InternalAssetScale == nil || *price.InternalAssetScale != 2 {
+		t.Fatalf("internal currency metadata was not exported: %+v", price)
+	}
+	report, err := repo.PreflightImport(env.ctx, testWorkspaceID, pkg)
+	if err != nil || len(report.IncompatibleBalanceAssets) != 0 {
+		t.Fatalf("valid archive rejected: %+v %v", report, err)
+	}
+	scale := uint16(3)
+	price.InternalAssetScale = &scale
+	if _, err := repo.Import(env.ctx, testWorkspaceID, repository.ImportRequest{Package: pkg}); err == nil {
+		t.Fatal("imported incompatible internal scale")
+	}
+	// The same code on a different server must not become an external currency.
+	price.AssetCode = "RUB"
+	scale = 2
+	report, err = repo.PreflightImport(env.ctx, testWorkspaceID, pkg)
+	if err != nil || !reflect.DeepEqual(report.IncompatibleBalanceAssets, []string{"RUB"}) {
+		t.Fatalf("external asset accepted as internal: %+v %v", report, err)
+	}
+	for _, asset := range []operational.AssetUpsertParams{
+		{Code: testBalanceAsset, Title: "Changed kind", AssetKind: "fiat", Scale: 2, IsActive: true},
+		{Code: testBalanceAsset, Title: "Changed scale", AssetKind: AssetKindInternalCurrency, Scale: 3, IsActive: true},
+	} {
+		if err := env.api.Operational.UpsertAsset(env.ctx, asset); !errors.Is(err, repository.ErrInvalidAsset) {
+			t.Fatalf("unsafe internal asset update accepted: %+v %v", asset, err)
+		}
+	}
+}
+
+func TestPaymentBalanceLimitsAcrossIntervals(t *testing.T) {
+	for _, interval := range []string{"SECOND", "MINUTE", "HOUR", "DAY", "WEEK", "MONTH", "ONCE", "UNLIMITED"} {
+		t.Run(interval, func(t *testing.T) {
+			env := setupPaymentIntegrationTest(t)
+			params := setupBalanceProduct(t, env, false)
+			count := int32(2)
+			if interval == "ONCE" || interval == "UNLIMITED" {
+				count = 1
+			}
+			params.ProductID = createPaymentProduct(t, env, testProductOptions{
+				AssetCode: testBalanceAsset, GlobalLimit: 1, UserLimit: 1,
+				GlobalInterval: interval, UserInterval: interval,
+				GlobalIntervalCount: count, UserIntervalCount: count,
+			})
+			repo := balanceTestRepository(t, env)
+			purchase, err := repo.PurchaseWithBalance(env.ctx, params)
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := balanceTestEvent(t, env, purchase.OrderID)
+			request, _, err := repo.BeginBalanceCharge(env.ctx, id, map[string]BalanceChargeHandler{
+				"game": func(context.Context, BalanceChargeRequest) (BalanceChargeResult, error) {
+					return BalanceChargeResult{}, nil
+				},
+			})
+			if err != nil || request == nil {
+				t.Fatalf("admit %s: %+v %v", interval, request, err)
+			}
+			if err := repo.FinishBalanceCharge(env.ctx, id, BalanceChargeResult{Outcome: BalanceChargeSucceeded}); err != nil {
+				t.Fatal(err)
+			}
+			params.RequestID = "second"
+			second, err := repo.PurchaseWithBalance(env.ctx, params)
+			if interval == "UNLIMITED" {
+				if err != nil {
+					t.Fatalf("unlimited purchase rejected: %v", err)
+				}
+			} else if err == nil {
+				var oldWindow, newWindow time.Time
+				if err := env.db.QueryRowContext(env.ctx, `
+SELECT old.global_window_start_snapshot, new.global_window_start_snapshot
+FROM payment_order old, payment_order new WHERE old.id = $1 AND new.id = $2`,
+					purchase.OrderID, second.OrderID).Scan(&oldWindow, &newWindow); err != nil {
+					t.Fatal(err)
+				}
+				if oldWindow.Equal(newWindow) {
+					t.Fatalf("%s quota exceeded within the same window", interval)
+				}
+			} else if !errors.Is(err, repository.ErrProductLocked) {
+				t.Fatal(err)
+			}
+
+			if interval != "ONCE" && interval != "UNLIMITED" {
+				var generation int64
+				if err := env.db.QueryRowContext(env.ctx, `
+SELECT generation FROM payment_order_limit_reservation WHERE order_id = $1 AND counter_scope = 'global'`,
+					purchase.OrderID).Scan(&generation); err != nil {
+					t.Fatal(err)
+				}
+				if generation <= 0 {
+					t.Fatalf("missing %s reservation generation", interval)
+				}
+			}
+		})
+	}
+}
+
+func TestPaymentBalanceOutboxRollbackAndBindings(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	params := setupBalanceProduct(t, env, true)
+	repo := balanceTestRepository(t, env)
+	for _, identity := range []services.Identity{
+		params.Identity,
+		paymentTestIdentity(testWorkspaceID, params.Identity.AppID+1, params.Identity.PlatformID, params.Identity.PlatformUserID),
+		paymentTestIdentity("11111111-1111-1111-1111-111111111111", params.Identity.AppID, params.Identity.PlatformID, params.Identity.PlatformUserID),
+	} {
+		withoutBinding := params
+		withoutBinding.Identity = identity
+		if _, err := env.api.User.PurchaseWithBalance(env.ctx, withoutBinding); !errors.Is(err, ErrBalanceUnavailable) {
+			t.Fatalf("unbound identity purchased: %+v %v", identity, err)
+		}
+	}
+	options := paymentTestOptions()
+	options.BalanceBindings = map[BalanceBinding]string{balanceTestBinding(): "missing"}
+	if api, err := NewWithDatabase(env.ctx, env.db, options); !errors.Is(err, ErrBalanceUnavailable) || api != nil {
+		t.Fatalf("configured missing trusted handler: %+v %v", api, err)
+	}
+
+	if _, err := env.db.ExecContext(env.ctx, "DROP TABLE payment_balance_clb_event"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.PurchaseWithBalance(env.ctx, params); err == nil {
+		t.Fatal("purchase succeeded without transactional outbox")
+	}
+	for _, table := range []string{"payment_order", "payment_attempt", "payment_product_limit_counter", "payment_order_limit_reservation", "payment_balance_purchase"} {
+		var count int
+		if err := env.db.QueryRowContext(env.ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("outbox failure left %s rows=%d err=%v", table, count, err)
+		}
+	}
+	if err := repo.Bootstrap(env.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.PurchaseWithBalance(env.ctx, params); err != nil {
+		t.Fatalf("purchase after restoring outbox: %v", err)
+	}
+}
+
+func TestPaymentBalanceLostACKAfterCommittedResult(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	params := setupBalanceProduct(t, env, true)
+	repo := balanceTestRepository(t, env)
+	purchase, err := repo.PurchaseWithBalance(env.ctx, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := balanceTestEvent(t, env, purchase.OrderID)
+	store := callbackutil.NewWithTable(env.db, repository.BalanceCallbackTable)
+	events, err := store.LeaseEvents(env.ctx, callbackutil.LeaseParams{
+		SourceService: "payment", WorkerID: "crashed-worker", Limit: 1, LeaseTimeout: time.Minute,
+	})
+	if err != nil || len(events) != 1 || uint64(events[0].ID) != id {
+		t.Fatalf("first claim: %+v %v", events, err)
+	}
+	request, _, err := repo.BeginBalanceCharge(env.ctx, id,
+		map[string]BalanceChargeHandler{"game": func(context.Context, BalanceChargeRequest) (BalanceChargeResult, error) {
+			return BalanceChargeResult{}, nil
+		}})
+	if err != nil || request == nil {
+		t.Fatalf("first admission: %+v %v", request, err)
+	}
+	if err := repo.FinishBalanceCharge(env.ctx, id, BalanceChargeResult{Outcome: BalanceChargeSucceeded}); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a crash between the transaction commit and ACK, then lease expiry.
+	if _, err := env.db.ExecContext(env.ctx, `
+UPDATE payment_balance_clb_event SET locked_until = now() - interval '1 second' WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	var gameCalls atomic.Int32
+	options := paymentTestOptions()
+	options.BalanceHandlers = map[string]BalanceChargeHandler{"game": func(context.Context, BalanceChargeRequest) (BalanceChargeResult, error) {
+		gameCalls.Add(1)
+		return BalanceChargeResult{Outcome: BalanceChargeSucceeded}, nil
+	}}
+	api, err := NewWithDatabase(env.ctx, env.db, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = api.Close() })
+	delivery := waitForBalanceDelivery(t, env, api, purchase.OrderID, func(d BalanceDelivery) bool { return d.DeliveredAt != nil })
+	if gameCalls.Load() != 0 || delivery.Status != BalancePurchaseSucceeded || delivery.AttemptCount != 1 {
+		t.Fatalf("lost ACK repeated game call: delivery=%+v calls=%d", delivery, gameCalls.Load())
+	}
+	assertReservationGenerationCounts(t, env, params.ProductID, 1, 0)
+	assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderFulfilled, purchase.OrderID, 0)
 }

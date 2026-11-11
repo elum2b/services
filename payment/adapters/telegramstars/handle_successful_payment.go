@@ -134,7 +134,7 @@ func (a *TelegramStars) HandleSuccessfulPayment(
 		return nil, err
 	}
 
-	if payment.SubscriptionExpirationDate > 0 {
+	if payment.SubscriptionExpirationDate > 0 && completed.FulfillmentID != nil {
 		order, err := a.repository.GetOrder(ctx, completed.OrderID)
 		if err != nil {
 			return nil, err

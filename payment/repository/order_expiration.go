@@ -81,6 +81,10 @@ func (r *PaymentRepository) ExpireStaleOrders(
 		}
 
 		for _, order := range orders {
+			if err := txRepo.closeQueuedBalancePurchase(ctx, order.ID, "order_expired", paymentsqlc.PaymentAttemptStatusExpired); err != nil {
+				return err
+			}
+
 			if _, err := txRepo.q.ExpireActivePaymentAttemptsForOrder(
 				ctx,
 				paymentsqlc.ExpireActivePaymentAttemptsForOrderParams{

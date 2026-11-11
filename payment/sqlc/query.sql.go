@@ -8,6 +8,7 @@ package sqlc
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/lib/pq"
@@ -65,46 +66,6 @@ func (q *Queries) AdminCreateRefund(ctx context.Context, arg AdminCreateRefundPa
 	var id int64
 	err := row.Scan(&id)
 	return id, err
-}
-
-const adminDeleteProductLimitCounter = `-- name: AdminDeleteProductLimitCounter :execrows
-DELETE FROM payment_product_limit_counter
-WHERE workspace_id = $1
-  AND app_id = $2
-  AND platform_id = $3
-  AND product_id = $4
-  AND counter_scope = $5
-  AND platform_user_id = $6
-  AND window_start = $7
-  AND window_end = $8
-`
-
-type AdminDeleteProductLimitCounterParams struct {
-	WorkspaceID    string                                 `json:"workspace_id"`
-	AppID          int64                                  `json:"app_id"`
-	PlatformID     int64                                  `json:"platform_id"`
-	ProductID      string                                 `json:"product_id"`
-	CounterScope   PaymentProductLimitCounterCounterScope `json:"counter_scope"`
-	PlatformUserID string                                 `json:"platform_user_id"`
-	WindowStart    time.Time                              `json:"window_start"`
-	WindowEnd      time.Time                              `json:"window_end"`
-}
-
-func (q *Queries) AdminDeleteProductLimitCounter(ctx context.Context, arg AdminDeleteProductLimitCounterParams) (int64, error) {
-	result, err := q.exec(ctx, q.adminDeleteProductLimitCounterStmt, adminDeleteProductLimitCounter,
-		arg.WorkspaceID,
-		arg.AppID,
-		arg.PlatformID,
-		arg.ProductID,
-		arg.CounterScope,
-		arg.PlatformUserID,
-		arg.WindowStart,
-		arg.WindowEnd,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
 }
 
 const adminDeleteProvider = `-- name: AdminDeleteProvider :execrows
@@ -330,7 +291,7 @@ func (q *Queries) AdminGetLocalization(ctx context.Context, arg AdminGetLocaliza
 }
 
 const adminGetOrderByPublicIDForWorkspace = `-- name: AdminGetOrderByPublicIDForWorkspace :one
-SELECT id, public_id, workspace_id, app_id, platform_id, platform_user_id, internal_user_id, payer_platform_id, payer_platform_user_id, payer_internal_user_id, purchase_key_id, product_id, quantity, price_id, asset_code, locale, list_amount_minor, discount_amount_minor, payable_amount_minor, status, reserved_until, global_limit_snapshot, global_interval_snapshot, global_interval_count_snapshot, global_window_start_snapshot, global_window_end_snapshot, user_limit_snapshot, user_interval_snapshot, user_interval_count_snapshot, user_window_start_snapshot, user_window_end_snapshot, paid_at, fulfilled_at, canceled_at, expires_at, created_at, updated_at
+SELECT id, public_id, workspace_id, app_id, platform_id, platform_user_id, internal_user_id, payer_platform_id, payer_platform_user_id, payer_internal_user_id, purchase_key_id, product_id, quantity, price_id, asset_code, locale, list_amount_minor, discount_amount_minor, payable_amount_minor, status, reserved_until, global_limit_snapshot, global_interval_snapshot, global_interval_count_snapshot, global_window_start_snapshot, global_window_end_snapshot, user_limit_snapshot, user_interval_snapshot, user_interval_count_snapshot, user_window_start_snapshot, user_window_end_snapshot, paid_at, fulfilled_at, canceled_at, expires_at, created_at, updated_at, limit_tracking_legacy, limit_review_attempt_id, limit_review_reason
 FROM payment_order
 WHERE workspace_id = $1
   AND public_id = $2
@@ -383,12 +344,15 @@ func (q *Queries) AdminGetOrderByPublicIDForWorkspace(ctx context.Context, arg A
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LimitTrackingLegacy,
+		&i.LimitReviewAttemptID,
+		&i.LimitReviewReason,
 	)
 	return i, err
 }
 
 const adminGetOrderForWorkspace = `-- name: AdminGetOrderForWorkspace :one
-SELECT id, public_id, workspace_id, app_id, platform_id, platform_user_id, internal_user_id, payer_platform_id, payer_platform_user_id, payer_internal_user_id, purchase_key_id, product_id, quantity, price_id, asset_code, locale, list_amount_minor, discount_amount_minor, payable_amount_minor, status, reserved_until, global_limit_snapshot, global_interval_snapshot, global_interval_count_snapshot, global_window_start_snapshot, global_window_end_snapshot, user_limit_snapshot, user_interval_snapshot, user_interval_count_snapshot, user_window_start_snapshot, user_window_end_snapshot, paid_at, fulfilled_at, canceled_at, expires_at, created_at, updated_at
+SELECT id, public_id, workspace_id, app_id, platform_id, platform_user_id, internal_user_id, payer_platform_id, payer_platform_user_id, payer_internal_user_id, purchase_key_id, product_id, quantity, price_id, asset_code, locale, list_amount_minor, discount_amount_minor, payable_amount_minor, status, reserved_until, global_limit_snapshot, global_interval_snapshot, global_interval_count_snapshot, global_window_start_snapshot, global_window_end_snapshot, user_limit_snapshot, user_interval_snapshot, user_interval_count_snapshot, user_window_start_snapshot, user_window_end_snapshot, paid_at, fulfilled_at, canceled_at, expires_at, created_at, updated_at, limit_tracking_legacy, limit_review_attempt_id, limit_review_reason
 FROM payment_order
 WHERE workspace_id = $1
   AND id = $2
@@ -441,6 +405,9 @@ func (q *Queries) AdminGetOrderForWorkspace(ctx context.Context, arg AdminGetOrd
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LimitTrackingLegacy,
+		&i.LimitReviewAttemptID,
+		&i.LimitReviewReason,
 	)
 	return i, err
 }
@@ -1648,7 +1615,10 @@ SELECT
     canceled_at,
     expires_at,
     created_at,
-    updated_at
+    updated_at,
+    limit_tracking_legacy,
+    limit_review_attempt_id,
+    limit_review_reason
 FROM payment_order
 WHERE workspace_id = $1
   AND ($2 = 0 OR app_id = $3)
@@ -1737,6 +1707,9 @@ func (q *Queries) AdminListOrders(ctx context.Context, arg AdminListOrdersParams
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LimitTrackingLegacy,
+			&i.LimitReviewAttemptID,
+			&i.LimitReviewReason,
 		); err != nil {
 			return nil, err
 		}
@@ -2605,9 +2578,12 @@ SELECT
     window_end,
     paid_count,
     reserved_count,
-    updated_at
+    updated_at,
+    generation,
+    retired_at
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
+  AND retired_at IS NULL
   AND ($2 = 0 OR app_id = $3)
   AND ($4 = '' OR product_id = $5)
   AND ($6 = 0 OR platform_id = $7)
@@ -2663,6 +2639,8 @@ func (q *Queries) AdminListProductLimitCounters(ctx context.Context, arg AdminLi
 			&i.PaidCount,
 			&i.ReservedCount,
 			&i.UpdatedAt,
+			&i.Generation,
+			&i.RetiredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -3443,6 +3421,7 @@ SET status = $1,
 FROM payment_order po
 WHERE po.id = pa.order_id
   AND po.workspace_id = $2
+  AND pa.provider_code <> 'internal_balance'
   AND pa.id = $3
   AND (
       pa.status = $1
@@ -3764,6 +3743,24 @@ func (q *Queries) ClaimAssetRateUpdate(ctx context.Context, arg ClaimAssetRateUp
 	return result.RowsAffected()
 }
 
+const closeQueuedBalancePurchase = `-- name: CloseQueuedBalancePurchase :one
+UPDATE payment_balance_purchase SET outcome = 'rejected', reason = $2
+WHERE order_id = $1 AND admitted_at IS NULL AND outcome = ''
+RETURNING attempt_id
+`
+
+type CloseQueuedBalancePurchaseParams struct {
+	OrderID int64  `json:"order_id"`
+	Reason  string `json:"reason"`
+}
+
+func (q *Queries) CloseQueuedBalancePurchase(ctx context.Context, arg CloseQueuedBalancePurchaseParams) (int64, error) {
+	row := q.queryRow(ctx, q.closeQueuedBalancePurchaseStmt, closeQueuedBalancePurchase, arg.OrderID, arg.Reason)
+	var attempt_id int64
+	err := row.Scan(&attempt_id)
+	return attempt_id, err
+}
+
 const completeAssetRateUpdate = `-- name: CompleteAssetRateUpdate :execrows
 UPDATE payment_asset_rate
 SET last_attempt_at = now(),
@@ -3902,54 +3899,45 @@ func (q *Queries) ConfigureAssetRateAutoUpdate(ctx context.Context, arg Configur
 	return result.RowsAffected()
 }
 
-const consumeProductLimitReservation = `-- name: ConsumeProductLimitReservation :execrows
-UPDATE payment_product_limit_counter
-SET reserved_count = reserved_count - $1,
-    paid_count = paid_count + $2,
-    updated_at = now()
-WHERE workspace_id = $3
-  AND app_id = $4
-  AND platform_id = $5
-  AND product_id = $6
-  AND counter_scope = $7
-  AND platform_user_id = $8
-  AND window_start = $9
-  AND window_end = $10
-  AND reserved_count >= $11
+const consumeOrderLimitReservations = `-- name: ConsumeOrderLimitReservations :one
+WITH required AS (
+    SELECT (global_window_start_snapshot IS NOT NULL)::int
+         + (user_window_start_snapshot IS NOT NULL)::int AS count
+    FROM payment_order
+    WHERE id = $1
+), owned AS MATERIALIZED (
+    SELECT r.counter_scope, r.generation, r.quantity
+    FROM payment_order_limit_reservation r
+    JOIN payment_product_limit_counter c ON c.generation = r.generation
+    WHERE r.order_id = $1 AND r.state = 'reserved'
+      AND c.counter_scope = r.counter_scope AND c.reserved_count >= r.quantity
+    ORDER BY r.counter_scope
+    FOR UPDATE OF c
+), consumed AS (
+    UPDATE payment_product_limit_counter c
+    SET reserved_count = c.reserved_count - owned.quantity,
+        paid_count = c.paid_count + owned.quantity,
+        updated_at = now()
+    FROM owned
+    WHERE c.generation = owned.generation
+      AND (SELECT count(*) FROM owned) = (SELECT count FROM required)
+    RETURNING c.generation
+), recorded AS (
+    UPDATE payment_order_limit_reservation r
+    SET state = 'consumed'
+    FROM consumed
+    WHERE r.order_id = $1 AND r.generation = consumed.generation
+    RETURNING r.counter_scope
+)
+SELECT (SELECT count(*) FROM recorded) = required.count AS consumed
+FROM required
 `
 
-type ConsumeProductLimitReservationParams struct {
-	ReservedCount   int64                                  `json:"reserved_count"`
-	PaidCount       int64                                  `json:"paid_count"`
-	WorkspaceID     string                                 `json:"workspace_id"`
-	AppID           int64                                  `json:"app_id"`
-	PlatformID      int64                                  `json:"platform_id"`
-	ProductID       string                                 `json:"product_id"`
-	CounterScope    PaymentProductLimitCounterCounterScope `json:"counter_scope"`
-	PlatformUserID  string                                 `json:"platform_user_id"`
-	WindowStart     time.Time                              `json:"window_start"`
-	WindowEnd       time.Time                              `json:"window_end"`
-	ReservedCount_2 int64                                  `json:"reserved_count_2"`
-}
-
-func (q *Queries) ConsumeProductLimitReservation(ctx context.Context, arg ConsumeProductLimitReservationParams) (int64, error) {
-	result, err := q.exec(ctx, q.consumeProductLimitReservationStmt, consumeProductLimitReservation,
-		arg.ReservedCount,
-		arg.PaidCount,
-		arg.WorkspaceID,
-		arg.AppID,
-		arg.PlatformID,
-		arg.ProductID,
-		arg.CounterScope,
-		arg.PlatformUserID,
-		arg.WindowStart,
-		arg.WindowEnd,
-		arg.ReservedCount_2,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+func (q *Queries) ConsumeOrderLimitReservations(ctx context.Context, orderID int64) (bool, error) {
+	row := q.queryRow(ctx, q.consumeOrderLimitReservationsStmt, consumeOrderLimitReservations, orderID)
+	var consumed bool
+	err := row.Scan(&consumed)
+	return consumed, err
 }
 
 const consumePurchaseKeyReservation = `-- name: ConsumePurchaseKeyReservation :execrows
@@ -4111,6 +4099,42 @@ func (q *Queries) CountActivePaymentSubscriptionsForProvider(ctx context.Context
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const createBalancePurchase = `-- name: CreateBalancePurchase :exec
+INSERT INTO payment_balance_purchase (
+    order_id, attempt_id, workspace_id, app_id, platform_id, platform_user_id,
+    request_id, handler_key, event_id, snapshot
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+`
+
+type CreateBalancePurchaseParams struct {
+	OrderID        int64           `json:"order_id"`
+	AttemptID      int64           `json:"attempt_id"`
+	WorkspaceID    string          `json:"workspace_id"`
+	AppID          int64           `json:"app_id"`
+	PlatformID     int64           `json:"platform_id"`
+	PlatformUserID string          `json:"platform_user_id"`
+	RequestID      string          `json:"request_id"`
+	HandlerKey     string          `json:"handler_key"`
+	EventID        int64           `json:"event_id"`
+	Snapshot       json.RawMessage `json:"snapshot"`
+}
+
+func (q *Queries) CreateBalancePurchase(ctx context.Context, arg CreateBalancePurchaseParams) error {
+	_, err := q.exec(ctx, q.createBalancePurchaseStmt, createBalancePurchase,
+		arg.OrderID,
+		arg.AttemptID,
+		arg.WorkspaceID,
+		arg.AppID,
+		arg.PlatformID,
+		arg.PlatformUserID,
+		arg.RequestID,
+		arg.HandlerKey,
+		arg.EventID,
+		arg.Snapshot,
+	)
+	return err
 }
 
 const createDynamicProductPrice = `-- name: CreateDynamicProductPrice :one
@@ -4399,6 +4423,8 @@ JOIN payment_provider_asset ppa
 WHERE po.id = $12
   AND po.status IN ('draft', 'pending_payment')
   AND (po.expires_at IS NULL OR po.expires_at > now())
+  AND $1 <> 'internal_balance'
+  AND NOT EXISTS (SELECT 1 FROM payment_balance_purchase b WHERE b.order_id = po.id)
 RETURNING id, workspace_id, asset_code, amount_minor
 `
 
@@ -4503,6 +4529,8 @@ WHERE po.id = $12
   )
   AND po.status IN ('draft', 'pending_payment')
   AND (po.expires_at IS NULL OR po.expires_at > now())
+  AND $1 <> 'internal_balance'
+  AND NOT EXISTS (SELECT 1 FROM payment_balance_purchase b WHERE b.order_id = po.id)
 RETURNING id, workspace_id, asset_code, amount_minor
 `
 
@@ -4677,7 +4705,7 @@ WITH created_order AS (
         user_window_end_snapshot,
         expires_at
     )
-    VALUES (
+    SELECT
         $1,
         $2,
         $3,
@@ -4709,7 +4737,9 @@ WITH created_order AS (
         $29,
         $30,
         $31
-    )
+    FROM payment_asset a
+    WHERE a.code = $14::varchar
+      AND (a.asset_kind = 'internal_currency') = $32::boolean
     RETURNING id, workspace_id, product_id, quantity
 ),
 snapshot_items AS (
@@ -4772,6 +4802,7 @@ type CreatePaymentOrderParams struct {
 	UserWindowStartSnapshot     sql.NullTime       `json:"user_window_start_snapshot"`
 	UserWindowEndSnapshot       sql.NullTime       `json:"user_window_end_snapshot"`
 	ExpiresAt                   sql.NullTime       `json:"expires_at"`
+	IsBalance                   bool               `json:"is_balance"`
 }
 
 func (q *Queries) CreatePaymentOrder(ctx context.Context, arg CreatePaymentOrderParams) (int64, error) {
@@ -4807,6 +4838,7 @@ func (q *Queries) CreatePaymentOrder(ctx context.Context, arg CreatePaymentOrder
 		arg.UserWindowStartSnapshot,
 		arg.UserWindowEndSnapshot,
 		arg.ExpiresAt,
+		arg.IsBalance,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -5030,35 +5062,27 @@ func (q *Queries) DatabaseNow(ctx context.Context) (time.Time, error) {
 }
 
 const decrementProductLimitCountersForRefund = `-- name: DecrementProductLimitCountersForRefund :execrows
-UPDATE payment_product_limit_counter plc
-SET paid_count = GREATEST(plc.paid_count - po.quantity, 0),
-    updated_at = now()
-FROM payment_order po
-WHERE po.workspace_id = plc.workspace_id
-  AND (
-      (plc.counter_scope = 'global' AND plc.app_id = 0)
-      OR
-      (plc.counter_scope = 'user' AND po.app_id = plc.app_id)
-  )
-  AND (
-      (plc.counter_scope = 'global' AND plc.platform_id = 0)
-      OR
-      (plc.counter_scope = 'user' AND po.platform_id = plc.platform_id)
-  )
-  AND po.product_id = plc.product_id
-  AND po.id = $1
-  AND po.paid_at IS NOT NULL
-  AND po.paid_at >= plc.window_start
-  AND po.paid_at < plc.window_end
-  AND (
-      (plc.counter_scope = 'global' AND plc.platform_user_id = '')
-      OR
-      (plc.counter_scope = 'user' AND plc.platform_user_id = po.platform_user_id)
-  )
+WITH owned AS MATERIALIZED (
+    SELECT r.generation, r.quantity
+    FROM payment_order_limit_reservation r
+    JOIN payment_product_limit_counter c ON c.generation = r.generation
+    WHERE r.order_id = $1 AND r.state = 'consumed'
+      AND c.counter_scope = r.counter_scope AND c.paid_count >= r.quantity
+    ORDER BY r.counter_scope
+    FOR UPDATE OF c
+), reversed AS (
+    UPDATE payment_product_limit_counter c
+    SET paid_count = c.paid_count - owned.quantity, updated_at = now()
+    FROM owned
+    WHERE c.generation = owned.generation
+)
+UPDATE payment_order_limit_reservation r
+SET state = 'reversed'
+WHERE r.order_id = $1 AND state = 'consumed'
 `
 
-func (q *Queries) DecrementProductLimitCountersForRefund(ctx context.Context, id int64) (int64, error) {
-	result, err := q.exec(ctx, q.decrementProductLimitCountersForRefundStmt, decrementProductLimitCountersForRefund, id)
+func (q *Queries) DecrementProductLimitCountersForRefund(ctx context.Context, orderID int64) (int64, error) {
+	result, err := q.exec(ctx, q.decrementProductLimitCountersForRefundStmt, decrementProductLimitCountersForRefund, orderID)
 	if err != nil {
 		return 0, err
 	}
@@ -5274,7 +5298,7 @@ INSERT INTO payment_product_limit_counter (
     reserved_count
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 0)
-ON CONFLICT (workspace_id, app_id, platform_id, product_id, counter_scope, platform_user_id, window_start, window_end) DO NOTHING
+ON CONFLICT (workspace_id, app_id, platform_id, product_id, counter_scope, platform_user_id, window_start, window_end) WHERE retired_at IS NULL DO NOTHING
 `
 
 type EnsureProductLimitCounterParams struct {
@@ -5366,21 +5390,43 @@ func (q *Queries) ExportListLocalizations(ctx context.Context, workspaceID strin
 }
 
 const exportListPrices = `-- name: ExportListPrices :many
-SELECT id, workspace_id, product_id, asset_code, list_amount_minor, discount_amount_minor, pricing_mode, reference_asset_code, reference_list_amount_minor, reference_discount_amount_minor, coefficient, is_promotion, starts_at, ends_at, created_at, updated_at
-FROM payment_price
-WHERE workspace_id = $1
-ORDER BY product_id, asset_code, starts_at, id
+SELECT p.id, p.workspace_id, p.product_id, p.asset_code, p.list_amount_minor, p.discount_amount_minor, p.pricing_mode, p.reference_asset_code, p.reference_list_amount_minor, p.reference_discount_amount_minor, p.coefficient, p.is_promotion, p.starts_at, p.ends_at, p.created_at, p.updated_at, a.asset_kind, a.scale AS asset_scale
+FROM payment_price p
+JOIN payment_asset a ON a.code = p.asset_code
+WHERE p.workspace_id = $1
+ORDER BY p.product_id, p.asset_code, p.starts_at, p.id
 `
 
-func (q *Queries) ExportListPrices(ctx context.Context, workspaceID string) ([]PaymentPrice, error) {
+type ExportListPricesRow struct {
+	ID                           int64                   `json:"id"`
+	WorkspaceID                  string                  `json:"workspace_id"`
+	ProductID                    string                  `json:"product_id"`
+	AssetCode                    string                  `json:"asset_code"`
+	ListAmountMinor              int64                   `json:"list_amount_minor"`
+	DiscountAmountMinor          int64                   `json:"discount_amount_minor"`
+	PricingMode                  PaymentPricePricingMode `json:"pricing_mode"`
+	ReferenceAssetCode           sql.NullString          `json:"reference_asset_code"`
+	ReferenceListAmountMinor     sql.NullInt64           `json:"reference_list_amount_minor"`
+	ReferenceDiscountAmountMinor sql.NullInt64           `json:"reference_discount_amount_minor"`
+	Coefficient                  sql.NullString          `json:"coefficient"`
+	IsPromotion                  bool                    `json:"is_promotion"`
+	StartsAt                     time.Time               `json:"starts_at"`
+	EndsAt                       time.Time               `json:"ends_at"`
+	CreatedAt                    time.Time               `json:"created_at"`
+	UpdatedAt                    time.Time               `json:"updated_at"`
+	AssetKind                    PaymentAssetAssetKind   `json:"asset_kind"`
+	AssetScale                   int16                   `json:"asset_scale"`
+}
+
+func (q *Queries) ExportListPrices(ctx context.Context, workspaceID string) ([]ExportListPricesRow, error) {
 	rows, err := q.query(ctx, q.exportListPricesStmt, exportListPrices, workspaceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []PaymentPrice
+	var items []ExportListPricesRow
 	for rows.Next() {
-		var i PaymentPrice
+		var i ExportListPricesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
@@ -5398,6 +5444,8 @@ func (q *Queries) ExportListPrices(ctx context.Context, workspaceID string) ([]P
 			&i.EndsAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AssetKind,
+			&i.AssetScale,
 		); err != nil {
 			return nil, err
 		}
@@ -5647,6 +5695,15 @@ func (q *Queries) FailCreatedPaymentAttempt(ctx context.Context, arg FailCreated
 	return result.RowsAffected()
 }
 
+const flagBalanceResultConflict = `-- name: FlagBalanceResultConflict :exec
+UPDATE payment_balance_purchase SET result_conflict = true WHERE event_id = $1
+`
+
+func (q *Queries) FlagBalanceResultConflict(ctx context.Context, eventID int64) error {
+	_, err := q.exec(ctx, q.flagBalanceResultConflictStmt, flagBalanceResultConflict, eventID)
+	return err
+}
+
 const getAsset = `-- name: GetAsset :one
 SELECT
     code,
@@ -5797,6 +5854,163 @@ func (q *Queries) GetAssetUSDTPrice(ctx context.Context, arg GetAssetUSDTPricePa
 		&i.Source,
 		&i.ObservedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getBalanceAssetForShare = `-- name: GetBalanceAssetForShare :one
+SELECT scale FROM payment_asset
+WHERE code = $1 AND is_active AND asset_kind = 'internal_currency'
+FOR SHARE
+`
+
+func (q *Queries) GetBalanceAssetForShare(ctx context.Context, code string) (int16, error) {
+	row := q.queryRow(ctx, q.getBalanceAssetForShareStmt, getBalanceAssetForShare, code)
+	var scale int16
+	err := row.Scan(&scale)
+	return scale, err
+}
+
+const getBalancePurchaseByEvent = `-- name: GetBalancePurchaseByEvent :one
+SELECT order_id, attempt_id, workspace_id, app_id, platform_id, platform_user_id, request_id, handler_key, event_id, snapshot, admitted_at, last_delivery_at, delivery_attempt_count, outcome, reason, result_conflict FROM payment_balance_purchase WHERE event_id = $1
+`
+
+func (q *Queries) GetBalancePurchaseByEvent(ctx context.Context, eventID int64) (PaymentBalancePurchase, error) {
+	row := q.queryRow(ctx, q.getBalancePurchaseByEventStmt, getBalancePurchaseByEvent, eventID)
+	var i PaymentBalancePurchase
+	err := row.Scan(
+		&i.OrderID,
+		&i.AttemptID,
+		&i.WorkspaceID,
+		&i.AppID,
+		&i.PlatformID,
+		&i.PlatformUserID,
+		&i.RequestID,
+		&i.HandlerKey,
+		&i.EventID,
+		&i.Snapshot,
+		&i.AdmittedAt,
+		&i.LastDeliveryAt,
+		&i.DeliveryAttemptCount,
+		&i.Outcome,
+		&i.Reason,
+		&i.ResultConflict,
+	)
+	return i, err
+}
+
+const getBalancePurchaseByOwner = `-- name: GetBalancePurchaseByOwner :one
+SELECT order_id, attempt_id, workspace_id, app_id, platform_id, platform_user_id, request_id, handler_key, event_id, snapshot, admitted_at, last_delivery_at, delivery_attempt_count, outcome, reason, result_conflict FROM payment_balance_purchase
+WHERE order_id = $1 AND workspace_id = $2 AND app_id = $3 AND platform_id = $4
+  AND platform_user_id = $5
+`
+
+type GetBalancePurchaseByOwnerParams struct {
+	OrderID        int64  `json:"order_id"`
+	WorkspaceID    string `json:"workspace_id"`
+	AppID          int64  `json:"app_id"`
+	PlatformID     int64  `json:"platform_id"`
+	PlatformUserID string `json:"platform_user_id"`
+}
+
+func (q *Queries) GetBalancePurchaseByOwner(ctx context.Context, arg GetBalancePurchaseByOwnerParams) (PaymentBalancePurchase, error) {
+	row := q.queryRow(ctx, q.getBalancePurchaseByOwnerStmt, getBalancePurchaseByOwner,
+		arg.OrderID,
+		arg.WorkspaceID,
+		arg.AppID,
+		arg.PlatformID,
+		arg.PlatformUserID,
+	)
+	var i PaymentBalancePurchase
+	err := row.Scan(
+		&i.OrderID,
+		&i.AttemptID,
+		&i.WorkspaceID,
+		&i.AppID,
+		&i.PlatformID,
+		&i.PlatformUserID,
+		&i.RequestID,
+		&i.HandlerKey,
+		&i.EventID,
+		&i.Snapshot,
+		&i.AdmittedAt,
+		&i.LastDeliveryAt,
+		&i.DeliveryAttemptCount,
+		&i.Outcome,
+		&i.Reason,
+		&i.ResultConflict,
+	)
+	return i, err
+}
+
+const getBalancePurchaseByRequest = `-- name: GetBalancePurchaseByRequest :one
+SELECT order_id, attempt_id, workspace_id, app_id, platform_id, platform_user_id, request_id, handler_key, event_id, snapshot, admitted_at, last_delivery_at, delivery_attempt_count, outcome, reason, result_conflict FROM payment_balance_purchase
+WHERE workspace_id = $1 AND app_id = $2 AND platform_id = $3
+  AND platform_user_id = $4 AND request_id = $5
+`
+
+type GetBalancePurchaseByRequestParams struct {
+	WorkspaceID    string `json:"workspace_id"`
+	AppID          int64  `json:"app_id"`
+	PlatformID     int64  `json:"platform_id"`
+	PlatformUserID string `json:"platform_user_id"`
+	RequestID      string `json:"request_id"`
+}
+
+func (q *Queries) GetBalancePurchaseByRequest(ctx context.Context, arg GetBalancePurchaseByRequestParams) (PaymentBalancePurchase, error) {
+	row := q.queryRow(ctx, q.getBalancePurchaseByRequestStmt, getBalancePurchaseByRequest,
+		arg.WorkspaceID,
+		arg.AppID,
+		arg.PlatformID,
+		arg.PlatformUserID,
+		arg.RequestID,
+	)
+	var i PaymentBalancePurchase
+	err := row.Scan(
+		&i.OrderID,
+		&i.AttemptID,
+		&i.WorkspaceID,
+		&i.AppID,
+		&i.PlatformID,
+		&i.PlatformUserID,
+		&i.RequestID,
+		&i.HandlerKey,
+		&i.EventID,
+		&i.Snapshot,
+		&i.AdmittedAt,
+		&i.LastDeliveryAt,
+		&i.DeliveryAttemptCount,
+		&i.Outcome,
+		&i.Reason,
+		&i.ResultConflict,
+	)
+	return i, err
+}
+
+const getBalancePurchaseForOrder = `-- name: GetBalancePurchaseForOrder :one
+SELECT order_id, attempt_id, workspace_id, app_id, platform_id, platform_user_id, request_id, handler_key, event_id, snapshot, admitted_at, last_delivery_at, delivery_attempt_count, outcome, reason, result_conflict FROM payment_balance_purchase WHERE order_id = $1
+`
+
+func (q *Queries) GetBalancePurchaseForOrder(ctx context.Context, orderID int64) (PaymentBalancePurchase, error) {
+	row := q.queryRow(ctx, q.getBalancePurchaseForOrderStmt, getBalancePurchaseForOrder, orderID)
+	var i PaymentBalancePurchase
+	err := row.Scan(
+		&i.OrderID,
+		&i.AttemptID,
+		&i.WorkspaceID,
+		&i.AppID,
+		&i.PlatformID,
+		&i.PlatformUserID,
+		&i.RequestID,
+		&i.HandlerKey,
+		&i.EventID,
+		&i.Snapshot,
+		&i.AdmittedAt,
+		&i.LastDeliveryAt,
+		&i.DeliveryAttemptCount,
+		&i.Outcome,
+		&i.Reason,
+		&i.ResultConflict,
 	)
 	return i, err
 }
@@ -6466,7 +6680,10 @@ SELECT
     canceled_at,
     expires_at,
     created_at,
-    updated_at
+    updated_at,
+    limit_tracking_legacy,
+    limit_review_attempt_id,
+    limit_review_reason
 FROM payment_order
 WHERE id = $1
 LIMIT 1
@@ -6513,6 +6730,9 @@ func (q *Queries) GetPaymentOrder(ctx context.Context, id int64) (PaymentOrder, 
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LimitTrackingLegacy,
+		&i.LimitReviewAttemptID,
+		&i.LimitReviewReason,
 	)
 	return i, err
 }
@@ -6555,7 +6775,10 @@ SELECT
     canceled_at,
     expires_at,
     created_at,
-    updated_at
+    updated_at,
+    limit_tracking_legacy,
+    limit_review_attempt_id,
+    limit_review_reason
 FROM payment_order
 WHERE public_id = $1
 LIMIT 1
@@ -6602,6 +6825,9 @@ func (q *Queries) GetPaymentOrderByPublicID(ctx context.Context, publicID string
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LimitTrackingLegacy,
+		&i.LimitReviewAttemptID,
+		&i.LimitReviewReason,
 	)
 	return i, err
 }
@@ -6808,6 +7034,7 @@ const getProductLimitCounterCount = `-- name: GetProductLimitCounterCount :one
 SELECT paid_count + reserved_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
+  AND retired_at IS NULL
   AND app_id = $2
   AND platform_id = $3
   AND product_id = $4
@@ -7709,10 +7936,14 @@ func (q *Queries) GetRefundByProviderRefundID(ctx context.Context, arg GetRefund
 }
 
 const getStalePaymentOrderForUpdate = `-- name: GetStalePaymentOrderForUpdate :one
-SELECT id, public_id, workspace_id, app_id, platform_id, platform_user_id, internal_user_id, payer_platform_id, payer_platform_user_id, payer_internal_user_id, purchase_key_id, product_id, quantity, price_id, asset_code, locale, list_amount_minor, discount_amount_minor, payable_amount_minor, status, reserved_until, global_limit_snapshot, global_interval_snapshot, global_interval_count_snapshot, global_window_start_snapshot, global_window_end_snapshot, user_limit_snapshot, user_interval_snapshot, user_interval_count_snapshot, user_window_start_snapshot, user_window_end_snapshot, paid_at, fulfilled_at, canceled_at, expires_at, created_at, updated_at
+SELECT id, public_id, workspace_id, app_id, platform_id, platform_user_id, internal_user_id, payer_platform_id, payer_platform_user_id, payer_internal_user_id, purchase_key_id, product_id, quantity, price_id, asset_code, locale, list_amount_minor, discount_amount_minor, payable_amount_minor, status, reserved_until, global_limit_snapshot, global_interval_snapshot, global_interval_count_snapshot, global_window_start_snapshot, global_window_end_snapshot, user_limit_snapshot, user_interval_snapshot, user_interval_count_snapshot, user_window_start_snapshot, user_window_end_snapshot, paid_at, fulfilled_at, canceled_at, expires_at, created_at, updated_at, limit_tracking_legacy, limit_review_attempt_id, limit_review_reason
 FROM payment_order
 WHERE payment_order.id = $1
   AND payment_order.status IN ('draft', 'pending_payment')
+  AND NOT EXISTS (
+      SELECT 1 FROM payment_balance_purchase b
+      WHERE b.order_id = payment_order.id AND b.admitted_at IS NOT NULL AND b.outcome = ''
+  )
   AND (
       NOT $2::boolean
       OR NOT EXISTS (
@@ -7807,6 +8038,9 @@ func (q *Queries) GetStalePaymentOrderForUpdate(ctx context.Context, arg GetStal
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LimitTrackingLegacy,
+		&i.LimitReviewAttemptID,
+		&i.LimitReviewReason,
 	)
 	return i, err
 }
@@ -7858,6 +8092,29 @@ func (q *Queries) GetSucceededRefundForOrder(ctx context.Context, arg GetSucceed
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const hasOwnedBalanceReservations = `-- name: HasOwnedBalanceReservations :one
+WITH owned AS MATERIALIZED (
+    SELECT r.counter_scope
+    FROM payment_order_limit_reservation r
+    JOIN payment_product_limit_counter c ON c.generation = r.generation
+    WHERE r.order_id = $1 AND r.state = 'reserved'
+      AND c.retired_at IS NULL
+      AND c.counter_scope = r.counter_scope AND c.reserved_count >= r.quantity
+    ORDER BY r.counter_scope
+    FOR UPDATE OF c
+)
+SELECT (SELECT count(*) FROM owned) =
+       ((global_window_start_snapshot IS NOT NULL)::int + (user_window_start_snapshot IS NOT NULL)::int)
+FROM payment_order WHERE id = $1
+`
+
+func (q *Queries) HasOwnedBalanceReservations(ctx context.Context, orderID int64) (bool, error) {
+	row := q.queryRow(ctx, q.hasOwnedBalanceReservationsStmt, hasOwnedBalanceReservations, orderID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const importHasTONWallet = `-- name: ImportHasTONWallet :one
@@ -7947,6 +8204,7 @@ WHERE workspace_id = $2
   AND platform_user_id = $7
   AND window_start = $8
   AND window_end = $9
+  AND retired_at IS NULL
   AND paid_count + $10 <= $11
 `
 
@@ -8055,6 +8313,7 @@ SELECT
     paid_count + reserved_count AS paid_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
+  AND retired_at IS NULL
   AND app_id IN (0, $2)
   AND platform_id IN (0, $3)
   AND platform_user_id IN ('', $4)
@@ -9278,6 +9537,10 @@ const listStalePaymentOrderCandidates = `-- name: ListStalePaymentOrderCandidate
 SELECT payment_order.id, payment_order.workspace_id
 FROM payment_order
 WHERE payment_order.status IN ('draft', 'pending_payment')
+  AND NOT EXISTS (
+      SELECT 1 FROM payment_balance_purchase b
+      WHERE b.order_id = payment_order.id AND b.admitted_at IS NOT NULL AND b.outcome = ''
+  )
   AND (
       NOT $1::boolean
       OR NOT EXISTS (
@@ -9357,6 +9620,33 @@ func (q *Queries) ListStalePaymentOrderCandidates(ctx context.Context, arg ListS
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockBalancePurchaseRequest = `-- name: LockBalancePurchaseRequest :exec
+SELECT pg_advisory_xact_lock(hashtextextended(
+    'payment:balance:' || jsonb_build_array(
+        $1::text, $2::bigint, $3::bigint,
+        $4::text, $5::text
+    )::text, 0))
+`
+
+type LockBalancePurchaseRequestParams struct {
+	WorkspaceID    string `json:"workspace_id"`
+	AppID          int64  `json:"app_id"`
+	PlatformID     int64  `json:"platform_id"`
+	PlatformUserID string `json:"platform_user_id"`
+	RequestID      string `json:"request_id"`
+}
+
+func (q *Queries) LockBalancePurchaseRequest(ctx context.Context, arg LockBalancePurchaseRequestParams) error {
+	_, err := q.exec(ctx, q.lockBalancePurchaseRequestStmt, lockBalancePurchaseRequest,
+		arg.WorkspaceID,
+		arg.AppID,
+		arg.PlatformID,
+		arg.PlatformUserID,
+		arg.RequestID,
+	)
+	return err
 }
 
 const lockPaymentAttempt = `-- name: LockPaymentAttempt :one
@@ -9546,7 +9836,10 @@ SELECT
     canceled_at,
     expires_at,
     created_at,
-    updated_at
+    updated_at,
+    limit_tracking_legacy,
+    limit_review_attempt_id,
+    limit_review_reason
 FROM payment_order
 WHERE id = $1
 LIMIT 1
@@ -9594,6 +9887,9 @@ func (q *Queries) LockPaymentOrder(ctx context.Context, id int64) (PaymentOrder,
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LimitTrackingLegacy,
+		&i.LimitReviewAttemptID,
+		&i.LimitReviewReason,
 	)
 	return i, err
 }
@@ -9719,6 +10015,47 @@ func (q *Queries) LockPaymentSubscriptionForRenewal(ctx context.Context, arg Loc
 	return i, err
 }
 
+const lockProductLimitCounterForReset = `-- name: LockProductLimitCounterForReset :one
+SELECT generation FROM payment_product_limit_counter
+WHERE workspace_id = $1
+  AND retired_at IS NULL
+  AND app_id = $2
+  AND platform_id = $3
+  AND product_id = $4
+  AND counter_scope = $5
+  AND platform_user_id = $6
+  AND window_start = $7
+  AND window_end = $8
+FOR UPDATE
+`
+
+type LockProductLimitCounterForResetParams struct {
+	WorkspaceID    string                                 `json:"workspace_id"`
+	AppID          int64                                  `json:"app_id"`
+	PlatformID     int64                                  `json:"platform_id"`
+	ProductID      string                                 `json:"product_id"`
+	CounterScope   PaymentProductLimitCounterCounterScope `json:"counter_scope"`
+	PlatformUserID string                                 `json:"platform_user_id"`
+	WindowStart    time.Time                              `json:"window_start"`
+	WindowEnd      time.Time                              `json:"window_end"`
+}
+
+func (q *Queries) LockProductLimitCounterForReset(ctx context.Context, arg LockProductLimitCounterForResetParams) (int64, error) {
+	row := q.queryRow(ctx, q.lockProductLimitCounterForResetStmt, lockProductLimitCounterForReset,
+		arg.WorkspaceID,
+		arg.AppID,
+		arg.PlatformID,
+		arg.ProductID,
+		arg.CounterScope,
+		arg.PlatformUserID,
+		arg.WindowStart,
+		arg.WindowEnd,
+	)
+	var generation int64
+	err := row.Scan(&generation)
+	return generation, err
+}
+
 const markFulfillmentRevokedForOrder = `-- name: MarkFulfillmentRevokedForOrder :execrows
 UPDATE payment_fulfillment
 SET status = 'revoked',
@@ -9793,7 +10130,9 @@ WITH marked_order AS (
         paid_at = COALESCE(paid_at, now()),
         updated_at = now()
     WHERE payment_order.id = $1
-      AND payment_order.status IN ('draft', 'pending_payment')
+      AND (payment_order.status IN ('draft', 'pending_payment')
+           OR (payment_order.limit_review_attempt_id IS NOT NULL
+               AND payment_order.status IN ('canceled', 'expired', 'failed')))
     RETURNING
         payment_order.id,
         payment_order.workspace_id,
@@ -9975,6 +10314,22 @@ type MarkPaymentEventProcessedParams struct {
 func (q *Queries) MarkPaymentEventProcessed(ctx context.Context, arg MarkPaymentEventProcessedParams) error {
 	_, err := q.exec(ctx, q.markPaymentEventProcessedStmt, markPaymentEventProcessed, arg.ProcessingStatus, arg.ProcessingError, arg.ID)
 	return err
+}
+
+const orderHasResetLimitGeneration = `-- name: OrderHasResetLimitGeneration :one
+SELECT EXISTS (
+    SELECT 1
+    FROM payment_order_limit_reservation r
+    LEFT JOIN payment_product_limit_counter c ON c.generation = r.generation
+    WHERE r.order_id = $1 AND (c.generation IS NULL OR c.retired_at IS NOT NULL)
+) AS reset
+`
+
+func (q *Queries) OrderHasResetLimitGeneration(ctx context.Context, orderID int64) (bool, error) {
+	row := q.queryRow(ctx, q.orderHasResetLimitGenerationStmt, orderHasResetLimitGeneration, orderID)
+	var reset bool
+	err := row.Scan(&reset)
+	return reset, err
 }
 
 const rebuildProductCache = `-- name: RebuildProductCache :exec
@@ -10204,6 +10559,19 @@ type RebuildWorkspaceProductCacheParams struct {
 
 func (q *Queries) RebuildWorkspaceProductCache(ctx context.Context, arg RebuildWorkspaceProductCacheParams) error {
 	_, err := q.exec(ctx, q.rebuildWorkspaceProductCacheStmt, rebuildWorkspaceProductCache, arg.WorkspaceID, arg.WorkspaceID_2)
+	return err
+}
+
+const recordBalanceDelivery = `-- name: RecordBalanceDelivery :exec
+UPDATE payment_balance_purchase
+SET admitted_at = COALESCE(admitted_at, now()),
+    last_delivery_at = now(),
+    delivery_attempt_count = delivery_attempt_count + 1
+WHERE order_id = $1
+`
+
+func (q *Queries) RecordBalanceDelivery(ctx context.Context, orderID int64) error {
+	_, err := q.exec(ctx, q.recordBalanceDeliveryStmt, recordBalanceDelivery, orderID)
 	return err
 }
 
@@ -10513,51 +10881,29 @@ func (q *Queries) RefreshPaymentDailyStats(ctx context.Context, arg RefreshPayme
 	return err
 }
 
-const releaseProductLimitReservation = `-- name: ReleaseProductLimitReservation :execrows
-UPDATE payment_product_limit_counter
-SET reserved_count = reserved_count - $1,
-    updated_at = now()
-WHERE workspace_id = $2
-  AND app_id = $3
-  AND platform_id = $4
-  AND product_id = $5
-  AND counter_scope = $6
-  AND platform_user_id = $7
-  AND window_start = $8
-  AND window_end = $9
-  AND reserved_count >= $10
+const releaseOrderLimitReservations = `-- name: ReleaseOrderLimitReservations :exec
+WITH owned AS MATERIALIZED (
+    SELECT r.generation, r.quantity
+    FROM payment_order_limit_reservation r
+    JOIN payment_product_limit_counter c ON c.generation = r.generation
+    WHERE r.order_id = $1 AND r.state = 'reserved'
+      AND c.counter_scope = r.counter_scope AND c.reserved_count >= r.quantity
+    ORDER BY r.counter_scope
+    FOR UPDATE OF c
+), released AS (
+    UPDATE payment_product_limit_counter c
+    SET reserved_count = c.reserved_count - owned.quantity, updated_at = now()
+    FROM owned
+    WHERE c.generation = owned.generation
+)
+UPDATE payment_order_limit_reservation r
+SET state = 'released'
+WHERE r.order_id = $1 AND state = 'reserved'
 `
 
-type ReleaseProductLimitReservationParams struct {
-	ReservedCount   int64                                  `json:"reserved_count"`
-	WorkspaceID     string                                 `json:"workspace_id"`
-	AppID           int64                                  `json:"app_id"`
-	PlatformID      int64                                  `json:"platform_id"`
-	ProductID       string                                 `json:"product_id"`
-	CounterScope    PaymentProductLimitCounterCounterScope `json:"counter_scope"`
-	PlatformUserID  string                                 `json:"platform_user_id"`
-	WindowStart     time.Time                              `json:"window_start"`
-	WindowEnd       time.Time                              `json:"window_end"`
-	ReservedCount_2 int64                                  `json:"reserved_count_2"`
-}
-
-func (q *Queries) ReleaseProductLimitReservation(ctx context.Context, arg ReleaseProductLimitReservationParams) (int64, error) {
-	result, err := q.exec(ctx, q.releaseProductLimitReservationStmt, releaseProductLimitReservation,
-		arg.ReservedCount,
-		arg.WorkspaceID,
-		arg.AppID,
-		arg.PlatformID,
-		arg.ProductID,
-		arg.CounterScope,
-		arg.PlatformUserID,
-		arg.WindowStart,
-		arg.WindowEnd,
-		arg.ReservedCount_2,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+func (q *Queries) ReleaseOrderLimitReservations(ctx context.Context, orderID int64) error {
+	_, err := q.exec(ctx, q.releaseOrderLimitReservationsStmt, releaseOrderLimitReservations, orderID)
+	return err
 }
 
 const releasePurchaseKeyReservation = `-- name: ReleasePurchaseKeyReservation :execrows
@@ -10577,22 +10923,32 @@ func (q *Queries) ReleasePurchaseKeyReservation(ctx context.Context, id int64) (
 }
 
 const reserveProductLimitCounter = `-- name: ReserveProductLimitCounter :execrows
-UPDATE payment_product_limit_counter
-SET reserved_count = reserved_count + $1,
-    updated_at = now()
-WHERE workspace_id = $2
-  AND app_id = $3
-  AND platform_id = $4
-  AND product_id = $5
-  AND counter_scope = $6
-  AND platform_user_id = $7
-  AND window_start = $8
-  AND window_end = $9
-  AND paid_count + reserved_count + $10 <= $11
+WITH reserved AS (
+    INSERT INTO payment_product_limit_counter AS c (
+        workspace_id, app_id, platform_id, product_id, counter_scope,
+        platform_user_id, window_start, window_end, reserved_count
+    )
+    SELECT $3, $4, $5, $6,
+           $7, $8, $9,
+           $10, $2::bigint
+    WHERE $2::bigint <= $11::bigint
+    ON CONFLICT (
+        workspace_id, app_id, platform_id, product_id, counter_scope,
+        platform_user_id, window_start, window_end
+    ) WHERE retired_at IS NULL DO UPDATE
+    SET reserved_count = c.reserved_count + EXCLUDED.reserved_count,
+        updated_at = now()
+    WHERE c.paid_count + c.reserved_count <= $11::bigint - EXCLUDED.reserved_count
+    RETURNING c.counter_scope, c.generation
+)
+INSERT INTO payment_order_limit_reservation (order_id, counter_scope, generation, quantity)
+SELECT $1, counter_scope, generation, $2
+FROM reserved
 `
 
 type ReserveProductLimitCounterParams struct {
-	ReservedCount  int64                                  `json:"reserved_count"`
+	OrderID        int64                                  `json:"order_id"`
+	Quantity       int64                                  `json:"quantity"`
 	WorkspaceID    string                                 `json:"workspace_id"`
 	AppID          int64                                  `json:"app_id"`
 	PlatformID     int64                                  `json:"platform_id"`
@@ -10601,13 +10957,13 @@ type ReserveProductLimitCounterParams struct {
 	PlatformUserID string                                 `json:"platform_user_id"`
 	WindowStart    time.Time                              `json:"window_start"`
 	WindowEnd      time.Time                              `json:"window_end"`
-	PaidCount      int64                                  `json:"paid_count"`
-	PaidCount_2    int64                                  `json:"paid_count_2"`
+	LimitCount     int64                                  `json:"limit_count"`
 }
 
 func (q *Queries) ReserveProductLimitCounter(ctx context.Context, arg ReserveProductLimitCounterParams) (int64, error) {
 	result, err := q.exec(ctx, q.reserveProductLimitCounterStmt, reserveProductLimitCounter,
-		arg.ReservedCount,
+		arg.OrderID,
+		arg.Quantity,
 		arg.WorkspaceID,
 		arg.AppID,
 		arg.PlatformID,
@@ -10616,8 +10972,7 @@ func (q *Queries) ReserveProductLimitCounter(ctx context.Context, arg ReservePro
 		arg.PlatformUserID,
 		arg.WindowStart,
 		arg.WindowEnd,
-		arg.PaidCount,
-		arg.PaidCount_2,
+		arg.LimitCount,
 	)
 	if err != nil {
 		return 0, err
@@ -10640,6 +10995,61 @@ func (q *Queries) ReservePurchaseKeyUsage(ctx context.Context, id int64) (int64,
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const retireUnprotectedLimitGeneration = `-- name: RetireUnprotectedLimitGeneration :execrows
+UPDATE payment_product_limit_counter c
+SET retired_at = now(), updated_at = now()
+WHERE c.generation = $1
+  AND c.retired_at IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM payment_order_limit_reservation r
+      JOIN payment_balance_purchase b ON b.order_id = r.order_id
+      WHERE r.generation = c.generation AND r.state = 'reserved'
+        AND b.admitted_at IS NOT NULL AND b.outcome = ''
+  )
+`
+
+func (q *Queries) RetireUnprotectedLimitGeneration(ctx context.Context, generation int64) (int64, error) {
+	result, err := q.exec(ctx, q.retireUnprotectedLimitGenerationStmt, retireUnprotectedLimitGeneration, generation)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setBalancePurchaseOutcome = `-- name: SetBalancePurchaseOutcome :exec
+UPDATE payment_balance_purchase SET outcome = $2, reason = $3 WHERE order_id = $1
+`
+
+type SetBalancePurchaseOutcomeParams struct {
+	OrderID int64  `json:"order_id"`
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason"`
+}
+
+func (q *Queries) SetBalancePurchaseOutcome(ctx context.Context, arg SetBalancePurchaseOutcomeParams) error {
+	_, err := q.exec(ctx, q.setBalancePurchaseOutcomeStmt, setBalancePurchaseOutcome, arg.OrderID, arg.Outcome, arg.Reason)
+	return err
+}
+
+const setOrderLimitReview = `-- name: SetOrderLimitReview :exec
+UPDATE payment_order
+SET limit_review_attempt_id = $2,
+    limit_review_reason = $3,
+    updated_at = now()
+WHERE id = $1
+`
+
+type SetOrderLimitReviewParams struct {
+	ID                   int64          `json:"id"`
+	LimitReviewAttemptID sql.NullInt64  `json:"limit_review_attempt_id"`
+	LimitReviewReason    sql.NullString `json:"limit_review_reason"`
+}
+
+func (q *Queries) SetOrderLimitReview(ctx context.Context, arg SetOrderLimitReviewParams) error {
+	_, err := q.exec(ctx, q.setOrderLimitReviewStmt, setOrderLimitReview, arg.ID, arg.LimitReviewAttemptID, arg.LimitReviewReason)
+	return err
 }
 
 const setPaymentAttemptProviderChargeID = `-- name: SetPaymentAttemptProviderChargeID :execrows
@@ -10926,6 +11336,24 @@ func (q *Queries) UpdateDynamicProductPrice(ctx context.Context, arg UpdateDynam
 	return result.RowsAffected()
 }
 
+const updateExternalPaymentAttemptStatus = `-- name: UpdateExternalPaymentAttemptStatus :execrows
+UPDATE payment_attempt SET status = $1, updated_at = now()
+WHERE id = $2 AND provider_code <> 'internal_balance'
+`
+
+type UpdateExternalPaymentAttemptStatusParams struct {
+	Status PaymentAttemptStatus `json:"status"`
+	ID     int64                `json:"id"`
+}
+
+func (q *Queries) UpdateExternalPaymentAttemptStatus(ctx context.Context, arg UpdateExternalPaymentAttemptStatusParams) (int64, error) {
+	result, err := q.exec(ctx, q.updateExternalPaymentAttemptStatusStmt, updateExternalPaymentAttemptStatus, arg.Status, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updatePaymentAttemptStatus = `-- name: UpdatePaymentAttemptStatus :exec
 UPDATE payment_attempt
 SET status = $1,
@@ -11059,7 +11487,7 @@ func (q *Queries) UpdateProductPrice(ctx context.Context, arg UpdateProductPrice
 	return result.RowsAffected()
 }
 
-const upsertAsset = `-- name: UpsertAsset :exec
+const upsertAsset = `-- name: UpsertAsset :execrows
 INSERT INTO payment_asset (
     code,
     title,
@@ -11080,6 +11508,8 @@ ON CONFLICT (code) DO UPDATE SET
     contract_address = EXCLUDED.contract_address,
     is_active = EXCLUDED.is_active,
     updated_at = now()
+WHERE (payment_asset.asset_kind = 'internal_currency') = (EXCLUDED.asset_kind = 'internal_currency')
+  AND (payment_asset.asset_kind <> 'internal_currency' OR payment_asset.scale = EXCLUDED.scale)
 `
 
 type UpsertAssetParams struct {
@@ -11093,8 +11523,8 @@ type UpsertAssetParams struct {
 	IsActive        bool                  `json:"is_active"`
 }
 
-func (q *Queries) UpsertAsset(ctx context.Context, arg UpsertAssetParams) error {
-	_, err := q.exec(ctx, q.upsertAssetStmt, upsertAsset,
+func (q *Queries) UpsertAsset(ctx context.Context, arg UpsertAssetParams) (int64, error) {
+	result, err := q.exec(ctx, q.upsertAssetStmt, upsertAsset,
 		arg.Code,
 		arg.Title,
 		arg.AssetKind,
@@ -11104,7 +11534,10 @@ func (q *Queries) UpsertAsset(ctx context.Context, arg UpsertAssetParams) error 
 		arg.ContractAddress,
 		arg.IsActive,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const upsertAssetRate = `-- name: UpsertAssetRate :exec
@@ -11473,7 +11906,7 @@ func (q *Queries) UpsertProductItem(ctx context.Context, arg UpsertProductItemPa
 	return err
 }
 
-const upsertProviderAsset = `-- name: UpsertProviderAsset :exec
+const upsertProviderAsset = `-- name: UpsertProviderAsset :execrows
 INSERT INTO payment_provider_asset (
     provider_code,
     asset_code,
@@ -11482,7 +11915,10 @@ INSERT INTO payment_provider_asset (
     merchant_account,
     is_active
 )
-VALUES ($1, $2, $3, $4, $5, $6)
+SELECT $1, $2, $3, $4, $5, $6
+FROM payment_asset
+WHERE code = $2::varchar AND asset_kind <> 'internal_currency'
+  AND $1::varchar <> 'internal_balance'
 ON CONFLICT (provider_code, asset_code) DO UPDATE SET
     min_amount_minor = EXCLUDED.min_amount_minor,
     max_amount_minor = EXCLUDED.max_amount_minor,
@@ -11500,8 +11936,8 @@ type UpsertProviderAssetParams struct {
 	IsActive        bool           `json:"is_active"`
 }
 
-func (q *Queries) UpsertProviderAsset(ctx context.Context, arg UpsertProviderAssetParams) error {
-	_, err := q.exec(ctx, q.upsertProviderAssetStmt, upsertProviderAsset,
+func (q *Queries) UpsertProviderAsset(ctx context.Context, arg UpsertProviderAssetParams) (int64, error) {
+	result, err := q.exec(ctx, q.upsertProviderAssetStmt, upsertProviderAsset,
 		arg.ProviderCode,
 		arg.AssetCode,
 		arg.MinAmountMinor,
@@ -11509,7 +11945,10 @@ func (q *Queries) UpsertProviderAsset(ctx context.Context, arg UpsertProviderAss
 		arg.MerchantAccount,
 		arg.IsActive,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const upsertProviderCursor = `-- name: UpsertProviderCursor :execrows

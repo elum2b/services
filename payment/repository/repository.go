@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
 	"strings"
@@ -23,6 +25,8 @@ type PaymentRepository struct {
 	db                              *sqlwrap.Client
 	q                               *paymentsqlc.Queries
 	callbacks                       *callbackutil.Store
+	balanceCallbacks                *callbackutil.Store
+	balanceBindings                 map[BalanceBindingKey]string
 	executor                        paymentsqlc.DBTX
 	inTx                            bool
 	timeout                         time.Duration
@@ -36,6 +40,7 @@ type PaymentRepository struct {
 }
 
 type Options struct {
+	BalanceBindings          map[BalanceBindingKey]string
 	QueryTimeout             time.Duration
 	CacheL1Delay             time.Duration
 	CacheL2Delay             time.Duration
@@ -99,6 +104,8 @@ func NewPaymentRepositoryWithOptions(
 			db.DB(),
 			callbackutil.PaymentTable,
 		),
+		balanceCallbacks:         callbackutil.NewWithTable(db.DB(), BalanceCallbackTable),
+		balanceBindings:          maps.Clone(options.BalanceBindings),
 		executor:                 executor,
 		timeout:                  timeout,
 		cacheL1:                  options.CacheL1Delay,
@@ -154,6 +161,8 @@ func (r *PaymentRepository) WithTx(
 				db:                              r.db,
 				q:                               r.q.WithTx(tx),
 				callbacks:                       r.callbacks.WithTx(tx),
+				balanceCallbacks:                r.balanceCallbacks.WithTx(tx),
+				balanceBindings:                 r.balanceBindings,
 				executor:                        tx,
 				inTx:                            true,
 				timeout:                         r.timeout,
@@ -231,13 +240,41 @@ func (r *PaymentRepository) Bootstrap(
 		return fmt.Errorf("payment schema SQL parse failed: %w", err)
 	}
 
+	db := r.db.DB()
+	if db == nil {
+		return sqlwrap.ErrNilDB
+	}
+
+	lockCtx, cancel := context.WithTimeout(ctx, bootstrapQueryTimeout)
+	conn, err := db.Conn(lockCtx)
+	if err != nil {
+		cancel()
+		return err
+	}
+	defer conn.Close()
+
+	_, err = conn.ExecContext(lockCtx, `SELECT pg_advisory_lock(hashtextextended('payment:bootstrap', 0))`)
+	cancel()
+	if err != nil {
+		// A canceled lock request may have reached the database.
+		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		return fmt.Errorf("lock payment bootstrap: %w", err)
+	}
+	defer func() {
+		unlockCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bootstrapQueryTimeout)
+		defer cancel()
+		if _, err := conn.ExecContext(unlockCtx, `SELECT pg_advisory_unlock(hashtextextended('payment:bootstrap', 0))`); err != nil {
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
+	}()
+
 	for _, stmt := range statements {
 		if err := sqlwrap.Exec(
 			ctx,
 			r.db,
 			sqlwrap.Params{Timeout: bootstrapQueryTimeout},
 			func(ctx context.Context) error {
-				_, err := r.db.DB().ExecContext(ctx, stmt)
+				_, err := conn.ExecContext(ctx, stmt)
 				return err
 			},
 		); err != nil {
@@ -245,6 +282,7 @@ func (r *PaymentRepository) Bootstrap(
 				if name, labels, ok := parseCreateEnum(stmt); ok {
 					if validationErr := r.validateExistingEnum(
 						ctx,
+						conn,
 						name,
 						labels,
 					); validationErr == nil {
@@ -259,7 +297,7 @@ func (r *PaymentRepository) Bootstrap(
 		}
 	}
 
-	if err := r.applySchemaUpgrades(ctx); err != nil {
+	if err := r.applySchemaUpgrades(ctx, conn); err != nil {
 		return err
 	}
 
@@ -268,21 +306,22 @@ func (r *PaymentRepository) Bootstrap(
 		r.db,
 		sqlwrap.Params{Timeout: bootstrapQueryTimeout},
 		func(ctx context.Context) error {
-			return callbackutil.BootstrapTable(
-				ctx,
-				r.db.DB(),
-				callbackutil.PaymentTable,
-			)
+			for _, table := range []string{callbackutil.PaymentTable, BalanceCallbackTable} {
+				if err := callbackutil.BootstrapPostgresTableOnConn(ctx, conn, table); err != nil {
+					return err
+				}
+			}
+			return nil
 		},
 	); err != nil {
 		return err
 	}
 
-	if err := r.applySQL(ctx, paymentsqlc.TriggerSQL, "trigger"); err != nil {
+	if err := r.applySQL(ctx, conn, paymentsqlc.TriggerSQL, "trigger"); err != nil {
 		return err
 	}
 
-	return r.applySQL(ctx, paymentsqlc.EventSQL, "event")
+	return r.applySQL(ctx, conn, paymentsqlc.EventSQL, "event")
 }
 
 func isUniqueViolation(err error) bool {
@@ -318,18 +357,27 @@ func parseCreateEnum(statement string) (string, []string, bool) {
 
 func (r *PaymentRepository) validateExistingEnum(
 	ctx context.Context,
+	conn *sql.Conn,
 	name string,
 	expected []string,
 ) error {
 	var actual string
 
-	if err := r.db.DB().QueryRowContext(ctx, `
+	if err := conn.QueryRowContext(ctx, `
 SELECT COALESCE(string_agg(enum.enumlabel, E'\x1F' ORDER BY enum.enumsortorder), '')
 FROM pg_type AS type
 LEFT JOIN pg_enum AS enum ON enum.enumtypid = type.oid
 WHERE type.oid = to_regtype($1)
   AND type.typtype = 'e'`, name).Scan(&actual); err != nil {
 		return fmt.Errorf("validate existing enum %s: %w", name, err)
+	}
+
+	if name == "payment_asset_asset_kind" && len(expected) == 5 &&
+		expected[4] == AssetKindInternalCurrency &&
+		actual == strings.Join(expected[:4], "\x1f") {
+		// This is the only supported enum upgrade; other differences are schema drift.
+		_, err := conn.ExecContext(ctx, `ALTER TYPE payment_asset_asset_kind ADD VALUE IF NOT EXISTS 'internal_currency'`)
+		return err
 	}
 
 	if actual != strings.Join(expected, "\x1f") {
@@ -344,8 +392,8 @@ WHERE type.oid = to_regtype($1)
 	return nil
 }
 
-func (r *PaymentRepository) applySchemaUpgrades(ctx context.Context) error {
-	_, err := r.db.DB().ExecContext(
+func (r *PaymentRepository) applySchemaUpgrades(ctx context.Context, conn *sql.Conn) error {
+	_, err := conn.ExecContext(
 		ctx,
 		"ALTER TABLE payment_product_item ALTER COLUMN quantity SET DEFAULT 1",
 	)
@@ -355,6 +403,7 @@ func (r *PaymentRepository) applySchemaUpgrades(ctx context.Context) error {
 
 func (r *PaymentRepository) applySQL(
 	ctx context.Context,
+	conn *sql.Conn,
 	raw, source string,
 ) error {
 	statements, err := sqlwrap.SplitStatements(raw)
@@ -368,7 +417,7 @@ func (r *PaymentRepository) applySQL(
 			r.db,
 			sqlwrap.Params{Timeout: bootstrapQueryTimeout},
 			func(ctx context.Context) error {
-				_, err := r.db.DB().ExecContext(ctx, statement)
+				_, err := conn.ExecContext(ctx, statement)
 				return err
 			},
 		); err != nil {
@@ -456,7 +505,7 @@ func (r *PaymentRepository) UpsertAsset(
 		return ErrInvalidAsset
 	}
 
-	if err := r.q.UpsertAsset(ctx, paymentsqlc.UpsertAssetParams{
+	rows, err := r.q.UpsertAsset(ctx, paymentsqlc.UpsertAssetParams{
 		Code:      params.Code,
 		Title:     params.Title,
 		AssetKind: paymentsqlc.PaymentAssetAssetKind(params.AssetKind),
@@ -477,8 +526,12 @@ func (r *PaymentRepository) UpsertAsset(
 			},
 		),
 		IsActive: params.IsActive,
-	}); err != nil {
+	})
+	if err != nil {
 		return err
+	}
+	if rows != 1 {
+		return ErrInvalidAsset
 	}
 
 	return r.invalidateAllCache()
@@ -539,7 +592,7 @@ func (r *PaymentRepository) UpsertProviderAsset(
 		return ErrInvalidProviderAsset
 	}
 
-	if err := r.q.UpsertProviderAsset(
+	rows, err := r.q.UpsertProviderAsset(
 		ctx,
 		paymentsqlc.UpsertProviderAssetParams{
 			ProviderCode: params.ProviderCode,
@@ -564,8 +617,12 @@ func (r *PaymentRepository) UpsertProviderAsset(
 			),
 			IsActive: params.IsActive,
 		},
-	); err != nil {
+	)
+	if err != nil {
 		return err
+	}
+	if rows != 1 {
+		return ErrInvalidProviderAsset
 	}
 
 	return r.invalidateAllCache()
@@ -603,7 +660,7 @@ func validAssetKind(value string) bool {
 	case string(paymentsqlc.PaymentAssetAssetKindFiat),
 		string(paymentsqlc.PaymentAssetAssetKindPlatformCurrency),
 		string(paymentsqlc.PaymentAssetAssetKindCryptoNative),
-		string(paymentsqlc.PaymentAssetAssetKindCryptoJetton):
+		string(paymentsqlc.PaymentAssetAssetKindCryptoJetton), AssetKindInternalCurrency:
 		return true
 	default:
 		return false

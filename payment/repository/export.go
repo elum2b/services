@@ -276,6 +276,11 @@ func (r *PaymentRepository) exportPrices(
 			EndsAt:      row.EndsAt,
 		}
 
+		if row.AssetKind == paymentsqlc.PaymentAssetAssetKindInternalCurrency {
+			scale := uint16(row.AssetScale)
+			price.InternalAssetScale = &scale
+		}
+
 		result[row.ProductID] = append(result[row.ProductID], price)
 	}
 

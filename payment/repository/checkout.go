@@ -273,6 +273,14 @@ func (r *PaymentRepository) CreateOrder(
 	ctx context.Context,
 	params OrderCreateParams,
 ) (Order, error) {
+	return r.createOrder(ctx, params, nil)
+}
+
+func (r *PaymentRepository) createOrder(
+	ctx context.Context,
+	params OrderCreateParams,
+	balanceIdentity *services.Identity,
+) (Order, error) {
 	workspaceID, err := requireWorkspaceID(params.WorkspaceID)
 	if err != nil {
 		return Order{}, err
@@ -295,7 +303,7 @@ func (r *PaymentRepository) CreateOrder(
 	var order Order
 
 	err = r.inTransaction(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
-		product, err := txRepo.getCheckoutProduct(ctx, ProductGetParams{
+		productParams := ProductGetParams{
 			AppID:          params.AppID,
 			WorkspaceID:    workspaceID,
 			PlatformID:     params.PlatformID,
@@ -304,9 +312,21 @@ func (r *PaymentRepository) CreateOrder(
 			AssetCode:      params.AssetCode,
 			Locale:         params.Locale,
 			Now:            now,
-		})
+		}
+		if balanceIdentity != nil {
+			productParams.Platform = balanceIdentity.Platform
+			productParams.IsPremium = balanceIdentity.IsPremium
+			productParams.Sex = balanceIdentity.Sex
+			productParams.Country = balanceIdentity.Country
+		}
+		product, err := txRepo.getCheckoutProduct(ctx, productParams)
 		if err != nil {
 			return err
+		}
+
+		if balanceIdentity != nil && (product.PeriodSeconds.Valid ||
+			product.TrialDurationSeconds.Valid || product.Price.PayableAmountMinor == 0) {
+			return ErrBalanceUnsupported
 		}
 
 		if product.Limit.Global.LockUntil.Valid ||
@@ -385,6 +405,7 @@ func (r *PaymentRepository) CreateOrder(
 		id, err := txRepo.q.CreatePaymentOrder(
 			ctx,
 			sqlc.CreatePaymentOrderParams{
+				IsBalance:      balanceIdentity != nil,
 				PublicID:       publicID,
 				WorkspaceID:    product.WorkspaceID,
 				AppID:          params.AppID,
@@ -447,6 +468,9 @@ func (r *PaymentRepository) CreateOrder(
 				),
 			},
 		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrBalanceUnsupported
+		}
 		if err != nil {
 			return err
 		}
@@ -455,6 +479,7 @@ func (r *PaymentRepository) CreateOrder(
 
 		if err := txRepo.reserveOrderLimit(
 			ctx,
+			id,
 			product.WorkspaceID,
 			params.AppID,
 			params.PlatformID,
@@ -469,6 +494,7 @@ func (r *PaymentRepository) CreateOrder(
 
 		if err := txRepo.reserveOrderLimit(
 			ctx,
+			id,
 			product.WorkspaceID,
 			params.AppID,
 			params.PlatformID,
@@ -540,6 +566,7 @@ func newOrderLimitSnapshot(
 
 func (r *PaymentRepository) reserveOrderLimit(
 	ctx context.Context,
+	orderID int64,
 	workspaceID string,
 	appID int64,
 	platformID int64,
@@ -559,26 +586,13 @@ func (r *PaymentRepository) reserveOrderLimit(
 		platformUserID = ""
 	}
 
-	ensure := sqlc.EnsureProductLimitCounterParams{
-		WorkspaceID:    workspaceID,
-		AppID:          appID,
-		PlatformID:     platformID,
-		ProductID:      productID,
-		CounterScope:   scope,
-		PlatformUserID: platformUserID,
-		WindowStart:    snapshot.windowStart.Time,
-		WindowEnd:      snapshot.windowEnd.Time,
-	}
-	if _, err := r.q.EnsureProductLimitCounter(ctx, ensure); err != nil {
-		return err
-	}
-
 	amount := int64(normalizeLimitAmount(quantity))
 
 	rows, err := r.q.ReserveProductLimitCounter(
 		ctx,
 		sqlc.ReserveProductLimitCounterParams{
-			ReservedCount:  amount,
+			OrderID:        orderID,
+			Quantity:       amount,
 			WorkspaceID:    workspaceID,
 			AppID:          appID,
 			PlatformID:     platformID,
@@ -587,8 +601,7 @@ func (r *PaymentRepository) reserveOrderLimit(
 			PlatformUserID: platformUserID,
 			WindowStart:    snapshot.windowStart.Time,
 			WindowEnd:      snapshot.windowEnd.Time,
-			PaidCount:      amount,
-			PaidCount_2:    int64(snapshot.limit),
+			LimitCount:     int64(snapshot.limit),
 		},
 	)
 	if err != nil {
@@ -918,6 +931,10 @@ func (r *PaymentRepository) CreateProviderAttempt(
 		len(params.IdempotencyKey) > 128 ||
 		!validRequestFingerprint(params.RequestFingerprint) {
 		return ProviderAttemptCreateResult{}, ErrAttemptFieldsInvalid
+	}
+
+	if params.ProviderCode == BalanceProviderCode {
+		return ProviderAttemptCreateResult{}, ErrBalanceUnsupported
 	}
 
 	params.Order.WorkspaceID = workspaceID
@@ -1273,6 +1290,10 @@ func (r *PaymentRepository) FailProviderAttempt(
 			return ErrPaymentMismatch
 		}
 
+		if attempt.ProviderCode == BalanceProviderCode {
+			return ErrBalanceUnsupported
+		}
+
 		if attempt.Status == sqlc.PaymentAttemptStatusFailed {
 			return nil
 		}
@@ -1376,6 +1397,10 @@ func (r *PaymentRepository) createAttempt(
 	params.ProviderCode = strings.TrimSpace(params.ProviderCode)
 	if params.OrderID == 0 || params.ProviderCode == "" {
 		return Attempt{}, ErrAttemptFieldsInvalid
+	}
+
+	if params.ProviderCode == BalanceProviderCode {
+		return Attempt{}, ErrBalanceUnsupported
 	}
 
 	var attempt Attempt
@@ -1719,6 +1744,9 @@ func (r *PaymentRepository) CompleteAttempt(
 		params.AttemptID,
 	)
 	if err == nil {
+		if fulfilled.ProviderCode == BalanceProviderCode {
+			return CompleteAttemptResult{}, ErrBalanceUnsupported
+		}
 		if fulfilled.ProviderCode != params.ProviderCode ||
 			fulfilled.AssetCode != params.AssetCode ||
 			uint64(fulfilled.AmountMinor) != params.AmountMinor ||
@@ -1770,6 +1798,10 @@ func (r *PaymentRepository) CompleteAttempt(
 			return ErrPaymentMismatch
 		}
 
+		if attempt.ProviderCode == BalanceProviderCode {
+			return ErrBalanceUnsupported
+		}
+
 		result.OrderID = uint64(order.ID)
 		result.AttemptID = uint64(attempt.ID)
 
@@ -1788,6 +1820,14 @@ func (r *PaymentRepository) CompleteAttempt(
 			return ErrPaymentMismatch
 		}
 
+		if order.LimitReviewAttemptID.Valid {
+			if order.LimitReviewAttemptID.Int64 != attempt.ID {
+				return ErrPaymentMismatch
+			}
+			result.AlreadyDone = true
+			return nil
+		}
+
 		if order.Status == sqlc.PaymentOrderStatusFulfilled {
 			result.AlreadyDone = true
 
@@ -1801,6 +1841,21 @@ func (r *PaymentRepository) CompleteAttempt(
 			return nil
 		}
 
+		var reviewClosedOrder bool
+		switch order.Status {
+		case sqlc.PaymentOrderStatusDraft, sqlc.PaymentOrderStatusPendingPayment, sqlc.PaymentOrderStatusPaid:
+		case sqlc.PaymentOrderStatusCanceled, sqlc.PaymentOrderStatusExpired, sqlc.PaymentOrderStatusFailed:
+			reviewClosedOrder, err = txRepo.q.OrderHasResetLimitGeneration(ctx, order.ID)
+			if err != nil {
+				return err
+			}
+			if !reviewClosedOrder {
+				return ErrOrderStateInvalid
+			}
+		default:
+			return ErrOrderStateInvalid
+		}
+
 		if err := txRepo.q.UpdatePaymentAttemptStatus(
 			ctx,
 			sqlc.UpdatePaymentAttemptStatusParams{
@@ -1811,14 +1866,47 @@ func (r *PaymentRepository) CompleteAttempt(
 			return err
 		}
 
-		if order.Status != sqlc.PaymentOrderStatusDraft &&
-			order.Status != sqlc.PaymentOrderStatusPendingPayment &&
-			order.Status != sqlc.PaymentOrderStatusPaid {
-			return ErrOrderStateInvalid
+		if reviewClosedOrder {
+			if err := txRepo.reviewPaidOrderLimits(ctx, order, attempt.ID); err != nil {
+				return err
+			}
+			_, err := txRepo.q.MarkOrderPaidAndIndex(ctx, order.ID)
+			return err
 		}
 
-		if err := txRepo.markOrderPaidAndConsumeLimits(ctx, order); err != nil {
+		_, err = txRepo.q.MarkOrderPaidAndIndex(ctx, order.ID)
+		if err != nil {
 			return err
+		}
+		limitsConsumed := true
+		if order.GlobalWindowStartSnapshot.Valid || order.UserWindowStartSnapshot.Valid {
+			limitsConsumed, err = txRepo.q.ConsumeOrderLimitReservations(ctx, order.ID)
+			if err != nil {
+				return err
+			}
+			if !limitsConsumed {
+				if err := txRepo.reviewPaidOrderLimits(ctx, order, attempt.ID); err != nil {
+					return err
+				}
+			}
+		}
+
+		if order.PurchaseKeyID.Valid {
+			rows, err := txRepo.q.ConsumePurchaseKeyReservation(
+				ctx,
+				order.PurchaseKeyID.Int64,
+			)
+			if err != nil {
+				return err
+			}
+
+			if rows != 1 {
+				return ErrOrderStateInvalid
+			}
+		}
+
+		if !limitsConsumed {
+			return nil
 		}
 
 		fulfillmentID, err := txRepo.q.CompleteFulfillmentFromOrder(
@@ -1839,20 +1927,6 @@ func (r *PaymentRepository) CompleteAttempt(
 		items, err := txRepo.q.GetFulfillmentItemsForOrder(ctx, order.ID)
 		if err != nil {
 			return err
-		}
-
-		if order.PurchaseKeyID.Valid {
-			rows, err := txRepo.q.ConsumePurchaseKeyReservation(
-				ctx,
-				order.PurchaseKeyID.Int64,
-			)
-			if err != nil {
-				return err
-			}
-
-			if rows != 1 {
-				return ErrOrderStateInvalid
-			}
 		}
 
 		if err := txRepo.enqueuePaymentFulfilledCallback(
@@ -1962,176 +2036,36 @@ func orderDurationUnitPtr(value sqlc.NullPaymentOrderItemDurationUnit) *string {
 	return &unit
 }
 
-func (r *PaymentRepository) markOrderPaidAndConsumeLimits(
+func (r *PaymentRepository) reviewPaidOrderLimits(
 	ctx context.Context,
 	order sqlc.PaymentOrder,
+	attemptID int64,
 ) error {
-	indexed, err := r.q.MarkOrderPaidAndIndex(ctx, order.ID)
-	if err != nil {
+	if err := r.releaseOrderLimits(ctx, order); err != nil {
 		return err
 	}
 
-	if !indexed {
-		return nil
+	reason := "limit_reservation_lost"
+	if order.LimitTrackingLegacy {
+		reason = "limit_reservation_unverified"
 	}
 
-	if err := r.consumeOrderLimit(
-		ctx,
-		order,
-		sqlc.PaymentProductLimitCounterCounterScopeGlobal,
-		orderLimitSnapshot{
-			limit:         order.GlobalLimitSnapshot,
-			interval:      order.GlobalIntervalSnapshot,
-			intervalCount: order.GlobalIntervalCountSnapshot,
-			windowStart:   order.GlobalWindowStartSnapshot,
-			windowEnd:     order.GlobalWindowEndSnapshot,
-		},
-	); err != nil {
-		return err
-	}
-
-	return r.consumeOrderLimit(
-		ctx,
-		order,
-		sqlc.PaymentProductLimitCounterCounterScopeUser,
-		orderLimitSnapshot{
-			limit:         order.UserLimitSnapshot,
-			interval:      order.UserIntervalSnapshot,
-			intervalCount: order.UserIntervalCountSnapshot,
-			windowStart:   order.UserWindowStartSnapshot,
-			windowEnd:     order.UserWindowEndSnapshot,
-		},
-	)
-}
-
-func (r *PaymentRepository) consumeOrderLimit(
-	ctx context.Context,
-	order sqlc.PaymentOrder,
-	scope sqlc.PaymentProductLimitCounterCounterScope,
-	snapshot orderLimitSnapshot,
-) error {
-	if !snapshot.windowStart.Valid || !snapshot.windowEnd.Valid {
-		return nil
-	}
-
-	platformUserID := ""
-	appID := int64(0)
-	platformID := int64(0)
-
-	if scope == sqlc.PaymentProductLimitCounterCounterScopeUser {
-		appID = order.AppID
-		platformID = order.PlatformID
-		platformUserID = order.PlatformUserID
-	}
-
-	amount := int64(normalizeLimitAmount(uint64(order.Quantity)))
-
-	rows, err := r.q.ConsumeProductLimitReservation(
-		ctx,
-		sqlc.ConsumeProductLimitReservationParams{
-			ReservedCount:   amount,
-			PaidCount:       amount,
-			WorkspaceID:     order.WorkspaceID,
-			AppID:           appID,
-			PlatformID:      platformID,
-			ProductID:       order.ProductID,
-			CounterScope:    scope,
-			PlatformUserID:  platformUserID,
-			WindowStart:     snapshot.windowStart.Time,
-			WindowEnd:       snapshot.windowEnd.Time,
-			ReservedCount_2: amount,
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
-		return ErrOrderStateInvalid
-	}
-
-	return nil
+	return r.q.SetOrderLimitReview(ctx, sqlc.SetOrderLimitReviewParams{
+		ID:                   order.ID,
+		LimitReviewAttemptID: sql.NullInt64{Int64: attemptID, Valid: true},
+		LimitReviewReason:    sql.NullString{String: reason, Valid: true},
+	})
 }
 
 func (r *PaymentRepository) releaseOrderLimits(
 	ctx context.Context,
 	order sqlc.PaymentOrder,
 ) error {
-	if err := r.releaseOrderLimit(
-		ctx,
-		order,
-		sqlc.PaymentProductLimitCounterCounterScopeGlobal,
-		orderLimitSnapshot{
-			limit:         order.GlobalLimitSnapshot,
-			interval:      order.GlobalIntervalSnapshot,
-			intervalCount: order.GlobalIntervalCountSnapshot,
-			windowStart:   order.GlobalWindowStartSnapshot,
-			windowEnd:     order.GlobalWindowEndSnapshot,
-		},
-	); err != nil {
-		return err
-	}
-
-	return r.releaseOrderLimit(
-		ctx,
-		order,
-		sqlc.PaymentProductLimitCounterCounterScopeUser,
-		orderLimitSnapshot{
-			limit:         order.UserLimitSnapshot,
-			interval:      order.UserIntervalSnapshot,
-			intervalCount: order.UserIntervalCountSnapshot,
-			windowStart:   order.UserWindowStartSnapshot,
-			windowEnd:     order.UserWindowEndSnapshot,
-		},
-	)
-}
-
-func (r *PaymentRepository) releaseOrderLimit(
-	ctx context.Context,
-	order sqlc.PaymentOrder,
-	scope sqlc.PaymentProductLimitCounterCounterScope,
-	snapshot orderLimitSnapshot,
-) error {
-	if !snapshot.windowStart.Valid || !snapshot.windowEnd.Valid {
+	if !order.GlobalWindowStartSnapshot.Valid && !order.UserWindowStartSnapshot.Valid {
 		return nil
 	}
 
-	platformUserID := ""
-	appID := int64(0)
-	platformID := int64(0)
-
-	if scope == sqlc.PaymentProductLimitCounterCounterScopeUser {
-		appID = order.AppID
-		platformID = order.PlatformID
-		platformUserID = order.PlatformUserID
-	}
-
-	amount := int64(normalizeLimitAmount(uint64(order.Quantity)))
-
-	rows, err := r.q.ReleaseProductLimitReservation(
-		ctx,
-		sqlc.ReleaseProductLimitReservationParams{
-			ReservedCount:   amount,
-			WorkspaceID:     order.WorkspaceID,
-			AppID:           appID,
-			PlatformID:      platformID,
-			ProductID:       order.ProductID,
-			CounterScope:    scope,
-			PlatformUserID:  platformUserID,
-			WindowStart:     snapshot.windowStart.Time,
-			WindowEnd:       snapshot.windowEnd.Time,
-			ReservedCount_2: amount,
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	if rows != 1 {
-		return ErrOrderStateInvalid
-	}
-
-	return nil
+	return r.q.ReleaseOrderLimitReservations(ctx, order.ID)
 }
 
 func sameProviderPaymentID(

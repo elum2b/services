@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"strings"
 
 	serviceerrors "github.com/elum2b/services/errors"
@@ -55,7 +57,7 @@ func (r *PaymentRepository) UpsertProvider(
 	ctx context.Context,
 	params ProviderUpsertParams,
 ) error {
-	if strings.TrimSpace(params.Code) == "" ||
+	if params.Code == BalanceProviderCode || strings.TrimSpace(params.Code) == "" ||
 		strings.TrimSpace(params.Title) == "" ||
 		!validProviderKind(params.ProviderKind) {
 		return ErrInvalidProvider
@@ -86,6 +88,9 @@ func (r *PaymentRepository) AdminDeleteProvider(
 	ctx context.Context,
 	code string,
 ) (int64, error) {
+	if code == BalanceProviderCode {
+		return 0, ErrInvalidProvider
+	}
 	rows, err := r.q.AdminDeleteProvider(ctx, code)
 	if err != nil {
 		return 0, err
@@ -294,9 +299,25 @@ func (r *PaymentRepository) AdminListProductLimitCounters(
 
 func (r *PaymentRepository) AdminDeleteProductLimitCounter(
 	ctx context.Context,
-	params paymentsqlc.AdminDeleteProductLimitCounterParams,
+	params paymentsqlc.LockProductLimitCounterForResetParams,
 ) (int64, error) {
-	return r.q.AdminDeleteProductLimitCounter(ctx, params)
+	var retired int64
+	err := r.inTransaction(ctx, func(ctx context.Context, tx *PaymentRepository) error {
+		generation, err := tx.q.LockProductLimitCounterForReset(ctx, params)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		// The next statement sees admission committed while this transaction waited.
+		retired, err = tx.q.RetireUnprotectedLimitGeneration(ctx, generation)
+		if err == nil && retired == 0 {
+			return ErrBalanceInProgress
+		}
+		return err
+	})
+	return retired, err
 }
 
 func (r *PaymentRepository) AdminListPurchaseKeys(

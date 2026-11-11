@@ -268,6 +268,8 @@ type AdminOrderModel struct {
 	ExpiresAt                   NullableTime   `json:"expires_at"`
 	CreatedAt                   time.Time      `json:"created_at"`
 	UpdatedAt                   time.Time      `json:"updated_at"`
+	LimitTrackingLegacy         bool           `json:"limit_tracking_legacy,omitempty"`
+	LimitReviewReason           string         `json:"limit_review_reason,omitempty"`
 }
 
 type PaymentReportParams struct {
@@ -737,6 +739,8 @@ func mapAdminOrder(row paymentsqlc.PaymentOrder) AdminOrderModel {
 		ExpiresAt:                 NullableTime(row.ExpiresAt),
 		CreatedAt:                 row.CreatedAt,
 		UpdatedAt:                 row.UpdatedAt,
+		LimitTrackingLegacy:       row.LimitTrackingLegacy,
+		LimitReviewReason:         row.LimitReviewReason.String,
 	}
 }
 

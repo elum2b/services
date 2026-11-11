@@ -152,6 +152,20 @@ func BootstrapTable(ctx context.Context, db *sql.DB, tableName string) error {
 	return bootstrapMySQLTable(ctx, db, tableName)
 }
 
+// BootstrapPostgresTableOnConn keeps bootstrap on a connection held by the caller.
+func BootstrapPostgresTableOnConn(ctx context.Context, conn *sql.Conn, tableName string) error {
+	if conn == nil {
+		return errors.New("callback: nil connection")
+	}
+
+	return bootstrapPostgresTable(ctx, conn, normalizeTableName(tableName))
+}
+
+type postgresBootstrapConn interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+}
+
 func (s *Store) CreateEvent(
 	ctx context.Context,
 	params CreateParams,
@@ -363,6 +377,20 @@ func (s *Store) AdminRetryEventNow(
 SET status = 'pending', next_attempt_at = NOW(), locked_by = NULL,
     locked_until = NULL, last_error = NULL, updated_at = NOW()
 WHERE workspace_id = ? AND id = ? AND status IN ('pending', 'processing')`, workspaceID, int64(id))
+}
+
+// RetryAvailableEventNow preserves active leases and retries the same event.
+func (s *Store) RetryAvailableEventNow(ctx context.Context, workspaceID string, id uint64) (int64, error) {
+	workspaceID, err := requireWorkspaceID(workspaceID)
+	if err != nil {
+		return 0, err
+	}
+
+	return s.execRows(ctx, `
+SET status = 'pending', next_attempt_at = NOW(), locked_by = NULL,
+    locked_until = NULL, updated_at = NOW()
+WHERE workspace_id = ? AND id = ?
+  AND (status = 'pending' OR (status = 'processing' AND locked_until <= NOW()))`, workspaceID, int64(id))
 }
 
 func (s *Store) AdminMarkEventOK(
@@ -803,7 +831,7 @@ CREATE TABLE IF NOT EXISTS %s (
 
 func bootstrapPostgresTable(
 	ctx context.Context,
-	db *sql.DB,
+	db postgresBootstrapConn,
 	tableName string,
 ) error {
 	table := quotePostgresIdentifier(tableName)
@@ -894,7 +922,7 @@ CREATE TABLE IF NOT EXISTS %s (
 
 func migratePostgresRoutingKeys(
 	ctx context.Context,
-	db *sql.DB,
+	db postgresBootstrapConn,
 	table string,
 	tableName string,
 ) error {

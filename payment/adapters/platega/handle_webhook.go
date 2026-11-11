@@ -158,7 +158,9 @@ func (a *Platega) handlePayload(
 		}
 
 		result.AlreadyDone = chargeback.AlreadyDone
-		result.FulfilledID = utils.Ref(chargeback.FulfillmentID)
+		if chargeback.FulfillmentID != 0 {
+			result.FulfilledID = utils.Ref(chargeback.FulfillmentID)
+		}
 
 		return result, nil
 	case StatusConfirmed:

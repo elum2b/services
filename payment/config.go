@@ -31,6 +31,12 @@ type Codec interface {
 }
 
 type Options struct {
+	// BalanceBindings maps a workspace, app and currency to a trusted handler key.
+	BalanceBindings map[BalanceBinding]string
+	// BalanceHandlers includes all keys needed to drain persisted purchases, even
+	// if their bindings no longer accept new purchases.
+	BalanceHandlers map[string]BalanceChargeHandler
+
 	MaxConnections int
 	QueryTimeout   time.Duration
 	CacheL1Delay   time.Duration

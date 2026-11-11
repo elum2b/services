@@ -4929,3 +4929,93 @@ func createBenchmarkVKMAProduct(b *testing.B, env paymentBenchmarkEnv) string {
 
 	return productID
 }
+
+func BenchmarkPaymentLimitReservation(b *testing.B) {
+	env := setupPaymentIntegrationTest(b)
+	productID := createPaymentProduct(b, env, testProductOptions{
+		GlobalLimit:         1_000_000,
+		GlobalInterval:      "ONCE",
+		GlobalIntervalCount: 1,
+		UserLimit:           1,
+		UserInterval:        "ONCE",
+		UserIntervalCount:   1,
+	})
+	createOrder := func(b *testing.B, identity services.Identity) uint64 {
+		b.Helper()
+		order, err := env.api.User.CreateOrder(env.ctx, checkout.CreateOrderParams{
+			Identity:  identity,
+			ProductID: productID,
+			AssetCode: "RUB",
+		})
+		benchNoError(b, err)
+		return order.ID
+	}
+	b.Run("CreateOrder", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			identity := paymentTestIdentity(testWorkspaceID, 4110, 1, benchRunValue("limited_create", benchNextSeq()))
+			createOrder(b, identity)
+		}
+	})
+	b.Run("CompleteAttempt", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			b.StopTimer()
+			sequence := benchNextSeq()
+			identity := paymentTestIdentity(testWorkspaceID, 4110, 1, benchRunValue("limited_complete", sequence))
+			orderID := createOrder(b, identity)
+			providerID := benchRunValue("limited_provider", sequence)
+			attempt, err := env.api.User.CreateAttempt(env.ctx, checkout.CreateAttemptParams{
+				Identity:          identity,
+				OrderID:           orderID,
+				ProviderCode:      "yookassa",
+				ProviderPaymentID: &providerID,
+			})
+			benchNoError(b, err)
+			b.StartTimer()
+			result, err := env.api.Operational.CompleteAttempt(env.ctx, checkout.CompleteAttemptParams{
+				WorkspaceID:       testWorkspaceID,
+				AttemptID:         attempt.ID,
+				ProviderCode:      "yookassa",
+				ProviderPaymentID: &providerID,
+				AmountMinor:       attempt.AmountMinor,
+				AssetCode:         attempt.AssetCode,
+			})
+			benchNoError(b, err)
+			if result.FulfillmentID == nil {
+				b.Fatal("limited order did not complete")
+			}
+		}
+	})
+}
+
+func BenchmarkPaymentBalancePurchase(b *testing.B) {
+	for _, scenario := range []string{"create", "replay", "status"} {
+		b.Run(scenario, func(b *testing.B) {
+			env := setupPaymentIntegrationTest(b)
+			params := setupBalanceProduct(b, env, false)
+			repo := balanceTestRepository(b, env)
+			first, err := repo.PurchaseWithBalance(env.ctx, params)
+			if err != nil {
+				b.Fatal(err)
+			}
+			status := GetBalancePurchaseParams{Identity: params.Identity, OrderID: first.OrderID}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				switch scenario {
+				case "create":
+					params.RequestID = "bench-" + strconv.Itoa(i)
+					_, err = repo.PurchaseWithBalance(env.ctx, params)
+				case "replay":
+					_, err = repo.PurchaseWithBalance(env.ctx, params)
+				case "status":
+					_, err = repo.GetBalancePurchase(env.ctx, status)
+				}
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

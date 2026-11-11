@@ -54,7 +54,11 @@
 | `Admin.UpdatePrice(ctx, params)` | `paymentsqlc.UpdateProductPriceParams`. | Обновляет цену. |
 | `Admin.DeletePrice(ctx, workspaceID, id)` | `workspaceID`, `id`. | Удаляет цену. |
 | `Admin.ListProductLimitCounters(ctx, params)` | `ProductLimitCounterListParams{WorkspaceID, AppID, ProductID, PlatformID, PlatformUserID, Page}`. | Возвращает счетчики лимитов продуктов; user scope разделен полным identity. |
-| `Admin.DeleteProductLimitCounter(ctx, params)` | `ProductLimitCounterDeleteParams{WorkspaceID, AppID, PlatformID, ProductID, CounterScope, PlatformUserID, WindowStart, WindowEnd}`. | Удаляет конкретный счетчик лимита продукта. |
+| `Admin.DeleteProductLimitCounter(ctx, params)` | `ProductLimitCounterDeleteParams{WorkspaceID, AppID, PlatformID, ProductID, CounterScope, PlatformUserID, WindowStart, WindowEnd}`. | Закрывает активное поколение счётчика для новых заказов. Действующие резервы внешних заказов сохраняются в исходном поколении. |
+| `User.PurchaseWithBalance(ctx, params)` | `PurchaseWithBalanceParams{Identity, ProductID, AssetCode, Quantity, RequestID, Locale}`; quantity > 0. | Creates one internal balance purchase per full identity and request ID, or returns its saved state before live catalog checks. Changed product, asset or quantity conflicts. |
+| `User.GetBalancePurchase(ctx, params)` | `GetBalancePurchaseParams{Identity, OrderID, RequestID}`; exactly one lookup key. | Returns the owner's purchase status and terminal reason. |
+| `Operational.GetBalanceDelivery(ctx, params)` | `BalanceDeliveryParams{WorkspaceID, OrderID}`. | Returns saved debit status, admission, attempt count, timing, last error, operation key and conflict marker. |
+| `Operational.RetryBalanceDelivery(ctx, params)` | `BalanceDeliveryParams{WorkspaceID, OrderID}`. | Retries the same nonterminal operation without interrupting an active lease. Returns whether it was rescheduled. |
 | `Admin.ListProviders(ctx)` | Только `ctx`. | Возвращает платежных провайдеров. |
 | `Admin.GetProvider(ctx, code)` | `code`. | Возвращает провайдера. |
 | `Admin.ListAssets(ctx)` | Только `ctx`. | Возвращает assets. |
@@ -75,8 +79,8 @@
 | `Admin.ListOrders(ctx, params)` | `OrderListParams{WorkspaceID, AppID, Status, ProductID, PlatformID, PlatformUserID, Page}`. | Возвращает платежные заказы; все фильтры, кроме `WorkspaceID`, опциональны. |
 | `Admin.ListUserOrders(ctx, params)` | `UserOrderListParams{Identity, Status, Page}`; `Identity{WorkspaceID, AppID, PlatformID, PlatformUserID}`. | Возвращает историю платежных заказов конкретного пользователя по полному идентификатору. |
 | `Admin.GetPaymentReport(ctx, params)` | `PaymentReportParams{WorkspaceID, Identity, IdentityRole, AppID, PlatformID, PlatformUserID, Status, ProductID, ProviderCode, AssetCode, CreatedFrom, CreatedUntil, MinAmountMinor, MaxAmountMinor, Sort, Direction, Page}`. | Единый метод списка и агрегированной статистики платежей. Возвращает страницу платежей, статусы заказов, покупки, количество товаров, уникальных покупателей и суммы по assets по тем же фильтрам. Каждая строка содержит `Initiator` и `Recipient` как полные `Identity`; отсутствующий фильтр не ограничивает выборку. |
-| `Admin.GetOrder(ctx, id)` | `id`. | Возвращает заказ. |
-| `Admin.GetOrderByPublicID(ctx, publicID)` | `publicID`. | Возвращает заказ по публичному id. |
+| `Admin.GetOrder(ctx, params)` | `OrderRefParams{WorkspaceID, ID}`. | Возвращает заказ. `limit_review_reason` указывает причину сверки оплаты, `limit_tracking_legacy` отмечает исторические лимиты без подтверждённой принадлежности резервов. |
+| `Admin.GetOrderByPublicID(ctx, params)` | `OrderPublicRefParams{WorkspaceID, PublicID}`. | Возвращает заказ по публичному ID, включая сведения о сверке. |
 | `Admin.UpdateOrderStatus(ctx, workspaceID, id, status)` | `workspaceID`, `id`, `status`. | Обновляет статус заказа. |
 | `Admin.ListPaymentAttempts(ctx, params)` | `AttemptListParams{WorkspaceID, OrderID, ProviderCode, Status, Page}`. | Возвращает попытки оплаты. |
 | `Admin.GetPaymentAttempt(ctx, id)` | `id`. | Возвращает попытку оплаты. |

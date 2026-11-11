@@ -129,6 +129,9 @@ func (r *PaymentRepository) ApplyProviderRefund(
 		if err != nil {
 			return err
 		}
+		if attempt.ProviderCode == BalanceProviderCode {
+			return ErrBalanceUnsupported
+		}
 
 		if order.WorkspaceID != params.WorkspaceID {
 			return sql.ErrNoRows
@@ -221,16 +224,14 @@ func (r *PaymentRepository) ApplyProviderRefund(
 			return ErrOrderStateInvalid
 		}
 
-		if _, err := txRepo.q.MarkFulfillmentRevokedForOrder(
-			ctx,
-			order.ID,
-		); err != nil {
-			return err
-		}
-
-		fulfillment, err := txRepo.q.GetFulfillmentForOrder(ctx, order.ID)
+		fulfillmentID, err := txRepo.fulfillmentIDForReversal(ctx, order, attempt.ID)
 		if err != nil {
 			return err
+		}
+		if fulfillmentID != 0 {
+			if _, err := txRepo.q.MarkFulfillmentRevokedForOrder(ctx, order.ID); err != nil {
+				return err
+			}
 		}
 
 		if _, err := txRepo.q.DecrementProductLimitCountersForRefund(
@@ -250,11 +251,15 @@ func (r *PaymentRepository) ApplyProviderRefund(
 			return err
 		}
 
+		if fulfillmentID == 0 {
+			return nil
+		}
+
 		return txRepo.enqueuePaymentRefundedCallback(
 			ctx,
 			order,
 			attempt,
-			uint64(fulfillment.ID),
+			fulfillmentID,
 			result.RefundID,
 			params.Reason,
 		)
@@ -415,6 +420,9 @@ func (r *PaymentRepository) CreateRefund(
 		if err != nil {
 			return err
 		}
+		if attempt.ProviderCode == BalanceProviderCode {
+			return ErrBalanceUnsupported
+		}
 
 		if order.WorkspaceID != workspaceID ||
 			uint64(attempt.OrderID) != params.OrderID ||
@@ -546,6 +554,9 @@ func (r *PaymentRepository) CreateIdempotentRefund(
 		order, err := txRepo.q.LockPaymentOrder(ctx, attempt.OrderID)
 		if err != nil {
 			return err
+		}
+		if attempt.ProviderCode == BalanceProviderCode {
+			return ErrBalanceUnsupported
 		}
 
 		if order.WorkspaceID != workspaceID ||
@@ -691,6 +702,9 @@ func (r *PaymentRepository) FinalizeRefund(
 		if err != nil {
 			return err
 		}
+		if attempt.ProviderCode == BalanceProviderCode {
+			return ErrBalanceUnsupported
+		}
 
 		refund, err := txRepo.q.LockPaymentRefund(ctx, int64(params.RefundID))
 		if err != nil {
@@ -781,18 +795,18 @@ func (r *PaymentRepository) FinalizeRefund(
 			return ErrOrderStateInvalid
 		}
 
-		if rows, err := txRepo.q.MarkFulfillmentRevokedForOrder(
-			ctx,
-			order.ID,
-		); err != nil {
-			return err
-		} else if rows != 1 {
-			return ErrOrderStateInvalid
-		}
-
-		fulfillment, err := txRepo.q.GetFulfillmentForOrder(ctx, order.ID)
+		fulfillmentID, err := txRepo.fulfillmentIDForReversal(ctx, order, attempt.ID)
 		if err != nil {
 			return err
+		}
+		if fulfillmentID != 0 {
+			rows, err := txRepo.q.MarkFulfillmentRevokedForOrder(ctx, order.ID)
+			if err != nil {
+				return err
+			}
+			if rows != 1 {
+				return ErrOrderStateInvalid
+			}
 		}
 
 		if _, err := txRepo.q.DecrementProductLimitCountersForRefund(
@@ -802,15 +816,40 @@ func (r *PaymentRepository) FinalizeRefund(
 			return err
 		}
 
+		if fulfillmentID == 0 {
+			return nil
+		}
+
 		return txRepo.enqueuePaymentRefundedCallback(
 			ctx,
 			order,
 			attempt,
-			uint64(fulfillment.ID),
+			fulfillmentID,
 			params.RefundID,
 			nilIfEmpty(params.Reason),
 		)
 	})
+}
+
+// A confirmed payment awaiting limit review may have no grant to revoke.
+func (r *PaymentRepository) fulfillmentIDForReversal(
+	ctx context.Context,
+	order sqlc.PaymentOrder,
+	attemptID int64,
+) (uint64, error) {
+	if order.LimitReviewAttemptID.Valid && order.LimitReviewAttemptID.Int64 != attemptID {
+		return 0, ErrPaymentMismatch
+	}
+
+	fulfillment, err := r.q.GetFulfillmentForOrder(ctx, order.ID)
+	if errors.Is(err, sql.ErrNoRows) && order.LimitReviewAttemptID.Valid {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(fulfillment.ID), nil
 }
 
 func refundReservesAmount(status string) bool {
@@ -923,13 +962,23 @@ func (r *PaymentRepository) UpdateAttemptStatus(
 	id uint64,
 	status string,
 ) error {
-	return r.q.UpdatePaymentAttemptStatus(
+	rows, err := r.q.UpdateExternalPaymentAttemptStatus(
 		ctx,
-		sqlc.UpdatePaymentAttemptStatusParams{
+		sqlc.UpdateExternalPaymentAttemptStatusParams{
 			ID:     int64(id),
 			Status: sqlc.PaymentAttemptStatus(status),
 		},
 	)
+	if err == nil && rows == 0 {
+		attempt, lookupErr := r.q.AdminGetPaymentAttempt(ctx, int64(id))
+		if lookupErr == nil && attempt.ProviderCode == BalanceProviderCode {
+			return ErrBalanceUnsupported
+		}
+		if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+			return lookupErr
+		}
+	}
+	return err
 }
 
 func (r *PaymentRepository) UpdateOrderStatus(
@@ -946,6 +995,12 @@ func (r *PaymentRepository) UpdateOrderStatus(
 	var rows int64
 
 	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
+		// Follow the attempt -> order lock order used by charge admission.
+		if _, err := txRepo.q.LockPaymentAttemptsForOrder(ctx, sqlc.LockPaymentAttemptsForOrderParams{
+			WorkspaceID: workspaceID, OrderID: int64(id),
+		}); err != nil {
+			return err
+		}
 		order, err := txRepo.q.LockPaymentOrder(ctx, int64(id))
 		if err != nil {
 			return err
@@ -966,6 +1021,19 @@ func (r *PaymentRepository) UpdateOrderStatus(
 			(order.Status == sqlc.PaymentOrderStatusDraft ||
 				order.Status == sqlc.PaymentOrderStatusPendingPayment)
 		if shouldRelease {
+			balance, err := txRepo.q.GetBalancePurchaseForOrder(ctx, order.ID)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if err == nil && balance.AdmittedAt.Valid && balance.Outcome == "" {
+				return ErrBalanceInProgress
+			}
+			if err == nil {
+				if err := txRepo.closeQueuedBalancePurchase(ctx, order.ID, "order_"+status, sqlc.PaymentAttemptStatus(status)); err != nil {
+					return err
+				}
+			}
+
 			if err := txRepo.releaseOrderLimits(ctx, order); err != nil {
 				return err
 			}

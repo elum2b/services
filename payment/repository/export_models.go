@@ -83,6 +83,7 @@ type ExportProductItem struct {
 type ExportPrice struct {
 	ID                           uint64    `json:"id,omitempty"`
 	AssetCode                    string    `json:"asset_code"`
+	InternalAssetScale           *uint16   `json:"internal_asset_scale,omitempty"`
 	ListAmountMinor              uint64    `json:"list_amount_minor"`
 	DiscountAmountMinor          uint64    `json:"discount_amount_minor"`
 	PricingMode                  string    `json:"pricing_mode"`
@@ -119,12 +120,13 @@ type ReferenceItemDependencyChecker interface {
 }
 
 type ImportDependencyReport struct {
-	RequiredAssets       []string        `json:"required_assets,omitempty"`
-	RequiredRates        []ImportRateKey `json:"required_rates,omitempty"`
-	RequiredReferenceIDs []string        `json:"required_reference_item_keys,omitempty"`
-	MissingAssets        []string        `json:"missing_assets,omitempty"`
-	MissingRates         []ImportRateKey `json:"missing_rates,omitempty"`
-	MissingReferenceIDs  []string        `json:"missing_reference_item_keys,omitempty"`
+	RequiredAssets            []string        `json:"required_assets,omitempty"`
+	RequiredRates             []ImportRateKey `json:"required_rates,omitempty"`
+	RequiredReferenceIDs      []string        `json:"required_reference_item_keys,omitempty"`
+	MissingAssets             []string        `json:"missing_assets,omitempty"`
+	IncompatibleBalanceAssets []string        `json:"incompatible_balance_assets,omitempty"`
+	MissingRates              []ImportRateKey `json:"missing_rates,omitempty"`
+	MissingReferenceIDs       []string        `json:"missing_reference_item_keys,omitempty"`
 }
 
 type ImportRateKey struct {

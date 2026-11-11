@@ -114,7 +114,16 @@ order сохраняет payer отдельно от recipient; admin report в�
 
 ### 5. Fulfillment
 
-`payment_fulfillment` и `payment_fulfillment_item` фиксируют выдачу товара. Лимиты покупок должны считать только успешно оплаченные/выданные заказы, а не просто созданные pending-заказы. Если нужен anti-oversell для жестко лимитированных товаров, pending-заказы можно учитывать только до `reserved_until`.
+`payment_fulfillment` и `payment_fulfillment_item` фиксируют выдачу товара.
+Пока заказ ожидает оплаты, его квота учитывается в `reserved_count`. При
+создании заказа каждый резерв записывается в `payment_order_limit_reservation`
+с количеством и поколением глобального или пользовательского счётчика.
+Подтверждение оплаты блокирует сохранившиеся счётчики в порядке global, user.
+Все обязательные резервы переходят в `paid_count` вместе. Если принадлежность
+резерва не подтверждается, заказ уходит на сверку. Сброс закрывает поколение
+для новых резервов, сохраняя его для зачисления по действующим внешним
+заказам. Новый резерв создаётся в активном поколении того же окна. Возврат
+и chargeback корректируют то поколение, в которое зачислили покупку.
 
 ### 6. Refund
 
@@ -205,3 +214,33 @@ Fulfillment:
 - Platega API: https://docs.platega.io/
 - Platega transaction callback: https://docs.platega.io/callback-%D0%BE%D0%B1-%D0%B8%D0%B7%D0%BC%D0%B5%D0%BD%D0%B5%D0%BD%D0%B8%D0%B8-%D1%81%D1%82%D0%B0%D1%82%D1%83%D1%81%D0%B0-%D1%82%D1%80%D0%B0%D0%BD%D0%B7%D0%B0%D0%BA%D1%86%D0%B8%D0%B8-29209725e0
 - VK Bridge order box reference: https://github.com/VKCOM/vk-mini-apps-api/blob/master/docs/classes/vkminiappapi.md
+
+## Internal balance protocol
+
+`payment_balance_purchase` is the durable operation record. It owns a unique
+request ID within the full user scope, one order and attempt, an immutable
+charge payload, the persisted handler route and debit admission. Price scale
+and multiplied rewards belong to the payload, independently of later catalog
+edits. `internal_balance` is a reserved provider code; VK and Stars retain
+their existing `platform_internal` semantics.
+
+The balance outbox uses its own callback table, so ordinary fulfillment
+workers and debit workers have disjoint claim queries. Calls happen after
+admission commits. A handler must atomically deduplicate, debit, grant and
+record its terminal result in the application database. No game SQL belongs
+to Payment. Payment then persists fulfillment or rejection before ACK.
+
+Lock order is attempt, order, global counter, user counter. Counter reset
+first locks the exact counter generation, then checks admitted operations in
+a new SQL statement. This fresh statement is required under READ COMMITTED:
+a predicate evaluated before waiting for admission could otherwise miss its
+commit. If reset commits first, the retired generation is ineligible for debit
+admission. If admission commits first, reset cannot retire that generation
+while the debit outcome is unknown. Cancellation and expiry acquire the same attempt/order
+locks and cannot release an admitted, unresolved debit. Bootstrap preserves
+admission, outbox events, operation keys and reservation generations.
+
+An unknown or invalid result keeps the reservation. Contradictory terminal
+results set a durable conflict marker without overwriting the first result.
+Operator retries preserve live leases and the original operation key.
+Successful internal fulfillment never emits the ordinary grant callback.

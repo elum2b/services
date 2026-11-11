@@ -27,9 +27,7 @@ func (e *ImportDependenciesMissingError) Error() string {
 }
 
 func (e *ImportDependenciesMissingError) Missing() bool {
-	return len(e.Report.MissingAssets) > 0 ||
-		len(e.Report.MissingRates) > 0 ||
-		len(e.Report.MissingReferenceIDs) > 0
+	return dependenciesMissing(e.Report)
 }
 
 func (r *PaymentRepository) PreviewImport(
@@ -293,16 +291,44 @@ func (r *PaymentRepository) preflightImport(
 		return ImportDependencyReport{}, err
 	}
 
-	availableAssets := make(map[string]bool, len(assets))
+	availableAssets := make(map[string]paymentsqlc.PaymentAsset, len(assets))
 	for _, asset := range assets {
-		availableAssets[asset.Code] = asset.IsActive
+		availableAssets[asset.Code] = asset
 	}
 
 	for _, code := range report.RequiredAssets {
-		if !availableAssets[code] {
+		if !availableAssets[code].IsActive {
 			report.MissingAssets = append(report.MissingAssets, code)
 		}
 	}
+
+	incompatible := make(map[string]struct{})
+	for _, product := range products {
+		for _, price := range product.Prices {
+			if price.InternalAssetScale == nil {
+				continue
+			}
+			asset := availableAssets[price.AssetCode]
+			if asset.IsActive && (asset.AssetKind != paymentsqlc.PaymentAssetAssetKindInternalCurrency ||
+				uint16(asset.Scale) != *price.InternalAssetScale) {
+				incompatible[price.AssetCode] = struct{}{}
+			}
+		}
+	}
+	// Bindings are local server configuration and scoped to the destination.
+	// Their handler keys were validated when the service started.
+	for key := range r.balanceBindings {
+		if key.WorkspaceID != workspaceID {
+			continue
+		}
+		if _, required := assetSet[key.AssetCode]; required {
+			asset := availableAssets[key.AssetCode]
+			if asset.IsActive && asset.AssetKind != paymentsqlc.PaymentAssetAssetKindInternalCurrency {
+				incompatible[key.AssetCode] = struct{}{}
+			}
+		}
+	}
+	report.IncompatibleBalanceAssets = sortedStrings(incompatible)
 
 	if len(report.RequiredRates) > 0 {
 		assetCodes := make([]string, 0, len(report.RequiredRates))
@@ -358,7 +384,7 @@ func (r *PaymentRepository) preflightImport(
 
 func dependenciesMissing(report ImportDependencyReport) bool {
 	return len(report.MissingAssets) > 0 || len(report.MissingRates) > 0 ||
-		len(report.MissingReferenceIDs) > 0
+		len(report.MissingReferenceIDs) > 0 || len(report.IncompatibleBalanceAssets) > 0
 }
 
 func importDependencyPackage(
@@ -1579,6 +1605,10 @@ func validateExportPrice(price ExportPrice, path string) error {
 			"%s.asset_code must not be blank or contain surrounding whitespace",
 			path,
 		)
+	}
+
+	if price.InternalAssetScale != nil && *price.InternalAssetScale > 18 {
+		return fmt.Errorf("%s.internal_asset_scale is invalid", path)
 	}
 
 	if price.ListAmountMinor > math.MaxInt64 ||

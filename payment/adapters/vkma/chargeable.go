@@ -109,7 +109,7 @@ func (a *VKMA) ChargeableForWorkspace(
 		return nil, err
 	}
 
-	if _, err := a.repository.CompleteAttempt(
+	completed, err := a.repository.CompleteAttempt(
 		ctx,
 		repository.CompleteAttemptParams{
 			WorkspaceID:       workspaceID,
@@ -119,11 +119,12 @@ func (a *VKMA) ChargeableForWorkspace(
 			AmountMinor:       attempt.AmountMinor,
 			AssetCode:         AssetCode,
 		},
-	); err != nil {
+	)
+	if err != nil {
 		return nil, err
 	}
 
-	if params.SubscriptionID > 0 {
+	if params.SubscriptionID > 0 && completed.FulfillmentID != nil {
 		if _, err := a.repository.UpsertSubscription(
 			ctx,
 			repository.SubscriptionUpsertParams{

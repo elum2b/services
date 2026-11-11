@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -48,6 +49,7 @@ type Payment struct {
 	refund                       *refund.Refund
 	subscription                 *subscription.Subscription
 	callbacks                    *callbackutil.Store
+	balanceHandlers              map[string]BalanceChargeHandler
 	client                       *sqlwrap.Client
 	ownsClient                   bool
 	rootCtx                      context.Context
@@ -92,6 +94,9 @@ func NewWithDatabase(
 	db *sql.DB,
 	options Options,
 ) (*Payment, error) {
+	if err := validateBalanceOptions(options); err != nil {
+		return nil, err
+	}
 	client, err := sqlwrap.New(db, toSQLWrapOptions(options))
 	if err != nil {
 		return nil, serviceerrors.Wrap(
@@ -106,6 +111,8 @@ func NewWithDatabase(
 		_ = service.Close()
 		return nil, err
 	}
+
+	service.startBalanceWorker()
 
 	return service, nil
 }
@@ -173,6 +180,10 @@ func open(ctx context.Context, params DatabaseParams) (*Payment, error) {
 
 	if params.Database == "" {
 		return nil, ErrDatabaseNameRequired
+	}
+
+	if err := validateBalanceOptions(params.Options); err != nil {
+		return nil, err
 	}
 
 	db, err := openPostgres(ctx, params)
@@ -295,6 +306,7 @@ func configureArchiveJobs(
 
 func (a *Payment) startWorkers() {
 	a.Admin.StartArchiveJobs(a.rootCtx)
+	a.startBalanceWorker()
 }
 
 func openPostgres(ctx context.Context, params DatabaseParams) (*sql.DB, error) {
@@ -348,6 +360,7 @@ func (a *Payment) adopt(running *Payment) {
 	a.subscription = running.subscription
 	a.Adapters = running.Adapters
 	a.callbacks = running.callbacks
+	a.balanceHandlers = running.balanceHandlers
 	a.client = running.client
 	a.ownsClient = running.ownsClient
 	a.rootCtx = running.rootCtx
@@ -375,6 +388,7 @@ func newAPI(
 ) *Payment {
 	rootCtx, rootCancel := context.WithCancel(normalizeLifecycleContext(ctx))
 	repositoryOptions := repository.Options{
+		BalanceBindings:          options.BalanceBindings,
 		QueryTimeout:             options.QueryTimeout,
 		CacheL1Delay:             options.CacheL1Delay,
 		CacheL2Delay:             options.CacheL2Delay,
@@ -442,8 +456,9 @@ func newAPI(
 			db.DB(),
 			callbackutil.PaymentTable,
 		),
-		rootCtx:    rootCtx,
-		rootCancel: rootCancel,
+		balanceHandlers: maps.Clone(options.BalanceHandlers),
+		rootCtx:         rootCtx,
+		rootCancel:      rootCancel,
 		pricing: repository.NewPaymentRepositoryWithOptions(
 			db,
 			repositoryOptions,
