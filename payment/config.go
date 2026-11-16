@@ -31,7 +31,9 @@ type Codec interface {
 }
 
 type Options struct {
-	// BalanceBindings maps a workspace, app and currency to a trusted handler key.
+	// BalanceBindings maps an exact workspace/app/currency, a workspace/app
+	// (empty AssetCode), or a workspace (zero AppID and empty AssetCode) to a
+	// trusted handler key. More specific routes take precedence.
 	BalanceBindings map[BalanceBinding]string
 	// BalanceHandlers includes all keys needed to drain persisted purchases, even
 	// if their bindings no longer accept new purchases.

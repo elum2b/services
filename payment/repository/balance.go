@@ -145,9 +145,7 @@ func (r *PaymentRepository) PurchaseWithBalance(ctx context.Context, params Purc
 			return err
 		}
 
-		handlerKey := tx.balanceBindings[BalanceBindingKey{
-			WorkspaceID: identity.WorkspaceID, AppID: identity.AppID, AssetCode: params.AssetCode,
-		}]
+		handlerKey := tx.balanceHandlerKey(identity, params.AssetCode)
 		if handlerKey == "" {
 			return ErrBalanceUnavailable
 		}
@@ -198,6 +196,20 @@ func (r *PaymentRepository) PurchaseWithBalance(ctx context.Context, params Purc
 		return BalancePurchase{}, err
 	}
 	return purchase, nil
+}
+
+func (r *PaymentRepository) balanceHandlerKey(identity services.Identity, assetCode string) string {
+	key := BalanceBindingKey{WorkspaceID: identity.WorkspaceID, AppID: identity.AppID, AssetCode: assetCode}
+	if handler := r.balanceBindings[key]; handler != "" {
+		return handler
+	}
+
+	key.AssetCode = ""
+	if handler := r.balanceBindings[key]; handler != "" {
+		return handler
+	}
+
+	return r.balanceBindings[BalanceBindingKey{WorkspaceID: identity.WorkspaceID}]
 }
 
 func (r *PaymentRepository) createBalanceAttempt(ctx context.Context, order Order, identity services.Identity, scale uint16) (BalanceChargeRequest, error) {

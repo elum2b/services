@@ -52,8 +52,8 @@ func validateBalanceOptions(options Options) error {
 		}
 	}
 	for key, handler := range options.BalanceBindings {
-		if services.ValidateWorkspaceID(key.WorkspaceID) != nil || key.AppID <= 0 ||
-			!repository.ValidBalanceKey(key.AssetCode, 32) {
+		if services.ValidateWorkspaceID(key.WorkspaceID) != nil || key.AppID < 0 ||
+			(key.AssetCode != "" && (key.AppID == 0 || !repository.ValidBalanceKey(key.AssetCode, 32))) {
 			return ErrBalanceRequestInvalid
 		}
 		if options.BalanceHandlers[handler] == nil {
