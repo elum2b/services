@@ -39,17 +39,21 @@ func mapProduct(product repository.Product) *ProductModel {
 		},
 		Limit: Limit{
 			Global: LimitRule{
-				Limit:         product.Limit.Global.Limit,
-				Interval:      product.Limit.Global.Interval,
-				IntervalCount: product.Limit.Global.IntervalCount,
+				Limit:          product.Limit.Global.Limit,
+				Interval:       product.Limit.Global.Interval,
+				IntervalCount:  product.Limit.Global.IntervalCount,
+				PurchasedCount: product.Limit.Global.PurchasedCount,
+				RemainingCount: product.Limit.Global.RemainingCount,
 				LockUntil: sqlwrap.NullTimePtr(
 					product.Limit.Global.LockUntil,
 				),
 			},
 			User: LimitRule{
-				Limit:         product.Limit.User.Limit,
-				Interval:      product.Limit.User.Interval,
-				IntervalCount: product.Limit.User.IntervalCount,
+				Limit:          product.Limit.User.Limit,
+				Interval:       product.Limit.User.Interval,
+				IntervalCount:  product.Limit.User.IntervalCount,
+				PurchasedCount: product.Limit.User.PurchasedCount,
+				RemainingCount: product.Limit.User.RemainingCount,
 				LockUntil: sqlwrap.NullTimePtr(
 					product.Limit.User.LockUntil,
 				),

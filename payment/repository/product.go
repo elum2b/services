@@ -139,10 +139,12 @@ type ProductLimit struct {
 }
 
 type ProductLimitRule struct {
-	Limit         int32
-	Interval      string
-	IntervalCount int32
-	LockUntil     sql.NullTime
+	Limit          int32
+	Interval       string
+	IntervalCount  int32
+	LockUntil      sql.NullTime
+	PurchasedCount uint64
+	RemainingCount *uint64
 }
 
 type ProductItem struct {
@@ -338,8 +340,9 @@ func (r *PaymentRepository) attachProductLimitLocks(
 ) error {
 	var err error
 
-	product.Limit.Global.LockUntil, err = r.getProductLimitLock(
+	err = r.attachProductLimitState(
 		ctx,
+		&product.Limit.Global,
 		productLimitQuery{
 			workspaceID:    product.WorkspaceID,
 			appID:          0,
@@ -355,8 +358,9 @@ func (r *PaymentRepository) attachProductLimitLocks(
 		return err
 	}
 
-	product.Limit.User.LockUntil, err = r.getProductLimitLock(
+	err = r.attachProductLimitState(
 		ctx,
+		&product.Limit.User,
 		productLimitQuery{
 			workspaceID:    product.WorkspaceID,
 			appID:          appID,
@@ -519,8 +523,9 @@ func (r *PaymentRepository) GetProductPreview(
 		return ProductPreview{}, err
 	}
 
-	product.Limit.Global.LockUntil, err = r.getProductLimitLock(
+	err = r.attachProductLimitState(
 		ctx,
+		&product.Limit.Global,
 		productLimitQuery{
 			workspaceID:    product.WorkspaceID,
 			appID:          0,
@@ -536,8 +541,9 @@ func (r *PaymentRepository) GetProductPreview(
 		return ProductPreview{}, err
 	}
 
-	product.Limit.User.LockUntil, err = r.getProductLimitLock(
+	err = r.attachProductLimitState(
 		ctx,
+		&product.Limit.User,
 		productLimitQuery{
 			workspaceID:    product.WorkspaceID,
 			appID:          params.AppID,
@@ -891,15 +897,17 @@ func (r *PaymentRepository) attachProductsLimitLocks(
 		return err
 	}
 
-	counts := make(map[string]uint64, len(rows))
+	counts := make(map[string]productLimitCounts, len(rows))
 	for _, row := range rows {
-		counts[productLimitCounterKey(row.ProductID, string(row.CounterScope), row.PlatformUserID, row.WindowStart, row.WindowEnd)] = uint64(
-			row.PaidCount,
-		)
+		key := productLimitCounterKey(row.ProductID, string(row.CounterScope), row.PlatformUserID, row.WindowStart, row.WindowEnd)
+		counts[key] = productLimitCounts{
+			paid:     uint64(row.PaidCount),
+			reserved: uint64(row.ReservedCount),
+		}
 	}
 
 	for index := range products {
-		attachProductListLimitLock(
+		attachProductListLimitState(
 			&products[index].Limit.Global,
 			products[index].ID,
 			"global",
@@ -907,7 +915,7 @@ func (r *PaymentRepository) attachProductsLimitLocks(
 			now,
 			counts,
 		)
-		attachProductListLimitLock(
+		attachProductListLimitState(
 			&products[index].Limit.User,
 			products[index].ID,
 			"user",
@@ -920,13 +928,13 @@ func (r *PaymentRepository) attachProductsLimitLocks(
 	return nil
 }
 
-func attachProductListLimitLock(
+func attachProductListLimitState(
 	rule *ProductLimitRule,
 	productID string,
 	scope string,
 	platformUserID string,
 	now time.Time,
-	counts map[string]uint64,
+	counts map[string]productLimitCounts,
 ) {
 	if rule.Limit <= 0 || rule.Interval == "UNLIMITED" {
 		return
@@ -937,11 +945,8 @@ func attachProductListLimitLock(
 		return
 	}
 
-	if counts[productLimitCounterKey(productID, scope, platformUserID, start, end)] >= uint64(
-		rule.Limit,
-	) {
-		rule.LockUntil = sql.NullTime{Time: end, Valid: true}
-	}
+	count := counts[productLimitCounterKey(productID, scope, platformUserID, start, end)]
+	rule.setCurrentWindow(count, end, 1)
 }
 
 func productLimitCounterKey(
@@ -951,9 +956,9 @@ func productLimitCounterKey(
 	start time.Time,
 	end time.Time,
 ) string {
-	return productID + "\x00" + scope + "\x00" + platformUserID + "\x00" + start.Format(
+	return productID + "\x00" + scope + "\x00" + platformUserID + "\x00" + start.UTC().Format(
 		time.RFC3339Nano,
-	) + "\x00" + end.Format(
+	) + "\x00" + end.UTC().Format(
 		time.RFC3339Nano,
 	)
 }
@@ -1178,18 +1183,42 @@ func (r *PaymentRepository) getProductLimitLock(
 	ctx context.Context,
 	query productLimitQuery,
 ) (sql.NullTime, error) {
-	if query.limit <= 0 || query.interval == "UNLIMITED" {
-		return sql.NullTime{}, nil
+	rule := ProductLimitRule{Limit: query.limit, Interval: query.interval, IntervalCount: query.intervalCount}
+	err := r.attachProductLimitState(ctx, &rule, query)
+	return rule.LockUntil, err
+}
+
+type productLimitCounts struct {
+	paid     uint64
+	reserved uint64
+}
+
+func (rule *ProductLimitRule) setCurrentWindow(count productLimitCounts, end time.Time, quantity uint64) {
+	rule.PurchasedCount = count.paid
+	remaining := uint64(rule.Limit) - min(uint64(rule.Limit), count.paid+count.reserved)
+	rule.RemainingCount = &remaining
+	if quantity > remaining {
+		rule.LockUntil = sql.NullTime{Time: end, Valid: true}
+	}
+}
+
+func (r *PaymentRepository) attachProductLimitState(
+	ctx context.Context,
+	rule *ProductLimitRule,
+	query productLimitQuery,
+) error {
+	if rule.Limit <= 0 || rule.Interval == "UNLIMITED" {
+		return nil
 	}
 
 	now, err := r.databaseNow(ctx)
 	if err != nil {
-		return sql.NullTime{}, err
+		return err
 	}
 
-	start, end, ok := limitWindow(query.interval, query.intervalCount, now)
+	start, end, ok := limitWindow(rule.Interval, rule.IntervalCount, now)
 	if !ok {
-		return sql.NullTime{}, nil
+		return nil
 	}
 
 	var scope sqlc.PaymentProductLimitCounterCounterScope
@@ -1203,7 +1232,7 @@ func (r *PaymentRepository) getProductLimitLock(
 		platformUserID = query.platformUserID
 	}
 
-	total, err := r.q.GetProductLimitCounterCount(
+	counts, err := r.q.GetProductLimitCounterCount(
 		ctx,
 		sqlc.GetProductLimitCounterCountParams{
 			WorkspaceID:    query.workspaceID,
@@ -1216,22 +1245,15 @@ func (r *PaymentRepository) getProductLimitLock(
 			WindowEnd:      end,
 		},
 	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return sql.NullTime{}, nil
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
 	}
 
-	if err != nil {
-		return sql.NullTime{}, err
-	}
-
-	amount := normalizeLimitAmount(query.amount)
-	limit := uint64(query.limit)
-
-	if amount <= limit && uint64(total) <= limit-amount {
-		return sql.NullTime{}, nil
-	}
-
-	return sql.NullTime{Time: end, Valid: true}, nil
+	rule.setCurrentWindow(productLimitCounts{
+		paid:     uint64(counts.PaidCount),
+		reserved: uint64(counts.ReservedCount),
+	}, end, normalizeLimitAmount(query.amount))
+	return nil
 }
 
 func normalizeLimitAmount(amount uint64) uint64 {

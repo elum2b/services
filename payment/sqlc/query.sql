@@ -1254,7 +1254,7 @@ WHERE pc.product_id = $1
 ORDER BY pc.locale;
 
 -- name: GetProductLimitCounterCount :one
-SELECT paid_count + reserved_count
+SELECT paid_count, reserved_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
   AND retired_at IS NULL
@@ -1275,13 +1275,15 @@ SELECT
     platform_user_id,
     window_start,
     window_end,
-    paid_count + reserved_count AS paid_count
+    paid_count,
+    reserved_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
   AND retired_at IS NULL
-  AND app_id IN (0, $2)
-  AND platform_id IN (0, $3)
-  AND platform_user_id IN ('', $4)
+  AND (
+      (counter_scope = 'global' AND app_id = 0 AND platform_id = 0 AND platform_user_id = '')
+      OR (counter_scope = 'user' AND app_id = $2 AND platform_id = $3 AND platform_user_id = $4)
+  )
   AND window_start <= $5
   AND window_end > $6
 ORDER BY product_id, counter_scope, platform_user_id;

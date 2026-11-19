@@ -16484,3 +16484,70 @@ UPDATE payment_balance_clb_event SET locked_until = now() - interval '1 second' 
 	assertReservationGenerationCounts(t, env, params.ProductID, 1, 0)
 	assertCallbackEvent(t, env.ctx, env.db, CallbackEventPaymentOrderFulfilled, purchase.OrderID, 0)
 }
+
+func TestPaymentCatalogReturnsPurchasedAndRemainingUnits(t *testing.T) {
+	env := setupPaymentIntegrationTest(t)
+	params := setupBalanceProduct(t, env, true)
+	repo := balanceTestRepository(t, env)
+
+	assertLimits := func(identity services.Identity, purchased, remaining, userPurchased, userRemaining uint64) {
+		t.Helper()
+		get, err := env.api.User.GetProduct(env.ctx, product.GetParams{
+			Identity: identity, ProductID: params.ProductID, AssetCode: params.AssetCode,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		list, err := env.api.User.ListProducts(env.ctx, product.ListParams{
+			Identity: identity, AssetCode: params.AssetCode,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(list) != 1 || list[0].ID != params.ProductID {
+			t.Fatalf("expected the balance product in the catalog: %+v", list)
+		}
+		for _, value := range []product.ProductModel{*get, list[0]} {
+			for _, want := range []struct {
+				rule      product.LimitRule
+				purchased uint64
+				remaining uint64
+			}{
+				{value.Limit.Global, purchased, remaining},
+				{value.Limit.User, userPurchased, userRemaining},
+			} {
+				if want.rule.PurchasedCount != want.purchased ||
+					want.rule.RemainingCount == nil || *want.rule.RemainingCount != want.remaining ||
+					(want.rule.LockUntil != nil) != (want.remaining == 0) {
+					t.Fatalf("limit = %+v, want purchased=%d remaining=%d", want.rule, want.purchased, want.remaining)
+				}
+			}
+		}
+	}
+
+	assertLimits(params.Identity, 0, 2, 0, 2)
+	purchase, err := repo.PurchaseWithBalance(env.ctx, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLimits(params.Identity, 0, 1, 0, 1)
+
+	other := params.Identity
+	other.PlatformUserID = "other-balance-player"
+	assertLimits(other, 0, 1, 0, 2)
+
+	eventID := balanceTestEvent(t, env, purchase.OrderID)
+	request, _, err := repo.BeginBalanceCharge(env.ctx, eventID, map[string]BalanceChargeHandler{
+		"game": func(context.Context, BalanceChargeRequest) (BalanceChargeResult, error) {
+			return BalanceChargeResult{}, nil
+		},
+	})
+	if err != nil || request == nil {
+		t.Fatalf("admit balance purchase: %+v %v", request, err)
+	}
+	if err := repo.FinishBalanceCharge(env.ctx, eventID, BalanceChargeResult{Outcome: BalanceChargeSucceeded}); err != nil {
+		t.Fatal(err)
+	}
+	assertLimits(params.Identity, 1, 1, 1, 1)
+	assertLimits(other, 1, 1, 0, 2)
+}

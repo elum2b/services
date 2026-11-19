@@ -101,11 +101,16 @@ type Limit struct {
 	User   LimitRule `json:"user"`
 }
 
+// LimitRule describes the current limit window. PurchasedCount covers paid
+// units, while RemainingCount also excludes units held by outstanding orders.
+// An unlimited rule has no RemainingCount.
 type LimitRule struct {
-	Limit         int32      `json:"limit"`
-	Interval      string     `json:"interval"`
-	IntervalCount int32      `json:"interval_count"`
-	LockUntil     *time.Time `json:"lock_until,omitempty"`
+	Limit          int32      `json:"limit"`
+	Interval       string     `json:"interval"`
+	IntervalCount  int32      `json:"interval_count"`
+	LockUntil      *time.Time `json:"lock_until,omitempty"`
+	PurchasedCount uint64     `json:"purchased_count"`
+	RemainingCount *uint64    `json:"remaining_count,omitempty"`
 }
 
 type ProductItem struct {

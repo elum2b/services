@@ -7031,7 +7031,7 @@ func (q *Queries) GetProductLimitConfig(ctx context.Context, arg GetProductLimit
 }
 
 const getProductLimitCounterCount = `-- name: GetProductLimitCounterCount :one
-SELECT paid_count + reserved_count
+SELECT paid_count, reserved_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
   AND retired_at IS NULL
@@ -7056,7 +7056,12 @@ type GetProductLimitCounterCountParams struct {
 	WindowEnd      time.Time                              `json:"window_end"`
 }
 
-func (q *Queries) GetProductLimitCounterCount(ctx context.Context, arg GetProductLimitCounterCountParams) (int32, error) {
+type GetProductLimitCounterCountRow struct {
+	PaidCount     int64 `json:"paid_count"`
+	ReservedCount int64 `json:"reserved_count"`
+}
+
+func (q *Queries) GetProductLimitCounterCount(ctx context.Context, arg GetProductLimitCounterCountParams) (GetProductLimitCounterCountRow, error) {
 	row := q.queryRow(ctx, q.getProductLimitCounterCountStmt, getProductLimitCounterCount,
 		arg.WorkspaceID,
 		arg.AppID,
@@ -7067,9 +7072,9 @@ func (q *Queries) GetProductLimitCounterCount(ctx context.Context, arg GetProduc
 		arg.WindowStart,
 		arg.WindowEnd,
 	)
-	var column_1 int32
-	err := row.Scan(&column_1)
-	return column_1, err
+	var i GetProductLimitCounterCountRow
+	err := row.Scan(&i.PaidCount, &i.ReservedCount)
+	return i, err
 }
 
 const getProductPreviewRows = `-- name: GetProductPreviewRows :many
@@ -8310,13 +8315,15 @@ SELECT
     platform_user_id,
     window_start,
     window_end,
-    paid_count + reserved_count AS paid_count
+    paid_count,
+    reserved_count
 FROM payment_product_limit_counter
 WHERE workspace_id = $1
   AND retired_at IS NULL
-  AND app_id IN (0, $2)
-  AND platform_id IN (0, $3)
-  AND platform_user_id IN ('', $4)
+  AND (
+      (counter_scope = 'global' AND app_id = 0 AND platform_id = 0 AND platform_user_id = '')
+      OR (counter_scope = 'user' AND app_id = $2 AND platform_id = $3 AND platform_user_id = $4)
+  )
   AND window_start <= $5
   AND window_end > $6
 ORDER BY product_id, counter_scope, platform_user_id
@@ -8338,7 +8345,8 @@ type ListActiveProductLimitCountersRow struct {
 	PlatformUserID string                                 `json:"platform_user_id"`
 	WindowStart    time.Time                              `json:"window_start"`
 	WindowEnd      time.Time                              `json:"window_end"`
-	PaidCount      int32                                  `json:"paid_count"`
+	PaidCount      int64                                  `json:"paid_count"`
+	ReservedCount  int64                                  `json:"reserved_count"`
 }
 
 func (q *Queries) ListActiveProductLimitCounters(ctx context.Context, arg ListActiveProductLimitCountersParams) ([]ListActiveProductLimitCountersRow, error) {
@@ -8365,6 +8373,7 @@ func (q *Queries) ListActiveProductLimitCounters(ctx context.Context, arg ListAc
 			&i.WindowStart,
 			&i.WindowEnd,
 			&i.PaidCount,
+			&i.ReservedCount,
 		); err != nil {
 			return nil, err
 		}
