@@ -2,6 +2,7 @@ package vkma
 
 import (
 	"context"
+	"database/sql"
 	"strconv"
 
 	"github.com/elum-utils/sign/vkmashop"
@@ -45,7 +46,7 @@ func (a *VKMA) getProduct(
 
 	ctx = mergedCtx
 
-	product, err := a.repository.GetProduct(ctx, repository.ProductGetParams{
+	return a.getItem(ctx, repository.ProductGetParams{
 		WorkspaceID:    workspaceID,
 		AppID:          int64(params.AppID),
 		PlatformID:     PlatformID,
@@ -54,12 +55,23 @@ func (a *VKMA) getProduct(
 		AssetCode:      AssetCode,
 		Locale:         normalizeLocale(params.Lang),
 	})
+}
+
+func (a *VKMA) getItem(
+	ctx context.Context,
+	params repository.ProductGetParams,
+) (*ItemResponse, error) {
+	product, err := a.repository.GetProduct(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 
+	if params.AssetCode == OKAssetCode && product.Price.PayableAmountMinor == 0 {
+		return nil, sql.ErrNoRows
+	}
+
 	expiration := uint64(0)
-	if product.PeriodSeconds.Valid && product.PeriodSeconds.Int64 > 0 {
+	if params.AssetCode != OKAssetCode && product.PeriodSeconds.Valid && product.PeriodSeconds.Int64 > 0 {
 		expiration = uint64(product.PeriodSeconds.Int64)
 	}
 

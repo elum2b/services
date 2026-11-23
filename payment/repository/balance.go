@@ -161,7 +161,7 @@ func (r *PaymentRepository) PurchaseWithBalance(ctx context.Context, params Purc
 			WorkspaceID: identity.WorkspaceID, AppID: identity.AppID, PlatformID: identity.PlatformID,
 			PlatformUserID: identity.PlatformUserID, ProductID: params.ProductID, AssetCode: params.AssetCode,
 			Quantity: params.Quantity, Locale: params.Locale,
-		}, &identity)
+		}, &identity, nil)
 		if err != nil {
 			return err
 		}

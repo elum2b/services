@@ -1168,6 +1168,7 @@ ON CONFLICT (code) DO NOTHING;
 INSERT INTO payment_asset (code, title, asset_kind, scale, chain, network, contract_address, is_active)
 VALUES
     ('VOTE', 'VK Votes', 'platform_currency', 0, NULL, NULL, NULL, true),
+    ('OK', 'OKs', 'platform_currency', 0, NULL, NULL, NULL, true),
     ('XTR', 'Telegram Stars', 'platform_currency', 0, NULL, NULL, NULL, true),
     ('RUB', 'Russian Ruble', 'fiat', 2, NULL, NULL, NULL, true),
     ('TON', 'Toncoin', 'crypto_native', 9, 'ton', 'mainnet', NULL, true),
@@ -1196,6 +1197,7 @@ ON CONFLICT (code) DO UPDATE SET
 INSERT INTO payment_provider_asset (provider_code, asset_code, is_active)
 VALUES
     ('vkma', 'VOTE', true),
+    ('vkma', 'OK', true),
     ('telegram_stars', 'XTR', true),
     ('ton', 'TON', true),
     ('ton', 'USDT_TON', true),

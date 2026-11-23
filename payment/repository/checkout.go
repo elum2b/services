@@ -273,13 +273,14 @@ func (r *PaymentRepository) CreateOrder(
 	ctx context.Context,
 	params OrderCreateParams,
 ) (Order, error) {
-	return r.createOrder(ctx, params, nil)
+	return r.createOrder(ctx, params, nil, nil)
 }
 
 func (r *PaymentRepository) createOrder(
 	ctx context.Context,
 	params OrderCreateParams,
 	balanceIdentity *services.Identity,
+	confirmedAmount *uint64,
 ) (Order, error) {
 	workspaceID, err := requireWorkspaceID(params.WorkspaceID)
 	if err != nil {
@@ -327,6 +328,10 @@ func (r *PaymentRepository) createOrder(
 		if balanceIdentity != nil && (product.PeriodSeconds.Valid ||
 			product.TrialDurationSeconds.Valid || product.Price.PayableAmountMinor == 0) {
 			return ErrBalanceUnsupported
+		}
+
+		if confirmedAmount != nil && product.Price.PayableAmountMinor != *confirmedAmount {
+			return ErrPaymentMismatch
 		}
 
 		if product.Limit.Global.LockUntil.Valid ||
@@ -1779,7 +1784,7 @@ func (r *PaymentRepository) CompleteAttempt(
 
 	var result CompleteAttemptResult
 
-	err = r.WithTx(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
+	err = r.inTransaction(ctx, func(ctx context.Context, txRepo *PaymentRepository) error {
 		attempt, err := txRepo.q.LockPaymentAttempt(
 			ctx,
 			int64(params.AttemptID),
